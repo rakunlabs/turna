@@ -68,3 +68,11 @@ services:
     filters:
       - "internal"
 ```
+
+## Development
+
+Generate binary with goreleaser:
+
+```sh
+goreleaser release --snapshot --rm-dist
+```
