@@ -1,0 +1,40 @@
+# application log, default is info
+log_level: info
+
+# loads configuration to files
+loads:
+  - export: test.yml
+    # static configuration merged with other sources
+    statics:
+      - consul:
+          path: test
+          # default is empty
+          path_prefix: finops
+        vault:
+          path: test/myapp
+          # default is empty
+          path_prefix: secret
+          # default is auth/approle/login, not need to set
+          # app_role_base_path: auth/approle/login
+          # additional paths to get from extra content, default is none
+          # additional_paths:
+          #   - map: ""
+          #     name: generic
+
+# declare commands to run
+services:
+  # service name just for information purpose
+  - name: cat my file
+    # command will run inside of this path
+    path: "."
+    # command to run
+    command: cat test.yml
+    # environment variables to set
+    # usable with gotemplate and sprig functions
+    env:
+      TEST: 1
+      TEST2: 2
+      HOSTTYPE: '{{ env "HOSTTYPE" }}'
+    # filter of output, default is none
+    # filters:
+    # - "internal"
