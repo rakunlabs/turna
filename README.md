@@ -10,7 +10,7 @@ With _turna_, we can use third party programs directly in our systems without gi
 Check the releases page for versions and download the binary for your system.
 
 ```sh
-curl -fsSL https://github.com/worldline-go/turna/releases/latest/download/turna_Linux_x86_64.tar.gz | tar -xz --overwrite /usr/local/bin/
+curl -fsSL https://github.com/worldline-go/turna/releases/latest/download/turna_Linux_x86_64.tar.gz | sudo tar -xz --overwrite -C /usr/local/bin/
 ```
 
 ## Configuration
