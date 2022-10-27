@@ -112,7 +112,7 @@ func loadConfig(ctx context.Context, visit func(fn func(*pflag.Flag))) error {
 		loaders = append(loaders, &loader.Consul{})
 	}
 
-	if config.LoadConfig.ConfigSet.Vault {
+	if config.LoadConfig.ConfigSet.Vault && config.LoadConfig.Prefix.Vault != "" {
 		loaders = append(loaders, &loader.Vault{})
 	}
 

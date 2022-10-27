@@ -13,6 +13,31 @@ Check the releases page for versions and download the binary for your system.
 curl -fsSL https://github.com/worldline-go/turna/releases/latest/download/turna_Linux_x86_64.tar.gz | sudo tar -xz --overwrite -C /usr/local/bin/
 ```
 
+## Usage
+
+Give config file with `CONFIG_FILE` env value [toml, yaml, yml, json] extensions supported.
+
+To get this file from consul and vault area set the consul and vault enviroment variables.
+
+```sh
+# APPNAME
+APP_NAME=test
+PREFIX_VAULT=finops
+PREFIX_CONSUL=finops
+
+# First initialize configuration
+CONFIG_SET_CONSUL=true
+CONFIG_SET_VAULT=true
+CONFIG_SET_FILE=true
+
+# CONSUL
+CONSUL_HTTP_ADDR="localhost:8500"
+# VAULT
+VAULT_ADDR="http://localhost:8200"
+VAULT_ROLE_ID="${ROLE_ID}"
+# VAULT_CONSUL_ADDR_DISABLE=false
+```
+
 ## Configuration
 
 ```yml
@@ -32,7 +57,7 @@ loads:
           order: 1
         vault:
           path: test/myapp
-          # default is empty
+          # default is empty, path_prefix is must!
           path_prefix: secret
           # default is auth/approle/login, not need to set
           app_role_base_path: auth/approle/login

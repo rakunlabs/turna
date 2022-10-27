@@ -7,19 +7,29 @@ loads:
     # static configuration merged with other sources
     statics:
       - consul:
-          path: test
+          path: transactions/transaction_opf
           # default is empty
           path_prefix: finops
         vault:
-          path: test/myapp
+          path: transactions/transaction_opf
           # default is empty
-          path_prefix: secret
+          path_prefix: finops
           # default is auth/approle/login, not need to set
           # app_role_base_path: auth/approle/login
           # additional paths to get from extra content, default is none
           # additional_paths:
-          #   - map: ""
-          #     name: generic
+            # - map: ""
+            #   name: generic
+            # - map: "migrate"
+            #   name: "migrations"
+            # - map: "producer"
+            #   name: "generic/kafka-secret"
+            # - map: "trs_client"
+            #   name: "generic/api-secret"
+            # - map: "payment_client"
+            #   name: "generic/api-secret"
+            # - map: "provider_client"
+            #   name: "generic/api-secret"
 
 # declare commands to run
 services:
