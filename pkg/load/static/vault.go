@@ -15,6 +15,7 @@ type Vault struct {
 	AppRoleBasePath string                  `cfg:"app_role_base_path"`
 	AdditionalPaths []loader.AdditionalPath `cfg:"additional_paths"`
 	Order           int                     `cfg:"order"`
+	Map             string                  `cfg:"map"`
 }
 
 func (l Vault) GetOrder() int {
