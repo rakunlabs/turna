@@ -1,6 +1,11 @@
 ![turna](_assets/turna.svg#gh-light-mode-only)
 ![turna](_assets/turna_light.svg#gh-dark-mode-only)
 
+[![License](https://img.shields.io/github/license/worldline-go/turna?color=blue&style=flat-square)](https://raw.githubusercontent.com/worldline-go/turna/main/LICENSE)
+[![Coverage](https://img.shields.io/sonar/coverage/worldline-go_turna?logo=sonarcloud&server=https%3A%2F%2Fsonarcloud.io&style=flat-square)](https://sonarcloud.io/summary/overall?id=worldline-go_turna)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/worldline-go/turna/test.yml?branch=main&logo=github&style=flat-square&label=ci)](https://github.com/worldline-go/turna/actions)
+[![Go Report Card](https://goreportcard.com/badge/github.com/worldline-go/turna?style=flat-square)](https://goreportcard.com/report/github.com/worldline-go/turna)
+
 Turna gets configuration files from various sources and runs commands.
 
 With _turna_, we can use third party programs directly in our systems without giving extra configuration files to them.
@@ -53,8 +58,10 @@ loads:
           path: test
           # default is empty
           path_prefix: finops
-          # default is 0 and consul first to merge of statics
-          order: 1
+          # load as raw
+          raw: false
+          # default is YAML, [toml, yaml, json] supported
+          codec: "YAML"
         vault:
           path: test/myapp
           # default is empty, path_prefix is must!
@@ -63,15 +70,30 @@ loads:
           app_role_base_path: auth/approle/login
           # additional paths to get from extra content, default is none
           additional_paths:
+          # map is the where to add as trace/config -> ["trace"]["config"]
             - map: ""
-              name: generic
-          # default is 0 and vault second to merge of statics
-          order: 2
+              path: generic
         file:
           # default is empty, [toml, yml, yaml, json] supported
           path: load.yml
-          # default is 0 and file third to merge of statics
-          order: 3
+          raw: false
+        content:
+          codec: "YAML"
+          content: |
+            test:
+              test: 1
+              test2: 2
+          raw: false
+          template: false
+    dynamics:
+      - consul:
+          path: test
+          # default is empty
+          path_prefix: finops
+          # load as raw
+          raw: false
+          # default is YAML, [toml, yaml, json] supported
+          codec: "YAML"
 
 # declare commands to run
 services:
@@ -92,12 +114,4 @@ services:
     # filter of output, default is none
     filters:
       - "internal"
-```
-
-## Development
-
-Generate binary with goreleaser:
-
-```sh
-goreleaser release --snapshot --rm-dist
 ```

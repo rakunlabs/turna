@@ -11,9 +11,11 @@ import (
 	"syscall"
 
 	"github.com/worldline-go/turna/internal/config"
+	"github.com/worldline-go/turna/internal/service"
 	"github.com/worldline-go/turna/pkg/runner"
 
 	"github.com/rs/zerolog/log"
+	load "github.com/rytsh/liz/loader"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/worldline-go/igconfig"
@@ -189,9 +191,13 @@ func runRoot(ctxParent context.Context) (err error) {
 	}()
 
 	// load configurations
-	if err := config.Application.Loads.Load(ctx); err != nil {
+	var data load.Data
+	if err := config.Application.Loads.Load(load.SetLogToCtx(ctx, logz.AdapterKV{Log: log.Logger}), wg, nil, &data); err != nil {
 		return err
 	}
+
+	// set global data
+	service.Data = data
 
 	// run services
 	if err := config.Application.Services.Run(); err != nil {

@@ -5,7 +5,13 @@ import (
 	"os"
 	"strings"
 
-	"github.com/worldline-go/turna/pkg/template"
+	"github.com/rytsh/liz/loader"
+	"github.com/rytsh/liz/utils/templatex"
+)
+
+var (
+	template = templatex.New()
+	Data     = loader.Data{}
 )
 
 func GetEnv(predefined map[string]interface{}, environ bool) ([]string, error) {
@@ -34,10 +40,12 @@ func GetEnv(predefined map[string]interface{}, environ bool) ([]string, error) {
 }
 
 func RenderValue(v interface{}) (string, error) {
-	rV, err := template.Ext(nil, fmt.Sprint(v))
-	if err != nil {
-		return "", err
+	var pass interface{}
+	if Data.Raw != nil {
+		pass = Data.Raw
+	} else {
+		pass = Data.Map
 	}
 
-	return string(rV), err
+	return template.Execute(pass, fmt.Sprint(v))
 }

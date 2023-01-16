@@ -4,13 +4,14 @@ log_level: info
 # loads configuration to files
 loads:
   - export: test.yml
-    # static configuration merged with other sources
-    statics:
+    dynamics:
       - consul:
           path: transactions/transaction_opf
           # default is empty
           path_prefix: finops
-        vault:
+    # static configuration merged with other sources
+    statics:
+      - vault:
           path: transactions/transaction_opf
           # default is empty
           path_prefix: finops
@@ -38,7 +39,7 @@ services:
     # command will run inside of this path
     path: "."
     # command to run
-    command: cat test.yml
+    command: bash -c "cat test.yml; sleep 10; cat test.yml; sleep 10; cat test.yml"
     # environment variables to set
     # usable with gotemplate and sprig functions
     env:

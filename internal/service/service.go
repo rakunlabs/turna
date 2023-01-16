@@ -2,8 +2,9 @@ package service
 
 import (
 	"bytes"
-	"strings"
+	"fmt"
 
+	"github.com/kballard/go-shellquote"
 	"github.com/rs/zerolog/log"
 	"github.com/worldline-go/turna/pkg/runner"
 )
@@ -42,10 +43,15 @@ func (s *Service) Add() error {
 		return err
 	}
 
+	commands, err := shellquote.Split(s.Command)
+	if err != nil {
+		return fmt.Errorf("failed to parse command %s: %w", s.Name, err)
+	}
+
 	c := &runner.Command{
 		Name:    s.Name,
 		Path:    s.Path,
-		Command: strings.Fields(s.Command),
+		Command: commands,
 		Filter:  filter,
 		Env:     env,
 	}

@@ -1,2 +1,7 @@
 /test.yml
 /dist
+/bin
+/*.out
+
+/go.work
+/go.work.sum

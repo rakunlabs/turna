@@ -19,7 +19,7 @@ var (
 )
 
 func main() {
-	logz.InitializeLog(nil)
+	logz.InitializeLog(logz.WithCaller(false))
 
 	args.BuildVars.Version = version
 	args.BuildVars.Date = date

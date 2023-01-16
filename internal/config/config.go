@@ -1,13 +1,13 @@
 package config
 
 import (
-	"github.com/worldline-go/turna/internal/load"
+	"github.com/rytsh/liz/loader"
 	"github.com/worldline-go/turna/internal/service"
 )
 
 var Application = struct {
 	LogLevel string `cfg:"log_level"`
-	Loads    load.Loads
+	Loads    loader.Configs
 	Services service.Services
 }{
 	LogLevel: "info",

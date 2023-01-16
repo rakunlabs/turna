@@ -3,17 +3,24 @@ VERSION := $(or $(IMAGE_TAG),$(shell git describe --tags --first-parent --match 
 
 .DEFAULT_GOAL := help
 
-.PHONY: test coverage help html html-gen html-wsl run
+.PHONY: test coverage help html html-gen html-wsl run vault consul
 
 run: CONFIG_FILE ?= _example/config/local.yml
 run: ## Run the application; CONFIG_FILE to specify a config file
 	CONFIG_FILE=$(CONFIG_FILE) go run cmd/$(PROJECT)/main.go
 
+# go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o $(PROJECT) cmd/$(PROJECT)/main.go
 build: ## Build the binary
-	go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o $(PROJECT) cmd/$(PROJECT)/main.go
+	goreleaser build --snapshot --rm-dist --single-target
+
+vault: ## Run vault server
+	docker run --rm -it -p 8200:8200 --name vault vault:latest
+
+consul: ## Run consul server
+	docker run --rm -it -p 8500:8500 --name consul consul:latest
 
 test: ## Run unit tests
-	@go test -race ./...
+	@go test -race -cover ./...
 
 coverage: ## Run unit tests with coverage
 	@go test -v -race -cover -coverpkg=./... -coverprofile=coverage.out -covermode=atomic ./...
