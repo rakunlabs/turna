@@ -190,14 +190,21 @@ func runRoot(ctxParent context.Context) (err error) {
 		}
 	}()
 
-	// load configurations
-	var data load.Data
-	if err := config.Application.Loads.Load(load.SetLogToCtx(ctx, logz.AdapterKV{Log: log.Logger}), wg, nil, &data); err != nil {
-		return err
+	// this function will be called after all configs are loaded and dynamically changes
+	call := func(_ context.Context, _ string, data map[string]interface{}) {
+		// set global data
+		service.Data = data
+
+		// set service filters
+		for i := range config.Application.Services {
+			config.Application.Services[i].SetFilters()
+		}
 	}
 
-	// set global data
-	service.Data = data
+	// load configurations
+	if err := config.Application.Loads.Load(load.SetLogToCtx(ctx, logz.AdapterKV{Log: log.Logger}), wg, nil, call); err != nil {
+		return err
+	}
 
 	// run services
 	if err := config.Application.Services.Run(); err != nil {

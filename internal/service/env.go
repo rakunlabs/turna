@@ -11,15 +11,28 @@ import (
 
 var (
 	template = templatex.New()
-	Data     = loader.Data{}
+	Data     map[string]interface{}
 )
 
-func GetEnv(predefined map[string]interface{}, environ bool) ([]string, error) {
+func GetEnv(predefined map[string]interface{}, environ bool, envPaths []string) ([]string, error) {
 	v := make(map[string]string)
 	if environ {
 		for _, e := range os.Environ() {
 			pair := strings.SplitN(e, "=", 2)
 			v[pair[0]] = pair[1]
+		}
+	}
+
+	// add values
+	for _, path := range envPaths {
+		if vInner, ok := loader.InnerPath(path, Data).(map[string]interface{}); ok {
+			for k, val := range vInner {
+				rV, err := RenderValue(val)
+				if err != nil {
+					return nil, err
+				}
+				v[k] = rV
+			}
 		}
 	}
 
@@ -40,12 +53,5 @@ func GetEnv(predefined map[string]interface{}, environ bool) ([]string, error) {
 }
 
 func RenderValue(v interface{}) (string, error) {
-	var pass interface{}
-	if Data.Raw != nil {
-		pass = Data.Raw
-	} else {
-		pass = Data.Map
-	}
-
-	return template.Execute(pass, fmt.Sprint(v))
+	return template.Execute(Data, fmt.Sprint(v))
 }

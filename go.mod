@@ -5,8 +5,8 @@ go 1.19
 require (
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/rs/zerolog v1.28.0
-	github.com/rytsh/liz/loader v0.1.1
-	github.com/rytsh/liz/utils/templatex v0.1.2
+	github.com/rytsh/liz/loader v0.2.0
+	github.com/rytsh/liz/utils/templatex v0.1.3
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/pflag v1.0.5
 	github.com/worldline-go/igconfig v0.2.0
@@ -67,7 +67,7 @@ require (
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/spf13/afero v1.9.3 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
-	github.com/worldline-go/struct2 v1.2.2 // indirect
+	github.com/worldline-go/struct2 v1.2.3 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	golang.org/x/crypto v0.3.0 // indirect
 	golang.org/x/net v0.2.0 // indirect

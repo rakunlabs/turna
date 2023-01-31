@@ -9,13 +9,15 @@ func TestGetEnv(t *testing.T) {
 	type args struct {
 		predefined map[string]interface{}
 		environ    bool
+		envPaths   []string
 	}
 	tests := []struct {
-		name    string
-		args    args
-		osEnv   func()
-		want    []string
-		wantErr bool
+		name     string
+		args     args
+		osEnv    func()
+		exported map[string]interface{}
+		want     []string
+		wantErr  bool
 	}{
 		{
 			name: "test",
@@ -55,6 +57,31 @@ func TestGetEnv(t *testing.T) {
 			},
 			want: []string{"PATH=x", "TR=31", "ABC=1234"},
 		},
+		{
+			name: "mix with env and env_paths",
+			args: args{
+				predefined: map[string]interface{}{
+					"PATH": "x",
+					"ABC":  "1234",
+				},
+				environ: true,
+				envPaths: []string{
+					"test/env",
+				},
+			},
+			osEnv: func() {
+				os.Setenv("PATH", "y")
+				os.Setenv("TR", "31")
+			},
+			exported: map[string]interface{}{
+				"test": map[string]interface{}{
+					"env": map[string]interface{}{
+						"Name": "Eray",
+					},
+				},
+			},
+			want: []string{"PATH=x", "TR=31", "ABC=1234", "Name=Eray"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -64,7 +91,9 @@ func TestGetEnv(t *testing.T) {
 				tt.osEnv()
 			}
 
-			got, err := GetEnv(tt.args.predefined, tt.args.environ)
+			Data = tt.exported
+
+			got, err := GetEnv(tt.args.predefined, tt.args.environ, tt.args.envPaths)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetEnv() error = %v, wantErr %v", err, tt.wantErr)
 				return

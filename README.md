@@ -52,9 +52,13 @@ log_level: info
 # loads configuration to files
 loads:
   - export: test.yml
+    # name using to export value in map
+    name: mytest
     # static configuration merged with other sources
     statics:
       - consul:
+          # name using to export value in map
+          name: myconsul
           path: test
           # default is empty
           path_prefix: finops
@@ -62,22 +66,35 @@ loads:
           raw: false
           # default is YAML, [toml, yaml, json] supported
           codec: "YAML"
+          # get the inner path
+          inner_path: "test"
+          # remap key
+          map: "myapp/inner"
         vault:
+          # name using to export value in map
+          name: myvault
           path: test/myapp
           # default is empty, path_prefix is must!
           path_prefix: secret
           # default is auth/approle/login, not need to set
           app_role_base_path: auth/approle/login
-          # additional paths to get from extra content, default is none
-          additional_paths:
-          # map is the where to add as trace/config -> ["trace"]["config"]
-            - map: ""
-              path: generic
+          # get the inner path
+          inner_path: "test"
+          # remap key
+          map: "myapp/inner"
         file:
+          # name using to export value in map
+          name: myfile
           # default is empty, [toml, yml, yaml, json] supported
           path: load.yml
           raw: false
+          # get the inner path
+          inner_path: "test"
+          # remap key
+          map: "myapp/inner"
         content:
+          # name using to export value in map
+          name: mycontent
           codec: "YAML"
           content: |
             test:
@@ -85,8 +102,14 @@ loads:
               test2: 2
           raw: false
           template: false
+          # get the inner path
+          inner_path: "test"
+          # remap key
+          map: "myapp/inner"
     dynamics:
       - consul:
+          # name using to export value in map
+          name: myconsulDynamic
           path: test
           # default is empty
           path_prefix: finops
@@ -94,6 +117,10 @@ loads:
           raw: false
           # default is YAML, [toml, yaml, json] supported
           codec: "YAML"
+          # get the inner path
+          inner_path: "test"
+          # remap key
+          map: "myapp/inner"
 
 # declare commands to run
 services:
@@ -105,13 +132,20 @@ services:
     command: cat test.yml
     # environment variables to set
     # usable with gotemplate and sprig functions
+    # get variables from name in loads
     env:
       TEST: 1
       TEST2: 2
       HOSTTYPE: '{{ env "HOSTTYPE" }}'
+    # env_values override the os envs but not env values in upper
+    env_values:
+      - mytest/env # get all env values from mytest, give map value result in template
     # inherit environment values, default is false
     inherit_env: false
     # filter of output, default is none
     filters:
       - "internal"
+    # filter_values effect dynamically
+    filters_values:
+      - mytest/filter # get all filter values from mytest, give slice value result in template
 ```

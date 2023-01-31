@@ -4,33 +4,18 @@ log_level: info
 # loads configuration to files
 loads:
   - export: test.yml
+    name: "v"
     dynamics:
       - consul:
-          path: transactions/transaction_opf
-          # default is empty
-          path_prefix: finops
+          path: hellox/one
     # static configuration merged with other sources
     statics:
       - vault:
-          path: transactions/transaction_opf
+          path: hellox/one
           # default is empty
-          path_prefix: finops
+          path_prefix: secret
           # default is auth/approle/login, not need to set
           # app_role_base_path: auth/approle/login
-          # additional paths to get from extra content, default is none
-          # additional_paths:
-            # - map: ""
-            #   name: generic
-            # - map: "migrate"
-            #   name: "migrations"
-            # - map: "producer"
-            #   name: "generic/kafka-secret"
-            # - map: "trs_client"
-            #   name: "generic/api-secret"
-            # - map: "payment_client"
-            #   name: "generic/api-secret"
-            # - map: "provider_client"
-            #   name: "generic/api-secret"
 
 # declare commands to run
 services:
@@ -39,13 +24,15 @@ services:
     # command will run inside of this path
     path: "."
     # command to run
-    command: bash -c "cat test.yml; sleep 10; cat test.yml; sleep 10; cat test.yml"
+    command: bash -c "cat test.yml; sleep 10; env; cat test.yml; sleep 10; cat test.yml"
     # environment variables to set
     # usable with gotemplate and sprig functions
     env:
       TEST: 1
       TEST2: 2
       HOSTTYPE: '{{ env "HOSTTYPE" }}'
+    env_values:
+    - "v/env"
     # filter of output, default is none
-    # filters:
-    # - "internal"
+    filters_values:
+    - "v/filters"

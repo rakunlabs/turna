@@ -3,9 +3,11 @@ package service
 import (
 	"bytes"
 	"fmt"
+	"sync"
 
 	"github.com/kballard/go-shellquote"
 	"github.com/rs/zerolog/log"
+	"github.com/rytsh/liz/loader"
 	"github.com/worldline-go/turna/pkg/runner"
 )
 
@@ -18,27 +20,58 @@ type Service struct {
 	Command string
 	// GoTemplate and Sprig functions are available.
 	Env map[string]interface{}
+	// EnvValues is a list of environment variables path from exported config.
+	EnvValues []string `cfg:"env_values"`
 	// Inherit environment variables, default is false.
 	InheritEnv bool `cfg:"inherit_env"`
 	// Filters is a function to filter stdout.
 	Filters [][]byte
+	// FiltersValues is a list of filter variables path from exported config.
+	FiltersValues []string `cfg:"filters_values"`
+
+	// filters is internal usage to combine filters and filters_values.
+	filters [][]byte `cfg:"-"`
+	mutex   sync.RWMutex
 }
 
-func (s *Service) Add() error {
-	var filter func(b []byte) bool
+func (s *Service) SetFilters() {
+	filterX := s.Filters
 
-	if s.Filters != nil {
-		filter = func(b []byte) bool {
-			for _, f := range s.Filters {
-				if bytes.Contains(b, f) {
-					return false
+	for _, path := range s.FiltersValues {
+		if vInner, ok := loader.InnerPath(path, Data).([]interface{}); ok {
+			for _, val := range vInner {
+				rV, err := RenderValue(val)
+				if err != nil {
+					log.Warn().Msgf("failed to render filter value %s: %v", s.Name, err)
+
+					continue
 				}
+
+				filterX = append(filterX, []byte(rV))
 			}
-			return true
 		}
 	}
 
-	env, err := GetEnv(s.Env, s.InheritEnv)
+	s.mutex.Lock()
+	s.filters = filterX
+	s.mutex.Unlock()
+}
+
+func (s *Service) Init() error {
+	filter := func(b []byte) bool {
+		// reading s.filters is not thread safe, so we need to lock it
+		s.mutex.RLock()
+		defer s.mutex.RUnlock()
+
+		for _, f := range s.filters {
+			if bytes.Contains(b, f) {
+				return false
+			}
+		}
+		return true
+	}
+
+	env, err := GetEnv(s.Env, s.InheritEnv, s.EnvValues)
 	if err != nil {
 		return err
 	}
@@ -67,7 +100,7 @@ type Services []Service
 
 func (s Services) Run() error {
 	for i := range s {
-		if err := s[i].Add(); err != nil {
+		if err := s[i].Init(); err != nil {
 			return err
 		}
 	}
