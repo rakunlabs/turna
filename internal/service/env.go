@@ -1,20 +1,14 @@
 package service
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
 	"github.com/rytsh/liz/loader"
-	"github.com/rytsh/liz/utils/templatex"
+	"github.com/worldline-go/turna/internal/render"
 )
 
-var (
-	template = templatex.New()
-	Data     map[string]interface{}
-)
-
-func GetEnv(predefined map[string]interface{}, environ bool, envPaths []string) ([]string, error) {
+func (s *Service) GetEnv(predefined map[string]interface{}, environ bool, envPaths []string) ([]string, error) {
 	v := make(map[string]string)
 	if environ {
 		for _, e := range os.Environ() {
@@ -25,9 +19,9 @@ func GetEnv(predefined map[string]interface{}, environ bool, envPaths []string) 
 
 	// add values
 	for _, path := range envPaths {
-		if vInner, ok := loader.InnerPath(path, Data).(map[string]interface{}); ok {
+		if vInner, ok := loader.InnerPath(path, render.GlobalRender.Data).(map[string]interface{}); ok {
 			for k, val := range vInner {
-				rV, err := RenderValue(val)
+				rV, err := render.GlobalRender.Execute(val)
 				if err != nil {
 					return nil, err
 				}
@@ -37,7 +31,7 @@ func GetEnv(predefined map[string]interface{}, environ bool, envPaths []string) 
 	}
 
 	for k, val := range predefined {
-		rV, err := RenderValue(val)
+		rV, err := render.GlobalRender.Execute(val)
 		if err != nil {
 			return nil, err
 		}
@@ -50,8 +44,4 @@ func GetEnv(predefined map[string]interface{}, environ bool, envPaths []string) 
 	}
 
 	return env, nil
-}
-
-func RenderValue(v interface{}) (string, error) {
-	return template.Execute(Data, fmt.Sprint(v))
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/kballard/go-shellquote"
 	"github.com/rs/zerolog/log"
 	"github.com/rytsh/liz/loader"
+	"github.com/worldline-go/turna/internal/render"
 	"github.com/worldline-go/turna/pkg/runner"
 )
 
@@ -30,7 +31,7 @@ type Service struct {
 	FiltersValues []string `cfg:"filters_values"`
 
 	// filters is internal usage to combine filters and filters_values.
-	filters [][]byte `cfg:"-"`
+	filters [][]byte
 	mutex   sync.RWMutex
 }
 
@@ -38,9 +39,9 @@ func (s *Service) SetFilters() {
 	filterX := s.Filters
 
 	for _, path := range s.FiltersValues {
-		if vInner, ok := loader.InnerPath(path, Data).([]interface{}); ok {
+		if vInner, ok := loader.InnerPath(path, render.GlobalRender.Data).([]interface{}); ok {
 			for _, val := range vInner {
-				rV, err := RenderValue(val)
+				rV, err := render.GlobalRender.Execute(val)
 				if err != nil {
 					log.Warn().Msgf("failed to render filter value %s: %v", s.Name, err)
 
@@ -57,7 +58,7 @@ func (s *Service) SetFilters() {
 	s.mutex.Unlock()
 }
 
-func (s *Service) Init() error {
+func (s *Service) Register() error {
 	filter := func(b []byte) bool {
 		// reading s.filters is not thread safe, so we need to lock it
 		s.mutex.RLock()
@@ -71,7 +72,7 @@ func (s *Service) Init() error {
 		return true
 	}
 
-	env, err := GetEnv(s.Env, s.InheritEnv, s.EnvValues)
+	env, err := s.GetEnv(s.Env, s.InheritEnv, s.EnvValues)
 	if err != nil {
 		return err
 	}
@@ -100,7 +101,7 @@ type Services []Service
 
 func (s Services) Run() error {
 	for i := range s {
-		if err := s[i].Init(); err != nil {
+		if err := s[i].Register(); err != nil {
 			return err
 		}
 	}

@@ -122,6 +122,8 @@ loads:
           # remap key
           map: "myapp/inner"
 
+print: "text to print when run this application to add logs, after the load complate: {{ .APP_NAME }}"
+
 # declare commands to run
 services:
   # service name just for information purpose

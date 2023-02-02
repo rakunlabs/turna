@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 
 	"github.com/worldline-go/turna/internal/config"
-	"github.com/worldline-go/turna/internal/service"
+	"github.com/worldline-go/turna/internal/render"
 	"github.com/worldline-go/turna/pkg/runner"
 
 	"github.com/rs/zerolog/log"
@@ -72,6 +71,8 @@ func Execute(ctx context.Context) error {
 		"%s\nversion:[%s] commit:[%s] buildDate:[%s]",
 		rootCmd.Long, BuildVars.Version, BuildVars.Commit, BuildVars.Date,
 	)
+
+	rootCmd.AddCommand(apiCmd)
 
 	return rootCmd.ExecuteContext(ctx) //nolint:wrapcheck // no need
 }
@@ -148,7 +149,7 @@ func loadConfig(ctx context.Context, visit func(fn func(*pflag.Flag))) error {
 
 func runRoot(ctxParent context.Context) (err error) {
 	// appname and version
-	log.Info().Msgf("%s [%s]", strings.ToTitle(config.AppName), BuildVars.Version)
+	log.Info().Msgf("TURNA [%s] [%s]", config.AppName, BuildVars.Version)
 
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
@@ -192,8 +193,7 @@ func runRoot(ctxParent context.Context) (err error) {
 
 	// this function will be called after all configs are loaded and dynamically changes
 	call := func(_ context.Context, _ string, data map[string]interface{}) {
-		// set global data
-		service.Data = data
+		render.GlobalRender.Data = data
 
 		// set service filters
 		for i := range config.Application.Services {
@@ -206,12 +206,31 @@ func runRoot(ctxParent context.Context) (err error) {
 		return err
 	}
 
+	// print for log to starting program
+	if err := Print(); err != nil {
+		return err
+	}
+
 	// run services
 	if err := config.Application.Services.Run(); err != nil {
 		return err
 	}
 
 	wgRunner.Wait()
+
+	return nil
+}
+
+func Print() error {
+	if config.Application.Print == "" {
+		return nil
+	}
+
+	if vPrint, err := render.GlobalRender.Execute(config.Application.Print); err != nil {
+		return err
+	} else {
+		log.Info().Msg(vPrint)
+	}
 
 	return nil
 }

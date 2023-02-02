@@ -3,6 +3,8 @@ package service
 import (
 	"os"
 	"testing"
+
+	"github.com/worldline-go/turna/internal/render"
 )
 
 func TestGetEnv(t *testing.T) {
@@ -91,9 +93,11 @@ func TestGetEnv(t *testing.T) {
 				tt.osEnv()
 			}
 
-			Data = tt.exported
+			render.GlobalRender.Data = tt.exported
 
-			got, err := GetEnv(tt.args.predefined, tt.args.environ, tt.args.envPaths)
+			s := Service{}
+
+			got, err := s.GetEnv(tt.args.predefined, tt.args.environ, tt.args.envPaths)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetEnv() error = %v, wantErr %v", err, tt.wantErr)
 				return

@@ -6,9 +6,10 @@ import (
 )
 
 var Application = struct {
-	LogLevel string `cfg:"log_level"`
-	Loads    loader.Configs
-	Services service.Services
+	LogLevel string           `cfg:"log_level"`
+	Loads    loader.Configs   `cfg:"loads"`
+	Services service.Services `cfg:"services"`
+	Print    string           `cfg:"print"`
 }{
 	LogLevel: "info",
 }
