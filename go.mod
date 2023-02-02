@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/rs/zerolog v1.28.0
-	github.com/rytsh/liz/loader v0.2.0
+	github.com/rytsh/liz/loader v0.2.1
 	github.com/rytsh/liz/loader/httpx v0.1.0
 	github.com/rytsh/liz/utils/templatex v0.1.3
 	github.com/spf13/cobra v1.6.1
@@ -62,7 +62,7 @@ require (
 	github.com/pierrec/lz4 v2.6.0+incompatible // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
 	github.com/rytsh/liz/loader/consul v0.2.0 // indirect
-	github.com/rytsh/liz/loader/file v0.2.0 // indirect
+	github.com/rytsh/liz/loader/file v0.2.1 // indirect
 	github.com/rytsh/liz/loader/vault v0.2.0 // indirect
 	github.com/rytsh/liz/utils/mapx v0.1.1 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect

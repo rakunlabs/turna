@@ -353,12 +353,12 @@ github.com/ryanuber/columnize v0.0.0-20160712163229-9b3edd62028f/go.mod h1:sm1tb
 github.com/ryanuber/columnize v2.1.0+incompatible/go.mod h1:sm1tb6uqfes/u+d4ooFouqFdy9/2g9QGwK3SQygK0Ts=
 github.com/ryanuber/go-glob v1.0.0 h1:iQh3xXAumdQ+4Ufa5b25cRpC5TYKlno6hsv6Cb3pkBk=
 github.com/ryanuber/go-glob v1.0.0/go.mod h1:807d1WSdnB0XRJzKNil9Om6lcp/3a0v4qIHxIXzX/Yc=
-github.com/rytsh/liz/loader v0.2.0 h1:YnYNpmjk8Qi/2r3Hu7USxNYYtQIscqg7OgO0tihw0b8=
-github.com/rytsh/liz/loader v0.2.0/go.mod h1:xYkjcUlQ3gEJxFM6g0Xf8Y8XVC+cVGPQf1DFQKfZPFw=
+github.com/rytsh/liz/loader v0.2.1 h1:dUOcZHPfDp+a84qdc6mB/Bn+aHLPrPVrRPad3ybxjSw=
+github.com/rytsh/liz/loader v0.2.1/go.mod h1:67p4fPbL0Z5rtGLd7OiV7YhJECfsoMEWGLP9Xk2pa1k=
 github.com/rytsh/liz/loader/consul v0.2.0 h1:QNxwZceM1I6+EkynOpbQDIC9Du1aMjL5WROhNkkzp1Y=
 github.com/rytsh/liz/loader/consul v0.2.0/go.mod h1:PiRfTogA965ny1zZ1KNkz/Yk2s2H6EWptRXfRANLP6s=
-github.com/rytsh/liz/loader/file v0.2.0 h1:bHIYfeqbMrBnpoHwKMgG9I9uX48yFJtMjFiMxM8bo84=
-github.com/rytsh/liz/loader/file v0.2.0/go.mod h1:KAe4Jd74v0IZZaydA/zVEXa14E8lpvi+1cb1fHwWYvA=
+github.com/rytsh/liz/loader/file v0.2.1 h1:QPW0LDycqFs2Y6+kD0iN3zCmqsQtFpo14aCoD9/E0ww=
+github.com/rytsh/liz/loader/file v0.2.1/go.mod h1:KAe4Jd74v0IZZaydA/zVEXa14E8lpvi+1cb1fHwWYvA=
 github.com/rytsh/liz/loader/httpx v0.1.0 h1:z5yx1q3XyWzoYnz4NUkPmPC1IZ2H6jacMWlx/DXx2vE=
 github.com/rytsh/liz/loader/httpx v0.1.0/go.mod h1:WgNUoFn5a2p5XpYyBwx3tyHQ4evEpe27oOJrYC9voKY=
 github.com/rytsh/liz/loader/vault v0.2.0 h1:92FOinWvuGP/VjYPOQZsj0pQz4qVKX7T6N9BmpWap+g=
