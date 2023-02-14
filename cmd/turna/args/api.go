@@ -18,7 +18,8 @@ var apiCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return runAPI(cmd.Context())
 	},
-	SilenceUsage: true,
+	SilenceUsage:  true,
+	SilenceErrors: true,
 }
 
 var apiCmdFlags = struct {

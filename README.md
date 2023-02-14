@@ -147,7 +147,7 @@ services:
     # filter of output, default is none
     filters:
       - "internal"
-    # filter_values effect dynamically
+    # filters_values effect dynamically
     filters_values:
       - mytest/filter # get all filter values from mytest, give slice value result in template
 ```

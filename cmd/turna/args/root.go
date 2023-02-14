@@ -48,7 +48,8 @@ var rootCmd = &cobra.Command{
 
 		return nil
 	},
-	SilenceUsage: true,
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// load configuration
 		if err := loadConfig(cmd.Context(), cmd.Flags().Visit); err != nil {
@@ -149,7 +150,7 @@ func loadConfig(ctx context.Context, visit func(fn func(*pflag.Flag))) error {
 
 func runRoot(ctxParent context.Context) (err error) {
 	// appname and version
-	log.Info().Msgf("TURNA [%s] [%s]", config.AppName, BuildVars.Version)
+	log.Info().Msgf("TURNA [%s] [%s]", config.LoadConfig.AppName, BuildVars.Version)
 
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
