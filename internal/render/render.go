@@ -32,5 +32,10 @@ func (r *Render) Execute(content any) (string, error) {
 		return "", fmt.Errorf("template is nil")
 	}
 
-	return r.template.Execute(r.Data, fmt.Sprint(content))
+	output, err := r.template.ExecuteBuffer(templatex.WithContent(fmt.Sprint(content)), templatex.WithData(r.Data))
+	if err != nil {
+		return "", err
+	}
+
+	return string(output), err
 }
