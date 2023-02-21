@@ -1,0 +1,43 @@
+loads:
+  - name: server
+    statics:
+      - content:
+          # name using to export value in map
+          codec: "YAML"
+          content: |
+            entrypoints:
+              web:
+                address: ":8000"
+          raw: false
+          template: false
+server:
+  load_value: "server"
+  http:
+    middlewares:
+      basic_auth:
+        basic_auth:
+          users:
+            - "test:$apr1$JMWtQHoL$g/5ey5x7psJM7htuB6OEy0" # pass
+            - "test2:$apr1$u4NQ6Doq$KdCzBPfjarcQ0mk4Fd/3v1" # pass
+      myfolder:
+        folder:
+          # path: ./testdata/html
+          # index: true
+          # spa: true
+          browse: true
+          utc: true
+      myservice:
+        service:
+          loadbalancer:
+            servers:
+              - url: "http://localhost:9090"
+    routers:
+      private:
+        path: /pkg/server/*
+        middlewares:
+          - basic_auth
+          - myfolder
+      test:
+        path: /*
+        middlewares:
+          - myfolder

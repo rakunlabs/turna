@@ -22,8 +22,8 @@ type LoadApp struct {
 var LoadConfig = LoadApp{
 	AppName: AppName,
 	ConfigSet: GetConfig{
-		Consul: true,
-		Vault:  true,
+		Consul: false,
+		Vault:  false,
 		File:   true,
 	},
 }
@@ -33,3 +33,11 @@ type GetConfig struct {
 	Consul bool
 	File   bool
 }
+
+type Build struct {
+	Version string
+	Commit  string
+	Date    string
+}
+
+var BuildVars = Build{}

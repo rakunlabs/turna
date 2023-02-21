@@ -10,11 +10,15 @@ import (
 	"syscall"
 
 	"github.com/worldline-go/turna/internal/config"
-	"github.com/worldline-go/turna/internal/render"
+	"github.com/worldline-go/turna/internal/oven"
+	"github.com/worldline-go/turna/pkg/render"
 	"github.com/worldline-go/turna/pkg/runner"
+	"github.com/worldline-go/turna/pkg/server/http"
+	server "github.com/worldline-go/turna/pkg/server/registry"
 
 	"github.com/rs/zerolog/log"
 	load "github.com/rytsh/liz/loader"
+	"github.com/rytsh/liz/utils/shutdown"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/worldline-go/igconfig"
@@ -23,14 +27,6 @@ import (
 )
 
 var ErrShutdown = errors.New("shutting down signal received")
-
-type Build struct {
-	Version string
-	Commit  string
-	Date    string
-}
-
-var BuildVars = Build{}
 
 type overrideHold struct {
 	Memory *string
@@ -67,10 +63,10 @@ var rootCmd = &cobra.Command{
 func Execute(ctx context.Context) error {
 	setFlags()
 
-	rootCmd.Version = BuildVars.Version
+	rootCmd.Version = config.BuildVars.Version
 	rootCmd.Long = fmt.Sprintf(
 		"%s\nversion:[%s] commit:[%s] buildDate:[%s]",
-		rootCmd.Long, BuildVars.Version, BuildVars.Commit, BuildVars.Date,
+		rootCmd.Long, config.BuildVars.Version, config.BuildVars.Commit, config.BuildVars.Date,
 	)
 
 	rootCmd.AddCommand(apiCmd)
@@ -106,7 +102,7 @@ func loadConfig(ctx context.Context, visit func(fn func(*pflag.Flag))) error {
 		return fmt.Errorf("unable to load prefix settings: %v", err)
 	}
 
-	log.Info().Msgf("config loaded from %+v", config.LoadConfig)
+	log.Info().Msgf("config loading from %+v", config.LoadConfig)
 
 	loader.ConsulConfigPathPrefix = config.LoadConfig.Prefix.Consul
 	loader.VaultSecretBasePath = config.LoadConfig.Prefix.Vault
@@ -143,14 +139,14 @@ func loadConfig(ctx context.Context, visit func(fn func(*pflag.Flag))) error {
 	}
 
 	// print loaded object
-	log.Info().Object("config", igconfig.Printer{Value: config.Application}).Msg("loaded config")
+	log.Debug().Object("config", igconfig.Printer{Value: config.Application}).Msg("loaded config")
 
 	return nil
 }
 
 func runRoot(ctxParent context.Context) (err error) {
 	// appname and version
-	log.Info().Msgf("TURNA [%s] [%s]", config.LoadConfig.AppName, BuildVars.Version)
+	log.Info().Msgf("TURNA [%s] [%s]", config.LoadConfig.AppName, config.BuildVars.Version)
 
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
@@ -185,6 +181,8 @@ func runRoot(ctxParent context.Context) (err error) {
 		}
 
 		runner.GlobalReg.KillAll()
+		server.GlobalReg.Shutdown()
+		shutdown.Global.Run()
 
 		// add ErrShutdown if exit code is not 0
 		if err != nil && !runner.GlobalReg.IsExitCodeZero() {
@@ -200,6 +198,9 @@ func runRoot(ctxParent context.Context) (err error) {
 		for i := range config.Application.Services {
 			config.Application.Services[i].SetFilters()
 		}
+
+		// notify
+		log.Info().Msg("dynamic config loaded")
 	}
 
 	// load configurations
@@ -209,6 +210,21 @@ func runRoot(ctxParent context.Context) (err error) {
 
 	// print for log to starting program
 	if err := Print(); err != nil {
+		return err
+	}
+
+	// server
+	if config.Application.Server.LoadValue != "" {
+		if err := oven.CookConfig(
+			render.GlobalRender.Data[config.Application.Server.LoadValue],
+			&config.Application.Server,
+		); err != nil {
+			return fmt.Errorf("unable to load server config from load_value: %w", err)
+		}
+	}
+
+	http.ServerInfo = config.AppName + " " + config.BuildVars.Version
+	if err := config.Application.Server.Run(ctx, wgRunner); err != nil {
 		return err
 	}
 

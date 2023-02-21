@@ -1,0 +1,105 @@
+server:
+  entrypoints:
+    web:
+      address: ":8000"
+  http:
+    middlewares:
+      test:
+        addprefix:
+          prefix: "/middleware"
+      set:
+        set:
+          values:
+          - "auth_redirect"
+      role:
+        role:
+          roles:
+          - "transaction"
+          methods:
+          - "POST"
+      scope:
+        scope:
+          scopes:
+          - "email"
+      info:
+        info:
+          cookie: "auth_test"
+          base64: true
+      merhaba:
+        hello:
+          message: "merhaba 👋"
+      block:
+        block:
+          methods: ["GET"]
+      cors:
+        cors:
+          allow_origins: ["*"]
+          allow_methods: ["GET", "HEAD", "OPTIONS", "POST", "PUT", "DELETE"]
+      x-header:
+        headers:
+          custom_response_headers:
+            "X-Say-My-Name": "Heisenberg"
+          custom_request_headers:
+            "X-Tell": "me"
+      auth:
+        auth:
+          redirect:
+            # cookie_name: "test_1234"
+            # max_age: 3600
+            # path: "/"
+            # callback: "/login/"
+            # base_url: "http://localhost:8000/"
+            schema: "http"
+            secure: false
+            check_agent: true
+            # check_value: "auth_redirect"
+            # token_header: true
+            refresh_token: true
+          claims_header:
+            # get the claims to header
+            custom:
+              "X-Auth-Username": "name"
+              "X-Auth-Useremail": "email"
+          provider:
+            keycloak:
+              base_url: "http://localhost:8080/"
+              realm: "master"
+              client_id: "test"
+              client_secret: "ABo2TF1OoShgIQRMxl7fIGJLe2CgPrzw"
+      whoami:
+        service:
+          loadbalancer:
+            servers:
+              - url: "http://localhost:9090"
+    routers:
+      login:
+        path: /login
+        middlewares:
+          # - set
+          - auth
+          - info
+      test:
+        path: /test
+        service: test
+        middlewares:
+          # - auth
+          - role
+          # - scope
+          - test
+          - x-header
+          - cors
+          - whoami
+      merhaba:
+        path: /merhaba
+        middlewares:
+          - x-header
+          - cors
+          - block
+          - merhaba
+
+# declare commands to run
+services:
+  # service name just for information purpose
+  - name: echo
+    # command to run
+    command: echo "hello world"

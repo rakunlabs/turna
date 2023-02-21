@@ -30,9 +30,9 @@ APP_NAME=test
 PREFIX_VAULT=finops
 PREFIX_CONSUL=finops
 
-# First initialize configuration
-CONFIG_SET_CONSUL=true
-CONFIG_SET_VAULT=true
+# First initialize configuration, these variables are default
+CONFIG_SET_CONSUL=false
+CONFIG_SET_VAULT=false
 CONFIG_SET_FILE=true
 
 # CONSUL
@@ -70,6 +70,7 @@ loads:
           inner_path: "test"
           # remap key
           map: "myapp/inner"
+          template: false
         vault:
           # name using to export value in map
           name: myvault
@@ -82,6 +83,7 @@ loads:
           inner_path: "test"
           # remap key
           map: "myapp/inner"
+          template: false
         file:
           # name using to export value in map
           name: myfile
@@ -92,6 +94,7 @@ loads:
           inner_path: "test"
           # remap key
           map: "myapp/inner"
+          template: false
         content:
           # name using to export value in map
           name: mycontent
@@ -121,8 +124,58 @@ loads:
           inner_path: "test"
           # remap key
           map: "myapp/inner"
+          template: false
 
 print: "text to print when run this application to add logs, after the load complate: {{ .APP_NAME }}"
+
+server:
+  load_value: "x-server"
+  entrypoints:
+    web:
+      address: ":8080"
+  http:
+    middlewares:
+      test:
+        addprefix:
+          prefix: /test
+      auth:
+        auth:
+          redirect:
+            # cookie_name: "test_1234"
+            # max_age: 3600
+            # path: "/"
+            # callback: "/login/"
+            # base_url: "http://localhost:8000/"
+            schema: "http"
+            secure: false
+            check_agent: true
+            # check_value: "auth_redirect"
+            # token_header: true
+            refresh_token: true
+          provider:
+            keycloak:
+              base_url: "http://localhost:8080/"
+              realm: "master"
+              client_id: "test"
+              client_secret: "ABo2TF1OoShgIQRMxl7fIGJLe2CgPrzw"
+      service:
+        service:
+          loadbalancer:
+            servers:
+              - url: "http://localhost:8081"
+              - url: "http://localhost:8082"
+      myfolder:
+        folder:
+          path: "/folder"
+          browsable: false
+          spa: true
+          index: true
+    routers:
+      test:
+        path: /test
+        middlewares:
+          - test
+          - service
 
 # declare commands to run
 services:

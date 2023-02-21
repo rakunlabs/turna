@@ -3,11 +3,12 @@ VERSION := $(or $(IMAGE_TAG),$(shell git describe --tags --first-parent --match 
 
 .DEFAULT_GOAL := help
 
-.PHONY: test coverage help html html-gen html-wsl run vault consul
+.PHONY: run build vault consul keycloak whoami test coverage help html html-gen html-wsl run vault consul
 
-run: CONFIG_FILE ?= _example/config/local.yml
+run: export LOG_LEVEL ?= debug
+run: export CONFIG_FILE ?= testdata/config/local.yml
 run: ## Run the application; CONFIG_FILE to specify a config file
-	CONFIG_FILE=$(CONFIG_FILE) go run cmd/$(PROJECT)/main.go
+	go run cmd/$(PROJECT)/main.go
 
 # go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o $(PROJECT) cmd/$(PROJECT)/main.go
 build: ## Build the binary
@@ -18,6 +19,12 @@ vault: ## Run vault server
 
 consul: ## Run consul server
 	docker run --rm -it -p 8500:8500 --name consul consul:latest
+
+keycloak: ## Run keycloak server
+	docker run --rm -it -p 8080:8080 -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:20.0.2 start-dev
+
+whoami: ## Run whoami server
+	docker run --rm -it -p 9090:80 traefik/whoami:latest
 
 test: ## Run unit tests
 	@go test -race -cover ./...

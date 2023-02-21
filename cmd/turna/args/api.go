@@ -57,13 +57,15 @@ func ping(ctx context.Context) error {
 			apiCmdFlags.method,
 			nil, nil,
 			&httpx.Retry{DisableRetry: true},
-			apiCmdFlags.skipVerify)
+		)
 		if err != nil {
 			return err
 		}
 
+		// status code is not 2xx
 		if !(response.StatusCode >= 200 && response.StatusCode < 300) {
 			os.Stderr.Write(response.Body)
+
 			return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 		}
 

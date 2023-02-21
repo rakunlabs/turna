@@ -3,10 +3,13 @@ package render
 import (
 	"fmt"
 
+	"github.com/rytsh/liz/utils/fstore"
 	"github.com/rytsh/liz/utils/templatex"
+	"github.com/rytsh/liz/utils/templatex/store"
+	"github.com/spf13/cast"
 )
 
-var Template = templatex.New()
+var Template = templatex.New(store.WithAddFuncsTpl(fstore.FuncMapTpl()))
 
 var GlobalRender = Render{
 	template: Template,
@@ -28,11 +31,24 @@ func (r *Render) IsTemplateExist() bool {
 }
 
 func (r *Render) Execute(content any) (string, error) {
+	return r.ExecuteWithData(content, r.Data)
+}
+
+func (r *Render) ExecuteWithData(content any, data any) (string, error) {
 	if r.template == nil {
 		return "", fmt.Errorf("template is nil")
 	}
 
-	output, err := r.template.ExecuteBuffer(templatex.WithContent(fmt.Sprint(content)), templatex.WithData(r.Data))
+	contentStr := cast.ToString(content)
+
+	if err := r.template.Parse(contentStr); err != nil {
+		return "", err
+	}
+
+	output, err := r.template.ExecuteBuffer(
+		templatex.WithData(data),
+		templatex.WithParsed(true),
+	)
 	if err != nil {
 		return "", err
 	}

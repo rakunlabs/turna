@@ -9,6 +9,7 @@ import (
 	"github.com/worldline-go/logz"
 
 	"github.com/worldline-go/turna/cmd/turna/args"
+	"github.com/worldline-go/turna/internal/config"
 )
 
 var (
@@ -21,16 +22,16 @@ var (
 func main() {
 	logz.InitializeLog(logz.WithCaller(false))
 
-	args.BuildVars.Version = version
-	args.BuildVars.Date = date
-	args.BuildVars.Commit = commit
+	config.BuildVars.Version = version
+	config.BuildVars.Date = date
+	config.BuildVars.Commit = commit
 
 	var err error
 
 	defer func() {
 		// recover from panic if one occured to prevent os.Exit
 		if r := recover(); r != nil {
-			log.Fatal().Msgf("%v", r)
+			log.Panic().Msgf("%v", r)
 		}
 
 		if err != nil {

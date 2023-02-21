@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/rytsh/liz/loader"
-	"github.com/worldline-go/turna/internal/render"
+	"github.com/worldline-go/turna/pkg/render"
 )
 
 func (s *Service) GetEnv(predefined map[string]interface{}, environ bool, envPaths []string) ([]string, error) {
