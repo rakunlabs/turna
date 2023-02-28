@@ -2,6 +2,7 @@ package middlewares
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/auth"
@@ -17,17 +18,32 @@ type Auth struct {
 }
 
 func (a *Auth) Middleware(ctx context.Context, name string) ([]echo.MiddlewareFunc, error) {
-	jwks, err := a.Provider.GetJwks(ctx)
-	if err != nil {
-		return nil, err
+	activeProvider := a.Provider.ActiveProvider()
+	if activeProvider == nil {
+		return nil, fmt.Errorf("not found an active authentication provider")
 	}
 
-	registry.GlobalReg.AddShutdownFunc(name, jwks.EndBackground)
+	options := []authecho.Option{}
 
-	options := []authecho.Option{authecho.WithKeyFunc(jwks.Keyfunc)}
+	if introspectURL := activeProvider.GetIntrospectURL(); introspectURL != "" {
+		v, _ := activeProvider.JWTKeyFunc(auth.WithContext(ctx), auth.WithIntrospect(true))
+		options = append(options, authecho.WithKeyFunc(v.Keyfunc), authecho.WithParserFunc(v.Parser))
+	} else {
+		jwks, err := activeProvider.JWTKeyFunc(auth.WithContext(ctx))
+		if err != nil {
+			return nil, err
+		}
+
+		registry.GlobalReg.AddShutdownFunc(name, jwks.EndBackground)
+		options = append(options, authecho.WithKeyFunc(jwks.Keyfunc))
+	}
 
 	if len(a.SkipSuffixes) > 0 {
-		options = append(options, authecho.WithSkipper(authecho.NewSkipper(a.SkipSuffixes...)))
+		options = append(options, authecho.WithSkipper(
+			authecho.NewSkipper(
+				authecho.WithSuffixes(a.SkipSuffixes...),
+			),
+		))
 	}
 
 	if a.ClaimsHeader != nil {
@@ -35,25 +51,21 @@ func (a *Auth) Middleware(ctx context.Context, name string) ([]echo.MiddlewareFu
 	}
 
 	if a.Redirect != nil {
-		activeProvider, err := a.Provider.ActiveProvider()
-		if err != nil {
-			return nil, err
+		authURL := activeProvider.GetAuthURL()
+		if authURL == "" {
+			return nil, fmt.Errorf("auth url is empty")
 		}
 
-		authURL, err := activeProvider.GetAuthURL()
-		if err != nil {
-			return nil, err
-		}
-
-		tokenUrl, err := activeProvider.GetTokenURL()
-		if err != nil {
-			return nil, err
+		tokenUrl := activeProvider.GetTokenURL()
+		if tokenUrl == "" {
+			return nil, fmt.Errorf("token url is empty")
 		}
 
 		a.Redirect.AuthURL = authURL
 		a.Redirect.TokenURL = tokenUrl
 		a.Redirect.ClientID = activeProvider.GetClientID()
 		a.Redirect.ClientSecret = activeProvider.GetClientSecret()
+		a.Redirect.Scopes = activeProvider.GetScopes()
 
 		options = append(options, authecho.WithRedirect(a.Redirect))
 	}

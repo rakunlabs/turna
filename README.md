@@ -129,7 +129,7 @@ loads:
 print: "text to print when run this application to add logs, after the load complate: {{ .APP_NAME }}"
 
 server:
-  load_value: "x-server"
+  # load_value: "x-server"
   entrypoints:
     web:
       address: ":8080"
@@ -146,18 +146,42 @@ server:
             # path: "/"
             # callback: "/login/"
             # base_url: "http://localhost:8000/"
-            schema: "http"
+            # NoClientIDParam is use to not add client_id in request of code.
+            no_client_id_param: false
+            # Schema is the default schema to use for the redirect if no schema is provided.
+            schema: "https"
+            # Secure is the secure flag for the cookie.
             secure: false
-            check_agent: true
-            # check_value: "auth_redirect"
-            # token_header: true
-            refresh_token: true
+            # User-Agent to check if the request is a browser.
+            check_agent: false
+            # CheckValue is the value to check in the context (combined with other middlewares).
+            check_value: ""
+            # TokenHeader for set to the header of the token.
+            token_header: false
+            # refresh_token is use to refresh the token if it is expired.
+            refresh_token: false
           provider:
             keycloak:
               base_url: "http://localhost:8080/"
               realm: "master"
               client_id: "test"
               client_secret: "ABo2TF1OoShgIQRMxl7fIGJLe2CgPrzw"
+              scopes:
+                - openid
+                - email
+                - profile
+            generic:
+              client_id: oktaID
+              client_secret: oktaSecret
+              cert_url: https://example.com/oauth2/v1/keys
+              auth_url: https://example.com/oauth2/v1/authorize
+              token_url: https://example.com/oauth2/v1/token
+              # if introspect_url exist then cert_url not usable for validate the token
+              introspect_url: https://example.com/oauth2/v1/introspect
+              scopes:
+                - openid
+                - email
+                - profile
       service:
         service:
           loadbalancer:

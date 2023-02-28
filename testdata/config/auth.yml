@@ -1,7 +1,7 @@
 server:
   entrypoints:
     web:
-      address: ":8000"
+      address: ":9091"
   http:
     middlewares:
       test:
@@ -44,28 +44,42 @@ server:
       auth:
         auth:
           redirect:
-            # cookie_name: "test_1234"
+            # cookie_name: "auth_test"
             # max_age: 3600
             # path: "/"
-            # callback: "/login/"
-            # base_url: "http://localhost:8000/"
+            callback: "/auth/"
+            base_url: "http://my-url-to-return:8080"
             schema: "http"
             secure: false
             check_agent: true
+            no_client_id_param: true
             # check_value: "auth_redirect"
             # token_header: true
             refresh_token: true
+            # use_session: true
           claims_header:
             # get the claims to header
             custom:
               "X-Auth-Username": "name"
               "X-Auth-Useremail": "email"
           provider:
-            keycloak:
-              base_url: "http://localhost:8080/"
-              realm: "master"
-              client_id: "test"
-              client_secret: "ABo2TF1OoShgIQRMxl7fIGJLe2CgPrzw"
+            active: "generic"
+            generic:
+              client_id: oktaID
+              client_secret: oktaSecret
+              cert_url: https://okta-example.com/oauth2/v1/keys
+              auth_url: https://okta-example.com/oauth2/v1/authorize
+              token_url: https://okta-example.com/oauth2/v1/token
+              introspect_url: https://okta-example.com/oauth2/v1/introspect
+              scopes:
+                - openid
+                - email
+                - profile
+            # keycloak:
+            #   base_url: "http://localhost:8080"
+            #   realm: "master"
+            #   client_id: "ui"
+              # client_secret: "----"
       whoami:
         service:
           loadbalancer:
@@ -79,15 +93,15 @@ server:
           - auth
           - info
       test:
-        path: /test
-        service: test
+        path: /auth
         middlewares:
-          # - auth
-          - role
+          - auth
+          # - role
           # - scope
-          - test
-          - x-header
-          - cors
+          # - test
+          # - info
+          # - x-header
+          # - cors
           - whoami
       merhaba:
         path: /merhaba
@@ -98,8 +112,8 @@ server:
           - merhaba
 
 # declare commands to run
-services:
-  # service name just for information purpose
-  - name: echo
-    # command to run
-    command: echo "hello world"
+# services:
+#   # service name just for information purpose
+#   - name: echo
+#     # command to run
+#     command: echo "hello world"
