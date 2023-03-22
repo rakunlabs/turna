@@ -165,7 +165,7 @@ server:
               base_url: "http://localhost:8080/"
               realm: "master"
               client_id: "test"
-              client_secret: "ABo2TF1OoShgIQRMxl7fIGJLe2CgPrzw"
+              client_secret: "my_client_secret"
               scopes:
                 - openid
                 - email
