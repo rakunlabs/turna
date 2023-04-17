@@ -1,7 +1,7 @@
 server:
   entrypoints:
     web:
-      address: ":9091"
+      address: ":443"
   http:
     middlewares:
       test:
@@ -86,14 +86,8 @@ server:
             servers:
               - url: "http://localhost:9090"
     routers:
-      login:
-        path: /login
-        middlewares:
-          # - set
-          - auth
-          - info
       test:
-        path: /auth
+        path: /ui
         middlewares:
           - auth
           # - role
@@ -108,7 +102,7 @@ server:
         middlewares:
           - x-header
           - cors
-          - block
+          # - block
           - merhaba
 
 # declare commands to run

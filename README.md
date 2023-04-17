@@ -196,6 +196,7 @@ server:
           index: true
     routers:
       test:
+        tls: {}
         path: /test
         middlewares:
           - test

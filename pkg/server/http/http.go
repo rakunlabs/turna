@@ -2,6 +2,8 @@ package http
 
 import (
 	"context"
+	"crypto/tls"
+	"fmt"
 	"net/http"
 	"sync"
 
@@ -9,6 +11,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog/log"
 	"github.com/worldline-go/logz/logecho"
+	"github.com/worldline-go/turna/pkg/server/cert"
 	"github.com/worldline-go/turna/pkg/server/registry"
 	"github.com/ziflex/lecho/v3"
 )
@@ -16,6 +19,16 @@ import (
 type HTTP struct {
 	Routers     map[string]Router         `cfg:"routers"`
 	Middlewares map[string]HTTPMiddleware `cfg:"middlewares"`
+	TLS         TLS                       `cfg:"tls"`
+}
+
+type TLS struct {
+	Store map[string][]Certificate `cfg:"store"`
+}
+
+type Certificate struct {
+	CertFile string `cfg:"cert_file"`
+	KeyFile  string `cfg:"key_file"`
 }
 
 func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
@@ -50,8 +63,40 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 	}
 
 	for _, listenerName := range registry.GlobalReg.GetListenerNames() {
+		certs := []tls.Certificate{}
+		// get default keypair
+		if defaultCert, ok := h.TLS.Store["default"]; ok {
+			for _, cert := range defaultCert {
+				certificate, err := tls.LoadX509KeyPair(cert.CertFile, cert.KeyFile)
+				if err != nil {
+					return fmt.Errorf("cannot load default certificate: %w, certFile: %s, keyFile: %s", err, cert.CertFile, cert.KeyFile)
+				}
+
+				certs = append(certs, certificate)
+			}
+		}
+
+		if len(certs) == 0 {
+			// generate and add self-signed certificate
+			generated, err := cert.GenerateCertificate()
+			if err != nil {
+				return fmt.Errorf("cannot generate self-signed certificate: %w", err)
+			}
+
+			certificate, err := tls.X509KeyPair(generated.Certificate, generated.PrivateKey)
+			if err != nil {
+				return fmt.Errorf("cannot load generated certificate: %w", err)
+			}
+
+			certs = append(certs, certificate)
+		}
+
 		s := http.Server{
 			Handler: registry.GlobalReg.Echo,
+			TLSConfig: &tls.Config{
+				MinVersion:   tls.VersionTLS13,
+				Certificates: certs,
+			},
 		}
 
 		listener, err := registry.GlobalReg.GetListener(listenerName)
@@ -69,7 +114,8 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 			defer wg.Done()
 
 			log.Info().Msgf("http server %s is listening on %s", n, listener.Addr().String())
-			if err := s.Serve(listener); err != nil && err != http.ErrServerClosed {
+			// certificates are loaded from TLSConfig
+			if err := s.ServeTLS(listener, "", ""); err != nil && err != http.ErrServerClosed {
 				log.Error().Err(err).Msgf("cannot serve listener %s", n)
 
 				registry.GlobalReg.DeleteHttpServer(n)

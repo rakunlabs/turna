@@ -10,8 +10,13 @@ import (
 var ServerInfo = "Turna"
 
 type Router struct {
-	Path        string   `cfg:"path"`
-	Middlewares []string `cfg:"middlewares"`
+	Path        string     `cfg:"path"`
+	Middlewares []string   `cfg:"middlewares"`
+	TLS         *TLSRouter `cfg:"tls"`
+}
+
+type TLSRouter struct {
+	Passthrough bool `cfg:"passthrough"`
 }
 
 func (r *Router) Check() error {
