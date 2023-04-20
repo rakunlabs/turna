@@ -32,7 +32,44 @@ type Certificate struct {
 }
 
 func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
-	if registry.GlobalReg.Echo == nil {
+	// check routers entrypoints
+	allEntries := registry.GlobalReg.GetListenerNames()
+	selectedEntries := make(map[string]struct{})
+	selectedEntriesTLS := make(map[string]struct{})
+	selectedEntriesALL := make(map[string]struct{})
+	for _, router := range h.Routers {
+		tlsEnabled := router.TLS != nil
+
+		if router.EntryPoints == nil {
+			for entrypoint := range allEntries {
+				if tlsEnabled {
+					selectedEntriesTLS[entrypoint] = struct{}{}
+				} else {
+					selectedEntries[entrypoint] = struct{}{}
+				}
+
+				selectedEntriesALL[entrypoint] = struct{}{}
+			}
+
+			continue
+		}
+
+		for _, entrypoint := range router.EntryPoints {
+			if _, ok := allEntries[entrypoint]; !ok {
+				return fmt.Errorf("entrypoint %s does not exist", entrypoint)
+			}
+
+			if tlsEnabled {
+				selectedEntriesTLS[entrypoint] = struct{}{}
+			} else {
+				selectedEntries[entrypoint] = struct{}{}
+			}
+
+			selectedEntriesALL[entrypoint] = struct{}{}
+		}
+	}
+
+	for entrypoint := range selectedEntriesALL {
 		e := echo.New()
 
 		e.HideBanner = true
@@ -59,10 +96,11 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 			logecho.ZerologLogger(),
 		)
 
-		registry.GlobalReg.Echo = e
+		registry.GlobalReg.AddEchoEntry(entrypoint, e)
 	}
 
-	for _, listenerName := range registry.GlobalReg.GetListenerNames() {
+	// entrypoints for TLS
+	for entrypoint := range selectedEntriesTLS {
 		certs := []tls.Certificate{}
 		// get default keypair
 		if defaultCert, ok := h.TLS.Store["default"]; ok {
@@ -78,7 +116,7 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 
 		if len(certs) == 0 {
 			// generate and add self-signed certificate
-			generated, err := cert.GenerateCertificate()
+			generated, err := cert.GenerateCertificateCache()
 			if err != nil {
 				return fmt.Errorf("cannot generate self-signed certificate: %w", err)
 			}
@@ -91,23 +129,63 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 			certs = append(certs, certificate)
 		}
 
+		handler, err := registry.GlobalReg.GetEchoEntry(entrypoint)
+		if err != nil {
+			return fmt.Errorf("cannot get entrypoint %s: %w", entrypoint, err)
+		}
+
 		s := http.Server{
-			Handler: registry.GlobalReg.Echo,
+			Handler: handler,
 			TLSConfig: &tls.Config{
 				MinVersion:   tls.VersionTLS13,
 				Certificates: certs,
 			},
 		}
 
-		listener, err := registry.GlobalReg.GetListener(listenerName)
+		listener, err := registry.GlobalReg.GetListener(entrypoint)
 		if err != nil {
-			log.Error().Err(err).Msgf("cannot get listener %s", listenerName)
+			log.Error().Err(err).Msgf("cannot get listener %s", entrypoint)
 
 			continue
 		}
 
 		// register server
-		registry.GlobalReg.AddHttpServer(listenerName, &s)
+		registry.GlobalReg.AddHttpServer(entrypoint+"-TLS", &s)
+
+		wg.Add(1)
+		go func(n string) {
+			defer wg.Done()
+
+			log.Info().Msgf("http tls-server %s is listening on %s", n, listener.Addr().String())
+			// certificates are loaded from TLSConfig
+			if err := s.ServeTLS(listener, "", ""); err != nil && err != http.ErrServerClosed {
+				log.Error().Err(err).Msgf("cannot serve tls listener %s", n)
+
+				registry.GlobalReg.DeleteHttpServer(n + "-TLS")
+			}
+		}(entrypoint)
+	}
+
+	// entrypoints without TLS
+	for entrypoint := range selectedEntries {
+		handler, err := registry.GlobalReg.GetEchoEntry(entrypoint)
+		if err != nil {
+			return fmt.Errorf("cannot get entrypoint %s: %w", entrypoint, err)
+		}
+
+		s := http.Server{
+			Handler: handler,
+		}
+
+		listener, err := registry.GlobalReg.GetListener(entrypoint)
+		if err != nil {
+			log.Error().Err(err).Msgf("cannot get listener %s", entrypoint)
+
+			continue
+		}
+
+		// register server
+		registry.GlobalReg.AddHttpServer(entrypoint, &s)
 
 		wg.Add(1)
 		go func(n string) {
@@ -115,12 +193,12 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 
 			log.Info().Msgf("http server %s is listening on %s", n, listener.Addr().String())
 			// certificates are loaded from TLSConfig
-			if err := s.ServeTLS(listener, "", ""); err != nil && err != http.ErrServerClosed {
+			if err := s.Serve(listener); err != nil && err != http.ErrServerClosed {
 				log.Error().Err(err).Msgf("cannot serve listener %s", n)
 
 				registry.GlobalReg.DeleteHttpServer(n)
 			}
-		}(listenerName)
+		}(entrypoint)
 	}
 
 	for name, middleware := range h.Middlewares {

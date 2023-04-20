@@ -2,8 +2,8 @@ package config
 
 import (
 	"github.com/rytsh/liz/loader"
-	"github.com/worldline-go/turna/internal/service"
 	"github.com/worldline-go/turna/pkg/server"
+	"github.com/worldline-go/turna/pkg/service"
 )
 
 var Application = struct {

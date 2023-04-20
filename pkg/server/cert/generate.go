@@ -17,6 +17,21 @@ type Certificate struct {
 	PrivateKey  []byte
 }
 
+var cache *Certificate
+
+func GenerateCertificateCache() (*Certificate, error) {
+	if cache == nil {
+		cert, err := GenerateCertificate()
+		if err != nil {
+			return nil, err
+		}
+
+		cache = cert
+	}
+
+	return cache, nil
+}
+
 func GenerateCertificate(opts ...Options) (*Certificate, error) {
 	o := &options{
 		Organization: []string{"turna"},

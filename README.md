@@ -52,6 +52,8 @@ log_level: info
 # loads configuration to files
 loads:
   - export: test.yml
+    # file_perm: "0644"
+    # folder_perm: "0755"
     # name using to export value in map
     name: mytest
     # static configuration merged with other sources
@@ -71,6 +73,8 @@ loads:
           # remap key
           map: "myapp/inner"
           template: false
+          # decode base64
+          base64: false
         vault:
           # name using to export value in map
           name: myvault
@@ -84,6 +88,8 @@ loads:
           # remap key
           map: "myapp/inner"
           template: false
+          # decode base64
+          base64: false
         file:
           # name using to export value in map
           name: myfile
@@ -95,6 +101,8 @@ loads:
           # remap key
           map: "myapp/inner"
           template: false
+          # decode base64
+          base64: false
         content:
           # name using to export value in map
           name: mycontent
@@ -109,6 +117,8 @@ loads:
           inner_path: "test"
           # remap key
           map: "myapp/inner"
+          # decode base64
+          base64: false
     dynamics:
       - consul:
           # name using to export value in map
@@ -196,7 +206,9 @@ server:
           index: true
     routers:
       test:
-        tls: {}
+        # entrypoints:
+        #   - web
+        # tls: {}
         path: /test
         middlewares:
           - test

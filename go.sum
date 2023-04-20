@@ -383,12 +383,12 @@ github.com/ryanuber/go-glob v1.0.0 h1:iQh3xXAumdQ+4Ufa5b25cRpC5TYKlno6hsv6Cb3pkB
 github.com/ryanuber/go-glob v1.0.0/go.mod h1:807d1WSdnB0XRJzKNil9Om6lcp/3a0v4qIHxIXzX/Yc=
 github.com/rytsh/call v0.2.0 h1:WqLRntpU+25dXBieFWDFfnpT9UpUJSBrbwLmY5JPK1o=
 github.com/rytsh/call v0.2.0/go.mod h1:4aIFcb1suv0AGyveVNBJTRtcaZeaFua+P53H7t/bSls=
-github.com/rytsh/liz/loader v0.2.3 h1:7/BZ1FFJKC9MfwoOByoKqHMS8eU3parxplrGd4LxXXo=
-github.com/rytsh/liz/loader v0.2.3/go.mod h1:7ZMzNYMiKqFiSqIvMSW+wJlZafxwy8mqJxTNV5U0zJc=
+github.com/rytsh/liz/loader v0.2.4 h1:3mni0DnIpz9rqgs8ox4POn2rqdZ06zZFaV4KwIhA5k8=
+github.com/rytsh/liz/loader v0.2.4/go.mod h1:eqBdTkxcfHOOyPxLYqE0InLmNdoSrO3kKLRs1FF7No4=
 github.com/rytsh/liz/loader/consul v0.2.0 h1:QNxwZceM1I6+EkynOpbQDIC9Du1aMjL5WROhNkkzp1Y=
 github.com/rytsh/liz/loader/consul v0.2.0/go.mod h1:PiRfTogA965ny1zZ1KNkz/Yk2s2H6EWptRXfRANLP6s=
-github.com/rytsh/liz/loader/file v0.2.1 h1:QPW0LDycqFs2Y6+kD0iN3zCmqsQtFpo14aCoD9/E0ww=
-github.com/rytsh/liz/loader/file v0.2.1/go.mod h1:KAe4Jd74v0IZZaydA/zVEXa14E8lpvi+1cb1fHwWYvA=
+github.com/rytsh/liz/loader/file v0.2.2 h1:TpKpFxh/lBN9wkV0vJwm4v2P9zg0b19bR/ynxwjZbek=
+github.com/rytsh/liz/loader/file v0.2.2/go.mod h1:KAe4Jd74v0IZZaydA/zVEXa14E8lpvi+1cb1fHwWYvA=
 github.com/rytsh/liz/loader/httpx v0.1.1 h1:FTsIJgqsvDRvhZFxr1uxqg7u82OS4kmSmnlAEO5PFlc=
 github.com/rytsh/liz/loader/httpx v0.1.1/go.mod h1:WgNUoFn5a2p5XpYyBwx3tyHQ4evEpe27oOJrYC9voKY=
 github.com/rytsh/liz/loader/vault v0.2.0 h1:92FOinWvuGP/VjYPOQZsj0pQz4qVKX7T6N9BmpWap+g=

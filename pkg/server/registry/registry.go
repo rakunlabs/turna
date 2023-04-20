@@ -22,6 +22,7 @@ var GlobalReg = Registry{
 	server:         make(map[string]*http.Server),
 	httpMiddleware: make(map[string][]echo.MiddlewareFunc),
 	shutdownFuncs:  make(map[string]func()),
+	EchoEntry:      make(map[string]*echo.Echo),
 }
 
 type Registry struct {
@@ -29,8 +30,26 @@ type Registry struct {
 	server         map[string]*http.Server
 	httpMiddleware map[string][]echo.MiddlewareFunc
 	shutdownFuncs  map[string]func()
-	Echo           *echo.Echo
+	EchoEntry      map[string]*echo.Echo
 	mutex          sync.RWMutex
+}
+
+func (r *Registry) AddEchoEntry(name string, e *echo.Echo) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	r.EchoEntry[name] = e
+}
+
+func (r *Registry) GetEchoEntry(name string) (*echo.Echo, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	if e, ok := r.EchoEntry[name]; ok {
+		return e, nil
+	}
+
+	return nil, fmt.Errorf("echo entry %s not found", name)
 }
 
 func (r *Registry) AddShutdownFunc(name string, f func()) {
@@ -138,7 +157,20 @@ func (r *Registry) GetListener(name string) (net.Listener, error) {
 	return l, nil
 }
 
-func (r *Registry) GetListenerNames() []string {
+func (r *Registry) GetListenerNames() map[string]struct{} {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	names := make(map[string]struct{}, len(r.listeners))
+
+	for name := range r.listeners {
+		names[name] = struct{}{}
+	}
+
+	return names
+}
+
+func (r *Registry) GetListenerNamesList() []string {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
