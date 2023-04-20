@@ -1,0 +1,15 @@
+loads:
+  - export: myfile
+    file_perm: "0600"
+    statics:
+      - content:
+          content: CkV2ZXJ5dGhpbmcgd2Ugc2VlIGluIHRoZSB3b3JsZCBpcyB0aGUgY3JlYXRpdmUgd29yayBvZiB3b21lbi4KLS0K
+          raw: true
+          base64: true
+  - export: myfile2
+    file_perm: "0644"
+    statics:
+      - content:
+          content: |
+            This is a test file.
+          raw: true
