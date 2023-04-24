@@ -1,0 +1,16 @@
+server:
+  entrypoints:
+    web:
+      address: ":8000"
+  http:
+    middlewares:
+      consul:
+        service:
+          loadbalancer:
+            servers:
+              - url: "http://localhost:8500"
+    routers:
+      consul:
+        path: /*
+        middlewares:
+          - consul

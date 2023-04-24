@@ -7,13 +7,9 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog/log"
-	"github.com/worldline-go/logz/logecho"
 	"github.com/worldline-go/turna/pkg/server/cert"
 	"github.com/worldline-go/turna/pkg/server/registry"
-	"github.com/ziflex/lecho/v3"
 )
 
 type HTTP struct {
@@ -32,71 +28,36 @@ type Certificate struct {
 }
 
 func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
+	ruleRouter := NewRuleRouter()
 	// check routers entrypoints
 	allEntries := registry.GlobalReg.GetListenerNames()
 	selectedEntries := make(map[string]struct{})
 	selectedEntriesTLS := make(map[string]struct{})
-	selectedEntriesALL := make(map[string]struct{})
 	for _, router := range h.Routers {
-		tlsEnabled := router.TLS != nil
-
-		if router.EntryPoints == nil {
-			for entrypoint := range allEntries {
-				if tlsEnabled {
-					selectedEntriesTLS[entrypoint] = struct{}{}
-				} else {
-					selectedEntries[entrypoint] = struct{}{}
-				}
-
-				selectedEntriesALL[entrypoint] = struct{}{}
-			}
-
-			continue
-		}
-
 		for _, entrypoint := range router.EntryPoints {
 			if _, ok := allEntries[entrypoint]; !ok {
 				return fmt.Errorf("entrypoint %s does not exist", entrypoint)
 			}
+		}
 
+		entrypoints := router.EntryPoints
+		if len(entrypoints) == 0 {
+			for entrypoint := range allEntries {
+				entrypoints = append(entrypoints, entrypoint)
+			}
+		}
+
+		tlsEnabled := router.TLS != nil
+
+		for _, entrypoint := range entrypoints {
 			if tlsEnabled {
 				selectedEntriesTLS[entrypoint] = struct{}{}
 			} else {
 				selectedEntries[entrypoint] = struct{}{}
 			}
 
-			selectedEntriesALL[entrypoint] = struct{}{}
+			ruleRouter.SetRule(RuleSelection{Host: router.Host, Entrypoint: entrypoint})
 		}
-	}
-
-	for entrypoint := range selectedEntriesALL {
-		e := echo.New()
-
-		e.HideBanner = true
-		e.Logger = lecho.New(log.With().Str("component", "server").Logger())
-
-		recoverConfig := middleware.DefaultRecoverConfig
-		recoverConfig.LogErrorFunc = func(c echo.Context, err error, stack []byte) error {
-			log.Error().Err(err).Msgf("panic: %s", stack)
-
-			return err
-		}
-
-		// default middlewares
-		e.Use(
-			middleware.Gzip(),
-			middleware.Decompress(),
-			middleware.RecoverWithConfig(recoverConfig),
-		)
-
-		// log middlewares
-		e.Use(
-			middleware.RequestID(),
-			middleware.RequestLoggerWithConfig(logecho.RequestLoggerConfig()),
-			logecho.ZerologLogger(),
-		)
-
-		registry.GlobalReg.AddEchoEntry(entrypoint, e)
 	}
 
 	// entrypoints for TLS
@@ -129,13 +90,8 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 			certs = append(certs, certificate)
 		}
 
-		handler, err := registry.GlobalReg.GetEchoEntry(entrypoint)
-		if err != nil {
-			return fmt.Errorf("cannot get entrypoint %s: %w", entrypoint, err)
-		}
-
 		s := http.Server{
-			Handler: handler,
+			Handler: ruleRouter.Serve(entrypoint),
 			TLSConfig: &tls.Config{
 				MinVersion:   tls.VersionTLS13,
 				Certificates: certs,
@@ -168,13 +124,8 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 
 	// entrypoints without TLS
 	for entrypoint := range selectedEntries {
-		handler, err := registry.GlobalReg.GetEchoEntry(entrypoint)
-		if err != nil {
-			return fmt.Errorf("cannot get entrypoint %s: %w", entrypoint, err)
-		}
-
 		s := http.Server{
-			Handler: handler,
+			Handler: ruleRouter.Serve(entrypoint),
 		}
 
 		listener, err := registry.GlobalReg.GetListener(entrypoint)
@@ -208,7 +159,7 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 	}
 
 	for name, router := range h.Routers {
-		if err := router.Set(name); err != nil {
+		if err := router.Set(name, ruleRouter); err != nil {
 			return err
 		}
 	}

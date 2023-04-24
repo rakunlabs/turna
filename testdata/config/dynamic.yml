@@ -1,0 +1,12 @@
+# loads configuration to files
+loads:
+  - export: test.yml
+    dynamics:
+      - consul:
+          path: dynamic/test
+          raw: true
+
+# declare commands to run
+services:
+  - name: sleep
+    command: sleep 100

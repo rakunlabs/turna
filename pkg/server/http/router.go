@@ -1,6 +1,7 @@
 package http
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -10,6 +11,7 @@ import (
 var ServerInfo = "Turna"
 
 type Router struct {
+	Host        string    `cfg:"host"`
 	Path        string    `cfg:"path"`
 	Middlewares []string  `cfg:"middlewares"`
 	TLS         *struct{} `cfg:"tls"`
@@ -20,18 +22,20 @@ func (r *Router) Check() error {
 	return nil
 }
 
-func (r *Router) Set(_ string) error {
-	var entrypoints []string
-	if len(r.EntryPoints) == 0 {
+func (r *Router) Set(_ string, ruleRouter *RuleRouter) error {
+	entrypoints := r.EntryPoints
+	if len(entrypoints) == 0 {
 		entrypoints = registry.GlobalReg.GetListenerNamesList()
-	} else {
-		entrypoints = r.EntryPoints
 	}
 
 	for _, entrypoint := range entrypoints {
-		e, err := registry.GlobalReg.GetEchoEntry(entrypoint)
-		if err != nil {
-			return err
+		e := ruleRouter.GetEcho(RuleSelection{
+			Host:       r.Host,
+			Entrypoint: entrypoint,
+		})
+
+		if e == nil {
+			return fmt.Errorf("entrypoint %s, host %s, echo does not exist", entrypoint, r.Host)
 		}
 
 		middlewares := make([]echo.MiddlewareFunc, 0, len(r.Middlewares)+2)
@@ -46,7 +50,7 @@ func (r *Router) Set(_ string) error {
 			middlewares = append(middlewares, middleware...)
 		}
 
-		e.Group(r.Path, middlewares...).Use(AfterMiddleware)
+		e.Group(r.Path, middlewares...).Use(PostMiddleware)
 		// middlewares = append(middlewares, NewProxyHandler(r.Service))
 		// e.Use(middlewares...)
 	}
@@ -54,7 +58,7 @@ func (r *Router) Set(_ string) error {
 	return nil
 }
 
-var AfterMiddleware = func(next echo.HandlerFunc) echo.HandlerFunc {
+var PostMiddleware = func(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		c.Response().WriteHeader(http.StatusNoContent)
 		_, _ = c.Response().Writer.Write(nil)

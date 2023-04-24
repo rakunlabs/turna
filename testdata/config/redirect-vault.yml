@@ -1,0 +1,48 @@
+server:
+  entrypoints:
+    web:
+      address: ":8001"
+  http:
+    middlewares:
+      hello-turna:
+        hello:
+          message: "Hello from Turna\n"
+      hello-vault:
+        hello:
+          message: "Hello from Vault\n"
+      info:
+        hello:
+          message: "Method {{.method}}\nPath {{.path}}\n"
+          template: true
+      change:
+        regex_path:
+          regex: ^/v1/mysecret/data/(.*)$
+          replacement: /v1/mysecret/kv2/data/$1
+      log:
+        log:
+          level: info
+          message: checking vault
+          headers: true
+      vault:
+        service:
+          loadbalancer:
+            servers:
+              - url: "http://localhost:8200"
+    routers:
+      vault:
+        host: vault.example.com
+        path: /*
+        middlewares:
+          - change
+          - log
+          - hello-vault
+          # - vault
+      hello:
+        path: /*
+        middlewares:
+          - log
+          - hello-turna
+      message:
+        path: /message/*
+        middlewares:
+          - info

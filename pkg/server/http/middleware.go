@@ -23,6 +23,10 @@ type HTTPMiddleware struct {
 	CorsMiddleware        *middlewares.Cors        `cfg:"cors"`
 	HeadersMiddleware     *middlewares.Headers     `cfg:"headers"`
 	BlockMiddleware       *middlewares.Block       `cfg:"block"`
+	RegexPathMiddleware   *middlewares.RegexPath   `cfg:"regex_path"`
+	GzipMiddleware        *middlewares.Gzip        `cfg:"gzip"`
+	DecompressMiddleware  *middlewares.Decompress  `cfg:"decompress"`
+	LogMiddleware         *middlewares.Log         `cfg:"log"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo.MiddlewareFunc, error) {
@@ -33,7 +37,7 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo
 		return h.AuthMiddleware.Middleware(ctx, name)
 	}
 	if h.HelloMiddleware != nil {
-		return []echo.MiddlewareFunc{h.HelloMiddleware.Middleware()}, nil
+		return h.HelloMiddleware.Middleware()
 	}
 	if h.InfoMiddleware != nil {
 		return []echo.MiddlewareFunc{h.InfoMiddleware.Middleware()}, nil
@@ -67,6 +71,18 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo
 	}
 	if h.BlockMiddleware != nil {
 		return []echo.MiddlewareFunc{h.BlockMiddleware.Middleware()}, nil
+	}
+	if h.RegexPathMiddleware != nil {
+		return h.RegexPathMiddleware.Middleware()
+	}
+	if h.GzipMiddleware != nil {
+		return []echo.MiddlewareFunc{h.GzipMiddleware.Middleware()}, nil
+	}
+	if h.DecompressMiddleware != nil {
+		return []echo.MiddlewareFunc{h.DecompressMiddleware.Middleware()}, nil
+	}
+	if h.LogMiddleware != nil {
+		return h.LogMiddleware.Middleware()
 	}
 
 	return nil, nil

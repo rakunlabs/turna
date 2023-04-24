@@ -383,6 +383,8 @@ github.com/ryanuber/go-glob v1.0.0 h1:iQh3xXAumdQ+4Ufa5b25cRpC5TYKlno6hsv6Cb3pkB
 github.com/ryanuber/go-glob v1.0.0/go.mod h1:807d1WSdnB0XRJzKNil9Om6lcp/3a0v4qIHxIXzX/Yc=
 github.com/rytsh/call v0.2.0 h1:WqLRntpU+25dXBieFWDFfnpT9UpUJSBrbwLmY5JPK1o=
 github.com/rytsh/call v0.2.0/go.mod h1:4aIFcb1suv0AGyveVNBJTRtcaZeaFua+P53H7t/bSls=
+github.com/rytsh/call v0.2.1 h1:NaEcbjLLOYttaJR615wDIgQ0Quy4A2uch15xYPPeQY0=
+github.com/rytsh/call v0.2.1/go.mod h1:4aIFcb1suv0AGyveVNBJTRtcaZeaFua+P53H7t/bSls=
 github.com/rytsh/liz/loader v0.2.4 h1:3mni0DnIpz9rqgs8ox4POn2rqdZ06zZFaV4KwIhA5k8=
 github.com/rytsh/liz/loader v0.2.4/go.mod h1:eqBdTkxcfHOOyPxLYqE0InLmNdoSrO3kKLRs1FF7No4=
 github.com/rytsh/liz/loader/consul v0.2.0 h1:QNxwZceM1I6+EkynOpbQDIC9Du1aMjL5WROhNkkzp1Y=
@@ -395,6 +397,8 @@ github.com/rytsh/liz/loader/vault v0.2.0 h1:92FOinWvuGP/VjYPOQZsj0pQz4qVKX7T6N9B
 github.com/rytsh/liz/loader/vault v0.2.0/go.mod h1:BI9MR40QnYHfqcWeBRDJJiIyROcI52Lb+vLlPSsUsDU=
 github.com/rytsh/liz/utils/fstore v0.1.2 h1:FrBe2DMG9RrPjYDg9Y7QwGeJ4hu5kN095jp4p9A3trE=
 github.com/rytsh/liz/utils/fstore v0.1.2/go.mod h1:bIaEkboCFTUV/ES68HtbLUX6yHlxc7vGy3iDKWlPKeU=
+github.com/rytsh/liz/utils/fstore v0.2.0 h1:HOaNbwGjbCZ5sTGjXDea0YMdYaZnCCWf+9/UbLen8v0=
+github.com/rytsh/liz/utils/fstore v0.2.0/go.mod h1:RGASHrj3n29m74rvQrVjaTHYFJSPTTs4GMRqHhUWUiM=
 github.com/rytsh/liz/utils/mapx v0.1.1 h1:UkuXP40bHTCF/zv0mFTrrFGgu7B2hmUX5B0fpXdipP4=
 github.com/rytsh/liz/utils/mapx v0.1.1/go.mod h1:Z5SWbJZgnXTEp8M6teq+gQVvzVXfR00Md5NU4Eo4VHc=
 github.com/rytsh/liz/utils/shutdown v0.1.0 h1:aCJZUEUKriV4WBoPyJkbnQQ8GJypjJBNc9KIqn3hgIw=

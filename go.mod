@@ -9,7 +9,7 @@ require (
 	github.com/rs/zerolog v1.29.0
 	github.com/rytsh/liz/loader v0.2.4
 	github.com/rytsh/liz/loader/httpx v0.1.1
-	github.com/rytsh/liz/utils/fstore v0.1.2
+	github.com/rytsh/liz/utils/fstore v0.2.0
 	github.com/rytsh/liz/utils/shutdown v0.1.0
 	github.com/rytsh/liz/utils/templatex v0.3.0
 	github.com/spf13/cast v1.5.0
@@ -80,7 +80,7 @@ require (
 	github.com/oklog/run v1.0.0 // indirect
 	github.com/pierrec/lz4 v2.6.0+incompatible // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
-	github.com/rytsh/call v0.2.0 // indirect
+	github.com/rytsh/call v0.2.1 // indirect
 	github.com/rytsh/liz/loader/consul v0.2.0 // indirect
 	github.com/rytsh/liz/loader/file v0.2.2 // indirect
 	github.com/rytsh/liz/loader/vault v0.2.0 // indirect
