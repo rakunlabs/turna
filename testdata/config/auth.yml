@@ -1,7 +1,7 @@
 server:
   entrypoints:
     web:
-      address: ":443"
+      address: ":8082"
   http:
     middlewares:
       test:
@@ -47,8 +47,8 @@ server:
             # cookie_name: "auth_test"
             # max_age: 3600
             # path: "/"
-            callback: "/auth/"
-            base_url: "http://my-url-to-return:8080"
+            # callback: "/auth/"
+            # base_url: "http://my-url-to-return:8080"
             schema: "http"
             secure: false
             check_agent: true
@@ -57,28 +57,28 @@ server:
             # token_header: true
             refresh_token: true
             # use_session: true
-          claims_header:
-            # get the claims to header
-            custom:
-              "X-Auth-Username": "name"
-              "X-Auth-Useremail": "email"
+          # claims_header:
+          #   # get the claims to header
+          #   custom:
+          #     "X-Auth-Username": "name"
+          #     "X-Auth-Useremail": "email"
           provider:
-            active: "generic"
-            generic:
-              client_id: oktaID
-              client_secret: oktaSecret
-              cert_url: https://okta-example.com/oauth2/v1/keys
-              auth_url: https://okta-example.com/oauth2/v1/authorize
-              token_url: https://okta-example.com/oauth2/v1/token
-              introspect_url: https://okta-example.com/oauth2/v1/introspect
-              scopes:
-                - openid
-                - email
-                - profile
-            # keycloak:
-            #   base_url: "http://localhost:8080"
-            #   realm: "master"
-            #   client_id: "ui"
+            # active: "generic"
+            # generic:
+            #   client_id: oktaID
+            #   client_secret: oktaSecret
+            #   cert_url: https://okta-example.com/oauth2/v1/keys
+            #   auth_url: https://okta-example.com/oauth2/v1/authorize
+            #   token_url: https://okta-example.com/oauth2/v1/token
+            #   introspect_url: https://okta-example.com/oauth2/v1/introspect
+            #   scopes:
+            #     - openid
+            #     - email
+            #     - profile
+            keycloak:
+              base_url: "http://localhost:8080"
+              realm: "master"
+              client_id: "ui"
               # client_secret: "----"
       whoami:
         service:

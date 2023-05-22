@@ -18,7 +18,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	load "github.com/rytsh/liz/loader"
-	"github.com/rytsh/liz/utils/shutdown"
+	"github.com/rytsh/liz/shutdown"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/worldline-go/igconfig"

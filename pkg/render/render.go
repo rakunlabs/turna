@@ -3,9 +3,9 @@ package render
 import (
 	"fmt"
 
-	"github.com/rytsh/liz/utils/fstore"
-	"github.com/rytsh/liz/utils/templatex"
-	"github.com/rytsh/liz/utils/templatex/store"
+	"github.com/rytsh/liz/fstore"
+	"github.com/rytsh/liz/templatex"
+	"github.com/rytsh/liz/templatex/store"
 	"github.com/spf13/cast"
 )
 

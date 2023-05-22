@@ -1,14 +1,15 @@
 package args
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/rs/zerolog/log"
-	"github.com/rytsh/liz/loader/httpx"
 	"github.com/spf13/cobra"
-	"github.com/worldline-go/logz"
+	"github.com/worldline-go/utility/httpx"
 )
 
 var apiCmd = &cobra.Command{
@@ -45,31 +46,44 @@ func runAPI(ctx context.Context) error {
 }
 
 func ping(ctx context.Context) error {
-	call := httpx.New(
-		httpx.WithLog(logz.AdapterKV{Log: log.Logger}),
-		httpx.WithPooled(false),
-		httpx.WithSkipVerify(apiCmdFlags.skipVerify),
+	call, err := httpx.NewClient(
+		httpx.WithZerologLogger(log.Logger),
+		httpx.WithPooledClient(false),
+		httpx.WithInsecureSkipVerify(apiCmdFlags.skipVerify),
+		httpx.WithDisableRetry(true),
+		httpx.WithDisableBaseURLCheck(true),
 	)
 
+	if err != nil {
+		return err
+	}
+
 	for _, url := range apiCmdFlags.url {
-		response, err := call.Send(ctx,
-			url,
+		err := call.RequestWithURL(ctx,
 			apiCmdFlags.method,
+			url,
 			nil, nil,
-			&httpx.Retry{DisableRetry: true},
+			func(r *http.Response) error {
+				if !(r.StatusCode >= 200 && r.StatusCode < 300) {
+					w := bufio.NewWriter(os.Stderr)
+					_, _ = bufio.NewReader(r.Body).WriteTo(w)
+
+					w.Flush()
+
+					return fmt.Errorf("unexpected status code: %d", r.StatusCode)
+				}
+
+				w := bufio.NewWriter(os.Stdout)
+				_, _ = bufio.NewReader(r.Body).WriteTo(w)
+
+				w.Flush()
+
+				return nil
+			},
 		)
 		if err != nil {
 			return err
 		}
-
-		// status code is not 2xx
-		if !(response.StatusCode >= 200 && response.StatusCode < 300) {
-			os.Stderr.Write(response.Body)
-
-			return fmt.Errorf("unexpected status code: %d", response.StatusCode)
-		}
-
-		os.Stdout.Write(response.Body)
 	}
 
 	return nil

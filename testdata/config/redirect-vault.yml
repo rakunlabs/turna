@@ -16,8 +16,12 @@ server:
           template: true
       change:
         regex_path:
-          regex: ^/v1/mysecret/data/(.*)$
-          replacement: /v1/mysecret/kv2/data/$1
+          regex: ^/v1/secret/data/(.*)$
+          replacement: /v1/secret/kv2/data/$1
+      change-metadata:
+        regex_path:
+          regex: ^/v1/secret/metadata/(.*)$
+          replacement: /v1/secret/kv2/metadata/$1
       log:
         log:
           level: info
@@ -30,19 +34,20 @@ server:
               - url: "http://localhost:8200"
     routers:
       vault:
-        host: vault.example.com
+        # host: vault.example.com
         path: /*
         middlewares:
           - change
+          - change-metadata
           - log
-          - hello-vault
-          # - vault
-      hello:
-        path: /*
-        middlewares:
-          - log
-          - hello-turna
-      message:
-        path: /message/*
-        middlewares:
-          - info
+          # - hello-vault
+          - vault
+      # hello:
+      #   path: /*
+      #   middlewares:
+      #     - log
+      #     - hello-turna
+      # message:
+      #   path: /message/*
+      #   middlewares:
+      #     - info

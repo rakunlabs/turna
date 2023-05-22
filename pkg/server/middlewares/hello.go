@@ -9,9 +9,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
-	"github.com/rytsh/liz/utils/fstore"
-	"github.com/rytsh/liz/utils/templatex"
-	"github.com/rytsh/liz/utils/templatex/store"
+	"github.com/rytsh/liz/fstore"
+	"github.com/rytsh/liz/templatex"
+	"github.com/rytsh/liz/templatex/store"
 	"github.com/worldline-go/logz"
 )
 
