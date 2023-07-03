@@ -3,6 +3,13 @@
 project_name: turna
 
 release:
+  header: |
+    Get the latest release with brew or binary:
+
+    ```sh
+    # curl -fSL https://github.com/worldline-go/turna/releases/latest/download/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
+    curl -fSL https://github.com/worldline-go/turna/releases/download/{{ .Tag }}/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
+    ```
   footer: |
     **Full Changelog**: https://github.com/worldline-go/turna/compare/{{ .PreviousTag }}...{{ .Tag }}
 before:
@@ -22,13 +29,12 @@ builds:
     flags:
       - -trimpath
 archives:
-  - replacements:
-      darwin: Darwin
-      linux: Linux
-      windows: Windows
-      386: i386
-      amd64: x86_64
-    name_template: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+  - name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
     format_overrides:
       - goos: windows
         format: zip
