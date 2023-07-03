@@ -28,12 +28,16 @@ type Folder struct {
 	IndexName string `cfg:"index_name"`
 	// SPA is automatically redirect to index.html
 	SPA bool `cfg:"spa"`
+	// SPAEnableFile is enable .* file to be served to index.html if not found, default is false
+	SPAEnableFile bool `cfg:"spa_enable_file"`
 	// SPAIndex is set the index.html location, default is IndexName
 	SPAIndex string `cfg:"spa_index"`
 	// Browse is enable directory browsing
 	Browse bool `cfg:"browse"`
 	// UTC browse time format
 	UTC bool `cfg:"utc"`
+	// PrefixPath is the base path of internal project code to redirect to correct path
+	PrefixPath string `cfg:"prefix_path"`
 
 	fs http.FileSystem
 }
@@ -58,7 +62,16 @@ func (f *Folder) Middleware() echo.MiddlewareFunc {
 				upath = "/" + upath
 			}
 
-			return f.serveFile(c, upath, path.Clean(upath))
+			cPath := path.Clean(upath)
+			if f.PrefixPath != "" {
+				prefix := strings.TrimSuffix(f.PrefixPath, "/")
+				cPath = strings.TrimPrefix(cPath, prefix)
+				if cPath == "" {
+					cPath = "/"
+				}
+			}
+
+			return f.serveFile(c, upath, cPath)
 		}
 	}
 }
@@ -75,7 +88,9 @@ func (f *Folder) serveFile(c echo.Context, uPath, cPath string) error {
 	file, err := f.fs.Open(cPath)
 	if err != nil {
 		if os.IsNotExist(err) && f.SPA {
-			return f.fsFile(c, f.SPAIndex)
+			if f.SPAEnableFile || !strings.Contains(cPath, ".") {
+				return f.fsFile(c, f.SPAIndex)
+			}
 		}
 		return toHTTPError(c, err)
 	}
@@ -100,7 +115,7 @@ func (f *Folder) serveFile(c echo.Context, uPath, cPath string) error {
 
 	if d.IsDir() && f.Index {
 		// use contents of index.html for directory, if present
-		ff, err := f.fs.Open(filepath.Join(uPath, f.IndexName))
+		ff, err := f.fs.Open(filepath.Join(cPath, f.IndexName))
 		if err == nil {
 			defer ff.Close()
 			dd, err := ff.Stat()

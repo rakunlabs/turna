@@ -1,0 +1,20 @@
+server:
+  entrypoints:
+    http:
+      address: ":8080"
+  http:
+    middlewares:
+      project:
+        folder:
+          # path: testdata
+          # browse: false
+          # spa: true
+          # index: true
+          # prefixPath: /mugo
+          path: testdata
+          browse: true
+    routers:
+      project:
+        path: /*
+        middlewares:
+          - project

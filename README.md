@@ -201,7 +201,7 @@ server:
       myfolder:
         folder:
           path: "/folder"
-          browsable: false
+          browse: false
           spa: true
           index: true
     routers:
