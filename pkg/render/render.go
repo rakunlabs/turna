@@ -1,15 +1,20 @@
 package render
 
 import (
+	"bytes"
 	"fmt"
 
-	"github.com/rytsh/liz/fstore"
-	"github.com/rytsh/liz/templatex"
-	"github.com/rytsh/liz/templatex/store"
+	"github.com/rs/zerolog/log"
+	"github.com/rytsh/mugo/pkg/fstore"
+	"github.com/rytsh/mugo/pkg/templatex"
 	"github.com/spf13/cast"
+	"github.com/worldline-go/logz"
 )
 
-var Template = templatex.New(store.WithAddFuncsTpl(fstore.FuncMapTpl()))
+var Template = templatex.New(templatex.WithAddFuncsTpl(fstore.FuncMapTpl(
+	fstore.WithLog(logz.AdapterKV{Log: log.Logger}),
+	fstore.WithTrust(true),
+)))
 
 var GlobalRender = Render{
 	template: Template,
@@ -45,7 +50,9 @@ func (r *Render) ExecuteWithData(content any, data any) (string, error) {
 		return "", err
 	}
 
-	output, err := r.template.ExecuteBuffer(
+	var buf bytes.Buffer
+	err := r.template.Execute(
+		templatex.WithIO(&buf),
 		templatex.WithData(data),
 		templatex.WithParsed(true),
 	)
@@ -53,5 +60,5 @@ func (r *Render) ExecuteWithData(content any, data any) (string, error) {
 		return "", err
 	}
 
-	return string(output), err
+	return buf.String(), err
 }

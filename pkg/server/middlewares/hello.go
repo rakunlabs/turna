@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,9 +10,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
-	"github.com/rytsh/liz/fstore"
-	"github.com/rytsh/liz/templatex"
-	"github.com/rytsh/liz/templatex/store"
+	"github.com/rytsh/mugo/pkg/fstore"
+	"github.com/rytsh/mugo/pkg/templatex"
 	"github.com/worldline-go/logz"
 )
 
@@ -50,7 +50,7 @@ func (h *Hello) Middleware() ([]echo.MiddlewareFunc, error) {
 		h.Message = "OK"
 	}
 
-	tpl := templatex.New(store.WithAddFuncsTpl(
+	tpl := templatex.New(templatex.WithAddFuncsTpl(
 		fstore.FuncMapTpl(
 			fstore.WithLog(logz.AdapterKV{Log: log.Logger}),
 			fstore.WithTrust(h.Trust),
@@ -89,7 +89,9 @@ func (h *Hello) Middleware() ([]echo.MiddlewareFunc, error) {
 					"path":         c.Request().URL.Path,
 				}
 
-				v, err := tpl.ExecuteBuffer(
+				var buf bytes.Buffer
+				err := tpl.Execute(
+					templatex.WithIO(&buf),
 					templatex.WithContent(message),
 					templatex.WithData(data),
 				)
@@ -98,7 +100,7 @@ func (h *Hello) Middleware() ([]echo.MiddlewareFunc, error) {
 					return err
 				}
 
-				message = string(v)
+				message = buf.String()
 			}
 
 			switch strings.ToLower(h.Type) {
