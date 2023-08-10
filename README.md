@@ -1,5 +1,5 @@
-![turna](_documents/docs/assets/turna.svg#gh-light-mode-only)
-![turna](_documents/docs/assets/turna_light.svg#gh-dark-mode-only)
+![turna](_documents/docs/public/assets/turna.svg#gh-light-mode-only)
+![turna](_documents/docs/public/assets/turna_light.svg#gh-dark-mode-only)
 
 [![License](https://img.shields.io/github/license/worldline-go/turna?color=blue&style=flat-square)](https://raw.githubusercontent.com/worldline-go/turna/main/LICENSE)
 [![Coverage](https://img.shields.io/sonar/coverage/worldline-go_turna?logo=sonarcloud&server=https%3A%2F%2Fsonarcloud.io&style=flat-square)](https://sonarcloud.io/summary/overall?id=worldline-go_turna)
