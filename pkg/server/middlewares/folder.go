@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,6 +33,8 @@ type Folder struct {
 	SPAEnableFile bool `cfg:"spa_enable_file"`
 	// SPAIndex is set the index.html location, default is IndexName
 	SPAIndex string `cfg:"spa_index"`
+	// SPAIndexRegex set spa_index from URL path regex
+	SPAIndexRegex *SPAIndexRegex `cfg:"spa_index_regex"`
 	// Browse is enable directory browsing
 	Browse bool `cfg:"browse"`
 	// UTC browse time format
@@ -39,10 +42,16 @@ type Folder struct {
 	// PrefixPath is the base path of internal project code to redirect to correct path
 	PrefixPath string `cfg:"prefix_path"`
 
-	fs http.FileSystem
+	fs     http.FileSystem
+	spaRgx *regexp.Regexp
 }
 
-func (f *Folder) Middleware() echo.MiddlewareFunc {
+type SPAIndexRegex struct {
+	Regex       string `cfg:"regex"`
+	Replacement string `cfg:"replacement"`
+}
+
+func (f *Folder) Middleware() ([]echo.MiddlewareFunc, error) {
 	if f.IndexName == "" {
 		f.IndexName = indexPage
 	}
@@ -53,9 +62,18 @@ func (f *Folder) Middleware() echo.MiddlewareFunc {
 		f.SPAIndex = f.IndexName
 	}
 
+	if f.SPAIndexRegex != nil {
+		rgx, err := regexp.Compile(f.SPAIndexRegex.Regex)
+		if err != nil {
+			return nil, err
+		}
+
+		f.spaRgx = rgx
+	}
+
 	f.fs = http.Dir(f.Path)
 
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
+	return []echo.MiddlewareFunc{func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			upath := c.Request().URL.Path
 			if !strings.HasPrefix(upath, "/") {
@@ -73,7 +91,7 @@ func (f *Folder) Middleware() echo.MiddlewareFunc {
 
 			return f.serveFile(c, upath, cPath)
 		}
-	}
+	}}, nil
 }
 
 // name is '/'-separated, not filepath.Separator.
@@ -89,6 +107,12 @@ func (f *Folder) serveFile(c echo.Context, uPath, cPath string) error {
 	if err != nil {
 		if os.IsNotExist(err) && f.SPA {
 			if f.SPAEnableFile || !strings.Contains(cPath, ".") {
+				if f.spaRgx != nil {
+					spaFile := f.spaRgx.ReplaceAllString(c.Request().URL.Path, f.SPAIndexRegex.Replacement)
+
+					return f.fsFile(c, spaFile)
+				}
+
 				return f.fsFile(c, f.SPAIndex)
 			}
 		}

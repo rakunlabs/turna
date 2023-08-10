@@ -2,6 +2,7 @@
 /dist
 /bin
 /*.out
+/.vscode
 
 /go.work
 /go.work.sum

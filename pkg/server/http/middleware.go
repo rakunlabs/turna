@@ -58,7 +58,7 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo
 		return h.ServiceMiddleware.Middleware()
 	}
 	if h.FolderMiddleware != nil {
-		return []echo.MiddlewareFunc{h.FolderMiddleware.Middleware()}, nil
+		return h.FolderMiddleware.Middleware()
 	}
 	if h.BasicAuthMiddleware != nil {
 		return h.BasicAuthMiddleware.Middleware(name)

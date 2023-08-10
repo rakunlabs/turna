@@ -5,16 +5,23 @@ server:
   http:
     middlewares:
       project:
+        # folder:
+        #   path: ../../testdata/html/
+        #   browse: false
+        #   spa: true
+        #   index: true
+        #   prefixPath: /testdata/html/
         folder:
-          # path: testdata
-          # browse: false
-          # spa: true
-          # index: true
-          # prefixPath: /mugo
-          path: testdata
-          browse: true
+          path: ../../testdata/
+          browse: false
+          spa: true
+          index: true
+          spa_index_regex:
+            regex: ^/testdata/([^/]*)/.*$
+            replacement: /$1/index.html
+          prefixPath: /testdata/
     routers:
       project:
-        path: /*
+        path: /testdata/*
         middlewares:
           - project
