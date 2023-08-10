@@ -8,7 +8,8 @@ import (
 //
 // Usable for other middlewares.
 type Set struct {
-	Values []string `cfg:"values"`
+	Values []string               `cfg:"values"`
+	Map    map[string]interface{} `cfg:"map"`
 }
 
 func (s *Set) Middleware() echo.MiddlewareFunc {
@@ -16,6 +17,10 @@ func (s *Set) Middleware() echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			for _, v := range s.Values {
 				c.Set(v, true)
+			}
+
+			for k, v := range s.Map {
+				c.Set(k, v)
 			}
 
 			return next(c)

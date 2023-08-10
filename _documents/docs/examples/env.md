@@ -1,0 +1,36 @@
+# env
+
+```yaml
+# application log, default is info
+log_level: info
+
+loads:
+  - statics:
+    - content:
+        name: "mycontent"
+        content: |
+          test:
+            test: 1
+            test2: "hello world"
+
+print: 'text to print when run this application to add logs, after the load complate: {{ env "CONFIG_FILE" }}'
+
+# declare commands to run
+services:
+  # service name just for information purpose
+  - name: environment variables
+    # command will run inside of this path
+    path: "."
+    # command to run
+    command: env
+    # environment variables to set
+    # usable with gotemplate and sprig functions
+    env:
+      TEST: 1
+      TEST2: '{{ .mycontent.test.test2 }}'
+      HOSTTYPE: '{{ env "HOSTTYPE" }}'
+    inherit_env: true
+    # filter of output, default is none
+    # filters:
+    # - "internal"
+```

@@ -1,0 +1,29 @@
+# TLS
+
+```yaml
+server:
+  entrypoints:
+    web:
+      address: ":8080"
+    web-https:
+      address: ":8082"
+  http:
+    middlewares:
+      merhaba:
+        hello:
+          message: "merhaba 👋"
+    routers:
+      merhaba:
+        tls: {}
+        entrypoints:
+          - web-https
+        path: /
+        middlewares:
+          - merhaba
+      merhaba2:
+        entrypoints:
+          - web
+        path: /
+        middlewares:
+          - merhaba
+```
