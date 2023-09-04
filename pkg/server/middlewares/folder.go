@@ -34,19 +34,23 @@ type Folder struct {
 	// SPAIndex is set the index.html location, default is IndexName
 	SPAIndex string `cfg:"spa_index"`
 	// SPAIndexRegex set spa_index from URL path regex
-	SPAIndexRegex *SPAIndexRegex `cfg:"spa_index_regex"`
+	SPAIndexRegex *RegexPathStore `cfg:"spa_index_regex"`
 	// Browse is enable directory browsing
 	Browse bool `cfg:"browse"`
 	// UTC browse time format
 	UTC bool `cfg:"utc"`
-	// PrefixPath is the base path of internal project code to redirect to correct path
+	// PrefixPath for strip prefix path for real file path
 	PrefixPath string `cfg:"prefix_path"`
+	// FilePathRegex is regex replacement for real file path, comes after PrefixPath apply
+	// File path doesn't include / suffix
+	FilePathRegex *RegexPathStore `cfg:"file_path_regex"`
 
-	fs     http.FileSystem
-	spaRgx *regexp.Regexp
+	fs          http.FileSystem
+	spaRgx      *regexp.Regexp
+	filePathRgx *regexp.Regexp
 }
 
-type SPAIndexRegex struct {
+type RegexPathStore struct {
 	Regex       string `cfg:"regex"`
 	Replacement string `cfg:"replacement"`
 }
@@ -71,6 +75,15 @@ func (f *Folder) Middleware() ([]echo.MiddlewareFunc, error) {
 		f.spaRgx = rgx
 	}
 
+	if f.FilePathRegex != nil {
+		rgx, err := regexp.Compile(f.FilePathRegex.Regex)
+		if err != nil {
+			return nil, err
+		}
+
+		f.filePathRgx = rgx
+	}
+
 	f.fs = http.Dir(f.Path)
 
 	return []echo.MiddlewareFunc{func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -87,6 +100,10 @@ func (f *Folder) Middleware() ([]echo.MiddlewareFunc, error) {
 				if cPath == "" {
 					cPath = "/"
 				}
+			}
+
+			if f.filePathRgx != nil {
+				cPath = f.filePathRgx.ReplaceAllString(cPath, f.FilePathRegex.Replacement)
 			}
 
 			return f.serveFile(c, upath, cPath)

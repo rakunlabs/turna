@@ -19,4 +19,35 @@ middlewares:
       browse: true # default is false, bool, enable directory browsing
       utc: true # default is false, bool, browse time format
       prefix_path: /test # default is empty, string, the base path of internal project code to redirect to correct path
+      file_path_regex: # default is not set, pointer, set the file path by regex, comes after prefix_path apply, file path doesn't include / suffix
+        regex: "^/docs/([^/]*)/?(.*)$"
+        replacement: "/$1/latest/$2"
+```
+
+Example:
+
+```yaml
+server:
+  entrypoints:
+    web:
+      address: ":8080"
+  http:
+    middlewares:
+      docs:
+        folder:
+          path: "testdata/serve/"
+          browse: false
+          spa: true
+          index: true
+          spa_index_regex:
+            regex: "^/docs/([^/]*)/.*$"
+            replacement: "/$1/index.html"
+          file_path_regex:
+            regex: "^/docs/([^/]*)/?(.*)$"
+            replacement: "/$1/latest/$2"
+    routers:
+      docs:
+        path: "/docs/*"
+        middlewares:
+          - docs
 ```

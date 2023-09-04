@@ -7,9 +7,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"github.com/worldline-go/utility/httpx"
+	"github.com/worldline-go/klient"
 )
 
 var apiCmd = &cobra.Command{
@@ -24,7 +23,9 @@ var apiCmd = &cobra.Command{
 }
 
 var apiCmdFlags = struct {
+	// ping deprecated, use slient instead
 	ping       bool
+	slient     bool
 	url        []string
 	skipVerify bool
 	method     string
@@ -32,56 +33,50 @@ var apiCmdFlags = struct {
 
 func init() {
 	apiCmd.Flags().BoolVar(&apiCmdFlags.ping, "ping", false, "check is healthy")
+	apiCmd.Flags().BoolVarP(&apiCmdFlags.slient, "slient", "s", false, "slient mode")
 	apiCmd.Flags().StringArrayVarP(&apiCmdFlags.url, "url", "u", nil, "url to call ex: http://localhost:8080/ping")
 	apiCmd.Flags().BoolVarP(&apiCmdFlags.skipVerify, "insecure", "k", false, "skip verify")
 	apiCmd.Flags().StringVarP(&apiCmdFlags.method, "method", "m", "GET", "http method")
 }
 
 func runAPI(ctx context.Context) error {
-	if apiCmdFlags.ping {
-		return ping(ctx)
-	}
-
-	return nil
-}
-
-func ping(ctx context.Context) error {
-	call, err := httpx.NewClient(
-		httpx.WithZerologLogger(log.Logger),
-		httpx.WithPooledClient(false),
-		httpx.WithInsecureSkipVerify(apiCmdFlags.skipVerify),
-		httpx.WithDisableRetry(true),
-		httpx.WithDisableBaseURLCheck(true),
+	client, err := klient.New(
+		klient.OptionClient.WithPooledClient(false),
+		klient.OptionClient.WithInsecureSkipVerify(apiCmdFlags.skipVerify),
+		klient.OptionClient.WithDisableRetry(true),
+		klient.OptionClient.WithDisableBaseURLCheck(true),
 	)
-
 	if err != nil {
 		return err
 	}
 
 	for _, url := range apiCmdFlags.url {
-		err := call.RequestWithURL(ctx,
-			apiCmdFlags.method,
-			url,
-			nil, nil,
-			func(r *http.Response) error {
-				if !(r.StatusCode >= 200 && r.StatusCode < 300) {
+		req, err := http.NewRequestWithContext(ctx, apiCmdFlags.method, url, nil)
+		if err != nil {
+			return err
+		}
+
+		if err := client.Do(req, func(r *http.Response) error {
+			if !(r.StatusCode >= 200 && r.StatusCode < 300) {
+				if !apiCmdFlags.slient {
 					w := bufio.NewWriter(os.Stderr)
 					_, _ = bufio.NewReader(r.Body).WriteTo(w)
 
 					w.Flush()
-
-					return fmt.Errorf("unexpected status code: %d", r.StatusCode)
 				}
 
+				return fmt.Errorf("unexpected status code: %d", r.StatusCode)
+			}
+
+			if !apiCmdFlags.slient {
 				w := bufio.NewWriter(os.Stdout)
 				_, _ = bufio.NewReader(r.Body).WriteTo(w)
 
 				w.Flush()
+			}
 
-				return nil
-			},
-		)
-		if err != nil {
+			return nil
+		}); err != nil {
 			return err
 		}
 	}
