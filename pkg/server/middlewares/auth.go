@@ -6,7 +6,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/auth"
-	"github.com/worldline-go/auth/middlewares/authecho"
+	"github.com/worldline-go/auth/pkg/authecho"
 	"github.com/worldline-go/turna/pkg/server/registry"
 )
 

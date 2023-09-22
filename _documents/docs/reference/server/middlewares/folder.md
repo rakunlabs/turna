@@ -14,14 +14,18 @@ middlewares:
       spa_enable_file: true # default is false, bool, enable .* file to be served to index.html if not found
       spa_index: index.html # default is index_name, string, set the index.html location
       spa_index_regex: # default is not set, pointer, set the index.html location by regex
-        regex: ^/testdata/([^/]*)/.*$
-        replacement: /$1/index.html # replacement with regex and URL.Path value
+        - regex: ^/testdata/([^/]*)/.*$
+          replacement: /$1/index.html # replacement with regex and URL.Path value
       browse: true # default is false, bool, enable directory browsing
       utc: true # default is false, bool, browse time format
       prefix_path: /test # default is empty, string, the base path of internal project code to redirect to correct path
       file_path_regex: # default is not set, pointer, set the file path by regex, comes after prefix_path apply, file path doesn't include / suffix
-        regex: "^/docs/([^/]*)/?(.*)$"
-        replacement: "/$1/latest/$2"
+        - regex: "^/docs/([^/]*)/?(.*)$"
+          replacement: "/$1/latest/$2"
+      cache_regex: # default is not set, pointer, set the cache control by regex
+        - regex: .*
+          cache_control: no-cache
+      browse_cache: no-cache # default is no-cache, string, set the cache control for browse page
 ```
 
 Example:
@@ -29,25 +33,29 @@ Example:
 ```yaml
 server:
   entrypoints:
-    web:
+    http:
       address: ":8080"
   http:
     middlewares:
-      docs:
+      project:
         folder:
-          path: "testdata/serve/"
+          # path: ../../testdata/serve
+          path: ./testdata/serve
           browse: false
           spa: true
           index: true
+          cache_regex:
+            - regex: .*
+              cache_control: no-cache
           spa_index_regex:
-            regex: "^/docs/([^/]*)/.*$"
-            replacement: "/$1/index.html"
+            - regex: "^/docs/([^/]*)/.*$"
+              replacement: "/$1/index.html"
           file_path_regex:
-            regex: "^/docs/([^/]*)/?(.*)$"
-            replacement: "/$1/latest/$2"
+            - regex: "^/docs/([^/]*)/?(.*)$"
+              replacement: "/$1/latest/$2"
     routers:
-      docs:
-        path: "/docs/*"
+      project:
+        path: /docs/*
         middlewares:
-          - docs
+          - project
 ```

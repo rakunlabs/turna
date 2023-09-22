@@ -2,6 +2,7 @@ package middlewares
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/turna/pkg/render"
@@ -34,7 +36,7 @@ type Folder struct {
 	// SPAIndex is set the index.html location, default is IndexName
 	SPAIndex string `cfg:"spa_index"`
 	// SPAIndexRegex set spa_index from URL path regex
-	SPAIndexRegex *RegexPathStore `cfg:"spa_index_regex"`
+	SPAIndexRegex []*RegexPathStore `cfg:"spa_index_regex"`
 	// Browse is enable directory browsing
 	Browse bool `cfg:"browse"`
 	// UTC browse time format
@@ -43,16 +45,25 @@ type Folder struct {
 	PrefixPath string `cfg:"prefix_path"`
 	// FilePathRegex is regex replacement for real file path, comes after PrefixPath apply
 	// File path doesn't include / suffix
-	FilePathRegex *RegexPathStore `cfg:"file_path_regex"`
+	FilePathRegex []*RegexPathStore `cfg:"file_path_regex"`
 
-	fs          http.FileSystem
-	spaRgx      *regexp.Regexp
-	filePathRgx *regexp.Regexp
+	CacheRegex []*RegexCacheStore `cfg:"cache_regex"`
+	// BrowseCache is cache control for browse page, default is no-cache
+	BrowseCache string `cfg:"browse_cache"`
+
+	fs http.FileSystem
 }
 
 type RegexPathStore struct {
 	Regex       string `cfg:"regex"`
 	Replacement string `cfg:"replacement"`
+	rgx         *regexp.Regexp
+}
+
+type RegexCacheStore struct {
+	Regex        string `cfg:"regex"`
+	CacheControl string `cfg:"cache_control"`
+	rgx          *regexp.Regexp
 }
 
 func (f *Folder) Middleware() ([]echo.MiddlewareFunc, error) {
@@ -66,22 +77,35 @@ func (f *Folder) Middleware() ([]echo.MiddlewareFunc, error) {
 		f.SPAIndex = f.IndexName
 	}
 
-	if f.SPAIndexRegex != nil {
-		rgx, err := regexp.Compile(f.SPAIndexRegex.Regex)
+	for i := range f.SPAIndexRegex {
+		rgx, err := regexp.Compile(f.SPAIndexRegex[i].Regex)
 		if err != nil {
 			return nil, err
 		}
 
-		f.spaRgx = rgx
+		f.SPAIndexRegex[i].rgx = rgx
 	}
 
-	if f.FilePathRegex != nil {
-		rgx, err := regexp.Compile(f.FilePathRegex.Regex)
+	for i := range f.FilePathRegex {
+		rgx, err := regexp.Compile(f.FilePathRegex[i].Regex)
 		if err != nil {
 			return nil, err
 		}
 
-		f.filePathRgx = rgx
+		f.FilePathRegex[i].rgx = rgx
+	}
+
+	for i := range f.CacheRegex {
+		rgx, err := regexp.Compile(f.CacheRegex[i].Regex)
+		if err != nil {
+			return nil, err
+		}
+
+		f.CacheRegex[i].rgx = rgx
+	}
+
+	if f.BrowseCache == "" {
+		f.BrowseCache = "no-cache"
 	}
 
 	f.fs = http.Dir(f.Path)
@@ -102,8 +126,12 @@ func (f *Folder) Middleware() ([]echo.MiddlewareFunc, error) {
 				}
 			}
 
-			if f.filePathRgx != nil {
-				cPath = f.filePathRgx.ReplaceAllString(cPath, f.FilePathRegex.Replacement)
+			for _, r := range f.FilePathRegex {
+				cPathOrg := cPath
+				cPath = r.rgx.ReplaceAllString(cPath, r.Replacement)
+				if cPath != cPathOrg {
+					break
+				}
 			}
 
 			return f.serveFile(c, upath, cPath)
@@ -117,22 +145,24 @@ func (f *Folder) serveFile(c echo.Context, uPath, cPath string) error {
 	// can't use Redirect() because that would make the path absolute,
 	// which would be a problem running under StripPrefix
 	if f.StripIndexName && strings.HasSuffix(uPath, f.IndexName) {
-		return localRedirect(c, uPath)
+		return localRedirect(c, strings.TrimSuffix(uPath, f.IndexName))
 	}
 
 	file, err := f.fs.Open(cPath)
 	if err != nil {
 		if os.IsNotExist(err) && f.SPA {
-			if f.SPAEnableFile || !strings.Contains(cPath, ".") {
-				if f.spaRgx != nil {
-					spaFile := f.spaRgx.ReplaceAllString(c.Request().URL.Path, f.SPAIndexRegex.Replacement)
-
-					return f.fsFile(c, spaFile)
+			if f.SPAEnableFile || !strings.Contains(filepath.Base(cPath), ".") {
+				for _, r := range f.SPAIndexRegex {
+					spaFile := r.rgx.ReplaceAllString(uPath, r.Replacement)
+					if spaFile != uPath {
+						return f.fsFile(c, spaFile)
+					}
 				}
 
 				return f.fsFile(c, f.SPAIndex)
 			}
 		}
+
 		return toHTTPError(c, err)
 	}
 	defer file.Close()
@@ -270,7 +300,12 @@ table tr:hover a, th a {
 `, values)
 	if err != nil {
 		c.Logger().Error(err)
+
 		return fmt.Errorf("error executing template")
+	}
+
+	if f.BrowseCache != "" {
+		c.Response().Header().Set("Cache-Control", f.BrowseCache)
 	}
 
 	return c.HTML(http.StatusOK, v)
@@ -313,13 +348,30 @@ func (f *Folder) fsFile(c echo.Context, file string) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	http.ServeContent(c.Response(), c.Request(), fi.Name(), fi.ModTime(), hFile)
+	f.ServeContent(c.Response(), c.Request(), fi.Name(), fi.ModTime(), hFile)
+
 	return nil
 }
 
 func (f *Folder) fsFileInfo(c echo.Context, fi fs.FileInfo, file http.File) error {
-	http.ServeContent(c.Response(), c.Request(), fi.Name(), fi.ModTime(), file)
+	f.ServeContent(c.Response(), c.Request(), fi.Name(), fi.ModTime(), file)
+
 	return nil
+}
+
+func (f *Folder) Cache(w http.ResponseWriter, fileName string) {
+	for _, r := range f.CacheRegex {
+		if r.rgx.MatchString(fileName) {
+			w.Header().Set("Cache-Control", r.CacheControl)
+
+			break
+		}
+	}
+}
+
+func (f *Folder) ServeContent(w http.ResponseWriter, req *http.Request, name string, modtime time.Time, content io.ReadSeeker) {
+	f.Cache(w, name)
+	http.ServeContent(w, req, name, modtime, content)
 }
 
 func sortTable(sortField string, sortDesc bool, fs []fs.FileInfo) func(i, j int) bool {

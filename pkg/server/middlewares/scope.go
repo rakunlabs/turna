@@ -2,7 +2,7 @@ package middlewares
 
 import (
 	"github.com/labstack/echo/v4"
-	"github.com/worldline-go/auth/middlewares/authecho"
+	"github.com/worldline-go/auth/pkg/authecho"
 )
 
 type Scope struct {

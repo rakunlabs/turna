@@ -12,16 +12,22 @@ server:
         #   index: true
         #   prefixPath: /testdata/html/
         folder:
-          path: ../../testdata/
+          # path: ../../testdata/serve
+          path: ./testdata/serve
           browse: false
           spa: true
           index: true
+          cache_regex:
+            - regex: .*
+              cache_control: no-cache
           spa_index_regex:
-            regex: ^/testdata/([^/]*)/.*$
-            replacement: /$1/index.html
-          prefixPath: /testdata/
+            - regex: "^/docs/([^/]*)/.*$"
+              replacement: "/$1/index.html"
+          file_path_regex:
+            - regex: "^/docs/([^/]*)/?(.*)$"
+              replacement: "/$1/latest/$2"
     routers:
       project:
-        path: /testdata/*
+        path: /docs/*
         middlewares:
           - project
