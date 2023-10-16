@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"sync"
 
@@ -13,22 +14,33 @@ import (
 )
 
 type Service struct {
-	// Name of service.
-	Name string
+	// Name of service, must be unique.
+	Name string `cfg:"name"`
 	// Path of service, command run inside this path.
-	Path string
-	// Command is the command to run with args.
-	Command string
-	// GoTemplate and Sprig functions are available.
-	Env map[string]interface{}
+	Path string `cfg:"path"`
+	// Command is the command to run with args, gotemplate enabled.
+	Command string `cfg:"command"`
+	// Env GoTemplate and Sprig functions are available.
+	Env map[string]interface{} `cfg:"env"`
 	// EnvValues is a list of environment variables path from exported config.
 	EnvValues []string `cfg:"env_values"`
 	// Inherit environment variables, default is false.
 	InheritEnv bool `cfg:"inherit_env"`
 	// Filters is a function to filter stdout.
-	Filters [][]byte
+	Filters [][]byte `cfg:"filters"`
 	// FiltersValues is a list of filter variables path from exported config.
 	FiltersValues []string `cfg:"filters_values"`
+
+	// Order is the order of service to run.
+	//
+	// If same order set, they will run in parallel.
+	Order int `cfg:"order"`
+	// Depends is a list of service names to depend on.
+	//
+	// Order is ignoring if depend is set.
+	Depends []string `cfg:"depends"`
+	// AllowFailure is a flag to allow failure of service.
+	AllowFailure bool `cfg:"allow_failure"`
 
 	// filters is internal usage to combine filters and filters_values.
 	filters [][]byte
@@ -69,6 +81,7 @@ func (s *Service) Register() error {
 				return false
 			}
 		}
+
 		return true
 	}
 
@@ -77,20 +90,30 @@ func (s *Service) Register() error {
 		return err
 	}
 
-	commands, err := shellquote.Split(s.Command)
+	renderedCommand, err := render.GlobalRender.Execute(s.Command)
+	if err != nil {
+		return fmt.Errorf("failed to render command %s: %w", s.Name, err)
+	}
+
+	commands, err := shellquote.Split(renderedCommand)
 	if err != nil {
 		return fmt.Errorf("failed to parse command %s: %w", s.Name, err)
 	}
 
 	c := &runner.Command{
-		Name:    s.Name,
-		Path:    s.Path,
-		Command: commands,
-		Filter:  filter,
-		Env:     env,
+		Name:         s.Name,
+		Path:         s.Path,
+		Command:      commands,
+		Filter:       filter,
+		Env:          env,
+		AllowFailure: s.AllowFailure,
+		Order:        s.Order,
+		Depends:      s.Depends,
 	}
 
-	runner.GlobalReg.Add(c)
+	if err := runner.GlobalReg.Add(c); err != nil {
+		return err
+	}
 
 	log.Info().Msgf("added service [%s] to registry", s.Name)
 
@@ -99,12 +122,12 @@ func (s *Service) Register() error {
 
 type Services []Service
 
-func (s Services) Run() error {
+func (s Services) Run(ctx context.Context) error {
 	for i := range s {
 		if err := s[i].Register(); err != nil {
 			return err
 		}
 	}
 
-	return runner.GlobalReg.RunAll()
+	return runner.GlobalReg.Run(ctx)
 }

@@ -2,31 +2,26 @@ package args
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 
+	"github.com/worldline-go/initializer"
 	"github.com/worldline-go/turna/internal/config"
 	"github.com/worldline-go/turna/internal/oven"
 	"github.com/worldline-go/turna/pkg/render"
 	"github.com/worldline-go/turna/pkg/runner"
 	"github.com/worldline-go/turna/pkg/server/http"
-	server "github.com/worldline-go/turna/pkg/server/registry"
+	serverReg "github.com/worldline-go/turna/pkg/server/registry"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	load "github.com/rytsh/liz/loader"
-	"github.com/rytsh/liz/shutdown"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/worldline-go/igconfig"
 	"github.com/worldline-go/igconfig/loader"
 	"github.com/worldline-go/logz"
 )
-
-var ErrShutdown = errors.New("shutting down signal received")
 
 type overrideHold struct {
 	Memory *string
@@ -144,51 +139,27 @@ func loadConfig(ctx context.Context, visit func(fn func(*pflag.Flag))) error {
 	return nil
 }
 
-func runRoot(ctxParent context.Context) (err error) {
+func runRoot(ctx context.Context) error {
 	// appname and version
-	log.Info().Msgf("TURNA [%s] [%s]", config.LoadConfig.AppName, config.BuildVars.Version)
+	log.WithLevel(zerolog.NoLevel).Msgf(
+		"TURNA [%s] [%s] buildCommit=[%s] buildDate=[%s]",
+		config.LoadConfig.AppName, config.BuildVars.Version,
+		config.BuildVars.Commit, config.BuildVars.Date,
+	)
 
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
 
-	ctx, ctxCancel := context.WithCancel(ctxParent)
-	defer ctxCancel()
-
-	// create global registry
-	wgRunner := &sync.WaitGroup{}
-
 	// add store runner
-	runner.NewStoreReg(ctx, wgRunner).SetAsGlobal()
+	runner.NewStoreReg(wg).SetAsGlobal()
+	initializer.Shutdown.Add(
+		func() error {
+			runner.GlobalReg.KillAll()
 
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-
-		select {
-		case <-sig:
-			log.Warn().Msg("received shutdown signal")
-			ctxCancel()
-
-			if err != nil {
-				err = ErrShutdown
-			}
-		case <-ctx.Done():
-			log.Warn().Msg("turna closing")
-		}
-
-		runner.GlobalReg.KillAll()
-		server.GlobalReg.Shutdown()
-		shutdown.Global.Run()
-
-		// add ErrShutdown if exit code is not 0
-		if err != nil && !runner.GlobalReg.IsExitCodeZero() {
-			err = ErrShutdown
-		}
-	}()
+			return nil
+		},
+		initializer.WithShutdownName("runner"),
+	)
 
 	// this function will be called after all configs are loaded and dynamically changes
 	call := func(_ context.Context, _ string, data map[string]interface{}) {
@@ -214,6 +185,15 @@ func runRoot(ctxParent context.Context) (err error) {
 	}
 
 	// server
+	initializer.Shutdown.Add(
+		func() error {
+			serverReg.GlobalReg.Shutdown()
+
+			return nil
+		},
+		initializer.WithShutdownName("server"),
+	)
+
 	if config.Application.Server.LoadValue != "" {
 		if err := oven.CookConfig(
 			render.GlobalRender.Data[config.Application.Server.LoadValue],
@@ -224,16 +204,18 @@ func runRoot(ctxParent context.Context) (err error) {
 	}
 
 	http.ServerInfo = config.AppName + " " + config.BuildVars.Version
-	if err := config.Application.Server.Run(ctx, wgRunner); err != nil {
+	if err := config.Application.Server.Run(ctx, wg); err != nil {
+		initializer.Shutdown.CtxCancel()
+
 		return err
 	}
 
 	// run services
-	if err := config.Application.Services.Run(); err != nil {
+	if err := config.Application.Services.Run(ctx); err != nil {
+		initializer.Shutdown.CtxCancel()
+
 		return err
 	}
-
-	wgRunner.Wait()
 
 	return nil
 }
@@ -243,11 +225,12 @@ func Print() error {
 		return nil
 	}
 
-	if vPrint, err := render.GlobalRender.Execute(config.Application.Print); err != nil {
+	vPrint, err := render.GlobalRender.Execute(config.Application.Print)
+	if err != nil {
 		return err
-	} else {
-		log.Info().Msg(vPrint)
 	}
+
+	log.Info().Msg(vPrint)
 
 	return nil
 }

@@ -47,21 +47,19 @@ server:
             # cookie_name: "auth_test"
             # max_age: 3600
             # path: "/"
-            # callback: "/auth/"
+            callback: "/ui/"
+            callback_set: true
+            callback_modify:
+              - regex: "(^/$)"
+                replacement: "/ui/"
             # base_url: "http://my-url-to-return:8080"
             schema: "http"
             secure: false
             check_agent: true
-            no_client_id_param: true
             # check_value: "auth_redirect"
             # token_header: true
             refresh_token: true
             # use_session: true
-          # claims_header:
-          #   # get the claims to header
-          #   custom:
-          #     "X-Auth-Username": "name"
-          #     "X-Auth-Useremail": "email"
           provider:
             # active: "generic"
             # generic:
@@ -87,7 +85,7 @@ server:
               - url: "http://localhost:9090"
     routers:
       test:
-        path: /ui
+        path: /*
         middlewares:
           - auth
           # - role

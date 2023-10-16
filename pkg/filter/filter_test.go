@@ -3,8 +3,10 @@ package filter
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 )
 
@@ -52,23 +54,25 @@ func TestFileFilter_Start(t *testing.T) {
 				return
 			}
 
+			defer func() {
+				r.Close()
+				w.Close()
+			}()
+
 			f := &FileFilter{
 				To:     w,
 				Filter: tt.filter,
 			}
 
-			got, err := f.Start()
+			wg := new(sync.WaitGroup)
+			ctx, ctxCancel := context.WithCancel(context.Background())
+			defer ctxCancel()
+
+			got, err := f.Start(ctx, wg)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("FileFilter.Start() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-
-			defer func() {
-				f.Close()
-
-				r.Close()
-				w.Close()
-			}()
 
 			// fill data
 			tt.write(got)
@@ -84,7 +88,7 @@ func TestFileFilter_Start(t *testing.T) {
 				}
 
 				if !bytes.Equal(readed, tt.res[count]) {
-					t.Errorf("compore result = %v, want %v", readed, tt.res[count])
+					t.Errorf("compore result = %s, want %s", readed, tt.res[count])
 					break
 				}
 			}

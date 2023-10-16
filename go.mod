@@ -8,14 +8,13 @@ require (
 	github.com/labstack/echo/v4 v4.11.1
 	github.com/rs/zerolog v1.30.0
 	github.com/rytsh/liz/loader v0.2.5
-	github.com/rytsh/liz/shutdown v0.1.0
-	github.com/rytsh/mugo/pkg/fstore v0.3.0
-	github.com/rytsh/mugo/pkg/templatex v0.2.0
+	github.com/rytsh/mugo v0.6.0
 	github.com/spf13/cast v1.5.1
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/pflag v1.0.5
-	github.com/worldline-go/auth v0.6.1
+	github.com/worldline-go/auth v0.7.0
 	github.com/worldline-go/igconfig v0.2.4
+	github.com/worldline-go/initializer v0.2.3
 	github.com/worldline-go/klient v0.6.0
 	github.com/worldline-go/logz v0.5.0
 	github.com/worldline-go/struct2 v1.2.5
@@ -82,7 +81,8 @@ require (
 	github.com/rytsh/call v0.2.1 // indirect
 	github.com/rytsh/liz/consul v0.1.0 // indirect
 	github.com/rytsh/liz/file v0.1.4 // indirect
-	github.com/rytsh/liz/mapx v0.1.0 // indirect
+	github.com/rytsh/liz/mapx v0.1.1 // indirect
+	github.com/rytsh/liz/shutdown v0.1.0 // indirect
 	github.com/rytsh/liz/templatex v0.1.0 // indirect
 	github.com/rytsh/liz/vault v0.1.0 // indirect
 	github.com/shopspring/decimal v1.3.1 // indirect

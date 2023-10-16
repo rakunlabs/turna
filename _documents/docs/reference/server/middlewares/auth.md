@@ -42,8 +42,11 @@ middlewares:
         secure: false # secure flag for the cookie
         same_site: 0 # same site flag for the cookie for Lax 2, Strict 3, None 4
         http_only: false # http only flag for the cookie, for true for not accessible by JavaScript
-        no_client_id_param: false # use to not add client_id in the query params
         callback: "" # callback url
+        callback_set: false # set callback url to the original url after login, default is false
+        callback_modify: # modify callback url before goes to user, example: / -> /ui/
+          - regex: "(^/$)"
+            replacement: "/ui/"
         base_url: "" # base url, to use for the redirect, default is the request Host with checking the X-Forwarded-Host header
         schema: "" # default schema to use for the redirect if no schema is provided, default is the https
         use_session: false # use session for store token instead of cookie
@@ -52,5 +55,6 @@ middlewares:
         refresh_token: false # use to refresh the token if it is expired or 10s before expire
         check_value: "" # value to check in the context (combined with other middlewares) EXPERIMENTAL
         check_agent: false # check if the request is a browser redirect to the auth_url
+        check_agent_contains: "Mozilla" # check_agent's contains value setting to check the header User-Agent
       skip_suffixes: [] # skip suffixes for auth check, example "/ping", "/health", "/metrics"
 ```

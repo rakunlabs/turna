@@ -14,40 +14,52 @@ import (
 	"github.com/worldline-go/turna/pkg/filter"
 )
 
+var ErrRunInit = fmt.Errorf("run init error")
+
 type Command struct {
-	ctx       context.Context
-	TriggerFn func(context.Context) error
-	proc      *os.Process
-	wg        *sync.WaitGroup
-	waitChan  chan struct{}
-	registry  *StoreReg
-	ctxCancel context.CancelFunc
-	Name      string
-	Path      string
-	Env       []string
-	Filter    func([]byte) bool
-	closeFunc func()
-	Command   []string
-	ExitCode  int
+	proc         *os.Process
+	wgProg       sync.WaitGroup
+	Name         string
+	Path         string
+	Env          []string
+	Filter       func([]byte) bool
+	Command      []string
+	AllowFailure bool
+	Order        int
+	Depends      []string
+	trigger      []string
+
+	dependLock sync.Mutex
+	dependGet  map[string]struct{}
+
+	stdin  *os.File
+	stdout *os.File
+	stderr *os.File
 }
 
-// SetWaitGroup is for shutdown service gracefully.
-func (c *Command) SetWaitGroup(wg *sync.WaitGroup) {
-	c.wg = wg
+func (c *Command) DependecyTrigger(ctx context.Context, name string) error {
+	c.dependLock.Lock()
+	defer c.dependLock.Unlock()
+
+	if c.dependGet == nil {
+		c.dependGet = make(map[string]struct{})
+	}
+
+	c.dependGet[name] = struct{}{}
+
+	for _, depend := range c.Depends {
+		if _, ok := c.dependGet[depend]; ok {
+			continue
+		}
+
+		return nil
+	}
+
+	// all dependecy comes, run command
+	return c.Run(ctx)
 }
 
-// SetRegistry to reach command to registry struct.
-func (c *Command) SetRegistry(registry *StoreReg) {
-	c.registry = registry
-}
-
-// SetContext for killing command.
-func (c *Command) SetContext(ctx context.Context, ctxCancel context.CancelFunc) {
-	c.ctx = ctx
-	c.ctxCancel = ctxCancel
-}
-
-func (c *Command) start() (*os.Process, error) {
+func (c *Command) start(ctx context.Context, wg *sync.WaitGroup) (*os.Process, error) {
 	var err error
 
 	// command with new path
@@ -59,38 +71,45 @@ func (c *Command) start() (*os.Process, error) {
 
 	log.Debug().Msgf("starting [%s] command", cmdx)
 
-	stdoutFile := os.Stdout
-	stderrFile := os.Stderr
+	stdin := c.stdin
+	if stdin == nil {
+		stdin = os.Stdin
+	}
+
+	stdout := c.stdout
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+
+	stderr := c.stderr
+	if stderr == nil {
+		stderr = os.Stderr
+	}
 
 	if c.Filter != nil {
 		log.Info().Msgf("filtering [%s]", c.Name)
 		// filter for stdout
-		filteredStdout := filter.FileFilter{To: os.Stdout, Filter: c.Filter}
+		filteredStdout := filter.FileFilter{To: stdout, Filter: c.Filter}
 
-		stdoutFile, err = filteredStdout.Start()
+		stdout, err = filteredStdout.Start(ctx, wg)
 		if err != nil {
 			return nil, fmt.Errorf("cannot start filtered stdout: %w", err)
 		}
 
 		// filter for stderr
-		filteredStderr := filter.FileFilter{To: os.Stderr, Filter: c.Filter}
+		filteredStderr := filter.FileFilter{To: stderr, Filter: c.Filter}
 
-		stderrFile, err = filteredStderr.Start()
+		stderr, err = filteredStderr.Start(ctx, wg)
 		if err != nil {
 			return nil, fmt.Errorf("cannot start filtered stderr: %w", err)
-		}
-
-		c.closeFunc = func() {
-			filteredStdout.Close()
-			filteredStderr.Close()
 		}
 	}
 
 	procAttr := new(os.ProcAttr)
 	procAttr.Files = []*os.File{
-		os.Stdin,
-		stdoutFile,
-		stderrFile,
+		stdin,
+		stdout,
+		stderr,
 	}
 
 	procAttr.Env = c.Env
@@ -112,101 +131,82 @@ func (c *Command) start() (*os.Process, error) {
 		return nil, fmt.Errorf("process cannot run; %w", err)
 	}
 
+	// listen ctx cancel
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		<-ctx.Done()
+		c.Kill()
+	}()
+
 	return p, nil
 }
 
-//nolint:cyclop // required to be together
-func (c *Command) Run(runTrigger bool) error {
+func (c *Command) Run(ctx context.Context) error {
 	if c.proc != nil {
-		return fmt.Errorf("process already running")
+		return fmt.Errorf("process already running: %w", ErrRunInit)
 	}
 
 	if len(c.Command) == 0 {
-		return fmt.Errorf("doesn't given any command")
+		return fmt.Errorf("doesn't given any command: %w", ErrRunInit)
 	}
 
-	// run init function if exists
-	if c.TriggerFn != nil && runTrigger {
-		var ctx context.Context
-		if c.registry != nil {
-			ctx = c.registry.ctx
-		}
-
-		if ctx == nil {
-			ctx = context.Background()
-		}
-
-		_ = c.TriggerFn(ctx)
-	}
+	ctx, ctxCancel := context.WithCancel(ctx)
+	defer ctxCancel()
 
 	var err error
 
-	c.proc, err = c.start()
+	log.Info().Msgf("starting [%s] command", c.Name)
+	c.proc, err = c.start(ctx, &c.wgProg)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		c.proc = nil
+	}()
 
-	if c.wg != nil {
-		c.wg.Add(1)
+	c.wgProg.Add(1)
+	defer c.wgProg.Done()
+
+	state, err := c.proc.Wait()
+	if err != nil {
+		log.Warn().Err(err).Msg("process wait")
 	}
 
-	c.waitChan = make(chan struct{}, 1)
-
-	go func() {
-		state, err := c.proc.Wait()
-		if err != nil {
-			log.Warn().Err(err).Msg("process wait")
+	exitCode := state.ExitCode()
+	if exitCode != 0 {
+		log.Warn().Msgf("process [%s] exited with code %d", c.Name, exitCode)
+		if !c.AllowFailure {
+			return fmt.Errorf("process [%s] exited with code %d", c.Name, exitCode)
 		}
-
-		log.Info().Msgf("closed [%s]", c.Name)
-
-		if state.ExitCode() != 0 {
-			log.Warn().Msgf("process [%s] exited with code %d", c.Name, state.ExitCode())
-			c.ExitCode = state.ExitCode()
-		}
-
-		c.proc = nil
-		close(c.waitChan)
-
-		if c.wg != nil {
-			c.wg.Done()
-		}
-	}()
+	} else {
+		log.Info().Msgf("process [%s] exited with code %d", c.Name, exitCode)
+	}
 
 	return nil
 }
 
 // Kill the kill command.
 func (c *Command) Kill() {
-	log.Warn().Msgf("killing process [%s]", c.Name)
-
-	if c.ctxCancel != nil {
-		c.ctxCancel()
-	}
-
 	if c.proc != nil {
+		log.Warn().Msgf("killing process [%s]", c.Name)
+
 		if err := syscall.Kill(-c.proc.Pid, syscall.SIGINT); err != nil {
-			log.Logger.Error().Err(err)
+			log.Logger.Error().Err(err).Msg("syscall kill failed")
 		}
 
-		<-c.waitChan
-
-		// close additional started process
-		if c.closeFunc != nil {
-			c.closeFunc()
-		}
+		c.wgProg.Wait()
 
 		return
 	}
-
-	log.Warn().Msgf("process already not running [%s]", c.Name)
 }
 
 // Restart is kill command after that run again that command.
-func (c *Command) Restart(runInit bool) error {
+func (c *Command) Restart(ctx context.Context) error {
 	// minus PID to send signal child PIDs
 	log.Info().Msg("restarting process..")
 	c.Kill()
 
-	return c.Run(runInit)
+	return c.Run(ctx)
 }
