@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/worldline-go/turna/pkg/server/cert"
@@ -26,6 +27,8 @@ type Certificate struct {
 	CertFile string `cfg:"cert_file"`
 	KeyFile  string `cfg:"key_file"`
 }
+
+var ReadHeaderTimeout = 10 * time.Second
 
 func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 	ruleRouter := NewRuleRouter()
@@ -91,7 +94,8 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 		}
 
 		s := http.Server{
-			Handler: ruleRouter.Serve(entrypoint),
+			ReadHeaderTimeout: ReadHeaderTimeout,
+			Handler:           ruleRouter.Serve(entrypoint),
 			TLSConfig: &tls.Config{
 				MinVersion:   tls.VersionTLS13,
 				Certificates: certs,
@@ -125,7 +129,8 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 	// entrypoints without TLS
 	for entrypoint := range selectedEntries {
 		s := http.Server{
-			Handler: ruleRouter.Serve(entrypoint),
+			ReadHeaderTimeout: ReadHeaderTimeout,
+			Handler:           ruleRouter.Serve(entrypoint),
 		}
 
 		listener, err := registry.GlobalReg.GetListener(entrypoint)
