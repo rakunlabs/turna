@@ -28,7 +28,7 @@ type Command struct {
 	Order        int
 	Depends      []string
 	trigger      []string
-	clearLock    sync.Mutex
+	killLock     sync.Mutex
 
 	dependLock sync.Mutex
 	dependGet  map[string]struct{}
@@ -159,18 +159,21 @@ func (c *Command) Run(ctx context.Context) error {
 	var err error
 
 	log.Info().Msgf("starting [%s] command", c.Name)
+	c.killLock.Lock()
 	c.proc, err = c.start(ctx, &c.wgProg)
+	c.killLock.Unlock()
 	if err != nil {
 		return err
 	}
-	defer func() {
-		c.clearLock.Lock()
-		c.proc = nil
-		c.clearLock.Unlock()
-	}()
 
 	c.wgProg.Add(1)
 	defer c.wgProg.Done()
+
+	defer func() {
+		c.killLock.Lock()
+		c.proc = nil
+		c.killLock.Unlock()
+	}()
 
 	state, err := c.proc.Wait()
 	if err != nil {
@@ -192,13 +195,15 @@ func (c *Command) Run(ctx context.Context) error {
 
 // Kill the kill command.
 func (c *Command) Kill() {
-	c.clearLock.Lock()
-	defer c.clearLock.Unlock()
+	var v *os.Process
+	c.killLock.Lock()
+	v = c.proc
+	c.killLock.Unlock()
 
-	if c.proc != nil {
+	if v != nil {
 		log.Warn().Msgf("killing process [%s]", c.Name)
 
-		if err := syscall.Kill(-c.proc.Pid, syscall.SIGINT); err != nil {
+		if err := syscall.Kill(-v.Pid, syscall.SIGINT); err != nil {
 			log.Logger.Error().Err(err).Msg("syscall kill failed")
 		}
 
