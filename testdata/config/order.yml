@@ -1,0 +1,12 @@
+services:
+  - name: echo
+    command: echo sss
+  - name: fail
+    command: /bin/bash -c "exit 2"
+    allow_failure: true
+  - name: main
+    command: id
+    user: "ray"
+    depends:
+      - echo
+      - fail

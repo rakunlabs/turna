@@ -29,6 +29,7 @@ type Command struct {
 	Depends      []string
 	trigger      []string
 	killLock     sync.Mutex
+	User         string
 
 	dependLock sync.Mutex
 	dependGet  map[string]struct{}
@@ -123,7 +124,23 @@ func (c *Command) start(ctx context.Context, wg *sync.WaitGroup) (*os.Process, e
 	}
 
 	procAttr.Dir = c.Path
-	procAttr.Sys = &syscall.SysProcAttr{Setpgid: true}
+	procAttr.Sys = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+
+	if c.User != "" {
+		// parse user
+		user, err := UserParser(c.User)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse user: %w", err)
+		}
+
+		procAttr.Sys.Credential = &syscall.Credential{
+			Uid:         user.UID,
+			Gid:         user.GID,
+			NoSetGroups: true,
+		}
+	}
 
 	var p *os.Process
 

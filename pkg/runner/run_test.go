@@ -17,6 +17,7 @@ func TestCommand_Run(t *testing.T) {
 		Filter       func([]byte) bool
 		Command      []string
 		AllowFailure bool
+		User         string
 	}
 	type args struct {
 		ctx context.Context
@@ -72,6 +73,17 @@ func TestCommand_Run(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		// {
+		// 	name: "id test",
+		// 	fields: fields{
+		// 		Name:         "id",
+		// 		Command:      []string{"id", "-u"},
+		// 		AllowFailure: true,
+		// 		User:         "0",
+		// 	},
+		// 	wantErr:    false,
+		// 	wantStdout: []byte(`0` + "\n"),
+		// },
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -92,6 +104,7 @@ func TestCommand_Run(t *testing.T) {
 				Filter:       tt.fields.Filter,
 				Command:      tt.fields.Command,
 				AllowFailure: tt.fields.AllowFailure,
+				User:         tt.fields.User,
 				stdout:       stdoutW,
 				stderr:       stderrW,
 			}

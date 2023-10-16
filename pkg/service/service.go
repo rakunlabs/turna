@@ -26,6 +26,8 @@ type Service struct {
 	EnvValues []string `cfg:"env_values"`
 	// Inherit environment variables, default is false.
 	InheritEnv bool `cfg:"inherit_env"`
+	// User is the user to run command, id:group or just id.
+	User string `cfg:"user"`
 	// Filters is a function to filter stdout.
 	Filters [][]byte `cfg:"filters"`
 	// FiltersValues is a list of filter variables path from exported config.
@@ -109,6 +111,7 @@ func (s *Service) Register() error {
 		AllowFailure: s.AllowFailure,
 		Order:        s.Order,
 		Depends:      s.Depends,
+		User:         s.User,
 	}
 
 	if err := runner.GlobalReg.Add(c); err != nil {
