@@ -140,7 +140,9 @@ func TestStoreReg_Run(t *testing.T) {
 			s := NewStoreReg(wg)
 
 			for _, command := range tt.fields.commands {
-				s.Add(command)
+				if err := s.Add(command); err != nil {
+					t.Errorf("StoreReg.Add() error = %v", err)
+				}
 			}
 
 			if tt.args.ctx == nil {

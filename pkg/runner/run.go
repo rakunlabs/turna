@@ -28,6 +28,7 @@ type Command struct {
 	Order        int
 	Depends      []string
 	trigger      []string
+	clearLock    sync.Mutex
 
 	dependLock sync.Mutex
 	dependGet  map[string]struct{}
@@ -163,7 +164,9 @@ func (c *Command) Run(ctx context.Context) error {
 		return err
 	}
 	defer func() {
+		c.clearLock.Lock()
 		c.proc = nil
+		c.clearLock.Unlock()
 	}()
 
 	c.wgProg.Add(1)
@@ -189,6 +192,9 @@ func (c *Command) Run(ctx context.Context) error {
 
 // Kill the kill command.
 func (c *Command) Kill() {
+	c.clearLock.Lock()
+	defer c.clearLock.Unlock()
+
 	if c.proc != nil {
 		log.Warn().Msgf("killing process [%s]", c.Name)
 

@@ -17,10 +17,6 @@ func TestCommand_Run(t *testing.T) {
 		Filter       func([]byte) bool
 		Command      []string
 		AllowFailure bool
-
-		stdin  *os.File
-		stdout *os.File
-		stderr *os.File
 	}
 	type args struct {
 		ctx context.Context
