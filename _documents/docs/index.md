@@ -24,5 +24,5 @@ features:
   - title: Reverse Proxy
     details: Serve applications with various middlewares
   - title: Runner
-    details: Run multiple applications
+    details: Run multiple applications with order
 ---

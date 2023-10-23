@@ -36,6 +36,7 @@ export default defineConfig({
                 items: [
                   { text: 'add_prefix', link: '/reference/server/middlewares/add_prefix.md' },
                   { text: 'auth', link: '/reference/server/middlewares/auth.md' },
+                  { text: 'inject', link: '/reference/server/middlewares/inject.md' },
                   { text: 'basic_auth', link: '/reference/server/middlewares/basic_auth.md' },
                   { text: 'block', link: '/reference/server/middlewares/block.md' },
                   { text: 'cors', link: '/reference/server/middlewares/cors.md' },
@@ -66,6 +67,7 @@ export default defineConfig({
           { text: 'TLS', link: '/examples/tls.md' },
           { text: 'Env', link: '/examples/env.md' },
           { text: 'Basic Auth', link: '/examples/basic_auth.md' },
+          { text: 'Oauth2', link: '/examples/oauth2.md' },
         ],
       }
     ],
