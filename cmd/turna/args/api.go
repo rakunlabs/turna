@@ -41,10 +41,10 @@ func init() {
 
 func runAPI(ctx context.Context) error {
 	client, err := klient.New(
-		klient.OptionClient.WithPooledClient(false),
-		klient.OptionClient.WithInsecureSkipVerify(apiCmdFlags.skipVerify),
-		klient.OptionClient.WithDisableRetry(true),
-		klient.OptionClient.WithDisableBaseURLCheck(true),
+		klient.WithPooledClient(false),
+		klient.WithInsecureSkipVerify(apiCmdFlags.skipVerify),
+		klient.WithDisableRetry(true),
+		klient.WithDisableBaseURLCheck(true),
 	)
 	if err != nil {
 		return err

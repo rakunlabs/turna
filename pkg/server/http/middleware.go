@@ -11,6 +11,7 @@ import (
 type HTTPMiddleware struct {
 	AddPrefixMiddleware   *middlewares.AddPrefix   `cfg:"add_prefix"`
 	AuthMiddleware        *middlewares.Auth        `cfg:"auth"`
+	InjectMiddleware      *middlewares.Inject      `cfg:"inject"`
 	HelloMiddleware       *middlewares.Hello       `cfg:"hello"`
 	InfoMiddleware        *middlewares.Info        `cfg:"info"`
 	SetMiddleware         *middlewares.Set         `cfg:"set"`
@@ -35,6 +36,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo
 	}
 	if h.AuthMiddleware != nil {
 		return h.AuthMiddleware.Middleware(ctx, name)
+	}
+	if h.InjectMiddleware != nil {
+		return []echo.MiddlewareFunc{h.InjectMiddleware.Middleware()}, nil
 	}
 	if h.HelloMiddleware != nil {
 		return h.HelloMiddleware.Middleware()

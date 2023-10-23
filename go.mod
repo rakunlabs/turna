@@ -12,10 +12,10 @@ require (
 	github.com/spf13/cast v1.5.1
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/pflag v1.0.5
-	github.com/worldline-go/auth v0.7.0
+	github.com/worldline-go/auth v0.7.1
 	github.com/worldline-go/igconfig v0.2.4
 	github.com/worldline-go/initializer v0.2.3
-	github.com/worldline-go/klient v0.6.0
+	github.com/worldline-go/klient v0.7.2
 	github.com/worldline-go/logz v0.5.0
 	github.com/worldline-go/struct2 v1.2.5
 	github.com/ziflex/lecho/v3 v3.5.0

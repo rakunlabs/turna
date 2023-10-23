@@ -6,7 +6,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/auth"
-	"github.com/worldline-go/auth/jwks"
 	"github.com/worldline-go/auth/pkg/authecho"
 	"github.com/worldline-go/auth/redirect"
 )
@@ -26,14 +25,14 @@ func (a *Auth) Middleware(ctx context.Context, name string) ([]echo.MiddlewareFu
 	options := []authecho.Option{}
 
 	if introspectURL := activeProvider.GetIntrospectURL(); introspectURL != "" {
-		provideJwks, err := activeProvider.JWTKeyFunc(jwks.WithContext(ctx), jwks.WithIntrospect(true))
+		provideJwks, err := activeProvider.JWTKeyFunc(auth.WithContext(ctx), auth.WithIntrospect(true))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create JWTKeyFunc with introspect: %w", err)
 		}
 
 		options = append(options, authecho.WithKeyFunc(provideJwks.Keyfunc), authecho.WithParserFunc(provideJwks.ParseWithClaims))
 	} else {
-		provideJwks, err := activeProvider.JWTKeyFunc(jwks.WithContext(ctx))
+		provideJwks, err := activeProvider.JWTKeyFunc(auth.WithContext(ctx))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create JWTKeyFunc: %w", err)
 		}
@@ -65,6 +64,7 @@ func (a *Auth) Middleware(ctx context.Context, name string) ([]echo.MiddlewareFu
 		a.Redirect.ClientID = activeProvider.GetClientID()
 		a.Redirect.ClientSecret = activeProvider.GetClientSecret()
 		a.Redirect.Scopes = activeProvider.GetScopes()
+		a.Redirect.LogoutURL = activeProvider.GetLogoutURL()
 
 		options = append(options, authecho.WithRedirect(a.Redirect))
 	}

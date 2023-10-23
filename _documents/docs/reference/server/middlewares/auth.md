@@ -56,5 +56,19 @@ middlewares:
         check_value: "" # value to check in the context (combined with other middlewares) EXPERIMENTAL
         check_agent: false # check if the request is a browser redirect to the auth_url
         check_agent_contains: "Mozilla" # check_agent's contains value setting to check the header User-Agent
+        information:
+          cookie:
+            name: "" # name is the name of the cookie, required want to use this cookie.
+            max_age: 3600
+            path: "/"
+            domain: ""
+            secure: false
+            same_site: 0
+            http_only: false
+            values: #  map list to store in the cookie like "preferred_username", "given_name"
+              - preferred_username
+            custom: {} # custom map to store in the cookie. map[string]interface{}
+            roles: false # roles to store in the cookie as []string.
+            scopes: false # scopes to store in the cookie as []string.
       skip_suffixes: [] # skip suffixes for auth check, example "/ping", "/health", "/metrics"
 ```
