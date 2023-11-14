@@ -42,7 +42,7 @@ func (s *RuleRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if found == nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte("404 not found - turna"))
 
 		return

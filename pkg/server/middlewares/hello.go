@@ -27,7 +27,7 @@ type Hello struct {
 
 	// Template to render go template
 	Template bool `cfg:"template"`
-	// Trust is allow to use powerfull functions
+	// Trust is allow to use powerful functions
 	Trust bool `cfg:"trust"`
 	// WorkDir is the directory for some functions
 	WorkDir string `cfg:"work_dir"`
