@@ -288,7 +288,7 @@ table tr:hover a, th a {
 	</tr>
 	{{- range .dirs }}
 	<tr>
-		<td>{{ ternary "📁" "📄" .IsDir }} <a href="./{{ .Name }}{{ ternary "/" "" .IsDir }}" {{ ternary "" "download" .IsDir }}>{{ html.EscapeString .Name }}{{ ternary "/" "" .IsDir }}</a></td>
+		<td>{{ ternary "📁" "📄" .IsDir }} <a href="./{{ .Name }}{{ ternary "/" "" .IsDir }}" {{ ternary "" "download" .IsDir }}>{{ html2.EscapeString .Name }}{{ ternary "/" "" .IsDir }}</a></td>
 		<td>{{ .Size | cast.ToUint64 | humanize.Bytes }}</td>
 		<td>{{ time.Format time.RFC3339 (ternary (time.UTC .ModTime) .ModTime $.utc) }}</td>
 	</tr>

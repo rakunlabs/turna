@@ -5,29 +5,31 @@ server:
   http:
     middlewares:
       project:
-        # folder:
-        #   path: ../../testdata/html/
-        #   browse: false
-        #   spa: true
-        #   index: true
-        #   prefixPath: /testdata/html/
         folder:
-          # path: ../../testdata/serve
-          path: ./testdata/serve
-          browse: false
-          spa: true
-          index: true
+          path: ./
+          browse: true
+          spa: false
+          index: false
           cache_regex:
             - regex: .*
               cache_control: no-cache
-          spa_index_regex:
-            - regex: "^/docs/([^/]*)/.*$"
-              replacement: "/$1/index.html"
-          file_path_regex:
-            - regex: "^/docs/([^/]*)/?(.*)$"
-              replacement: "/$1/latest/$2"
+        # folder:
+        #   # path: ../../testdata/serve
+        #   path: ./testdata/serve
+        #   browse: false
+        #   spa: true
+        #   index: true
+        #   cache_regex:
+        #     - regex: .*
+        #       cache_control: no-cache
+        #   spa_index_regex:
+        #     - regex: "^/docs/([^/]*)/.*$"
+        #       replacement: "/$1/index.html"
+        #   file_path_regex:
+        #     - regex: "^/docs/([^/]*)/?(.*)$"
+        #       replacement: "/$1/latest/$2"
     routers:
       project:
-        path: /docs/*
+        path: /*
         middlewares:
           - project

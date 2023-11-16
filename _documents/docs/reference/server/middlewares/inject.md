@@ -6,9 +6,15 @@ Inject middleware help to change content of the anything. Give a content-type yo
 middlewares:
   test:
     inject:
+      path_map:
+        "/test": # checking with filepath.Match
+          - regex: "" # old is ignored if regex is set
+            old: ""
+            new: ""
       content_map: # map of content-type
         "text/html":
-          - old: "my text"
+          - regex: "" # old is ignored if regex is set
+            old: "my text"
             new: "my mext"
 ```
 
