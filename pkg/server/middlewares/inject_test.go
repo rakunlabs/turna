@@ -67,9 +67,7 @@ func TestInject_Middleware(t *testing.T) {
 			c := e.NewContext(req, rec)
 
 			handler := func(c echo.Context) error {
-				c.Blob(http.StatusOK, "text/html", tt.send)
-
-				return nil
+				return c.Blob(http.StatusOK, "text/html", tt.send)
 			}
 
 			// Assert
@@ -80,7 +78,7 @@ func TestInject_Middleware(t *testing.T) {
 			}
 
 			// Assert
-			if got := rec.Body.Bytes(); bytes.Compare(got, tt.want) != 0 {
+			if got := rec.Body.Bytes(); !bytes.Equal(got, tt.want) {
 				t.Errorf("Inject.Middleware() = %s, want %s", got, tt.want)
 			}
 		})

@@ -94,7 +94,7 @@ func (s *Inject) Middleware() echo.MiddlewareFunc {
 				rec.ResponseWriter.WriteHeader(rec.status)
 			}
 
-			rec.ResponseWriter.Write(bodyBytes)
+			_, _ = rec.ResponseWriter.Write(bodyBytes)
 
 			return nil
 		}
