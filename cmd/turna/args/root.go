@@ -203,7 +203,7 @@ func runRoot(ctx context.Context) error {
 		}
 	}
 
-	http.ServerInfo = config.AppName + " " + config.BuildVars.Version
+	http.ServerInfo = config.AppName + " [" + config.BuildVars.Version + "]"
 	if err := config.Application.Server.Run(ctx, wg); err != nil {
 		initializer.Shutdown.CtxCancel()
 

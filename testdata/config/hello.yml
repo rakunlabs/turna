@@ -1,0 +1,28 @@
+loads:
+  - statics:
+    - content:
+        content: |
+          TURNA: XXX2
+        name: values
+server:
+  entrypoints:
+    web:
+      address: ":8080"
+  http:
+    middlewares:
+      hello:
+        hello:
+          message: "Hello from TURNA\n"
+      inject:
+        inject:
+          path_map: # map of content-type
+            "/*":
+              # - old: TURNA
+              #   new: "XXX"
+              - value: values
+    routers:
+      project:
+        path: /*
+        middlewares:
+          - inject
+          - hello

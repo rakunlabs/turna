@@ -6,10 +6,10 @@ server:
     middlewares:
       project:
         folder:
-          path: ./
-          browse: true
+          path: ./testdata/html
+          browse: false
           spa: false
-          index: false
+          index: true
           cache_regex:
             - regex: .*
               cache_control: no-cache

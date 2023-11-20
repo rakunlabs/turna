@@ -38,7 +38,7 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo
 		return h.AuthMiddleware.Middleware(ctx, name)
 	}
 	if h.InjectMiddleware != nil {
-		return []echo.MiddlewareFunc{h.InjectMiddleware.Middleware()}, nil
+		return h.InjectMiddleware.Middleware()
 	}
 	if h.HelloMiddleware != nil {
 		return h.HelloMiddleware.Middleware()

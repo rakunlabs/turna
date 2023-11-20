@@ -71,7 +71,12 @@ func TestInject_Middleware(t *testing.T) {
 			}
 
 			// Assert
-			if err := s.Middleware()(func(c echo.Context) error {
+			middleware, err := s.Middleware()
+			if err != nil {
+				t.Errorf("Inject.Middleware() error = %v", err)
+			}
+
+			if err := middleware[0](func(c echo.Context) error {
 				return handler(c)
 			})(c); err != nil {
 				t.Errorf("Inject.Middleware() error = %v", err)

@@ -326,10 +326,10 @@ func localRedirect(c echo.Context, newPath string) error {
 // toHTTPError returns a non-specific HTTP error message for the given error.
 func toHTTPError(c echo.Context, err error) error {
 	if os.IsNotExist(err) {
-		return echo.ErrNotFound
+		return c.String(http.StatusNotFound, fmt.Sprintf("%d - %s", http.StatusNotFound, http.StatusText(http.StatusNotFound)))
 	}
 	if os.IsPermission(err) {
-		return echo.ErrForbidden
+		return c.String(http.StatusForbidden, fmt.Sprintf("%d - %s", http.StatusForbidden, http.StatusText(http.StatusForbidden)))
 	}
 
 	// Default:
