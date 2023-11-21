@@ -6,6 +6,7 @@ log_level: info # application log, default is info
 print: "text to print after the load complate: {{ .APP_NAME }}"
 
 loads: [] # check loads section
+preprocess: [] # check preprocess section
 server: {} # check server section
 services: [] # check services section
 ```
@@ -13,6 +14,7 @@ services: [] # check services section
 Turna now has 3 main sections, `loads`, `server` and `services`. Check their sections for more information.
 
 - [loads](loads.md)
+- [preprocess](preprocess/preprocess.md)
 - [server](server/server.md)
 - [services](services.md)
 

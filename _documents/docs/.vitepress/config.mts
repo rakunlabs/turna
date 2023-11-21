@@ -26,6 +26,18 @@ export default defineConfig({
         items: [
           { text: 'Config', link: '/reference/config.md' },
           { text: 'Loads', link: '/reference/loads.md' },
+          { text: 'Preprocess',
+            items: [
+              {text: 'Preprocess', link: '/reference/preprocess/preprocess.md' },
+              {
+                text: 'Modules',
+                collapsed: true,
+                items: [
+                  {text: 'env', link: '/reference/preprocess/modules/replace.md' },
+                ],
+              },
+            ],
+          },
           {
             text: 'Server',
             items: [

@@ -94,7 +94,7 @@ func loadConfig(ctx context.Context, visit func(fn func(*pflag.Flag))) error {
 	envLoader := &loader.Env{}
 
 	if err := igconfig.LoadWithLoadersWithContext(ctxConfig, "", &config.LoadConfig, envLoader); err != nil {
-		return fmt.Errorf("unable to load prefix settings: %v", err)
+		return fmt.Errorf("unable to load prefix settings: %w", err)
 	}
 
 	log.Info().Msgf("config loading from %+v", config.LoadConfig)
@@ -118,7 +118,7 @@ func loadConfig(ctx context.Context, visit func(fn func(*pflag.Flag))) error {
 	loaders = append(loaders, envLoader)
 
 	if err := igconfig.LoadWithLoadersWithContext(ctxConfig, config.LoadConfig.AppName, &config.Application, loaders...); err != nil {
-		return fmt.Errorf("unable to load configuration settings: %v", err)
+		return fmt.Errorf("unable to load configuration settings: %w", err)
 	}
 
 	// override used cmd values
