@@ -12,7 +12,10 @@ run: ## Run the application; CONFIG_FILE to specify a config file
 
 # go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o $(PROJECT) cmd/$(PROJECT)/main.go
 build: ## Build the binary
-	goreleaser build --snapshot --rm-dist --single-target
+	goreleaser build --snapshot --clean --single-target
+
+lint: ## Run linter
+	GOPATH="$(shell dirname $(PWD))" golangci-lint run
 
 vault: ## Run vault server
 	docker run --rm -it -p 8200:8200 --name vault vault:latest

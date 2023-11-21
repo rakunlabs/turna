@@ -19,11 +19,13 @@ jobs:
     - uses: actions/setup-go@v3
       with:
         go-version: '1.21' # The Go version to download (if necessary) and use.
+    - name: download golangci.yml
+      run: |
+        [[ ! -f ".golangci.yml" ]] && curl -kfsSL -O https://raw.githubusercontent.com/worldline-go/guide/main/lint/.golangci.yml || true
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v3
     - name: Run tests
       run: |
-        [[ ! -f ".golangci.yml" ]] && curl -kfsSL -O https://raw.githubusercontent.com/worldline-go/guide/main/lint/.golangci.yml || true
         GOPATH="$(dirname ${PWD})" golangci-lint run --out-format checkstyle ./... > golangci-lint-report.out || true
         go test -coverprofile=coverage.out -json ./... > test-report.out
     - name: SonarCloud Scan

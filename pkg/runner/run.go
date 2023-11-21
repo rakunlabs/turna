@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -29,6 +30,7 @@ type Command struct {
 	Depends      []string
 	trigger      []string
 	killLock     sync.Mutex
+	killStarted  bool
 	User         string
 
 	dependLock sync.Mutex
@@ -67,7 +69,22 @@ func (c *Command) start(ctx context.Context, wg *sync.WaitGroup) (*os.Process, e
 	// command with new path
 	var cmdx string
 
-	if cmdx, err = exec.LookPath(c.Command[0]); err != nil {
+	// set path of the process
+	if c.Path != "" {
+		if path, err := filepath.Abs(c.Path); err == nil {
+			c.Path = path
+		}
+	}
+
+	commandPath := c.Command[0]
+
+	if strings.Contains(commandPath, "/") && filepath.IsLocal(commandPath) {
+		if c.Path != "" {
+			commandPath = filepath.Join(c.Path, commandPath)
+		}
+	}
+
+	if cmdx, err = exec.LookPath(commandPath); err != nil {
 		return nil, fmt.Errorf("lookpath error; %w", err)
 	}
 
@@ -115,13 +132,6 @@ func (c *Command) start(ctx context.Context, wg *sync.WaitGroup) (*os.Process, e
 	}
 
 	procAttr.Env = c.Env
-
-	// set path of the process
-	if c.Path != "" {
-		if path, err := filepath.Abs(c.Path); err != nil {
-			c.Path = path
-		}
-	}
 
 	procAttr.Dir = c.Path
 	procAttr.Sys = &syscall.SysProcAttr{
@@ -213,12 +223,24 @@ func (c *Command) Run(ctx context.Context) error {
 // Kill the kill command.
 func (c *Command) Kill() {
 	var v *os.Process
+
 	c.killLock.Lock()
+	if c.killStarted {
+		c.killLock.Unlock()
+
+		return
+	}
+
 	v = c.proc
+	c.killStarted = true
 	c.killLock.Unlock()
 
+	defer func() {
+		c.killStarted = false
+	}()
+
 	if v != nil {
-		log.Warn().Msgf("killing process [%s]", c.Name)
+		log.Warn().Msgf("killing process [%s] [%d]", c.Name, v.Pid)
 
 		if err := syscall.Kill(-v.Pid, syscall.SIGINT); err != nil {
 			log.Logger.Error().Err(err).Msg("syscall kill failed")

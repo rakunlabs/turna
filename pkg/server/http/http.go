@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -115,10 +116,11 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 		wg.Add(1)
 		go func(n string) {
 			defer wg.Done()
+			defer log.Info().Msgf("http tls-server %s is stopped", n)
 
 			log.Info().Msgf("http tls-server %s is listening on %s", n, listener.Addr().String())
 			// certificates are loaded from TLSConfig
-			if err := s.ServeTLS(listener, "", ""); err != nil && err != http.ErrServerClosed {
+			if err := s.ServeTLS(listener, "", ""); err != nil && errors.Is(err, http.ErrServerClosed) {
 				log.Error().Err(err).Msgf("cannot serve tls listener %s", n)
 
 				registry.GlobalReg.DeleteHttpServer(n + "-TLS")
@@ -146,10 +148,11 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 		wg.Add(1)
 		go func(n string) {
 			defer wg.Done()
+			defer log.Info().Msgf("http server %s is stopped", n)
 
 			log.Info().Msgf("http server %s is listening on %s", n, listener.Addr().String())
 			// certificates are loaded from TLSConfig
-			if err := s.Serve(listener); err != nil && err != http.ErrServerClosed {
+			if err := s.Serve(listener); err != nil && errors.Is(err, http.ErrServerClosed) {
 				log.Error().Err(err).Msgf("cannot serve listener %s", n)
 
 				registry.GlobalReg.DeleteHttpServer(n)

@@ -2,6 +2,10 @@
 # Make sure to check the documentation at https://goreleaser.com
 project_name: turna
 
+git:
+  ignore_tags:
+    - docs
+
 release:
   header: |
     Get the latest release with brew or binary:
@@ -23,6 +27,10 @@ builds:
       - linux
       # - windows
       - darwin
+    goarch:
+      - amd64
+      - arm
+      - arm64
     main: ./cmd/turna
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}

@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/abbot/go-http-auth v0.4.1-0.20220112235402-e1cee1c72f2f
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
-	github.com/labstack/echo/v4 v4.11.1
+	github.com/labstack/echo/v4 v4.11.3
 	github.com/rs/zerolog v1.30.0
 	github.com/rytsh/liz/loader v0.2.5
 	github.com/rytsh/mugo v0.7.1
@@ -14,7 +14,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/worldline-go/auth v0.7.1
 	github.com/worldline-go/igconfig v0.2.4
-	github.com/worldline-go/initializer v0.2.3
+	github.com/worldline-go/initializer v0.2.4
 	github.com/worldline-go/klient v0.7.4
 	github.com/worldline-go/logz v0.5.0
 	github.com/worldline-go/struct2 v1.2.5
@@ -92,11 +92,11 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
-	golang.org/x/crypto v0.11.0 // indirect
-	golang.org/x/net v0.12.0 // indirect
+	golang.org/x/crypto v0.14.0 // indirect
+	golang.org/x/net v0.17.0 // indirect
 	golang.org/x/oauth2 v0.6.0 // indirect
-	golang.org/x/sys v0.10.0 // indirect
-	golang.org/x/text v0.11.0 // indirect
+	golang.org/x/sys v0.13.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20210226172003-ab064af71705 // indirect

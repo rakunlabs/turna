@@ -1,0 +1,33 @@
+loads:
+  - statics:
+    - content:
+        content: |
+          Turna: XXX2
+        name: values
+
+preprocess:
+  - replace:
+      path: ./testdata/html/index.html
+      contents:
+        value: values
+
+server:
+  entrypoints:
+    web:
+      address: ":18082"
+  http:
+    middlewares:
+      project:
+        folder:
+          path: ./testdata/html
+          browse: false
+          spa: false
+          index: true
+          cache_regex:
+            - regex: .*
+              cache_control: no-cache
+    routers:
+      project:
+        path: /*
+        middlewares:
+          - project

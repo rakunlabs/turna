@@ -73,7 +73,11 @@ func (s *Inject) Middleware() ([]echo.MiddlewareFunc, error) {
 				}
 
 				if injectContent.Regex != "" {
-					s.PathMap[pathValue][i].reg = regexp.MustCompile(injectContent.Regex)
+					var err error
+					s.PathMap[pathValue][i].reg, err = regexp.Compile(injectContent.Regex)
+					if err != nil {
+						return nil, err
+					}
 				}
 
 				s.PathMap[pathValue][i].old = []byte(injectContent.Old)
@@ -97,7 +101,11 @@ func (s *Inject) Middleware() ([]echo.MiddlewareFunc, error) {
 				}
 
 				if injectContent.Regex != "" {
-					s.ContentMap[contentType][i].reg = regexp.MustCompile(injectContent.Regex)
+					var err error
+					s.ContentMap[contentType][i].reg, err = regexp.Compile(injectContent.Regex)
+					if err != nil {
+						return nil, err
+					}
 				}
 
 				s.ContentMap[contentType][i].old = []byte(injectContent.Old)

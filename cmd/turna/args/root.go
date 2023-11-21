@@ -179,6 +179,11 @@ func runRoot(ctx context.Context) error {
 		return err
 	}
 
+	// preprocess
+	if err := config.Application.Preprocess.Run(ctx); err != nil {
+		return err
+	}
+
 	// print for log to starting program
 	if err := Print(); err != nil {
 		return err
