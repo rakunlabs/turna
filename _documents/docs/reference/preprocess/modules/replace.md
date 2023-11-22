@@ -5,7 +5,9 @@ This preprocessor replaces a string with another string in a folder paths.
 ```yaml
 preprocess:
   - replace:
-      path: "/dist"
+      path: "/dist" # path to replace
+      skip_files: [] # default: [] files to skip, use glob pattern, included your path like /dist/**/index.html
+      skip_dirs: [] # default: [] dirs to skip, it will skip all files in the dir, included your path like /dist/assets
       contents:
       - regex: "" # regex to find, override old if not empty
         old: "" # old string
@@ -28,7 +30,7 @@ loads:
 
 preprocess:
   - replace:
-      path: ./testdata/html/index.html
+      path: ./testdata/html
       contents:
         value: values
 

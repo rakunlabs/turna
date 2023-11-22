@@ -2,85 +2,73 @@
 
 This example shows how to use oauth2 with keycloak.
 
-We also use code injection to prevent the user from seeing the 407 error page when the token expires.
-
-Injecting works depends of the service which using, but you got the idea with checking.
-
 ```yaml
 server:
   entrypoints:
     web:
-      address: ":8000"
+      address: ":8080"
   http:
     middlewares:
-      refresh:
-        inject:
-          content_map:
-            "text/html":
-              - old: "</head>"
-                new: |
-                  <script defer>
-                    // Override the fetch function
-                    window.fetch = async function(...args) {
-                      try {
-                        // Use the original fetch function and get the response
-                        const response = await originalFetch(...args);
-
-                        // Check for the 407 status code
-                        if (response.status === 407) {
-                          location.reload();  // Refresh the page
-                          return;  // Optionally, you can throw an error or return a custom response here
-                        }
-
-                        // Return the original response for other cases
-                        return response;
-                      } catch (error) {
-                        throw error;  // Rethrow any errors that occurred during the fetch
-                      }
-                    }
-                  </script>
-                  </head>
-      keycloak:
+      template:
+        template:
+          headers:
+            Content-Type: "text/html; charset=utf-8"
+          template: |
+            <html>
+            <head>
+              <title>Turna</title>
+              <style>
+                body {background-color: #f7fff7;}
+                h1 {border-bottom: 2px solid #ff6b6b;}
+                .logout {float: right; color: #ff6b6b; text-decoration: none;}
+                pre {background-color: #faf0ca; overflow: auto; white-space: pre-wrap; word-wrap: break-word; }
+              </style>
+            </head>
+            <body>
+              <h1>Turna - Token Viewer <a class="logout" href="/logout">Logout</a></h1>
+              <div>
+                <p>Readed session from cookie</p>
+                <pre><code>{{ .body | toPrettyJson }}</code></pre>
+                <p>Access Token<p>
+                <pre><code>{{ .body.access_token | crypto.JwtParseUnverified | toPrettyJson }}</code></pre>
+              </div>
+            </body>
+            </html>
+      auth:
         auth:
           provider:
             keycloak:
-              base_url: "http://localhost:8080"
+              base_url: "https://keycloak.example.com/auth" # /auth depends of your keycloak
               realm: "master"
               client_id: "ui"
               scopes:
                 - openid
           redirect:
+            cookie_name: "auth_keycloak"
+            path: "/"
             logout:
               url: "/logout"
-              redirect: "http://localhost:8000"
-            callback: "/ui/"
-            callback_set: true
-            callback_modify:
-              - regex: "(^/$)"
-                replacement: "/ui/"
+              redirect: "http://localhost:8080"
             schema: "http"
             session_key: "1234"
+            session_store_name: "auth_keycloak"
             use_session: true
-            # secure: true
+            # secure: true # enable if using https
             check_agent: true
             refresh_token: true
             redirect_match:
               enabled: true
-            information:
-              cookie:
-                name: "auth_info"
-                roles: true
-                scopes: true
-      consul:
-        service:
-          loadbalancer:
-            servers:
-              - url: "http://localhost:8500"
+      info:
+        info:
+          cookie: "auth_keycloak"
+          session: true
+          session_store_name: "auth_keycloak"
+          base64: true
     routers:
       consul:
         path: /*
         middlewares:
-          - keycloak
-          - refresh
-          - consul
+          - auth
+          - template
+          - info
 ```

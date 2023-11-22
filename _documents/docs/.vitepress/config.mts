@@ -33,7 +33,7 @@ export default defineConfig({
                 text: 'Modules',
                 collapsed: true,
                 items: [
-                  {text: 'env', link: '/reference/preprocess/modules/replace.md' },
+                  {text: 'replace', link: '/reference/preprocess/modules/replace.md' },
                 ],
               },
             ],
@@ -48,7 +48,6 @@ export default defineConfig({
                 items: [
                   { text: 'add_prefix', link: '/reference/server/middlewares/add_prefix.md' },
                   { text: 'auth', link: '/reference/server/middlewares/auth.md' },
-                  { text: 'inject', link: '/reference/server/middlewares/inject.md' },
                   { text: 'basic_auth', link: '/reference/server/middlewares/basic_auth.md' },
                   { text: 'block', link: '/reference/server/middlewares/block.md' },
                   { text: 'cors', link: '/reference/server/middlewares/cors.md' },
@@ -58,6 +57,7 @@ export default defineConfig({
                   { text: 'headers', link: '/reference/server/middlewares/headers.md' },
                   { text: 'hello', link: '/reference/server/middlewares/hello.md' },
                   { text: 'info', link: '/reference/server/middlewares/info.md' },
+                  { text: 'inject', link: '/reference/server/middlewares/inject.md' },
                   { text: 'log', link: '/reference/server/middlewares/log.md' },
                   { text: 'regex_path', link: '/reference/server/middlewares/regex_path.md' },
                   { text: 'role', link: '/reference/server/middlewares/role.md' },
@@ -65,6 +65,7 @@ export default defineConfig({
                   { text: 'service', link: '/reference/server/middlewares/service.md' },
                   { text: 'set', link: '/reference/server/middlewares/set.md' },
                   { text: 'strip_prefix', link: '/reference/server/middlewares/strip_prefix.md' },
+                  { text: 'template', link: '/reference/server/middlewares/template.md' },
                 ],
               },
             ],

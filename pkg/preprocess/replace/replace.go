@@ -4,15 +4,21 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 
+	"github.com/rs/zerolog/log"
 	"github.com/worldline-go/turna/pkg/render"
 )
 
 type Config struct {
-	Path     string    `cfg:"path"`
+	Path string `cfg:"path"`
+	// SkipFiles is the files to skip, use glob pattern.
+	SkipFiles []string `cfg:"skip_files"`
+	// SkipDirs is the dirs to skip.
+	SkipDirs []string  `cfg:"skip_dirs"`
 	Contents []Content `cfg:"contents"`
 }
 
@@ -81,22 +87,48 @@ type oldNew struct {
 }
 
 func (c *Config) Run(ctx context.Context) error {
-	// Find files matching the glob pattern
-	files, err := filepath.Glob(c.Path)
-	if err != nil {
-		return err
+	skipFilesMap := make(map[string]struct{}, len(c.SkipFiles))
+	for _, dir := range c.SkipFiles {
+		skipFilesMap[dir] = struct{}{}
 	}
 
-	for _, file := range files {
+	skipDirsMap := make(map[string]struct{}, len(c.SkipDirs))
+	for _, dir := range c.SkipDirs {
+		skipDirsMap[dir] = struct{}{}
+	}
+
+	if err := filepath.Walk(c.Path, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return fmt.Errorf("failure accessing a path %q: %w", path, err)
+		}
+
+		if info.IsDir() {
+			if _, ok := skipDirsMap[path]; ok {
+				log.Debug().Msgf("skip dir: %s", path)
+
+				return filepath.SkipDir
+			}
+
+			return nil
+		}
+
+		if _, ok := skipFilesMap[path]; ok {
+			log.Debug().Msgf("skip file: %s", path)
+		}
+
 		for i := range c.Contents {
 			if err := c.Contents[i].set(); err != nil {
 				return err
 			}
 
-			if err := replace(file, c.Contents[i]); err != nil {
+			if err := replace(path, c.Contents[i]); err != nil {
 				return err
 			}
 		}
+
+		return nil
+	}); err != nil {
+		return fmt.Errorf("failed to walking the path: %w", err)
 	}
 
 	return nil

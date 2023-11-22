@@ -7,7 +7,7 @@ loads:
 
 preprocess:
   - replace:
-      path: ./testdata/html/index.html
+      path: ./testdata/html
       contents:
         value: values
 
