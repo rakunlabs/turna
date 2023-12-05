@@ -8,6 +8,8 @@ It is using `RoundRobinBalancer` from `echo` library.
 middlewares:
   test:
     service:
+      insecure_skip_verify: false # skip verify the certificate
+      pass_host_header: false # pass the host header to the service
       loadbalancer:
         servers:
           - url: http://localhost:8080

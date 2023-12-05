@@ -6,6 +6,7 @@ Authentication middleware to redirect and check the oauth2 token.
 middlewares:
   test:
     auth:
+      insecure_skip_verify: false # skip verify the certificate
       provider:
         active: "" # default provider, if empty then use the first provider, set to 'noop' to disable auth check
         keycloak: # keycloak provider

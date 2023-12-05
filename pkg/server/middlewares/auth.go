@@ -8,12 +8,14 @@ import (
 	"github.com/worldline-go/auth"
 	"github.com/worldline-go/auth/pkg/authecho"
 	"github.com/worldline-go/auth/redirect"
+	"github.com/worldline-go/klient"
 )
 
 type Auth struct {
-	Provider     auth.Provider     `cfg:"provider"`
-	SkipSuffixes []string          `cfg:"skip_suffixes"`
-	Redirect     *redirect.Setting `cfg:"redirect"`
+	Provider           auth.Provider     `cfg:"provider"`
+	SkipSuffixes       []string          `cfg:"skip_suffixes"`
+	Redirect           *redirect.Setting `cfg:"redirect"`
+	InsecureSkipVerify bool              `cfg:"insecure_skip_verify"`
 }
 
 func (a *Auth) Middleware(ctx context.Context, name string) ([]echo.MiddlewareFunc, error) {
@@ -22,17 +24,27 @@ func (a *Auth) Middleware(ctx context.Context, name string) ([]echo.MiddlewareFu
 		return nil, fmt.Errorf("not found an active authentication provider")
 	}
 
+	client, err := klient.New(
+		klient.WithDisableBaseURLCheck(true),
+		klient.WithDisableRetry(true),
+		klient.WithDisableEnvValues(true),
+		klient.WithInsecureSkipVerify(a.InsecureSkipVerify),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create klient: %w", err)
+	}
+
 	options := []authecho.Option{}
 
 	if introspectURL := activeProvider.GetIntrospectURL(); introspectURL != "" {
-		provideJwks, err := activeProvider.JWTKeyFunc(auth.WithContext(ctx), auth.WithIntrospect(true))
+		provideJwks, err := activeProvider.JWTKeyFunc(auth.WithContext(ctx), auth.WithIntrospect(true), auth.WithClient(client.HTTP))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create JWTKeyFunc with introspect: %w", err)
 		}
 
 		options = append(options, authecho.WithKeyFunc(provideJwks.Keyfunc), authecho.WithParserFunc(provideJwks.ParseWithClaims))
 	} else {
-		provideJwks, err := activeProvider.JWTKeyFunc(auth.WithContext(ctx))
+		provideJwks, err := activeProvider.JWTKeyFunc(auth.WithContext(ctx), auth.WithClient(client.HTTP))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create JWTKeyFunc: %w", err)
 		}
@@ -65,6 +77,7 @@ func (a *Auth) Middleware(ctx context.Context, name string) ([]echo.MiddlewareFu
 		a.Redirect.ClientSecret = activeProvider.GetClientSecret()
 		a.Redirect.Scopes = activeProvider.GetScopes()
 		a.Redirect.LogoutURL = activeProvider.GetLogoutURL()
+		a.Redirect.Client = client.HTTP
 
 		options = append(options, authecho.WithRedirect(a.Redirect))
 	}

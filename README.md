@@ -7,7 +7,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/worldline-go/turna?style=flat-square)](https://goreportcard.com/report/github.com/worldline-go/turna)
 [![Web](https://img.shields.io/badge/web-document-blueviolet?style=flat-square)](https://worldline-go.github.io/turna/)
 
-Turna is a swiss army knife for services. It have config loader, reverse proxy and service runner.
+Turna is a swiss knife for services. It have config loader, reverse proxy and service runner.
 
 With _turna_, we can use third party programs directly in our systems without giving extra configuration files to them.
 

@@ -77,3 +77,13 @@ changelog:
       order: 400
     - title: Other work
       order: 9999
+
+brews:
+- name: turna
+  homepage: https://github.com/worldline-go/turna
+  description: "swiss knife for services"
+  tap:
+    owner: brew-tools
+    name: homebrew-tap
+    token: "{{ .Env.BREW_TOKEN }}"
+  folder: Formula

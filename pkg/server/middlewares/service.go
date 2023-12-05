@@ -6,10 +6,13 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/worldline-go/klient"
 )
 
 type Service struct {
-	LoadBalancer LoadBalancer `cfg:"loadbalancer"`
+	InsecureSkipVerify bool         `cfg:"insecure_skip_verify"`
+	PassHostHeader     bool         `cfg:"pass_host_header"`
+	LoadBalancer       LoadBalancer `cfg:"loadbalancer"`
 }
 
 type LoadBalancer struct {
@@ -34,5 +37,30 @@ func (m *Service) Middleware() ([]echo.MiddlewareFunc, error) {
 		})
 	}
 
-	return []echo.MiddlewareFunc{middleware.Proxy(middleware.NewRoundRobinBalancer(targets))}, nil
+	cfg := middleware.DefaultProxyConfig
+	cfg.Balancer = middleware.NewRoundRobinBalancer(targets)
+
+	client, err := klient.New(
+		klient.WithDisableBaseURLCheck(true),
+		klient.WithDisableRetry(true),
+		klient.WithDisableEnvValues(true),
+		klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create klient: %w", err)
+	}
+
+	cfg.Transport = client.HTTP.Transport
+
+	checkHost := func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			if !m.PassHostHeader {
+				c.Request().Host = ""
+			}
+
+			return next(c)
+		}
+	}
+
+	return []echo.MiddlewareFunc{checkHost, middleware.ProxyWithConfig(cfg)}, nil
 }
