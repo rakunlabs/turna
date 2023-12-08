@@ -21,12 +21,12 @@ jobs:
       - name: Unshallow
         run: git fetch --prune --unshallow
 
-      # - name: Log in to the Container registry
-      #   uses: docker/login-action@v2
-      #   with:
-      #     registry: ghcr.io
-      #     username: ${{ github.actor }}
-      #     password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create release
         uses: goreleaser/goreleaser-action@v3
@@ -35,4 +35,4 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # BREW_TOKEN: ${{ secrets.BREW_TOKEN }}
+          BREW_TOKEN: ${{ secrets.BREW_TOKEN }}

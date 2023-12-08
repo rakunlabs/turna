@@ -25,7 +25,7 @@ builds:
       - CGO_ENABLED=0
     goos:
       - linux
-      # - windows
+      - windows
       - darwin
     goarch:
       - amd64
@@ -82,8 +82,28 @@ brews:
 - name: turna
   homepage: https://github.com/worldline-go/turna
   description: "swiss knife for services"
-  tap:
+  repository:
     owner: brew-tools
     name: homebrew-tap
     token: "{{ .Env.BREW_TOKEN }}"
   folder: Formula
+
+dockers:
+- image_templates:
+  - 'ghcr.io/worldline-go/turna:{{ .Tag }}'
+  - 'ghcr.io/worldline-go/turna:{{ .Tag }}-alpine'
+  - 'ghcr.io/worldline-go/turna:{{ .Tag }}-alpine3.19.0'
+  - 'ghcr.io/worldline-go/turna:latest'
+  dockerfile: ci/alpine.Dockerfile
+  build_flag_templates:
+  - "--pull"
+  - "--label=io.artifacthub.package.readme-url=https://raw.githubusercontent.com/worldline-go/turna/main/README.md"
+  - "--label=io.artifacthub.package.maintainers=[{\"name\":\"Eray Ates\",\"email\":\"eates23@gmail.com\"}]"
+  - "--label=io.artifacthub.package.license=Apache-2.0"
+  - "--label=org.opencontainers.image.description=swiss knife for services"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.name={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}"
+  - "--label=org.opencontainers.image.source={{.GitURL}}"
+  - "--build-arg=ALPINE=alpine:3.19.0"

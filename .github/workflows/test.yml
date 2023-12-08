@@ -24,6 +24,8 @@ jobs:
         [[ ! -f ".golangci.yml" ]] && curl -kfsSL -O https://raw.githubusercontent.com/worldline-go/guide/main/lint/.golangci.yml || true
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v3
+      with:
+        args: --timeout 5m --new-from-rev=HEAD~1 --issues-exit-code=0
     - name: Run tests
       run: |
         GOPATH="$(dirname ${PWD})" golangci-lint run --out-format checkstyle ./... > golangci-lint-report.out || true

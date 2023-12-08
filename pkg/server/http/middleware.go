@@ -29,6 +29,7 @@ type HTTPMiddleware struct {
 	GzipMiddleware        *middlewares.Gzip        `cfg:"gzip"`
 	DecompressMiddleware  *middlewares.Decompress  `cfg:"decompress"`
 	LogMiddleware         *middlewares.Log         `cfg:"log"`
+	PrintMiddleware       *middlewares.Print       `cfg:"print"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo.MiddlewareFunc, error) {
@@ -92,6 +93,10 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo
 	}
 	if h.LogMiddleware != nil {
 		return h.LogMiddleware.Middleware()
+	}
+	if h.PrintMiddleware != nil {
+		m, err := h.PrintMiddleware.Middleware()
+		return []echo.MiddlewareFunc{m}, err
 	}
 
 	return nil, nil

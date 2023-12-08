@@ -1,0 +1,14 @@
+server:
+  entrypoints:
+    web:
+      address: ":8080"
+  http:
+    middlewares:
+      print:
+        print:
+          text: "\n"
+    routers:
+      print:
+        path: /*
+        middlewares:
+          - print

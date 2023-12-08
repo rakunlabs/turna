@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 
 	"github.com/rs/zerolog/log"
 
@@ -132,25 +131,13 @@ func (c *Command) start(ctx context.Context, wg *sync.WaitGroup) (*os.Process, e
 	}
 
 	procAttr.Env = c.Env
-
 	procAttr.Dir = c.Path
-	procAttr.Sys = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
 
-	if c.User != "" {
-		// parse user
-		user, err := UserParser(c.User)
-		if err != nil {
-			return nil, fmt.Errorf("cannot parse user: %w", err)
-		}
-
-		procAttr.Sys.Credential = &syscall.Credential{
-			Uid:         user.UID,
-			Gid:         user.GID,
-			NoSetGroups: true,
-		}
+	sys, err := sysProcAttr(c.User)
+	if err != nil {
+		return nil, err
 	}
+	procAttr.Sys = sys
 
 	var p *os.Process
 
@@ -242,7 +229,7 @@ func (c *Command) Kill() {
 	if v != nil {
 		log.Warn().Msgf("killing process [%s] [%d]", c.Name, v.Pid)
 
-		if err := syscall.Kill(-v.Pid, syscall.SIGINT); err != nil {
+		if err := terminateProcess(v.Pid); err != nil {
 			log.Logger.Error().Err(err).Msg("syscall kill failed")
 		}
 
