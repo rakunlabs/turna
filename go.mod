@@ -6,12 +6,15 @@ require (
 	github.com/abbot/go-http-auth v0.4.1-0.20220112235402-e1cee1c72f2f
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/labstack/echo/v4 v4.11.3
+	github.com/rbcervilla/redisstore/v9 v9.0.0
+	github.com/redis/go-redis/v9 v9.0.2
 	github.com/rs/zerolog v1.31.0
 	github.com/rytsh/liz/loader v0.2.5
 	github.com/rytsh/mugo v0.7.3
 	github.com/spf13/cast v1.5.1
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/pflag v1.0.5
+	github.com/twmb/tlscfg v1.2.1
 	github.com/worldline-go/auth v0.7.7
 	github.com/worldline-go/igconfig v0.2.4
 	github.com/worldline-go/initializer v0.2.4
@@ -30,7 +33,9 @@ require (
 	github.com/armon/go-metrics v0.3.10 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/cenkalti/backoff/v3 v3.0.0 // indirect
+	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/cli/safeexec v1.0.1 // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fatih/color v1.14.1 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect

@@ -4,40 +4,38 @@ import (
 	"bufio"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/labstack/echo/v4"
 )
 
 type Print struct {
-	// To for stdout or stderr, default stdout
-	To string `cfg:"to"`
-
 	// Text after to print
 	Text string `cfg:"text"`
 }
 
 func (m *Print) Middleware() (echo.MiddlewareFunc, error) {
-	to := os.Stdout
-	if strings.EqualFold(m.To, "stderr") {
-		to = os.Stderr
-	}
-
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			switch c.Request().Method {
 			case http.MethodGet:
 				return next(c)
 			case http.MethodPost:
-				if _, err := bufio.NewReader(c.Request().Body).WriteTo(to); err != nil {
+				body := c.Request().Body
+				if body == nil {
+					return c.NoContent(http.StatusNoContent)
+				}
+
+				if _, err := bufio.NewReader(body).WriteTo(os.Stderr); err != nil {
 					return err
 				}
 
 				if m.Text != "" {
-					if _, err := to.Write([]byte(m.Text)); err != nil {
+					if _, err := os.Stderr.Write([]byte(m.Text)); err != nil {
 						return err
 					}
 				}
+
+				os.Stderr.WriteString("\n")
 
 				return c.NoContent(http.StatusNoContent)
 			default:

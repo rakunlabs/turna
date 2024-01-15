@@ -14,6 +14,10 @@ run: ## Run the application; CONFIG_FILE to specify a config file
 build: ## Build the binary
 	goreleaser build --snapshot --clean --single-target
 
+.PHONY: build-container
+build-container: build ## Build the container image with test tag
+	docker build -t $(PROJECT):test --build-arg ALPINE=alpine:3.19.0 -f ci/alpine.Dockerfile dist/turna_linux_amd64_v1/
+
 .PHONY: lint
 lint: ## Run linter
 	GOPATH="$(shell dirname $(PWD))" golangci-lint run
@@ -32,11 +36,15 @@ consul: ## Run consul server
 
 .PHONY: keycloak
 keycloak: ## Run keycloak server
-	docker run --rm -it -p 8080:8080 -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:20.0.2 start-dev
+	docker run --rm -it -p 8080:8080 -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:23.0.4 start-dev
 
 .PHONY: whoami
 whoami: ## Run whoami server
 	docker run --rm -it -p 9090:80 traefik/whoami:latest
+
+.PHONY: dragonfly
+dragonfly: ## Run dragonfly server
+	docker run --rm -it -p 6379:6379 --ulimit memlock=-1 docker.dragonflydb.io/dragonflydb/dragonfly
 
 .PHONY: test
 test: ## Run unit tests

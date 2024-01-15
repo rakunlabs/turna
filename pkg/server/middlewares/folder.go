@@ -54,6 +54,10 @@ type Folder struct {
 	fs http.FileSystem
 }
 
+func (f *Folder) SetFs(fs http.FileSystem) {
+	f.fs = fs
+}
+
 type RegexPathStore struct {
 	Regex       string `cfg:"regex"`
 	Replacement string `cfg:"replacement"`
@@ -66,7 +70,7 @@ type RegexCacheStore struct {
 	rgx          *regexp.Regexp
 }
 
-func (f *Folder) Middleware() ([]echo.MiddlewareFunc, error) {
+func (f *Folder) Middleware() (echo.MiddlewareFunc, error) {
 	if f.IndexName == "" {
 		f.IndexName = indexPage
 	}
@@ -108,9 +112,11 @@ func (f *Folder) Middleware() ([]echo.MiddlewareFunc, error) {
 		f.BrowseCache = "no-cache"
 	}
 
-	f.fs = http.Dir(f.Path)
+	if f.fs == nil {
+		f.fs = http.Dir(f.Path)
+	}
 
-	return []echo.MiddlewareFunc{func(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(_ echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			upath := c.Request().URL.Path
 			if !strings.HasPrefix(upath, "/") {
@@ -136,7 +142,7 @@ func (f *Folder) Middleware() ([]echo.MiddlewareFunc, error) {
 
 			return f.serveFile(c, upath, cPath)
 		}
-	}}, nil
+	}, nil
 }
 
 // name is '/'-separated, not filepath.Separator.

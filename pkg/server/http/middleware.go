@@ -5,6 +5,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/turna/pkg/server/middlewares"
+	"github.com/worldline-go/turna/pkg/server/middlewares/login"
+	"github.com/worldline-go/turna/pkg/server/middlewares/session"
 	"github.com/worldline-go/turna/pkg/server/registry"
 )
 
@@ -30,72 +32,62 @@ type HTTPMiddleware struct {
 	DecompressMiddleware  *middlewares.Decompress  `cfg:"decompress"`
 	LogMiddleware         *middlewares.Log         `cfg:"log"`
 	PrintMiddleware       *middlewares.Print       `cfg:"print"`
+	LoginMiddleware       *login.Login             `cfg:"login"`
+	SessionMiddleware     *session.Session         `cfg:"session"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo.MiddlewareFunc, error) {
-	if h.AddPrefixMiddleware != nil {
+	switch {
+	case h.AddPrefixMiddleware != nil:
 		return []echo.MiddlewareFunc{h.AddPrefixMiddleware.Middleware()}, nil
-	}
-	if h.AuthMiddleware != nil {
+	case h.AuthMiddleware != nil:
 		return h.AuthMiddleware.Middleware(ctx, name)
-	}
-	if h.InjectMiddleware != nil {
+	case h.InjectMiddleware != nil:
 		return h.InjectMiddleware.Middleware()
-	}
-	if h.HelloMiddleware != nil {
+	case h.HelloMiddleware != nil:
 		return h.HelloMiddleware.Middleware()
-	}
-	if h.TemplateMiddleware != nil {
+	case h.TemplateMiddleware != nil:
 		m, err := h.TemplateMiddleware.Middleware()
 		return []echo.MiddlewareFunc{m}, err
-	}
-	if h.InfoMiddleware != nil {
+	case h.InfoMiddleware != nil:
 		return []echo.MiddlewareFunc{h.InfoMiddleware.Middleware()}, nil
-	}
-	if h.SetMiddleware != nil {
+	case h.SetMiddleware != nil:
 		return []echo.MiddlewareFunc{h.SetMiddleware.Middleware()}, nil
-	}
-	if h.StripPrefixMiddleware != nil {
+	case h.StripPrefixMiddleware != nil:
 		return []echo.MiddlewareFunc{h.StripPrefixMiddleware.Middleware()}, nil
-	}
-	if h.RoleMiddleware != nil {
+	case h.RoleMiddleware != nil:
 		return []echo.MiddlewareFunc{h.RoleMiddleware.Middleware()}, nil
-	}
-	if h.ScopeMiddleware != nil {
+	case h.ScopeMiddleware != nil:
 		return []echo.MiddlewareFunc{h.ScopeMiddleware.Middleware()}, nil
-	}
-	if h.ServiceMiddleware != nil {
+	case h.ServiceMiddleware != nil:
 		return h.ServiceMiddleware.Middleware()
-	}
-	if h.FolderMiddleware != nil {
-		return h.FolderMiddleware.Middleware()
-	}
-	if h.BasicAuthMiddleware != nil {
+	case h.FolderMiddleware != nil:
+		m, err := h.FolderMiddleware.Middleware()
+		return []echo.MiddlewareFunc{m}, err
+	case h.BasicAuthMiddleware != nil:
 		return h.BasicAuthMiddleware.Middleware(name)
-	}
-	if h.CorsMiddleware != nil {
+	case h.CorsMiddleware != nil:
 		return []echo.MiddlewareFunc{h.CorsMiddleware.Middleware()}, nil
-	}
-	if h.HeadersMiddleware != nil {
+	case h.HeadersMiddleware != nil:
 		return []echo.MiddlewareFunc{h.HeadersMiddleware.Middleware()}, nil
-	}
-	if h.BlockMiddleware != nil {
+	case h.BlockMiddleware != nil:
 		return []echo.MiddlewareFunc{h.BlockMiddleware.Middleware()}, nil
-	}
-	if h.RegexPathMiddleware != nil {
+	case h.RegexPathMiddleware != nil:
 		return h.RegexPathMiddleware.Middleware()
-	}
-	if h.GzipMiddleware != nil {
+	case h.GzipMiddleware != nil:
 		return []echo.MiddlewareFunc{h.GzipMiddleware.Middleware()}, nil
-	}
-	if h.DecompressMiddleware != nil {
+	case h.DecompressMiddleware != nil:
 		return []echo.MiddlewareFunc{h.DecompressMiddleware.Middleware()}, nil
-	}
-	if h.LogMiddleware != nil {
+	case h.LogMiddleware != nil:
 		return h.LogMiddleware.Middleware()
-	}
-	if h.PrintMiddleware != nil {
+	case h.PrintMiddleware != nil:
 		m, err := h.PrintMiddleware.Middleware()
+		return []echo.MiddlewareFunc{m}, err
+	case h.LoginMiddleware != nil:
+		m, err := h.LoginMiddleware.Middleware(ctx, name)
+		return []echo.MiddlewareFunc{m}, err
+	case h.SessionMiddleware != nil:
+		m, err := h.SessionMiddleware.Middleware(ctx, name)
 		return []echo.MiddlewareFunc{m}, err
 	}
 

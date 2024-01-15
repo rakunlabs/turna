@@ -5,8 +5,7 @@ server:
   http:
     middlewares:
       print:
-        print:
-          text: "\n"
+        print: {}
     routers:
       print:
         path: /*
