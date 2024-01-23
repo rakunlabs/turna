@@ -56,7 +56,7 @@ func (s *Session) SetStore(ctx context.Context) error {
 			return fmt.Errorf("redis store is not configured")
 		}
 
-		s.store, err = s.Store.Redis.Store(ctx, s.SessionKey, sessionOpts)
+		s.store, err = s.Store.Redis.Store(ctx, sessionOpts)
 		if err != nil {
 			return err
 		}
@@ -72,7 +72,7 @@ func (s *Session) SetStore(ctx context.Context) error {
 		return nil
 	case "":
 		if s.Store.Redis != nil {
-			s.store, err = s.Store.Redis.Store(ctx, s.SessionKey, sessionOpts)
+			s.store, err = s.Store.Redis.Store(ctx, sessionOpts)
 			if err != nil {
 				return err
 			}

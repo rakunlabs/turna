@@ -2,7 +2,13 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/base32"
+	"io"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gorilla/sessions"
 	"github.com/rbcervilla/redisstore/v9"
@@ -19,7 +25,7 @@ type Redis struct {
 	KeyPrefix string `cfg:"key_prefix"`
 }
 
-func (r Redis) Store(ctx context.Context, sessionKey string, opts sessions.Options) (*redisstore.RedisStore, error) {
+func (r Redis) Store(ctx context.Context, opts sessions.Options) (*redisstore.RedisStore, error) {
 	tlsConfig, err := r.TLS.Generate()
 	if err != nil {
 		return nil, err
@@ -45,9 +51,7 @@ func (r Redis) Store(ctx context.Context, sessionKey string, opts sessions.Optio
 
 	rStore.Options(opts)
 
-	rStore.KeyGen(func() (string, error) {
-		return sessionKey, nil
-	})
+	rStore.KeyGen(generateRandomKey)
 
 	return rStore, nil
 }
@@ -89,4 +93,16 @@ func (t TLSConfig) Generate() (*tls.Config, error) {
 	}
 
 	return tlscfg.New(opts...)
+}
+
+func generateRandomKey() (string, error) {
+	k := make([]byte, 64)
+	if _, err := io.ReadFull(rand.Reader, k); err != nil {
+		return "", err
+	}
+
+	// add timestamp to key
+	timestamp := strconv.FormatInt(time.Now().UnixNano(), 10)
+
+	return timestamp + "_" + strings.TrimRight(base32.StdEncoding.EncodeToString(k), "="), nil
 }

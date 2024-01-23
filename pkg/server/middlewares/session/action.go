@@ -99,7 +99,7 @@ func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 			v64, _ = v.Values[m.ValueName].(string)
 		} else {
 			if err != nil {
-				return c.JSON(http.StatusInternalServerError, MetaData{Error: err.Error()})
+				c.Logger().Errorf("cannot get session: %v", err)
 			}
 
 			// cookie not found, redirect to login page
