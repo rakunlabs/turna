@@ -6,7 +6,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/auth/claims"
-	storeAuth "github.com/worldline-go/auth/store"
 )
 
 type Information struct {
@@ -23,9 +22,11 @@ type Information struct {
 func (m *Session) Info(c echo.Context) error {
 	// check if token exist in store
 	v64 := ""
+	// providerName := ""
 	if v, err := m.store.Get(c.Request(), m.CookieName); !v.IsNew && err == nil {
 		// add the access token to the request
-		v64, _ = v.Values[m.ValueName].(string)
+		v64, _ = v.Values[TokenKey].(string)
+		// providerName, _ = v.Values[ProviderKey].(string)
 	} else {
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, MetaData{Error: err.Error()})
@@ -36,7 +37,7 @@ func (m *Session) Info(c echo.Context) error {
 	}
 
 	// check if token is valid
-	token, err := storeAuth.Parse(v64, storeAuth.WithBase64(true))
+	token, err := ParseToken64(v64)
 	if err != nil {
 		c.Logger().Errorf("cannot parse token: %v", err)
 		return m.RedirectToLogin(c, m.store, true, true)
@@ -44,7 +45,7 @@ func (m *Session) Info(c echo.Context) error {
 
 	// check if token is valid
 	claim := claims.Custom{}
-	if _, err := m.Actions.Token.keyFunc.ParseWithClaims(token.AccessToken, &claim); err != nil {
+	if _, err := m.Action.Token.keyFunc.ParseWithClaims(token.AccessToken, &claim); err != nil {
 		return c.JSON(http.StatusForbidden, MetaData{Error: err.Error()})
 	}
 

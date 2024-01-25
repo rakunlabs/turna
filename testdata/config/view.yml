@@ -1,0 +1,20 @@
+server:
+  entrypoints:
+    web:
+      address: ":8082"
+  http:
+    middlewares:
+      view:
+        view:
+          prefix_path: /view/
+          info:
+            swagger:
+              test:
+                link: https://petstore.swagger.io/v2/swagger.json
+                base_path_prefix: /api
+                disable_authorize_button: true
+    routers:
+      whoami:
+        path: /view/*
+        middlewares:
+          - view

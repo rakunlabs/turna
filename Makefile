@@ -46,6 +46,10 @@ whoami: ## Run whoami server
 dragonfly: ## Run dragonfly server
 	docker run --rm -it -p 6379:6379 --ulimit memlock=-1 docker.dragonflydb.io/dragonflydb/dragonfly
 
+.PHONY: openfga
+openfga: ## Run openfga server
+	docker run -p 8080:8080 -p 8081:8081 -p 3000:3000 openfga/openfga run
+
 .PHONY: test
 test: ## Run unit tests
 	@go test  -timeout 30s -race -cover ./...

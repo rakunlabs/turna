@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/sessions"
+	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/turna/pkg/server/middlewares/session/store"
 )
 
@@ -15,6 +16,11 @@ type Store struct {
 	Redis  *store.Redis `cfg:"redis"`
 	File   *store.File  `cfg:"file"`
 }
+
+var (
+	TokenKey    = "token"
+	ProviderKey = "provider"
+)
 
 type StoreInf interface {
 	Get(r *http.Request, name string) (*sessions.Session, error)
@@ -92,34 +98,27 @@ func (s *Session) SetStore(ctx context.Context) error {
 	}
 }
 
-func SetSessionB64(r *http.Request, w http.ResponseWriter, body []byte, cookieName, valueName string, sessionStore StoreInf) (string, error) {
-	cookieValue := base64.StdEncoding.EncodeToString(body)
+func (s *Session) SetToken(c echo.Context, token []byte, providerName string) error {
+	cookieValue := base64.StdEncoding.EncodeToString(token)
 
-	if err := SetSession(r, w, cookieValue, cookieName, valueName, sessionStore); err != nil {
-		return "", err
-	}
-
-	return cookieValue, nil
-}
-
-func SetSession(r *http.Request, w http.ResponseWriter, value, cookieName, valueName string, sessionStore StoreInf) error {
 	// set the cookie
-	session, _ := sessionStore.Get(r, cookieName)
-	session.Values[valueName] = value
+	session, _ := s.store.Get(c.Request(), s.CookieName)
+	session.Values[TokenKey] = cookieValue
+	session.Values[ProviderKey] = providerName
 
-	if err := session.Save(r, w); err != nil {
+	if err := session.Save(c.Request(), c.Response()); err != nil {
 		return err
 	}
 
 	// add header for session set
-	w.Header().Set("X-Session-Set", "true")
+	c.Response().Header().Set("X-Session-Set", "true")
 
 	return nil
 }
 
-func RemoveSession(r *http.Request, w http.ResponseWriter, cookieName string, sessionStore StoreInf) error {
-	session, _ := sessionStore.Get(r, cookieName)
+func (s *Session) DelToken(c echo.Context) error {
+	session, _ := s.store.Get(c.Request(), s.CookieName)
 	session.Options.MaxAge = -1
 
-	return session.Save(r, w)
+	return session.Save(c.Request(), c.Response())
 }

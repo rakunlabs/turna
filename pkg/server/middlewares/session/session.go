@@ -18,9 +18,8 @@ type Session struct {
 	Options    Options `cfg:"options"`
 
 	CookieName string `cfg:"cookie_name"`
-	ValueName  string `cfg:"value_name"`
 
-	Actions     Actions     `cfg:"actions"`
+	Action      Action      `cfg:"action"`
 	Information Information `cfg:"information"`
 
 	store StoreInf `cfg:"-"`
@@ -39,10 +38,6 @@ type Options struct {
 func (m *Session) Init(ctx context.Context, name string) error {
 	if err := m.SetStore(ctx); err != nil {
 		return err
-	}
-
-	if m.ValueName == "" {
-		m.ValueName = "data"
 	}
 
 	if m.CookieName == "" {

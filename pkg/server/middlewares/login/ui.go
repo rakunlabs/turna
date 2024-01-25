@@ -17,12 +17,13 @@ func (m *Login) SetView() (echo.MiddlewareFunc, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	folder := middlewares.Folder{
 		Index:          true,
 		StripIndexName: true,
 		SPA:            true,
 		Browse:         false,
-		PrefixPath:     m.UI.EmbedPathPrefix,
+		PrefixPath:     m.Path.Base,
 		CacheRegex: []*middlewares.RegexCacheStore{
 			{
 				Regex:        `index\.html$`,
@@ -30,7 +31,7 @@ func (m *Login) SetView() (echo.MiddlewareFunc, error) {
 			},
 			{
 				Regex:        `.*`,
-				CacheControl: "public, max-age=604800",
+				CacheControl: "public, max-age=259200",
 			},
 		},
 	}
