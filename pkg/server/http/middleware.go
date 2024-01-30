@@ -36,6 +36,9 @@ type HTTPMiddleware struct {
 	LoginMiddleware       *login.Login             `cfg:"login"`
 	SessionMiddleware     *session.Session         `cfg:"session"`
 	ViewMiddleware        *view.View               `cfg:"view"`
+	RequestMiddleware     *middlewares.Request     `cfg:"request"`
+	RedirectionMiddleware *middlewares.Redirection `cfg:"redirection"`
+	TryMiddleware         *middlewares.Try         `cfg:"try"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo.MiddlewareFunc, error) {
@@ -73,7 +76,8 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo
 	case h.HeadersMiddleware != nil:
 		return []echo.MiddlewareFunc{h.HeadersMiddleware.Middleware()}, nil
 	case h.BlockMiddleware != nil:
-		return []echo.MiddlewareFunc{h.BlockMiddleware.Middleware()}, nil
+		m, err := h.BlockMiddleware.Middleware()
+		return []echo.MiddlewareFunc{m}, err
 	case h.RegexPathMiddleware != nil:
 		return h.RegexPathMiddleware.Middleware()
 	case h.GzipMiddleware != nil:
@@ -93,6 +97,15 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo
 		return []echo.MiddlewareFunc{m}, err
 	case h.ViewMiddleware != nil:
 		m, err := h.ViewMiddleware.Middleware(ctx, name)
+		return []echo.MiddlewareFunc{m}, err
+	case h.RequestMiddleware != nil:
+		m, err := h.RequestMiddleware.Middleware()
+		return []echo.MiddlewareFunc{m}, err
+	case h.RedirectionMiddleware != nil:
+		m, err := h.RedirectionMiddleware.Middleware()
+		return []echo.MiddlewareFunc{m}, err
+	case h.TryMiddleware != nil:
+		m, err := h.TryMiddleware.Middleware()
 		return []echo.MiddlewareFunc{m}, err
 	}
 

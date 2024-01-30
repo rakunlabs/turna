@@ -9,39 +9,10 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/worldline-go/turna/pkg/server/middlewares/session"
 )
 
-// AuthHeaderStyle is a type to set Authorization header style.
-type AuthHeaderStyle int
-
-const (
-	AuthHeaderStyleBasic AuthHeaderStyle = iota
-	AuthHeaderStyleBearerSecret
-	AuthHeaderStyleParams
-)
-
-type Oauth2 struct {
-	// ClientID is the application's ID.
-	ClientID string `cfg:"client_id"`
-	// ClientSecret is the application's secret.
-	ClientSecret string `cfg:"client_secret" log:"false"`
-	// Scope specifies optional requested permissions.
-	Scopes []string `cfg:"scopes"`
-	// CertURL is the resource server's public key URL.
-	CertURL string `cfg:"cert_url"`
-	// IntrospectURL is the check the active or not with request.
-	IntrospectURL string `cfg:"introspect_url"`
-	// AuthURL is the resource server's authorization endpoint
-	// use for redirection to login page.
-	AuthURL string `cfg:"auth_url"`
-	// TokenURL is the resource server's token endpoint URL.
-	TokenURL  string `cfg:"token_url"`
-	LogoutURL string `cfg:"logout_url"`
-	// AuthHeaderStyle is optional. If not set, AuthHeaderStyleBasic will be used.
-	AuthHeaderStyle AuthHeaderStyle
-}
-
-func (m *Login) PasswordToken(ctx context.Context, username, password string, oauth2 *Oauth2) ([]byte, int, error) {
+func (m *Login) PasswordToken(ctx context.Context, username, password string, oauth2 *session.Oauth2) ([]byte, int, error) {
 	uValues := url.Values{
 		"grant_type": {"password"},
 		"username":   {username},
@@ -87,7 +58,7 @@ func (m *Login) PasswordToken(ctx context.Context, username, password string, oa
 }
 
 // CodeToken get token and set the cookie/session.
-func (m *Login) CodeToken(c echo.Context, code, providerName string, oauth2 *Oauth2) ([]byte, int, error) {
+func (m *Login) CodeToken(c echo.Context, code, providerName string, oauth2 *session.Oauth2) ([]byte, int, error) {
 	ctx := c.Request().Context()
 	redirectURI, err := m.AuthCodeRedirectURL(c.Request(), providerName)
 	if err != nil {
@@ -143,17 +114,17 @@ func (m *Login) CodeToken(c echo.Context, code, providerName string, oauth2 *Oau
 // Style must be AuthHeaderStyleBasic or AuthHeaderStyleBearerSecret, otherwise it does nothing.
 //
 // Default style is AuthHeaderStyleBasic.
-func AuthAdd(req *http.Request, clientID, clientSecret string, style AuthHeaderStyle) {
+func AuthAdd(req *http.Request, clientID, clientSecret string, style session.AuthHeaderStyle) {
 	if req == nil {
 		return
 	}
 
 	switch style {
-	case AuthHeaderStyleBasic:
+	case session.AuthHeaderStyleBasic:
 		req.SetBasicAuth(url.QueryEscape(clientID), url.QueryEscape(clientSecret))
-	case AuthHeaderStyleBearerSecret:
+	case session.AuthHeaderStyleBearerSecret:
 		SetBearerAuth(req, clientSecret)
-	case AuthHeaderStyleParams:
+	case session.AuthHeaderStyleParams:
 		query := req.URL.Query()
 		if clientID != "" {
 			query.Add("client_id", clientID)

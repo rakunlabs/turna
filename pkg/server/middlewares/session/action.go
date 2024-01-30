@@ -24,24 +24,20 @@ type Action struct {
 }
 
 type Token struct {
-	LoginPath          string              `cfg:"login_path"`
-	DisableRefresh     bool                `cfg:"disable_refresh"`
-	Provider           map[string]Provider `cfg:"provider"`
-	InsecureSkipVerify bool                `cfg:"insecure_skip_verify"`
+	LoginPath          string `cfg:"login_path"`
+	DisableRefresh     bool   `cfg:"disable_refresh"`
+	InsecureSkipVerify bool   `cfg:"insecure_skip_verify"`
 
 	auth    request.Auth            `cfg:"-"`
 	keyFunc models.InfKeyFuncParser `cfg:"-"`
 }
 
 type Provider struct {
-	Oauth2 *Oauth2Config `cfg:"oauth2"`
-}
-
-type Oauth2Config struct {
-	TokenURL     string `cfg:"token_url"`
-	CertURL      string `cfg:"cert_url"`
-	ClientID     string `cfg:"client_id"`
-	ClientSecret string `cfg:"client_secret"`
+	Oauth2 *Oauth2 `cfg:"oauth2"`
+	// PasswordFlow is use password flow to get token.
+	PasswordFlow bool `cfg:"password_flow"`
+	// Priority is use to sort provider.
+	Priority int `cfg:"priority"`
 }
 
 type ProviderWrapper struct {
@@ -71,8 +67,8 @@ func (m *Session) SetAction() error {
 
 		m.Action.Token.auth.Client = client.HTTP
 
-		providerList := make([]auth.InfProviderCert, 0, len(m.Action.Token.Provider))
-		for _, v := range m.Action.Token.Provider {
+		providerList := make([]auth.InfProviderCert, 0, len(m.Provider))
+		for _, v := range m.Provider {
 			if v.Oauth2 == nil {
 				continue
 			}
@@ -144,7 +140,7 @@ func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 			}
 
 			if v {
-				provider, ok := m.Action.Token.Provider[providerName]
+				provider, ok := m.Provider[providerName]
 				if !ok || provider.Oauth2 == nil {
 					c.Logger().Errorf("cannot find provider %q", providerName)
 					return m.RedirectToLogin(c, m.store, true, true)
@@ -267,7 +263,7 @@ func (m *Session) IsLogged(c echo.Context) (bool, error) {
 		}
 
 		if v {
-			provider, ok := m.Action.Token.Provider[providerName]
+			provider, ok := m.Provider[providerName]
 			if !ok || provider.Oauth2 == nil {
 				c.Logger().Errorf("cannot find provider %q", providerName)
 				return false, fmt.Errorf("cannot find provider %q", providerName)

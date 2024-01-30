@@ -1,0 +1,17 @@
+server:
+  entrypoints:
+    web:
+      address: ":8082"
+  http:
+    middlewares:
+      request:
+        request:
+          url: https://api.punkapi.com/v2/beers/1
+          method: GET
+          headers:
+            Accept: application/json
+    routers:
+      whoami:
+        path: /*
+        middlewares:
+          - request

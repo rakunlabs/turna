@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"path"
 	"strings"
+
+	"github.com/worldline-go/turna/pkg/server/middlewares/session"
 )
 
 type Redirect struct {
@@ -57,8 +59,7 @@ func (m *Login) AuthCodeRedirectURL(r *http.Request, providerName string) (strin
 	return r.URL.String(), nil
 }
 
-func (m *Login) AuthCodeURL(r *http.Request, state, providerName string) (string, error) {
-	oauth2 := m.Provider[providerName].Oauth2
+func (m *Login) AuthCodeURL(r *http.Request, state, providerName string, oauth2 *session.Oauth2) (string, error) {
 	if oauth2 == nil {
 		return "", fmt.Errorf("provider %q has no oauth2", providerName)
 	}

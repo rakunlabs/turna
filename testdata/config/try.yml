@@ -1,0 +1,30 @@
+server:
+  entrypoints:
+    web:
+      address: ":8082"
+  http:
+    middlewares:
+      hello:
+        hello:
+          message: "Hello from TURNA\n"
+          status_code: 404
+      block:
+        block:
+          regex_path: ^/v1/one/(.*)$
+      try:
+        try:
+          regex: ^/v1/one/(.*)$
+          replacement: /v1/two/$1
+          status_codes: "403"
+      whoami:
+        service:
+          loadbalancer:
+            servers:
+              - url: "http://localhost:9090"
+    routers:
+      one:
+        path: /v1/one/*
+        middlewares:
+          - try
+          - block
+          - whoami

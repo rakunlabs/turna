@@ -7,6 +7,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/turna/pkg/server/middlewares/session"
+	"github.com/worldline-go/turna/pkg/server/model"
 )
 
 type Info struct {
@@ -44,17 +45,22 @@ func (m *Login) InformationUI(c echo.Context) error {
 		Title: info.Title,
 	}
 
-	for providerName := range m.Provider {
-		oauth2 := m.Provider[providerName].Oauth2
+	sessionM := session.GlobalRegistry.Get(m.SessionMiddleware)
+	if sessionM == nil {
+		return c.JSON(http.StatusInternalServerError, model.MetaData{Error: "session middleware not found"})
+	}
+
+	for providerName := range sessionM.Provider {
+		oauth2 := sessionM.Provider[providerName].Oauth2
 		if oauth2 == nil {
 			continue
 		}
 
-		if m.Provider[providerName].PasswordFlow {
+		if sessionM.Provider[providerName].PasswordFlow {
 			response.Provider.Password = append(response.Provider.Password, Link{
 				Name:     providerName,
 				URL:      path.Join(m.pathFixed.Token, providerName),
-				Priority: m.Provider[providerName].Priority,
+				Priority: sessionM.Provider[providerName].Priority,
 			})
 
 			continue
@@ -63,7 +69,7 @@ func (m *Login) InformationUI(c echo.Context) error {
 		response.Provider.Code = append(response.Provider.Code, Link{
 			Name:     providerName,
 			URL:      path.Join(m.pathFixed.Code, providerName),
-			Priority: m.Provider[providerName].Priority,
+			Priority: sessionM.Provider[providerName].Priority,
 		})
 	}
 
@@ -82,7 +88,7 @@ func (m *Login) InformationUI(c echo.Context) error {
 func (m *Login) InformationUser(c echo.Context) error {
 	sessionM := session.GlobalRegistry.Get(m.SessionMiddleware)
 	if sessionM == nil {
-		return c.JSON(http.StatusInternalServerError, MetaData{Error: "session middleware not found"})
+		return c.JSON(http.StatusInternalServerError, model.MetaData{Error: "session middleware not found"})
 	}
 
 	return sessionM.Info(c)

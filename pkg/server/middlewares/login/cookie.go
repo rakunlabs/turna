@@ -21,29 +21,6 @@ type Cookie struct {
 	HttpOnly bool `cfg:"http_only"`
 }
 
-// LoadValue load the cookie/session.
-// func GetCookieB64(r *http.Request, cookieName string) ([]byte, error) {
-// 	cookie, err := r.Cookie(cookieName)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("error cookie read, %w", err)
-// 	}
-
-// 	// base64 decode
-// 	valueDecode, err := base64.StdEncoding.DecodeString(cookie.Value)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("error base64 decode, %w", err)
-// 	}
-
-// 	return valueDecode, nil
-// }
-
-// func SetCookieB64(w http.ResponseWriter, body []byte, cookieName string, cookie *Cookie) string {
-// 	cookieValue := base64.StdEncoding.EncodeToString(body)
-// 	SetCookie(w, cookieValue, cookieName, cookie)
-
-// 	return cookieValue
-// }
-
 func SetCookie(w http.ResponseWriter, value string, cookie *Cookie) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookie.CookieName,

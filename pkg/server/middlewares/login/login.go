@@ -11,19 +11,19 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/klient"
 	"github.com/worldline-go/turna/pkg/server/middlewares/session"
+	"github.com/worldline-go/turna/pkg/server/model"
 )
 
 // Login middleware gives a login page.
 type Login struct {
-	Path              Path                `cfg:"path"`
-	Redirect          Redirect            `cfg:"redirect"`
-	Provider          map[string]Provider `cfg:"provider"`
-	UI                UI                  `cfg:"ui"`
-	Info              Info                `cfg:"info"`
-	Request           Request             `cfg:"request"`
-	SessionMiddleware string              `cfg:"session_middleware"`
-	StateCookie       Cookie              `cfg:"state_cookie"`
-	SuccessCookie     Cookie              `cfg:"success_cookie"`
+	Path              Path     `cfg:"path"`
+	Redirect          Redirect `cfg:"redirect"`
+	UI                UI       `cfg:"ui"`
+	Info              Info     `cfg:"info"`
+	Request           Request  `cfg:"request"`
+	SessionMiddleware string   `cfg:"session_middleware"`
+	StateCookie       Cookie   `cfg:"state_cookie"`
+	SuccessCookie     Cookie   `cfg:"success_cookie"`
 
 	client    *klient.Client `cfg:"-"`
 	pathFixed PathFixed      `cfg:"-"`
@@ -55,7 +55,7 @@ type UI struct {
 }
 
 type Provider struct {
-	Oauth2 *Oauth2 `cfg:"oauth2"`
+	Oauth2 *session.Oauth2 `cfg:"oauth2"`
 
 	// PasswordFlow is use password flow to get token.
 	PasswordFlow bool `cfg:"password_flow"`
@@ -153,7 +153,7 @@ func (m *Login) Middleware(ctx context.Context, _ string) (echo.MiddlewareFunc, 
 			if isLogout, _ := c.Get("logout").(bool); isLogout {
 				sessionM := session.GlobalRegistry.Get(m.SessionMiddleware)
 				if sessionM == nil {
-					return c.JSON(http.StatusInternalServerError, MetaData{Error: "session middleware not found"})
+					return c.JSON(http.StatusInternalServerError, model.MetaData{Error: "session middleware not found"})
 				}
 
 				return sessionM.RedirectToLogin(c, sessionM.GetStore(), false, true)
@@ -179,7 +179,7 @@ func (m *Login) Middleware(ctx context.Context, _ string) (echo.MiddlewareFunc, 
 				// check to redirection
 				sessionM := session.GlobalRegistry.Get(m.SessionMiddleware)
 				if sessionM == nil {
-					return c.JSON(http.StatusInternalServerError, MetaData{Error: "session middleware not found"})
+					return c.JSON(http.StatusInternalServerError, model.MetaData{Error: "session middleware not found"})
 				}
 				isLogged, err := sessionM.IsLogged(c)
 				if isLogged {
