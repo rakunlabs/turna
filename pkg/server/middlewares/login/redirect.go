@@ -69,7 +69,12 @@ func (m *Login) AuthCodeURL(r *http.Request, state, providerName string, oauth2 
 		return "", err
 	}
 
-	data := url.Values{}
+	urlParsed, err := url.Parse(oauth2.AuthURL)
+	if err != nil {
+		return "", err
+	}
+
+	data := urlParsed.Query()
 	data.Add("response_type", "code")
 	data.Add("state", state)
 	data.Add("redirect_uri", authCodeRedirectURL)
@@ -78,7 +83,8 @@ func (m *Login) AuthCodeURL(r *http.Request, state, providerName string, oauth2 
 		data.Add("scope", strings.Join(oauth2.Scopes, " "))
 	}
 
-	redirect := oauth2.AuthURL + "?" + data.Encode()
+	urlParsed.RawQuery = data.Encode()
+	redirect := urlParsed.String()
 
 	return redirect, nil
 }

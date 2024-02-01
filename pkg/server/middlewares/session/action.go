@@ -225,6 +225,10 @@ func loginPathWithRedirect(c echo.Context, loginPath string) string {
 		redirectPath = fmt.Sprintf("%s?%s", redirectPath, c.Request().URL.RawQuery)
 	}
 
+	if (redirectPath == "" || redirectPath == "/") && c.Request().URL.RawQuery == "" {
+		return loginPath
+	}
+
 	return fmt.Sprintf("%s?redirect_path=%s", loginPath, url.QueryEscape(redirectPath))
 }
 

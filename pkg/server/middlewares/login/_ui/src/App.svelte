@@ -112,7 +112,7 @@
         <span class={mounted ? "" : "invisible"}>{authInfo.title}</span>
       </h2>
       <hr class="mb-2" />
-      {#if authInfo.provider.password?.length > 1}
+      {#if authInfo.provider.password?.length}
         <div class="float-right">
           <select bind:value={providerSelected} class="px-2">
             {#each authInfo.provider.password as provider}
@@ -153,8 +153,8 @@
           </div>
         </form>
       {/if}
-      {#if authInfo.provider.code?.length > 1}
-        {#if authInfo.provider.password?.length > 1}
+      {#if authInfo.provider.code?.length}
+        {#if authInfo.provider.password?.length}
           <hr class="my-2" />
         {/if}
         {#each authInfo.provider.code as provider}
