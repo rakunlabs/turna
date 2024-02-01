@@ -24,6 +24,7 @@ require (
 	github.com/worldline-go/logz v0.5.0
 	github.com/worldline-go/struct2 v1.2.5
 	github.com/ziflex/lecho/v3 v3.5.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -108,5 +109,4 @@ require (
 	google.golang.org/grpc v1.41.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/square/go-jose.v2 v2.5.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

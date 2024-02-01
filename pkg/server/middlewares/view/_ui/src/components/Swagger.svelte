@@ -74,34 +74,34 @@
         });
       }
 
-      if (swag.basePath) {
+      if (swag.base_path) {
         swaggerData = update(swaggerData, {
-          basePath: { $set: swag.basePath },
+          basePath: { $set: swag.base_path },
         });
-      } else if ($storeInfo.swagger_settings.basePath) {
+      } else if ($storeInfo.swagger_settings.base_path) {
         swaggerData = update(swaggerData, {
-          basePath: { $set: $storeInfo.swagger_settings.basePath },
+          basePath: { $set: $storeInfo.swagger_settings.base_path },
         });
       }
 
-      if (swag.basePathPrefix) {
+      if (swag.base_path_prefix) {
         swaggerData = update(swaggerData, {
-          basePath: { $set: `${swag.basePathPrefix}${swaggerData.basePath}` },
+          basePath: { $set: `${swag.base_path_prefix}${swaggerData.basePath}` },
         });
-      } else if ($storeInfo.swagger_settings.basePathPrefix) {
+      } else if ($storeInfo.swagger_settings.base_path_prefix) {
         swaggerData = update(swaggerData, {
           basePath: {
-            $set: `${$storeInfo.swagger_settings.basePathPrefix}${swaggerData.basePath}`,
+            $set: `${$storeInfo.swagger_settings.base_path_prefix}${swaggerData.basePath}`,
           },
         });
       }
 
       let plugins = [];
-      if (swag.disableAuthorizeButton) {
+      if (swag.disable_authorize_button) {
         plugins.push(disableAuthorizeButton);
       } else if (
-        swag.disableAuthorizeButton == null &&
-        $storeInfo.swagger_settings.disableAuthorizeButton
+        swag.disable_authorize_button == null &&
+        $storeInfo.swagger_settings.disable_authorize_button
       ) {
         plugins.push(disableAuthorizeButton);
       }

@@ -8,12 +8,18 @@ import (
 	"strconv"
 
 	"github.com/labstack/echo/v4"
+	"github.com/worldline-go/klient"
 	"github.com/worldline-go/turna/pkg/server/middlewares"
 )
 
 type View struct {
-	PrefixPath string `cfg:"prefix_path"`
-	Info       Info   `cfg:"info"`
+	PrefixPath         string `cfg:"prefix_path"`
+	Info               Info   `cfg:"info"`
+	InfoURL            string `cfg:"info_url"`
+	InfoURLType        string `cfg:"info_url_type"`
+	InsecureSkipVerify bool   `cfg:"insecure_skip_verify"`
+
+	client *klient.Client `cfg:"-"`
 }
 
 //go:embed _ui/dist/*
@@ -55,6 +61,20 @@ func (m *View) Middleware(_ context.Context, _ string) (echo.MiddlewareFunc, err
 	}
 
 	embedUIFunc := setView(nil)
+
+	if m.InfoURL != "" {
+		client, err := klient.New(
+			klient.WithDisableBaseURLCheck(true),
+			klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
+			klient.WithDisableRetry(true),
+			klient.WithDisableEnvValues(true),
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		m.client = client
+	}
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
