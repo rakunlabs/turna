@@ -59,22 +59,22 @@ server:
             secure: false
             same_site: 2
           provider:
-            # test1:
-            #   password_flow: true
-            #   oauth2:
-            #     client_id: "test1"
-            #     client_secret: ""
-            #     cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
-            #     token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
-            #     auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth"
-            # test11:
-            #   password_flow: true
-            #   oauth2:
-            #     client_id: "test1"
-            #     client_secret: ""
-            #     cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
-            #     token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
-            #     auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth"
+            test1:
+              password_flow: true
+              oauth2:
+                client_id: "test1"
+                client_secret: ""
+                cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
+                token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
+                auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth"
+            test11:
+              password_flow: true
+              oauth2:
+                client_id: "test1"
+                client_secret: ""
+                cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
+                token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
+                auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth"
             test2:
               priority: 1
               oauth2:

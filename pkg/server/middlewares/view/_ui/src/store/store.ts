@@ -1,15 +1,26 @@
 import { writable } from "svelte/store";
 
 const config: Config = {
-  swagger: {}
+  swagger: [],
+  swagger_settings: {}
 }
 
 type Config = {
-  swagger: Record<string, Swagger>
+  swagger: Swagger[];
+  swagger_settings: SwaggerSettings;
 }
 
 type Swagger = {
+  name: string;
   link: string;
+  schemes?: string[];
+  host?: string;
+  basePath?: string;
+  basePathPrefix?: string;
+  disableAuthorizeButton?: boolean;
+}
+
+type SwaggerSettings = {
   schemes?: string[];
   host?: string;
   basePath?: string;

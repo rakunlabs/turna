@@ -59,7 +59,7 @@ func (m *Login) InformationUI(c echo.Context) error {
 		if sessionM.Provider[providerName].PasswordFlow {
 			response.Provider.Password = append(response.Provider.Password, Link{
 				Name:     providerName,
-				URL:      path.Join(m.pathFixed.Token, providerName),
+				URL:      m.Path.BaseURL + path.Join(m.pathFixed.Token, providerName),
 				Priority: sessionM.Provider[providerName].Priority,
 			})
 
@@ -68,7 +68,7 @@ func (m *Login) InformationUI(c echo.Context) error {
 
 		response.Provider.Code = append(response.Provider.Code, Link{
 			Name:     providerName,
-			URL:      path.Join(m.pathFixed.Code, providerName),
+			URL:      m.Path.BaseURL + path.Join(m.pathFixed.Code, providerName),
 			Priority: sessionM.Provider[providerName].Priority,
 		})
 	}

@@ -422,8 +422,8 @@ github.com/rytsh/liz/templatex v0.1.0 h1:r8w8kWvMOe6DZpo9YE1nCl7Cp7RcaEoH3vjmKDb
 github.com/rytsh/liz/templatex v0.1.0/go.mod h1:I444dM/a4pAL4LcL0aA8CjDnk655Y40fX6TnmuN6kvA=
 github.com/rytsh/liz/vault v0.1.0 h1:UDuK3zoe5Jbtp9KWTUKDStO0KllrmXWRbIoCdrgPYkQ=
 github.com/rytsh/liz/vault v0.1.0/go.mod h1:9TK84Msm/hMNVzTh8GEvGoR54Oy2oAbhGZ24d8ZRDQw=
-github.com/rytsh/mugo v0.7.3 h1:RKAxO5ykeLRB4EofGyEVKk8BmZikgl3YcQg29CQmsyM=
-github.com/rytsh/mugo v0.7.3/go.mod h1:1FoBc0KxKywyfpJ5HMjXpc99HN+B9Z7j8KBqHiE1pF0=
+github.com/rytsh/mugo v0.7.4 h1:GXxj3HFZHX+df9QUzSvBw4oiH952qDbEc2tPlxVy+MY=
+github.com/rytsh/mugo v0.7.4/go.mod h1:1FoBc0KxKywyfpJ5HMjXpc99HN+B9Z7j8KBqHiE1pF0=
 github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 h1:nn5Wsu0esKSJiIVhscUtVbo7ada43DJhG55ua/hjS5I=
 github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529/go.mod h1:DxrIzT+xaE7yg65j358z/aeFdxmN0P9QXhEzd20vsDc=
 github.com/shopspring/decimal v1.2.0/go.mod h1:DKyhrW/HYNuLGql+MJL6WCR6knT2jwCFRcu2hWCYk4o=

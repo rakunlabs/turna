@@ -4,7 +4,7 @@
 </script>
 
 <div class="sidebar-bg border-r border-black">
-  <div class="sticky top-0">
+  <div class="sticky top-0 overflow-auto max-h-svh no-scrollbar">
     <div class="border-b border-black">
       <a
         href="#/"
@@ -18,28 +18,28 @@
         <span class="block px-2 py-1">View</span>
       </a>
     </div>
-    {#if Object.keys($storeInfo.swagger).length > 0}
+    {#if $storeInfo.swagger?.length > 0}
       <div>
         <span
           class="block capitalize h-8 leading-8 bg-gray-50 border-b border-black px-2 w-full text-left"
         >
           Swagger APIs
         </span>
-        {#each Object.keys($storeInfo.swagger) as swagger}
+        {#each $storeInfo.swagger as swagger}
           <a
-            href={`#/swagger/${swagger}`}
+            href={`#/swagger/${swagger.name}`}
             class="block border-b border-black h-8 leading-8"
             use:active={{
-              path: `/swagger/${encodeURIComponent(swagger)}`,
+              path: `/swagger/${encodeURIComponent(swagger.name)}`,
               className: "sb-link-active",
               inactiveClassName: "sb-link-inactive hover:bg-gray-100",
             }}
-            title={swagger}
+            title={swagger.name}
           >
             <span
               class="block px-1 border-l-4 border-gray-400 whitespace-nowrap overflow-hidden overflow-ellipsis"
             >
-              {swagger}
+              {swagger.name}
             </span>
           </a>
         {/each}
@@ -63,5 +63,16 @@
 
   :global(.sb-link-inactive) {
     @apply bg-white text-black;
+  }
+
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .no-scrollbar {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
   }
 </style>

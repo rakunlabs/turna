@@ -31,6 +31,8 @@ type Login struct {
 
 type Path struct {
 	Base string `cfg:"base"`
+	// BaseURL for adding prefix like https://example.com
+	BaseURL string `cfg:"base_url"`
 
 	Code     string `cfg:"code"`
 	Token    string `cfg:"token"`

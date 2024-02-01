@@ -31,7 +31,7 @@
 
   const swaggerGet = async (
     params: Record<string, string> | undefined,
-    _: any
+    _: any,
   ) => {
     const service = params?.service;
     if (!service) {
@@ -42,7 +42,7 @@
     setMsg(`Loading '${service}'...`, false);
 
     // get link from store
-    const swag = $storeInfo.swagger[service];
+    const swag = $storeInfo.swagger.find((s: any) => s.name === service);
 
     if (!swag) {
       setMsg(`Service '${service}' not found`, true);
@@ -58,11 +58,19 @@
         swaggerData = update(swaggerData, {
           schemes: { $set: swag.schemes },
         });
+      } else if ($storeInfo.swagger_settings.schemes) {
+        swaggerData = update(swaggerData, {
+          schemes: { $set: $storeInfo.swagger_settings.schemes },
+        });
       }
 
       if (swag.host) {
         swaggerData = update(swaggerData, {
           host: { $set: swag.host },
+        });
+      } else if ($storeInfo.swagger_settings.host) {
+        swaggerData = update(swaggerData, {
+          host: { $set: $storeInfo.swagger_settings.host },
         });
       }
 
@@ -70,16 +78,31 @@
         swaggerData = update(swaggerData, {
           basePath: { $set: swag.basePath },
         });
+      } else if ($storeInfo.swagger_settings.basePath) {
+        swaggerData = update(swaggerData, {
+          basePath: { $set: $storeInfo.swagger_settings.basePath },
+        });
       }
 
       if (swag.basePathPrefix) {
         swaggerData = update(swaggerData, {
           basePath: { $set: `${swag.basePathPrefix}${swaggerData.basePath}` },
         });
+      } else if ($storeInfo.swagger_settings.basePathPrefix) {
+        swaggerData = update(swaggerData, {
+          basePath: {
+            $set: `${$storeInfo.swagger_settings.basePathPrefix}${swaggerData.basePath}`,
+          },
+        });
       }
 
       let plugins = [];
       if (swag.disableAuthorizeButton) {
+        plugins.push(disableAuthorizeButton);
+      } else if (
+        swag.disableAuthorizeButton == null &&
+        $storeInfo.swagger_settings.disableAuthorizeButton
+      ) {
         plugins.push(disableAuthorizeButton);
       }
 

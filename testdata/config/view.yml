@@ -11,13 +11,55 @@ server:
             swagger_settings:
               base_path_prefix: /api
               disable_authorize_button: true
-            swagger_kv:
-              test2: https://petstore.swagger.io/v2/swagger.json
+              schemes: ["HTTPS"]
             swagger:
-              test:
+              - name: test1
                 link: https://petstore.swagger.io/v2/swagger.json
                 base_path_prefix: /api
                 disable_authorize_button: true
+              - name: test2
+                link: https://petstore.swagger.io/v2/swagger.json
+                disable_authorize_button: false
+              - name: test3
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test11
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test12
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test13
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test14
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test15
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test16
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test17
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test18
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test19
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test20
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test21
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test22
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test23
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test24
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test25
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test26
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test27
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test28
+                link: https://petstore.swagger.io/v2/swagger.json
+              - name: test29
+                link: https://petstore.swagger.io/v2/swagger.json
     routers:
       whoami:
         path: /view/*
