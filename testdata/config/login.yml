@@ -37,10 +37,8 @@ server:
           values:
           - token_header
           - disable_redirect
-      session:
-        session:
-          cookie_name: "turna_test"
-          session_key: "my_secret_key"
+      session_info:
+        session_info:
           information:
             values:
             - preferred_username
@@ -48,6 +46,11 @@ server:
             - given_name
             - family_name
             roles: true
+          session_middleware: "session"
+      session:
+        session:
+          cookie_name: "turna_test"
+          session_key: "my_secret_key"
           store:
             active: redis
             file: {}
@@ -129,6 +132,10 @@ server:
         middlewares:
           - logout
           - login
+      info:
+        path: /auth/info
+        middlewares:
+          - session_info
       whoami:
         path: /whoami/*
         middlewares:

@@ -34,17 +34,15 @@ type Path struct {
 	// BaseURL for adding prefix like https://example.com
 	BaseURL string `cfg:"base_url"`
 
-	Code     string `cfg:"code"`
-	Token    string `cfg:"token"`
-	InfoUI   string `cfg:"info_ui"`
-	InfoUser string `cfg:"info_user"`
+	Code   string `cfg:"code"`
+	Token  string `cfg:"token"`
+	InfoUI string `cfg:"info_ui"`
 }
 
 type PathFixed struct {
-	Code     string
-	InfoUser string
-	InfoUI   string
-	Token    string
+	Code   string
+	InfoUI string
+	Token  string
 }
 
 type Request struct {
@@ -110,12 +108,6 @@ func (m *Login) Middleware(ctx context.Context, _ string) (echo.MiddlewareFunc, 
 		m.pathFixed.InfoUI = path.Join(m.Path.Base, "auth/info/ui")
 	}
 
-	if m.Path.InfoUser != "" {
-		m.pathFixed.InfoUser = m.Path.InfoUser
-	} else {
-		m.pathFixed.InfoUser = path.Join(m.Path.Base, "auth/info/user")
-	}
-
 	// state cookie settings
 	if m.StateCookie.CookieName == "" {
 		m.StateCookie.CookieName = "auth_state"
@@ -168,10 +160,6 @@ func (m *Login) Middleware(ctx context.Context, _ string) (echo.MiddlewareFunc, 
 			case http.MethodGet:
 				if strings.HasPrefix(urlPath, m.pathFixed.Code) {
 					return m.CodeFlow(c)
-				}
-
-				if strings.HasPrefix(urlPath, m.pathFixed.InfoUser) {
-					return m.InformationUser(c)
 				}
 
 				if strings.HasPrefix(urlPath, m.pathFixed.InfoUI) {

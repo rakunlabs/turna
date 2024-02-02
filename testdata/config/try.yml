@@ -4,10 +4,6 @@ server:
       address: ":8082"
   http:
     middlewares:
-      hello:
-        hello:
-          message: "Hello from TURNA\n"
-          status_code: 404
       block:
         block:
           regex_path: ^/v1/one/(.*)$
@@ -23,7 +19,7 @@ server:
               - url: "http://localhost:9090"
     routers:
       one:
-        path: /v1/one/*
+        path: /v1/*
         middlewares:
           - try
           - block

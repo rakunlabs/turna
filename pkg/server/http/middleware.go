@@ -7,6 +7,7 @@ import (
 	"github.com/worldline-go/turna/pkg/server/middlewares"
 	"github.com/worldline-go/turna/pkg/server/middlewares/login"
 	"github.com/worldline-go/turna/pkg/server/middlewares/session"
+	"github.com/worldline-go/turna/pkg/server/middlewares/sessioninfo"
 	"github.com/worldline-go/turna/pkg/server/middlewares/view"
 	"github.com/worldline-go/turna/pkg/server/registry"
 )
@@ -39,6 +40,7 @@ type HTTPMiddleware struct {
 	RequestMiddleware     *middlewares.Request     `cfg:"request"`
 	RedirectionMiddleware *middlewares.Redirection `cfg:"redirection"`
 	TryMiddleware         *middlewares.Try         `cfg:"try"`
+	SessionInfoMiddleware *sessioninfo.Info        `cfg:"session_info"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo.MiddlewareFunc, error) {
@@ -106,6 +108,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo
 		return []echo.MiddlewareFunc{m}, err
 	case h.TryMiddleware != nil:
 		m, err := h.TryMiddleware.Middleware()
+		return []echo.MiddlewareFunc{m}, err
+	case h.SessionInfoMiddleware != nil:
+		m, err := h.SessionInfoMiddleware.Middleware()
 		return []echo.MiddlewareFunc{m}, err
 	}
 

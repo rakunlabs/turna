@@ -32,6 +32,10 @@ type Token struct {
 	keyFunc models.InfKeyFuncParser `cfg:"-"`
 }
 
+func (t *Token) GetKeyFunc() models.InfKeyFuncParser {
+	return t.keyFunc
+}
+
 type Provider struct {
 	Oauth2 *Oauth2 `cfg:"oauth2"`
 	// PasswordFlow is use password flow to get token.

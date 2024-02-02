@@ -19,9 +19,8 @@ type Session struct {
 
 	CookieName string `cfg:"cookie_name"`
 
-	Action      Action              `cfg:"action"`
-	Information Information         `cfg:"information"`
-	Provider    map[string]Provider `cfg:"provider"`
+	Action   Action              `cfg:"action"`
+	Provider map[string]Provider `cfg:"provider"`
 
 	store StoreInf `cfg:"-"`
 }

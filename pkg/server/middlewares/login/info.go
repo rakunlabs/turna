@@ -84,12 +84,3 @@ func (m *Login) InformationUI(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, response)
 }
-
-func (m *Login) InformationUser(c echo.Context) error {
-	sessionM := session.GlobalRegistry.Get(m.SessionMiddleware)
-	if sessionM == nil {
-		return c.JSON(http.StatusInternalServerError, model.MetaData{Error: "session middleware not found"})
-	}
-
-	return sessionM.Info(c)
-}

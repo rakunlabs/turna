@@ -1,11 +1,14 @@
-package session
+package sessioninfo
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/auth/claims"
+	"github.com/worldline-go/turna/pkg/server/middlewares/session"
+	"github.com/worldline-go/turna/pkg/server/model"
 )
 
 type Information struct {
@@ -19,34 +22,37 @@ type Information struct {
 	Scopes bool `cfg:"scopes"`
 }
 
-func (m *Session) Info(c echo.Context) error {
+func (m *Info) Info(c echo.Context) error {
+	// get session middleware
+	sessionM := session.GlobalRegistry.Get(m.SessionMiddleware)
+	if sessionM == nil {
+		return c.JSON(http.StatusInternalServerError, model.MetaData{Error: "session middleware not found"})
+	}
+
 	// check if token exist in store
 	v64 := ""
-	// providerName := ""
-	if v, err := m.store.Get(c.Request(), m.CookieName); !v.IsNew && err == nil {
+	if v, err := sessionM.GetStore().Get(c.Request(), sessionM.CookieName); !v.IsNew && err == nil {
 		// add the access token to the request
-		v64, _ = v.Values[TokenKey].(string)
-		// providerName, _ = v.Values[ProviderKey].(string)
+		v64, _ = v.Values[session.TokenKey].(string)
 	} else {
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, MetaData{Error: err.Error()})
+			return c.JSON(http.StatusInternalServerError, model.MetaData{Error: err.Error()})
 		}
 
 		// cookie not found
-		return c.JSON(http.StatusNotFound, MetaData{Error: "cookie not found"})
+		return c.JSON(http.StatusNotFound, model.MetaData{Error: "cookie not found"})
 	}
 
 	// check if token is valid
-	token, err := ParseToken64(v64)
+	token, err := session.ParseToken64(v64)
 	if err != nil {
-		c.Logger().Errorf("cannot parse token: %v", err)
-		return m.RedirectToLogin(c, m.store, true, true)
+		return c.JSON(http.StatusForbidden, model.MetaData{Error: fmt.Sprintf("cannot parse token: %v", err)})
 	}
 
 	// check if token is valid
 	claim := claims.Custom{}
-	if _, err := m.Action.Token.keyFunc.ParseWithClaims(token.AccessToken, &claim); err != nil {
-		return c.JSON(http.StatusForbidden, MetaData{Error: err.Error()})
+	if _, err := sessionM.Action.Token.GetKeyFunc().ParseWithClaims(token.AccessToken, &claim); err != nil {
+		return c.JSON(http.StatusForbidden, model.MetaData{Error: err.Error()})
 	}
 
 	// return the claims

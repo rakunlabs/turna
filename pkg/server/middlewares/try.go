@@ -73,7 +73,10 @@ func (m *Try) Middleware() (echo.MiddlewareFunc, error) {
 				return err
 			}
 
-			if !IsInStatusCode(c.Response().Status, statusCodes) {
+			oldPath := c.Request().URL.Path
+			newPath := rgx.ReplaceAllString(oldPath, m.Replacement)
+
+			if oldPath == newPath || !IsInStatusCode(c.Response().Status, statusCodes) {
 				if rec.status != 0 {
 					rec.ResponseWriter.WriteHeader(rec.status)
 				}
@@ -85,9 +88,7 @@ func (m *Try) Middleware() (echo.MiddlewareFunc, error) {
 			// cleanup response
 			rec.body = new(bytes.Buffer)
 			c.Response().Committed = false
-
-			oldPath := c.Request().URL.Path
-			c.Request().URL.Path = rgx.ReplaceAllString(oldPath, m.Replacement)
+			c.Request().URL.Path = newPath
 
 			c.Logger().Debug("try middleware got "+strconv.Itoa(c.Response().Status)+" on "+oldPath+" going ", c.Request().URL.Path)
 
