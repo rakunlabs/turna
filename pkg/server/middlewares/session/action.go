@@ -10,7 +10,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/auth"
 	"github.com/worldline-go/auth/claims"
-	"github.com/worldline-go/auth/models"
 	"github.com/worldline-go/auth/providers"
 	"github.com/worldline-go/auth/request"
 	"github.com/worldline-go/klient"
@@ -28,11 +27,11 @@ type Token struct {
 	DisableRefresh     bool   `cfg:"disable_refresh"`
 	InsecureSkipVerify bool   `cfg:"insecure_skip_verify"`
 
-	auth    request.Auth            `cfg:"-"`
-	keyFunc models.InfKeyFuncParser `cfg:"-"`
+	auth    request.Auth     `cfg:"-"`
+	keyFunc InfKeyFuncParser `cfg:"-"`
 }
 
-func (t *Token) GetKeyFunc() models.InfKeyFuncParser {
+func (t *Token) GetKeyFunc() InfKeyFuncParser {
 	return t.keyFunc
 }
 
@@ -45,6 +44,7 @@ type Provider struct {
 }
 
 type ProviderWrapper struct {
+	Name    string
 	Generic *providers.Generic
 }
 
@@ -52,8 +52,8 @@ func (p *ProviderWrapper) GetCertURL() string {
 	return p.Generic.CertURL
 }
 
-func (p *ProviderWrapper) IsNoop() bool {
-	return false
+func (p *ProviderWrapper) GetName() string {
+	return p.Name
 }
 
 func (m *Session) SetAction() error {
@@ -71,8 +71,8 @@ func (m *Session) SetAction() error {
 
 		m.Action.Token.auth.Client = client.HTTP
 
-		providerList := make([]auth.InfProviderCert, 0, len(m.Provider))
-		for _, v := range m.Provider {
+		providerList := make([]InfProviderCert, 0, len(m.Provider))
+		for k, v := range m.Provider {
 			if v.Oauth2 == nil {
 				continue
 			}
@@ -81,15 +81,16 @@ func (m *Session) SetAction() error {
 				Generic: &providers.Generic{
 					CertURL: v.Oauth2.CertURL,
 				},
+				Name: k,
 			})
 		}
 
-		jwksMulti, err := auth.MultiJWTKeyFunc(providerList)
+		jwksMulti, err := MultiJWTKeyFunc(providerList)
 		if err != nil {
 			return fmt.Errorf("cannot create keyfunc: %w", err)
 		}
 
-		m.Action.Token.keyFunc = jwksMulti.(models.InfKeyFuncParser)
+		m.Action.Token.keyFunc = jwksMulti
 	}
 
 	// set active action
@@ -108,6 +109,30 @@ func (m *Session) SetAction() error {
 
 func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 	if m.Action.Active == actionToken {
+		if authorizationHeader := c.Request().Header.Get("Authorization"); authorizationHeader != "" {
+			// get token from header
+			token := strings.TrimPrefix(authorizationHeader, "Bearer ")
+			// validate token
+			// check if token is valid
+			customClaims := &claims.Custom{}
+			jwtToken, err := m.Action.Token.keyFunc.ParseWithClaims(token, customClaims)
+			if err != nil {
+				c.Logger().Debugf("token is not valid: %v", err)
+
+				return c.JSON(http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+			}
+
+			// next middlewares can check roles
+			c.Set("claims", customClaims)
+			c.Set("provider", jwtToken.Header["provider_name"])
+
+			if v, _ := c.Get(CtxTokenHeaderDelKey).(bool); v {
+				c.Request().Header.Del("Authorization")
+			}
+
+			return next(c)
+		}
+
 		// get token from store
 		// if not exist, redirect to login page with redirect url
 		// set token to the header and continue
@@ -184,17 +209,23 @@ func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 
 		// check if token is valid
 		customClaims := &claims.Custom{}
-		if _, err := m.Action.Token.keyFunc.ParseWithClaims(token.AccessToken, customClaims); err != nil {
+		jwtToken, err := m.Action.Token.keyFunc.ParseWithClaims(token.AccessToken, customClaims)
+		if err != nil {
 			c.Logger().Debugf("token is not valid: %v", err)
 			return m.RedirectToLogin(c, m.store, true, true)
 		}
 
 		// next middlewares can check roles
 		c.Set("claims", customClaims)
+		c.Set("provider", jwtToken.Header["provider_name"])
 
 		// add the access token to the request
 		if v, _ := c.Get(CtxTokenHeaderKey).(bool); v {
 			c.Request().Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.AccessToken))
+		}
+
+		if v, _ := c.Get(CtxTokenHeaderDelKey).(bool); v {
+			c.Request().Header.Del("Authorization")
 		}
 
 		return next(c)
@@ -263,7 +294,6 @@ func (m *Session) IsLogged(c echo.Context) (bool, error) {
 
 	// check if token is expired
 	if !m.Action.Token.DisableRefresh {
-		fmt.Printf("%#v\n", token)
 		v, err := auth.IsRefreshNeed(token.AccessToken)
 		if err != nil {
 			c.Logger().Errorf("cannot check if token is expired: %v", err)

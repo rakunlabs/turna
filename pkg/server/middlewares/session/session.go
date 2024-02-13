@@ -9,6 +9,7 @@ import (
 
 const (
 	CtxTokenHeaderKey     = "token_header"
+	CtxTokenHeaderDelKey  = "token_header_delete"
 	CtxDisableRedirectKey = "disable_redirect"
 )
 

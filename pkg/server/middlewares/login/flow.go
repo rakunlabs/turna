@@ -16,6 +16,8 @@ type TokenRequest struct {
 }
 
 func (m *Login) CodeFlowInit(c echo.Context, providerName string) error {
+	m.RemoveSuccess(c)
+
 	state, err := NewState()
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, model.MetaData{Error: err.Error()})

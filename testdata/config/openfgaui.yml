@@ -1,0 +1,33 @@
+server:
+  entrypoints:
+    web:
+      address: ":8082"
+  http:
+    middlewares:
+      view:
+        view:
+          prefix_path: /openfga/
+          info:
+            swagger_settings:
+              disable_authorize_button: true
+              schemes: ["HTTP"]
+            swagger:
+              - name: openfga
+                link: http://localhost:8082/openfga/api/swagger/openfga.json
+                base_path: /openfga/api/openfga
+              - name: api
+                link: http://localhost:8082/openfga/api/swagger/api.json
+                base_path: /openfga/api
+      openfga:
+        openfga:
+          prefix_path: "/openfga"
+          shared_key: "testkey"
+          api_url: "http://localhost:8080"
+          database:
+            postgres: "postgres://postgres:password@localhost:5432/postgres?sslmode=disable&search_path=openfga"
+    routers:
+      main:
+        path: /openfga/*
+        middlewares:
+          - openfga
+          - view

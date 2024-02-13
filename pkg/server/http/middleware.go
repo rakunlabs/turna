@@ -6,6 +6,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/turna/pkg/server/middlewares"
 	"github.com/worldline-go/turna/pkg/server/middlewares/login"
+	"github.com/worldline-go/turna/pkg/server/middlewares/openfga"
+	"github.com/worldline-go/turna/pkg/server/middlewares/openfgacheck"
 	"github.com/worldline-go/turna/pkg/server/middlewares/session"
 	"github.com/worldline-go/turna/pkg/server/middlewares/sessioninfo"
 	"github.com/worldline-go/turna/pkg/server/middlewares/view"
@@ -13,34 +15,36 @@ import (
 )
 
 type HTTPMiddleware struct {
-	AddPrefixMiddleware   *middlewares.AddPrefix   `cfg:"add_prefix"`
-	AuthMiddleware        *middlewares.Auth        `cfg:"auth"`
-	InjectMiddleware      *middlewares.Inject      `cfg:"inject"`
-	HelloMiddleware       *middlewares.Hello       `cfg:"hello"`
-	TemplateMiddleware    *middlewares.Template    `cfg:"template"`
-	InfoMiddleware        *middlewares.Info        `cfg:"info"`
-	SetMiddleware         *middlewares.Set         `cfg:"set"`
-	StripPrefixMiddleware *middlewares.StripPrefix `cfg:"strip_prefix"`
-	RoleMiddleware        *middlewares.Role        `cfg:"role"`
-	ScopeMiddleware       *middlewares.Scope       `cfg:"scope"`
-	ServiceMiddleware     *middlewares.Service     `cfg:"service"`
-	FolderMiddleware      *middlewares.Folder      `cfg:"folder"`
-	BasicAuthMiddleware   *middlewares.BasicAuth   `cfg:"basic_auth"`
-	CorsMiddleware        *middlewares.Cors        `cfg:"cors"`
-	HeadersMiddleware     *middlewares.Headers     `cfg:"headers"`
-	BlockMiddleware       *middlewares.Block       `cfg:"block"`
-	RegexPathMiddleware   *middlewares.RegexPath   `cfg:"regex_path"`
-	GzipMiddleware        *middlewares.Gzip        `cfg:"gzip"`
-	DecompressMiddleware  *middlewares.Decompress  `cfg:"decompress"`
-	LogMiddleware         *middlewares.Log         `cfg:"log"`
-	PrintMiddleware       *middlewares.Print       `cfg:"print"`
-	LoginMiddleware       *login.Login             `cfg:"login"`
-	SessionMiddleware     *session.Session         `cfg:"session"`
-	ViewMiddleware        *view.View               `cfg:"view"`
-	RequestMiddleware     *middlewares.Request     `cfg:"request"`
-	RedirectionMiddleware *middlewares.Redirection `cfg:"redirection"`
-	TryMiddleware         *middlewares.Try         `cfg:"try"`
-	SessionInfoMiddleware *sessioninfo.Info        `cfg:"session_info"`
+	AddPrefixMiddleware    *middlewares.AddPrefix     `cfg:"add_prefix"`
+	AuthMiddleware         *middlewares.Auth          `cfg:"auth"`
+	InjectMiddleware       *middlewares.Inject        `cfg:"inject"`
+	HelloMiddleware        *middlewares.Hello         `cfg:"hello"`
+	TemplateMiddleware     *middlewares.Template      `cfg:"template"`
+	InfoMiddleware         *middlewares.Info          `cfg:"info"`
+	SetMiddleware          *middlewares.Set           `cfg:"set"`
+	StripPrefixMiddleware  *middlewares.StripPrefix   `cfg:"strip_prefix"`
+	RoleMiddleware         *middlewares.Role          `cfg:"role"`
+	ScopeMiddleware        *middlewares.Scope         `cfg:"scope"`
+	ServiceMiddleware      *middlewares.Service       `cfg:"service"`
+	FolderMiddleware       *middlewares.Folder        `cfg:"folder"`
+	BasicAuthMiddleware    *middlewares.BasicAuth     `cfg:"basic_auth"`
+	CorsMiddleware         *middlewares.Cors          `cfg:"cors"`
+	HeadersMiddleware      *middlewares.Headers       `cfg:"headers"`
+	BlockMiddleware        *middlewares.Block         `cfg:"block"`
+	RegexPathMiddleware    *middlewares.RegexPath     `cfg:"regex_path"`
+	GzipMiddleware         *middlewares.Gzip          `cfg:"gzip"`
+	DecompressMiddleware   *middlewares.Decompress    `cfg:"decompress"`
+	LogMiddleware          *middlewares.Log           `cfg:"log"`
+	PrintMiddleware        *middlewares.Print         `cfg:"print"`
+	LoginMiddleware        *login.Login               `cfg:"login"`
+	SessionMiddleware      *session.Session           `cfg:"session"`
+	ViewMiddleware         *view.View                 `cfg:"view"`
+	RequestMiddleware      *middlewares.Request       `cfg:"request"`
+	RedirectionMiddleware  *middlewares.Redirection   `cfg:"redirection"`
+	TryMiddleware          *middlewares.Try           `cfg:"try"`
+	SessionInfoMiddleware  *sessioninfo.Info          `cfg:"session_info"`
+	OpenFgaMiddleware      *openfga.OpenFGA           `cfg:"openfga"`
+	OpenFgaCheckMiddleware *openfgacheck.OpenFGACheck `cfg:"openfga_check"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo.MiddlewareFunc, error) {
@@ -111,6 +115,12 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo
 		return []echo.MiddlewareFunc{m}, err
 	case h.SessionInfoMiddleware != nil:
 		m, err := h.SessionInfoMiddleware.Middleware()
+		return []echo.MiddlewareFunc{m}, err
+	case h.OpenFgaMiddleware != nil:
+		m, err := h.OpenFgaMiddleware.Middleware(ctx, name)
+		return []echo.MiddlewareFunc{m}, err
+	case h.OpenFgaCheckMiddleware != nil:
+		m, err := h.OpenFgaCheckMiddleware.Middleware(ctx, name)
 		return []echo.MiddlewareFunc{m}, err
 	}
 

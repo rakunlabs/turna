@@ -77,7 +77,12 @@ func (m *Info) Info(c echo.Context) error {
 	}
 
 	if m.Information.Roles {
-		response["roles"] = claim.Roles
+		roles := make([]string, 0, len(claim.RoleSet))
+		for role := range claim.RoleSet {
+			roles = append(roles, role)
+		}
+
+		response["roles"] = roles
 	}
 
 	if m.Information.Scopes {

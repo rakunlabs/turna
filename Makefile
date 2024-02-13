@@ -35,8 +35,9 @@ consul: ## Run consul server
 	docker run --rm -it -p 8500:8500 --name consul consul:latest
 
 .PHONY: keycloak
+keycloak: export KEYCLOAK_PORT ?= 8080
 keycloak: ## Run keycloak server
-	docker run --rm -it -p 8080:8080 -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:23.0.4 start-dev
+	docker run --rm -it -p $(KEYCLOAK_PORT):8080 -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:23.0.4 start-dev
 
 .PHONY: whoami
 whoami: ## Run whoami server
@@ -49,6 +50,10 @@ dragonfly: ## Run dragonfly server
 .PHONY: openfga
 openfga: ## Run openfga server
 	docker run -p 8080:8080 -p 8081:8081 -p 3000:3000 openfga/openfga run
+
+.PHONY: postgres
+postgres: ## Run postgres server
+	docker run --rm -it -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:14
 
 .PHONY: test
 test: ## Run unit tests

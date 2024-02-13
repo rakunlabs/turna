@@ -1,0 +1,120 @@
+server:
+  entrypoints:
+    web:
+      address: ":8083"
+  http:
+    middlewares:
+      response:
+        hello:
+          message: "Welcome"
+      main:
+        hello:
+          headers:
+            Content-Type: "text/html; charset=utf-8"
+          message: |
+            <!DOCTYPE html>
+            <head>
+              <title>Turna</title>
+              <style>
+                body {background-color: #f7fff7;}
+                h1 {border-bottom: 2px solid #ff6b6b;}
+                .logout {float: right; color: #ff6b6b; text-decoration: none;}
+                pre {background-color: #faf0ca; overflow: auto; white-space: pre-wrap; word-wrap: break-word; }
+              </style>
+            </head>
+            <body>
+              <h1>Turna - Test Page <a class="logout" href="/logout/">Logout</a></h1>
+              <div>
+                <p>Test page</p>
+              </div>
+            </body>
+            </html>
+      token:
+        set:
+          values:
+          - token_header
+          - disable_redirect
+      session:
+        session:
+          cookie_name: "turna_test"
+          session_key: "my_secret_key"
+          store:
+            active: file
+            file: {}
+            # redis:
+              # address: "localhost:6379"
+              # key_prefix: "turna_test_"
+          options:
+            http_only: true
+            secure: false
+            same_site: 2
+          provider:
+            test1:
+              password_flow: true
+              oauth2:
+                client_id: "test"
+                client_secret: ""
+                cert_url: "http://localhost:8089/realms/master/protocol/openid-connect/certs"
+                token_url: "http://localhost:8089/realms/master/protocol/openid-connect/token"
+                auth_url: "http://localhost:8089/realms/master/protocol/openid-connect/auth"
+          action:
+            token:
+              login_path: "/login/"
+      logout:
+        set:
+          values:
+          - logout
+      login:
+        login:
+          path:
+            base: "/login/"
+          redirect:
+            schema: http
+          info:
+            title: "Turna Login"
+          session_middleware: "session"
+      openfga_check:
+        openfga_check:
+          openfga_check_api: "http://localhost:8082/openfga/api/openfga/stores/01HPRP3AM645M0MRVQ0HB12ZN8/check"
+          openfga_user_api: "http://localhost:8082/openfga/api/user"
+          openfga_model_id: 01HPRPATPAJ0RGSWHSB31T67MZ
+          database:
+            postgres: "postgres://postgres:password@localhost:5432/postgres?sslmode=disable&search_path=openfga"
+          operation:
+            parse:
+              enable: true
+              api_name_rgx: "^/([^/]*)/([^/]*)/?(.*)$"
+              api_name_replacement: $2
+              default_user_claim: "preferred_username"
+              method:
+                head: viewer
+                options: viewer
+                connect: viewer
+                trace: viewer
+                get: viewer
+                post: editor
+                put: editor
+                patch: editor
+                delete: editor
+    routers:
+      api:
+        path: /api/*
+        middlewares:
+          - token
+          - session
+          - openfga_check
+          - response
+      login:
+        path: /login/*
+        middlewares:
+          - login
+      logout:
+        path: /logout/*
+        middlewares:
+          - logout
+          - login
+      main:
+        path: /*
+        middlewares:
+          - session
+          - main
