@@ -145,12 +145,7 @@ func (m *Login) Middleware(ctx context.Context, _ string) (echo.MiddlewareFunc, 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			if isLogout, _ := c.Get("logout").(bool); isLogout {
-				sessionM := session.GlobalRegistry.Get(m.SessionMiddleware)
-				if sessionM == nil {
-					return c.JSON(http.StatusInternalServerError, model.MetaData{Error: "session middleware not found"})
-				}
-
-				return sessionM.RedirectToLogin(c, sessionM.GetStore(), false, true)
+				return m.Logout(c)
 			}
 
 			urlPath := c.Request().URL.Path

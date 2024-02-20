@@ -6,12 +6,13 @@ server:
     middlewares:
       request:
         request:
-          url: https://api.punkapi.com/v2/beers/1
+          urlRgx: "^/beers/(.*)$"
+          url: https://api.punkapi.com/v2/beers/$1
           method: GET
           headers:
             Accept: application/json
     routers:
       whoami:
-        path: /*
+        path: /beers/*
         middlewares:
           - request

@@ -8,6 +8,8 @@ import (
 	"github.com/worldline-go/turna/pkg/server/middlewares/login"
 	"github.com/worldline-go/turna/pkg/server/middlewares/openfga"
 	"github.com/worldline-go/turna/pkg/server/middlewares/openfgacheck"
+	"github.com/worldline-go/turna/pkg/server/middlewares/rolecheck"
+	"github.com/worldline-go/turna/pkg/server/middlewares/roledata"
 	"github.com/worldline-go/turna/pkg/server/middlewares/session"
 	"github.com/worldline-go/turna/pkg/server/middlewares/sessioninfo"
 	"github.com/worldline-go/turna/pkg/server/middlewares/view"
@@ -45,6 +47,8 @@ type HTTPMiddleware struct {
 	SessionInfoMiddleware  *sessioninfo.Info          `cfg:"session_info"`
 	OpenFgaMiddleware      *openfga.OpenFGA           `cfg:"openfga"`
 	OpenFgaCheckMiddleware *openfgacheck.OpenFGACheck `cfg:"openfga_check"`
+	RoleCheckMiddleware    *rolecheck.RoleCheck       `cfg:"role_check"`
+	RoleDataMiddleware     *roledata.RoleData         `cfg:"role_data"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo.MiddlewareFunc, error) {
@@ -121,6 +125,12 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo
 		return []echo.MiddlewareFunc{m}, err
 	case h.OpenFgaCheckMiddleware != nil:
 		m, err := h.OpenFgaCheckMiddleware.Middleware(ctx, name)
+		return []echo.MiddlewareFunc{m}, err
+	case h.RoleCheckMiddleware != nil:
+		m, err := h.RoleCheckMiddleware.Middleware()
+		return []echo.MiddlewareFunc{m}, err
+	case h.RoleDataMiddleware != nil:
+		m, err := h.RoleDataMiddleware.Middleware()
 		return []echo.MiddlewareFunc{m}, err
 	}
 

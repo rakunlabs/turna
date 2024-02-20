@@ -52,7 +52,7 @@ server:
           cookie_name: "turna_test"
           session_key: "my_secret_key"
           store:
-            active: redis
+            active: file
             file: {}
             redis:
               address: "localhost:6379"
@@ -70,6 +70,9 @@ server:
                 cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
                 token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
                 auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth"
+                logout_url: "http://localhost:8080/realms/master/protocol/openid-connect/logout"
+                scopes:
+                  - "openid"
             # test2:
             #   oauth2:
             #     client_id: "test2"
@@ -117,6 +120,33 @@ server:
           info:
             title: "Turna Login"
           session_middleware: "session"
+      role_data:
+        role_data:
+          map:
+          - roles:
+            - "transaction_rw"
+            data:
+              "test": 5555
+          default:
+            - test: 0
+            - test2: 0
+      role_check:
+        role_check:
+          allow_others: true
+          path_map:
+          - regex_path: "^/api/transaction/.*"
+            map:
+              - roles:
+                - "transaction_r"
+                - "transaction_rw"
+                methods:
+                - "GET"
+              - roles:
+                - "transaction_rw"
+                methods:
+                - "POST"
+                - "PUT"
+                - "DELETE"
       whoami:
         service:
           loadbalancer:
@@ -136,6 +166,18 @@ server:
         path: /auth/info
         middlewares:
           - session_info
+      role_data:
+        path: /role_data
+        middlewares:
+          - session
+          - role_data
+      role_check:
+        path: /api/*
+        middlewares:
+          - token
+          - session
+          - role_check
+          - whoami
       whoami:
         path: /whoami/*
         middlewares:

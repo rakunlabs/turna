@@ -267,6 +267,39 @@ func loginPathWithRedirect(c echo.Context, loginPath string) string {
 	return fmt.Sprintf("%s?redirect_path=%s", loginPath, url.QueryEscape(redirectPath))
 }
 
+func (m *Session) GetToken(c echo.Context) (*TokenData, *Oauth2, error) {
+	// check if token exist in store
+	v64 := ""
+	providerName := ""
+	if v, err := m.store.Get(c.Request(), m.CookieName); !v.IsNew && err == nil {
+		// add the access token to the request
+		v64, _ = v.Values[TokenKey].(string)
+		providerName, _ = v.Values[ProviderKey].(string)
+	} else {
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// cookie not found, redirect to login page
+		return nil, nil, fmt.Errorf("cookie not found")
+	}
+
+	// check if token is valid
+	token, err := ParseToken64(v64)
+	if err != nil {
+		c.Logger().Errorf("cannot parse token: %v", err)
+		return nil, nil, err
+	}
+
+	provider, ok := m.Provider[providerName]
+	if !ok || provider.Oauth2 == nil {
+		c.Logger().Errorf("cannot find provider %q", providerName)
+		return nil, nil, fmt.Errorf("cannot find provider %q", providerName)
+	}
+
+	return token, provider.Oauth2, nil
+}
+
 // IsLogged check token is exist and valid.
 func (m *Session) IsLogged(c echo.Context) (bool, error) {
 	// check if token exist in store
