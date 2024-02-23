@@ -32,7 +32,7 @@ vault: ## Run vault server
 
 .PHONY: consul
 consul: ## Run consul server
-	docker run --rm -it -p 8500:8500 --name consul consul:latest
+	docker run --rm -it -p 8500:8500 --name consul consul:1.15.4
 
 .PHONY: keycloak
 keycloak: export KEYCLOAK_PORT ?= 8080

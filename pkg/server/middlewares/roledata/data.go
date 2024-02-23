@@ -29,7 +29,7 @@ func (m *RoleData) Middleware() (echo.MiddlewareFunc, error) {
 
 			roles := claimValue.RoleSet
 
-			var datas []interface{}
+			datas := []interface{}{}
 			for _, data := range m.Map {
 				for _, role := range data.Roles {
 					if _, ok := roles[role]; ok {

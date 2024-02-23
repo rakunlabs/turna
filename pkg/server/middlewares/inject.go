@@ -197,3 +197,9 @@ func (r *customResponseRecorder) Write(b []byte) (int, error) {
 func (r *customResponseRecorder) WriteHeader(code int) {
 	r.status = code
 }
+
+func (r *customResponseRecorder) Flush() {
+	// no-op
+}
+
+var _ http.Flusher = (*customResponseRecorder)(nil)

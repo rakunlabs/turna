@@ -1,0 +1,28 @@
+server:
+  entrypoints:
+    web:
+      address: ":8082"
+  http:
+    middlewares:
+      try:
+        try:
+          regex: ^/v1/kv/finops/(_x)/(.*)$
+          replacement: /v1/kv/finops/$2
+          status_codes: "404"
+      consul-path-x:
+        regex_path:
+          regex: ^/v1/kv/finops/(.*)$
+          replacement: /v1/kv/finops/_x/$1
+      consul:
+        service:
+          loadbalancer:
+            servers:
+              - url: "http://localhost:8500"
+    routers:
+      one:
+        host: proxy-consul-x
+        path: /v1/*
+        middlewares:
+          - consul-path-x
+          - try
+          - consul

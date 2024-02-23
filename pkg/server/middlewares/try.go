@@ -127,3 +127,9 @@ func (r *customResponseRecorder2) WriteHeader(code int) {
 func (r *customResponseRecorder2) Header() http.Header {
 	return r.header
 }
+
+func (r *customResponseRecorder2) Flush() {
+	// no-op
+}
+
+var _ http.Flusher = (*customResponseRecorder2)(nil)
