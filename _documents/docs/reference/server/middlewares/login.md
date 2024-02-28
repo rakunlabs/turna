@@ -8,29 +8,40 @@ Token is stored in the session and support `redis` and `file` storage.
 middlewares:
   login: # custom name
     login: # middleware name
+      path:
+        base: "" # base path of the login page
+        base_url: "" # for adding prefix like https://example.com
+        code: "" # code api path
+        token: "" # token api path
+        info_ui: "" # info ui path
+      redirect:
+        base_url: ""
+        schema: "https" # schema to use for redirect, default is https
+      ui:
+        external_folder: false # if true, get requests will be forwarded to the next middleware
       info: # optional info to show in the login page
         title: "Turna Login"
       session_middleware: "session" # session middleware name to use record token
-      ui:
-        embed_path_prefix: "/login/" # this known as base path
-        external_folder: false # if true, get requests will be forwarded to the next middleware
-      default_provider: keycloak # default provider to use (custom name)
-      provider: # privder for multiple login options
-        keycloak: # custom provider name
-          oauth2:
-            client_id: "test"
-            client_secret: ""
-            cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
-            token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
+      state_cookie: # cookie to store state of code flow login
+        cookie_name: "auth_state"
+        max_age: 360
+        path: "/"
+        domain: ""
+        secure: false
+        same_site: 2 # SameSite for Lax 2, Strict 3, None 4
+        http_only: false
+      success_cookie: # cookie to store success message of code flow login
+        cookie_name: "auth_verify"
+        max_age: 60
+        path: "/"
+        domain: ""
+        secure: false
+        same_site: 2 # SameSite for Lax 2, Strict 3, None 4
       request:
         insecure_skip_verify: false # if true, skip tls verification for token request
 ```
 
 > Need to use with session middleware.
-
-`redirect_path` query param using to redirect after login.
-
-If you are already login then it will redirect back to `redirect_path` or root of the page.
 
 ## Extra
 

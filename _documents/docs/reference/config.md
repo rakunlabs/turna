@@ -11,7 +11,7 @@ server: {} # check server section
 services: [] # check services section
 ```
 
-Turna now has 3 main sections, `loads`, `server` and `services`. Check their sections for more information.
+Turna now has 4 main sections, `loads`, `preprocess`, `server` and `services`. Check their sections for more information.
 
 - [loads](loads.md)
 - [preprocess](preprocess/preprocess.md)

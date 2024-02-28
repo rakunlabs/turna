@@ -1,3 +1,8 @@
+# PreProcess
+
+Replace all values in a file with the values from a static before serving it.
+
+```yaml
 loads:
   - statics:
     - content:
@@ -31,3 +36,4 @@ server:
         path: /*
         middlewares:
           - project
+```

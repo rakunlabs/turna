@@ -1,20 +1,10 @@
 # basic_auth
 
 ```yaml
-loads:
-  - name: server
-    statics:
-      - content:
-          # name using to export value in map
-          codec: "YAML"
-          content: |
-            entrypoints:
-              web:
-                address: ":8000"
-          raw: false
-          template: false
 server:
-  load_value: "server"
+  entrypoints:
+    web:
+      address: ":8000"
   http:
     middlewares:
       basic_auth:
@@ -29,11 +19,6 @@ server:
           # spa: true
           browse: true
           utc: true
-      myservice:
-        service:
-          loadbalancer:
-            servers:
-              - url: "http://localhost:9090"
     routers:
       private:
         path: /pkg/server/*

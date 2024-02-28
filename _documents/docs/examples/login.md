@@ -9,6 +9,12 @@ server:
       address: ":8082"
   http:
     middlewares:
+      role:
+        role:
+          roles:
+          - "transaction"
+          methods:
+          - "GET"
       main:
         hello:
           headers:
@@ -36,10 +42,8 @@ server:
           values:
           - token_header
           - disable_redirect
-      session:
-        session:
-          cookie_name: "turna_test"
-          session_key: "my_secret_key"
+      session_info:
+        session_info:
           information:
             values:
             - preferred_username
@@ -47,8 +51,13 @@ server:
             - given_name
             - family_name
             roles: true
+          session_middleware: "session"
+      session:
+        session:
+          cookie_name: "turna_test"
+          session_key: "my_secret_key"
           store:
-            active: redis
+            active: file
             file: {}
             redis:
               address: "localhost:6379"
@@ -57,32 +66,92 @@ server:
             http_only: true
             secure: false
             same_site: 2
-          actions:
-            token:
-              login_path: "/login/"
+          provider:
+            test1:
+              password_flow: true
               oauth2:
-                token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
-                cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
                 client_id: "test"
                 client_secret: ""
+                cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
+                token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
+                auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth"
+                logout_url: "http://localhost:8080/realms/master/protocol/openid-connect/logout"
+                scopes:
+                  - "openid"
+            # test2:
+            #   oauth2:
+            #     client_id: "test2"
+            #     client_secret: ""
+            #     cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
+            #     token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
+            #     auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth?kc_idp_hint=test1"
+            # test11:
+            #   password_flow: true
+            #   oauth2:
+            #     client_id: "test1"
+            #     client_secret: ""
+            #     cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
+            #     token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
+            #     auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth"
+            # test2:
+            #   priority: 1
+            #   oauth2:
+            #     client_id: "test2"
+            #     client_secret: "K5lR1GyWdBVFK4E2b9vShu6XUsFyo6bI"
+            #     cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
+            #     token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
+            #     auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth"
+            # test3:
+            #   priority: 2
+            #   oauth2:
+            #     client_id: "test3"
+            #     client_secret: ""
+            #     cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
+            #     token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
+            #     auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth"
+          action:
+            token:
+              login_path: "/login/"
       logout:
         set:
           values:
           - logout
       login:
         login:
+          path:
+            base: "/login/"
+          redirect:
+            schema: http
           info:
             title: "Turna Login"
           session_middleware: "session"
-          ui:
-            embed_path_prefix: "/login/"
-          provider:
-            keycloak:
-              oauth2:
-                client_id: "test"
-                client_secret: ""
-                cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
-                token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
+      role_data:
+        role_data:
+          map:
+          - roles:
+            - "transaction_rw"
+            data:
+              "test": 5555
+          default:
+            - test: 0
+            - test2: 0
+      role_check:
+        role_check:
+          allow_others: true
+          path_map:
+          - regex_path: "^/api/transaction/.*"
+            map:
+              - roles:
+                - "transaction_r"
+                - "transaction_rw"
+                methods:
+                - "GET"
+              - roles:
+                - "transaction_rw"
+                methods:
+                - "POST"
+                - "PUT"
+                - "DELETE"
       whoami:
         service:
           loadbalancer:
@@ -98,11 +167,28 @@ server:
         middlewares:
           - logout
           - login
+      info:
+        path: /auth/info
+        middlewares:
+          - session_info
+      role_data:
+        path: /role_data
+        middlewares:
+          - session
+          - role_data
+      role_check:
+        path: /api/*
+        middlewares:
+          - token
+          - session
+          - role_check
+          - whoami
       whoami:
         path: /whoami/*
         middlewares:
           - token
           - session
+          # - role
           - whoami
       main:
         path: /*

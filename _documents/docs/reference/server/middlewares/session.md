@@ -20,7 +20,7 @@ middlewares:
             ca_file: ""
         file:
           path: "" # if empty then it will create tempdir
-      options: # cookie options
+      options: # cookie options for store session key
         path: "/"
         max_age: 86400 # seconds to store cookie
         domain: ""
@@ -28,23 +28,24 @@ middlewares:
         http_only: false
         same_site: 0 # // SameSite for Lax 2, Strict 3, None 4
       cookie_name: "" # set cookie's name
-      value_name: "" # leave empty, internal usage
-      actions:
+      action:
         active: token # token
         token:
           login_path: "/login/" # for redirection path
           disable_refresh: false # disable refresh token
           insecure_skip_verify: false # token requests
+      provider:
+        my_provider: # custom name
+          password_flow: false # enable password flow, for ui get request
+          priority: 0 # priority for the provider, for ui get request
           oauth2:
             token_url: ""
             cert_url: ""
             client_id: ""
             client_secret: ""
-      information: # reachable with login middleware's path + ./api/v1/info/token
-        values: [] # tokens claims
-        custom: {} # for custom values
-        roles: false # add roles information []string
-        scopes: false # add scopes information []string
+            scopes: []
+            introspect_url: ""
+            logout_url: ""
 ```
 
 > Put this above of the your middleware to make it token protection.
@@ -57,6 +58,7 @@ session middleware has 2 options
 
 ```
 token_header -> Add Authorization Bearer header
+token_header_delete -> Delete Authorization Bearer header, useful for token logins
 disable_redirect -> disable redirection to login page, it will return 407 error
 ```
 
@@ -82,3 +84,5 @@ server:
           - session
           - main
 ```
+
+> Check login example.
