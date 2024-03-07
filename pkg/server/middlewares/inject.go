@@ -2,7 +2,9 @@ package middlewares
 
 import (
 	"bytes"
+	"compress/gzip"
 	"fmt"
+	"io"
 	"net/http"
 	"path/filepath"
 	"regexp"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/turna/pkg/render"
+	"github.com/worldline-go/turna/pkg/server/model"
 )
 
 type Inject struct {
@@ -127,6 +130,27 @@ func (s *Inject) Middleware() ([]echo.MiddlewareFunc, error) {
 			}
 
 			bodyBytes := rec.body.Bytes()
+
+			// check header gzip
+			encoding := c.Response().Header().Get("Content-Encoding")
+			if encoding != "" {
+				switch encoding {
+				case "gzip":
+					gzipReader, err := gzip.NewReader(bytes.NewReader(bodyBytes))
+					if err != nil {
+						return c.JSON(http.StatusInternalServerError, model.MetaData{Error: err.Error()})
+					}
+
+					bodyBytes, err = io.ReadAll(gzipReader)
+					gzipReader.Close()
+					if err != nil {
+						return c.JSON(http.StatusInternalServerError, model.MetaData{Error: err.Error()})
+					}
+				default:
+					return c.JSON(http.StatusInternalServerError, model.MetaData{Error: fmt.Sprintf("unknown Content-Encoding %s", encoding)})
+				}
+			}
+
 			contentType := c.Response().Header().Get(echo.HeaderContentType)
 			contentTypeCheck := strings.Split(contentType, ";")[0]
 			for _, injectContent := range s.ContentMap[contentTypeCheck] {
@@ -167,6 +191,23 @@ func (s *Inject) Middleware() ([]echo.MiddlewareFunc, error) {
 
 						bodyBytes = bytes.ReplaceAll(bodyBytes, injectContent.old, injectContent.new)
 					}
+				}
+			}
+
+			if encoding != "" {
+				switch encoding {
+				case "gzip":
+					var buf bytes.Buffer
+					gzipWriter := gzip.NewWriter(&buf)
+					_, err := gzipWriter.Write(bodyBytes)
+					if err != nil {
+						return c.JSON(http.StatusInternalServerError, model.MetaData{Error: err.Error()})
+					}
+					gzipWriter.Close()
+
+					bodyBytes = buf.Bytes()
+				default:
+					return c.JSON(http.StatusInternalServerError, model.MetaData{Error: fmt.Sprintf("unknown Content-Encoding %s", encoding)})
 				}
 			}
 

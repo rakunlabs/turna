@@ -133,6 +133,9 @@ server:
       role_check:
         role_check:
           allow_others: true
+          redirect:
+            enable: true
+            url: "/"
           path_map:
           - regex_path: "^/api/transaction/.*"
             map:

@@ -49,6 +49,7 @@ type HTTPMiddleware struct {
 	OpenFgaCheckMiddleware *openfgacheck.OpenFGACheck `cfg:"openfga_check"`
 	RoleCheckMiddleware    *rolecheck.RoleCheck       `cfg:"role_check"`
 	RoleDataMiddleware     *roledata.RoleData         `cfg:"role_data"`
+	TokenPassMiddleware    *middlewares.TokenPass     `cfg:"token_pass"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo.MiddlewareFunc, error) {
@@ -131,6 +132,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo
 		return []echo.MiddlewareFunc{m}, err
 	case h.RoleDataMiddleware != nil:
 		m, err := h.RoleDataMiddleware.Middleware()
+		return []echo.MiddlewareFunc{m}, err
+	case h.TokenPassMiddleware != nil:
+		m, err := h.TokenPassMiddleware.Middleware()
 		return []echo.MiddlewareFunc{m}, err
 	}
 

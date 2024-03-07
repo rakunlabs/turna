@@ -13,6 +13,13 @@ import (
 type RoleCheck struct {
 	PathMap     []PathMap `cfg:"path_map"`
 	AllowOthers bool      `cfg:"allow_others"`
+
+	Redirect Redirect `cfg:"redirect"`
+}
+
+type Redirect struct {
+	Enable bool   `cfg:"enable"`
+	URL    string `cfg:"url"`
 }
 
 type PathMap struct {
@@ -23,8 +30,9 @@ type PathMap struct {
 }
 
 type Map struct {
-	Methods []string `cfg:"methods"`
-	Roles   []string `cfg:"roles"`
+	AllMethods bool     `cfg:"all_methods"`
+	Methods    []string `cfg:"methods"`
+	Roles      []string `cfg:"roles"`
 
 	methods map[string]struct{} `cfg:"-"`
 }
@@ -64,6 +72,14 @@ func (m *RoleCheck) Middleware() (echo.MiddlewareFunc, error) {
 			for _, pathMap := range m.PathMap {
 				if pathMap.regexPath.MatchString(path) {
 					for _, m := range pathMap.Map {
+						if m.AllMethods {
+							for _, role := range m.Roles {
+								if _, ok := roles[role]; ok {
+									return next(c)
+								}
+							}
+						}
+
 						if _, ok := m.methods[method]; ok {
 							for _, role := range m.Roles {
 								if _, ok := roles[role]; ok {
@@ -73,12 +89,20 @@ func (m *RoleCheck) Middleware() (echo.MiddlewareFunc, error) {
 						}
 					}
 
+					if m.Redirect.Enable {
+						return c.Redirect(http.StatusTemporaryRedirect, m.Redirect.URL)
+					}
+
 					return c.JSON(http.StatusForbidden, model.MetaData{Error: "role not authorized"})
 				}
 			}
 
 			if m.AllowOthers {
 				return next(c)
+			}
+
+			if m.Redirect.Enable {
+				return c.Redirect(http.StatusTemporaryRedirect, m.Redirect.URL)
 			}
 
 			return c.JSON(http.StatusForbidden, model.MetaData{Error: "path not authorized"})
