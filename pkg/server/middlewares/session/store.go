@@ -26,59 +26,59 @@ type StoreInf interface {
 	Get(r *http.Request, name string) (*sessions.Session, error)
 }
 
-func (s *Session) GetStore() StoreInf {
-	return s.store
+func (m *Session) GetStore() StoreInf {
+	return m.store
 }
 
-func (s *Session) SetStore(ctx context.Context) error {
+func (m *Session) SetStore(ctx context.Context) error {
 	sessionOpts := sessions.Options{
 		Path:   "/",
 		MaxAge: 86400,
 	}
 
-	if s.Options.Path != "" {
-		sessionOpts.Path = s.Options.Path
+	if m.Options.Path != "" {
+		sessionOpts.Path = m.Options.Path
 	}
-	if s.Options.MaxAge != 0 {
-		sessionOpts.MaxAge = s.Options.MaxAge
+	if m.Options.MaxAge != 0 {
+		sessionOpts.MaxAge = m.Options.MaxAge
 	}
-	if s.Options.Domain != "" {
-		sessionOpts.Domain = s.Options.Domain
+	if m.Options.Domain != "" {
+		sessionOpts.Domain = m.Options.Domain
 	}
-	if s.Options.Secure {
-		sessionOpts.Secure = s.Options.Secure
+	if m.Options.Secure {
+		sessionOpts.Secure = m.Options.Secure
 	}
-	if s.Options.HttpOnly {
-		sessionOpts.HttpOnly = s.Options.HttpOnly
+	if m.Options.HttpOnly {
+		sessionOpts.HttpOnly = m.Options.HttpOnly
 	}
-	if s.Options.SameSite != 0 {
-		sessionOpts.SameSite = s.Options.SameSite
+	if m.Options.SameSite != 0 {
+		sessionOpts.SameSite = m.Options.SameSite
 	}
 
 	var err error
-	switch s.Store.Active {
+	switch m.Store.Active {
 	case "redis":
-		if s.Store.Redis == nil {
+		if m.Store.Redis == nil {
 			return fmt.Errorf("redis store is not configured")
 		}
 
-		s.store, err = s.Store.Redis.Store(ctx, sessionOpts)
+		m.store, err = m.Store.Redis.Store(ctx, sessionOpts)
 		if err != nil {
 			return err
 		}
 
 		return nil
 	case "file":
-		if s.Store.File == nil {
+		if m.Store.File == nil {
 			return fmt.Errorf("file store is not configured")
 		}
 
-		s.store = s.Store.File.Store([]byte(s.SessionKey), sessionOpts)
+		m.store = m.Store.File.Store([]byte(m.SessionKey), sessionOpts)
 
 		return nil
 	case "":
-		if s.Store.Redis != nil {
-			s.store, err = s.Store.Redis.Store(ctx, sessionOpts)
+		if m.Store.Redis != nil {
+			m.store, err = m.Store.Redis.Store(ctx, sessionOpts)
 			if err != nil {
 				return err
 			}
@@ -86,23 +86,23 @@ func (s *Session) SetStore(ctx context.Context) error {
 			return nil
 		}
 
-		if s.Store.File != nil {
-			s.store = s.Store.File.Store([]byte(s.SessionKey), sessionOpts)
+		if m.Store.File != nil {
+			m.store = m.Store.File.Store([]byte(m.SessionKey), sessionOpts)
 
 			return nil
 		}
 
 		return fmt.Errorf("no store configured")
 	default:
-		return fmt.Errorf("unknown store: %s", s.Store.Active)
+		return fmt.Errorf("unknown store: %s", m.Store.Active)
 	}
 }
 
-func (s *Session) SetToken(c echo.Context, token []byte, providerName string) error {
+func (m *Session) SetToken(c echo.Context, token []byte, providerName string) error {
 	cookieValue := base64.StdEncoding.EncodeToString(token)
 
 	// set the cookie
-	session, _ := s.store.Get(c.Request(), s.CookieName)
+	session, _ := m.store.Get(c.Request(), m.GetCookieName(c))
 	session.Values[TokenKey] = cookieValue
 	session.Values[ProviderKey] = providerName
 
@@ -116,8 +116,8 @@ func (s *Session) SetToken(c echo.Context, token []byte, providerName string) er
 	return nil
 }
 
-func (s *Session) DelToken(c echo.Context) error {
-	session, _ := s.store.Get(c.Request(), s.CookieName)
+func (m *Session) DelToken(c echo.Context) error {
+	session, _ := m.store.Get(c.Request(), m.GetCookieName(c))
 	session.Options.MaxAge = -1
 
 	return session.Save(c.Request(), c.Response())

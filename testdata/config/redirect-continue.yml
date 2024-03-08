@@ -1,0 +1,24 @@
+server:
+  entrypoints:
+    web:
+      address: ":8082"
+  http:
+    middlewares:
+      whoami:
+        service:
+          loadbalancer:
+            servers:
+            - url: "http://localhost:9090"
+      redirect_continue:
+        redirect_continue:
+          redirects:
+            - regex: "^/api/x/y/(.*)$"
+              replacement: "/api/x/y$1"
+            - regex: "^/api/x/z/(.*)$"
+              replacement: "/api/x/z$1"
+    routers:
+      dashboard:
+        path: /*
+        middlewares:
+          - redirect_continue
+          - whoami

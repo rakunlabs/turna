@@ -7,6 +7,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/auth/claims"
+
 	"github.com/worldline-go/turna/pkg/server/middlewares/session"
 	"github.com/worldline-go/turna/pkg/server/model"
 )
@@ -31,7 +32,7 @@ func (m *Info) Info(c echo.Context) error {
 
 	// check if token exist in store
 	v64 := ""
-	if v, err := sessionM.GetStore().Get(c.Request(), sessionM.CookieName); !v.IsNew && err == nil {
+	if v, err := sessionM.GetStore().Get(c.Request(), sessionM.GetCookieName(c)); !v.IsNew && err == nil {
 		// add the access token to the request
 		v64, _ = v.Values[session.TokenKey].(string)
 	} else {

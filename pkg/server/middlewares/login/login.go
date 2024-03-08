@@ -16,14 +16,16 @@ import (
 
 // Login middleware gives a login page.
 type Login struct {
-	Path              Path     `cfg:"path"`
-	Redirect          Redirect `cfg:"redirect"`
-	UI                UI       `cfg:"ui"`
-	Info              Info     `cfg:"info"`
-	Request           Request  `cfg:"request"`
-	SessionMiddleware string   `cfg:"session_middleware"`
-	StateCookie       Cookie   `cfg:"state_cookie"`
-	SuccessCookie     Cookie   `cfg:"success_cookie"`
+	Path     Path     `cfg:"path"`
+	Redirect Redirect `cfg:"redirect"`
+	UI       UI       `cfg:"ui"`
+	Info     Info     `cfg:"info"`
+	Request  Request  `cfg:"request"`
+
+	SessionMiddleware string `cfg:"session_middleware"`
+
+	StateCookie   Cookie `cfg:"state_cookie"`
+	SuccessCookie Cookie `cfg:"success_cookie"`
 
 	client    *klient.Client `cfg:"-"`
 	pathFixed PathFixed      `cfg:"-"`

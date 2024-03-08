@@ -50,6 +50,11 @@ server:
       session:
         session:
           cookie_name: "turna_test"
+          cookie_name_hosts:
+            - host: "localhost:8082"
+              cookie_name: "turna_test_localhost"
+            - host: "localx:8082"
+              cookie_name: "turna_test_localx"
           session_key: "my_secret_key"
           store:
             active: file

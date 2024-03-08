@@ -107,6 +107,36 @@ func (m *Session) SetAction() error {
 	return nil
 }
 
+func (m *Session) GetCookieName(c echo.Context) string {
+	if v, ok := c.Get(CtxCookieNameKey).(string); ok && v != "" {
+		return v
+	}
+
+	cookieName := m.CookieName
+
+	if len(m.CookieNameHosts) > 0 {
+		host := c.Request().Host
+
+		for _, v := range m.CookieNameHosts {
+			if v.rgx != nil {
+				if v.rgx.MatchString(host) {
+					cookieName = v.CookieName
+
+					break
+				}
+			} else {
+				if v.Host == host {
+					cookieName = v.CookieName
+
+					break
+				}
+			}
+		}
+	}
+
+	return cookieName
+}
+
 func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 	if m.Action.Active == actionToken {
 		if authorizationHeader := c.Request().Header.Get("Authorization"); authorizationHeader != "" {
@@ -140,7 +170,7 @@ func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 		// check if token exist in store
 		token64 := ""
 		providerName := ""
-		if v, err := m.store.Get(c.Request(), m.CookieName); !v.IsNew && err == nil {
+		if v, err := m.store.Get(c.Request(), m.GetCookieName(c)); !v.IsNew && err == nil {
 			// add the access token to the request
 			token64, _ = v.Values[TokenKey].(string)
 			providerName, _ = v.Values[ProviderKey].(string)
@@ -271,7 +301,7 @@ func (m *Session) GetToken(c echo.Context) (*TokenData, *Oauth2, error) {
 	// check if token exist in store
 	v64 := ""
 	providerName := ""
-	if v, err := m.store.Get(c.Request(), m.CookieName); !v.IsNew && err == nil {
+	if v, err := m.store.Get(c.Request(), m.GetCookieName(c)); !v.IsNew && err == nil {
 		// add the access token to the request
 		v64, _ = v.Values[TokenKey].(string)
 		providerName, _ = v.Values[ProviderKey].(string)
@@ -305,7 +335,7 @@ func (m *Session) IsLogged(c echo.Context) (bool, error) {
 	// check if token exist in store
 	v64 := ""
 	providerName := ""
-	if v, err := m.store.Get(c.Request(), m.CookieName); !v.IsNew && err == nil {
+	if v, err := m.store.Get(c.Request(), m.GetCookieName(c)); !v.IsNew && err == nil {
 		// add the access token to the request
 		v64, _ = v.Values[TokenKey].(string)
 		providerName, _ = v.Values[ProviderKey].(string)

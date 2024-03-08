@@ -2,7 +2,9 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"regexp"
 
 	"github.com/labstack/echo/v4"
 )
@@ -11,6 +13,7 @@ const (
 	CtxTokenHeaderKey     = "token_header"
 	CtxTokenHeaderDelKey  = "token_header_delete"
 	CtxDisableRedirectKey = "disable_redirect"
+	CtxCookieNameKey      = "cookie_name"
 )
 
 type Session struct {
@@ -18,12 +21,26 @@ type Session struct {
 	Store      Store   `cfg:"store"`
 	Options    Options `cfg:"options"`
 
+	// CookieName for default cookie name.
+	// Overwrite this value with 'cookie_name' ctx value.
 	CookieName string `cfg:"cookie_name"`
+	// CookieNameHosts for cookie name by host with regexp.
+	CookieNameHosts []HostCookieName `cfg:"cookie_name_hosts"`
 
 	Action   Action              `cfg:"action"`
 	Provider map[string]Provider `cfg:"provider"`
 
 	store StoreInf `cfg:"-"`
+}
+
+type HostCookieName struct {
+	// Host as "localhost:8082"
+	Host  string `cfg:"host"`
+	Regex string `cfg:"regex"`
+
+	CookieName string `cfg:"cookie_name"`
+
+	rgx *regexp.Regexp
 }
 
 type Options struct {
@@ -49,6 +66,17 @@ func (m *Session) Init(ctx context.Context, name string) error {
 
 	if err := m.SetAction(); err != nil {
 		return err
+	}
+
+	for k, c := range m.CookieNameHosts {
+		if c.Regex != "" {
+			rgx, err := regexp.Compile(c.Regex)
+			if err != nil {
+				return fmt.Errorf("cookieNameHosts[%d].regex invalid: %w", k, err)
+			}
+
+			m.CookieNameHosts[k].rgx = rgx
+		}
 	}
 
 	return nil
