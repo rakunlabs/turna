@@ -7,9 +7,10 @@ server:
       project:
         folder:
           path: ./testdata/html
-          browse: false
+          browse: true
           spa: false
-          index: true
+          index: false
+          disable_folder_slash_redirect: true
           cache_regex:
             - regex: .*
               cache_control: no-cache

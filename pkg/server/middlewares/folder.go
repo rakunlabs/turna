@@ -51,6 +51,8 @@ type Folder struct {
 	// BrowseCache is cache control for browse page, default is no-cache
 	BrowseCache string `cfg:"browse_cache"`
 
+	DisableFolderSlashRedirect bool `cfg:"disable_folder_slash_redirect"`
+
 	fs http.FileSystem
 }
 
@@ -182,7 +184,9 @@ func (f *Folder) serveFile(c echo.Context, uPath, cPath string) error {
 	// r.URL.Path always begins with /
 	if d.IsDir() {
 		if uPath[len(uPath)-1] != '/' {
-			return localRedirect(c, path.Base(uPath)+"/")
+			if !f.DisableFolderSlashRedirect {
+				return localRedirect(c, path.Base(uPath)+"/")
+			}
 		}
 	} else {
 		if uPath[len(uPath)-1] == '/' {
