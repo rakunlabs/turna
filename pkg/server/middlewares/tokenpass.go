@@ -28,11 +28,12 @@ type TokenPass struct {
 	Payload string `cfg:"payload"`
 
 	// Redirect URL with go template
-	RedirectURL  string `cfg:"redirect_url"`
-	Method       string `cfg:"method"`
-	EnableBody   bool   `cfg:"enable_body"`
-	BodyRaw      bool   `cfg:"body_raw"`
-	BodyTemplate string `cfg:"body"`
+	RedirectURL      string `cfg:"redirect_url"`
+	RedirectWithCode bool   `cfg:"redirect_with_code"`
+	Method           string `cfg:"method"`
+	EnableBody       bool   `cfg:"enable_body"`
+	BodyRaw          bool   `cfg:"body_raw"`
+	BodyTemplate     string `cfg:"body"`
 
 	AdditionalValues   interface{} `cfg:"additional_values"`
 	DefaultExpDuration string      `cfg:"default_exp_duration"`
@@ -40,6 +41,9 @@ type TokenPass struct {
 	InsecureSkipVerify bool              `cfg:"insecure_skip_verify"`
 	EnableRetry        bool              `cfg:"enable_retry"`
 	Headers            map[string]string `cfg:"headers"`
+
+	DebugToken   bool `cfg:"debug_token"`
+	DebugPayload bool `cfg:"debug_payload"`
 
 	tpl *templatex.Template
 }
@@ -130,6 +134,10 @@ func (m *TokenPass) Middleware() (echo.MiddlewareFunc, error) {
 				return c.JSON(http.StatusInternalServerError, model.MetaData{Error: err.Error()})
 			}
 
+			if m.DebugPayload {
+				log.Debug().Msgf("payload: %q", payload)
+			}
+
 			claims := jwt.MapClaims{}
 			if err := yaml.Unmarshal(payload, &claims); err != nil {
 				return c.JSON(http.StatusInternalServerError, model.MetaData{Error: err.Error()})
@@ -145,6 +153,10 @@ func (m *TokenPass) Middleware() (echo.MiddlewareFunc, error) {
 				return c.JSON(http.StatusInternalServerError, model.MetaData{Error: fmt.Sprintf("secretKey %s", err.Error())})
 			}
 
+			if m.DebugToken {
+				log.Debug().Msgf("token: %q", tokenString)
+			}
+
 			data["token"] = tokenString
 
 			redirectURL, err := m.render(data, m.RedirectURL)
@@ -152,6 +164,12 @@ func (m *TokenPass) Middleware() (echo.MiddlewareFunc, error) {
 				return c.JSON(http.StatusInternalServerError, model.MetaData{Error: err.Error()})
 			}
 
+			if m.RedirectWithCode {
+				return c.Redirect(http.StatusTemporaryRedirect, string(redirectURL))
+			}
+
+			// //////////////////////////
+			// call directly
 			var requestBody io.Reader
 			if m.EnableBody {
 				if m.BodyRaw {

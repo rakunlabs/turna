@@ -28,10 +28,12 @@ type InjectContent struct {
 	//  - If regex is not empty, Old will be ignored.
 	Regex string `cfg:"regex"`
 	// Old is the old content to replace.
-	Old string `cfg:"old"`
-	old []byte
-	New string `cfg:"new"`
-	new []byte
+	Old        string `cfg:"old"`
+	old        []byte
+	New        string `cfg:"new"`
+	new        []byte
+	AddPrefix  string `cfg:"add_prefix"`
+	AddPostfix string `cfg:"add_postfix"`
 
 	// Value from load name, key value and type is map[string]interface{}
 	Value      string `cfg:"value"`
@@ -168,7 +170,20 @@ func (s *Inject) Middleware() ([]echo.MiddlewareFunc, error) {
 					continue
 				}
 
-				bodyBytes = bytes.ReplaceAll(bodyBytes, injectContent.old, injectContent.new)
+				// check old exist
+				if len(injectContent.old) > 0 {
+					bodyBytes = bytes.ReplaceAll(bodyBytes, injectContent.old, injectContent.new)
+				}
+
+				// check add prefix
+				if injectContent.AddPrefix != "" {
+					bodyBytes = append([]byte(injectContent.AddPrefix), bodyBytes...)
+				}
+
+				// check add postfix
+				if injectContent.AddPostfix != "" {
+					bodyBytes = append(bodyBytes, []byte(injectContent.AddPostfix)...)
+				}
 			}
 
 			urlPath := c.Request().URL.Path
@@ -189,7 +204,17 @@ func (s *Inject) Middleware() ([]echo.MiddlewareFunc, error) {
 							continue
 						}
 
-						bodyBytes = bytes.ReplaceAll(bodyBytes, injectContent.old, injectContent.new)
+						if len(injectContent.old) > 0 {
+							bodyBytes = bytes.ReplaceAll(bodyBytes, injectContent.old, injectContent.new)
+						}
+
+						if injectContent.AddPrefix != "" {
+							bodyBytes = append([]byte(injectContent.AddPrefix), bodyBytes...)
+						}
+
+						if injectContent.AddPostfix != "" {
+							bodyBytes = append(bodyBytes, []byte(injectContent.AddPostfix)...)
+						}
 					}
 				}
 			}

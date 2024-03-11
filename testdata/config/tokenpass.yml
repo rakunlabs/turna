@@ -1,0 +1,69 @@
+server:
+  entrypoints:
+    web:
+      address: ":8082"
+  http:
+    middlewares:
+      main:
+        hello:
+          headers:
+            Content-Type: "text/html; charset=utf-8"
+          message: |
+            <!DOCTYPE html>
+            <head>
+              <title>Turna</title>
+              <style>
+                body {background-color: #f7fff7;}
+                h1 {border-bottom: 2px solid #ff6b6b;}
+                .logout {float: right; color: #ff6b6b; text-decoration: none;}
+                pre {background-color: #faf0ca; overflow: auto; white-space: pre-wrap; word-wrap: break-word; }
+              </style>
+            </head>
+            <body>
+              <h1>Turna - Test Page</h1>
+              <div>
+                <iframe
+                    src="/api/dashboard/transaction"
+                    frameborder="0"
+                    width="800"
+                    height="600"
+                    allowtransparency
+                ></iframe>
+              </div>
+            </body>
+            </html>
+      redirect:
+        service:
+          loadbalancer:
+            servers:
+            - url: "https://example.com"
+      transaction:
+        token_pass:
+          secret_key: "test_secret_key"
+          payload: |
+            resource:
+              question: 3
+            params:
+              date_from: {{ if hasKey (cast.ToStringMap .query_params) "date_from"}}{{coalesce (index .query_params.date_from 0) "null" | quote }}{{else}}null{{end}}
+              date_to: {{ if hasKey (cast.ToStringMap .query_params) "date_to"}}{{coalesce (index .query_params.date_to 0) "null" | quote }}{{else}}null{{end}}
+              interval: [ "{{ if hasKey (cast.ToStringMap .query_params) "interval"}}{{coalesce (index .query_params.interval 0) "hour" }}{{else}}hour{{end}}" ]
+              payment_processor: {{ if hasKey (cast.ToStringMap .query_params) "payment_processor"}}{{coalesce (index .query_params.payment_processor 0) "null" | quote }}{{else}}null{{end}}
+          default_exp_duration: "10m"
+          redirect_url: "http://localhost:8082/api/metabase/embed/question/{{.token}}"
+          redirect_with_code: true
+          debug_payload: true
+    routers:
+      dashboard:
+        path: /api/dashboard/transaction
+        middlewares:
+          # - replace_path
+          - transaction
+      proxy:
+        path: /api/metabase/*
+        middlewares:
+          # - replace_js
+          - redirect
+      main:
+        path: /
+        middlewares:
+          - main
