@@ -13,14 +13,13 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var (
-	ShutdownTimeout = 5 * time.Second
-)
+var ShutdownTimeout = 5 * time.Second
 
 var GlobalReg = Registry{
 	listeners:      make(map[string]net.Listener),
 	server:         make(map[string]*http.Server),
 	httpMiddleware: make(map[string][]echo.MiddlewareFunc),
+	tcpMiddleware:  make(map[string][]func(lconn *net.TCPConn) error),
 	shutdownFuncs:  make(map[string]func()),
 }
 
@@ -28,6 +27,7 @@ type Registry struct {
 	listeners      map[string]net.Listener
 	server         map[string]*http.Server
 	httpMiddleware map[string][]echo.MiddlewareFunc
+	tcpMiddleware  map[string][]func(lconn *net.TCPConn) error
 	shutdownFuncs  map[string]func()
 	mutex          sync.RWMutex
 }
@@ -55,6 +55,25 @@ func (r *Registry) DeleteShutdownFunc(name string) {
 	defer r.mutex.Unlock()
 
 	delete(r.shutdownFuncs, name)
+}
+
+func (r *Registry) AddTcpMiddleware(name string, m []func(lconn *net.TCPConn) error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	r.tcpMiddleware[name] = m
+}
+
+func (r *Registry) GetTcpMiddleware(name string) ([]func(lconn *net.TCPConn) error, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	m, ok := r.tcpMiddleware[name]
+	if !ok {
+		return nil, fmt.Errorf("middleware %s not found", name)
+	}
+
+	return m, nil
 }
 
 func (r *Registry) AddHttpMiddleware(name string, m []echo.MiddlewareFunc) {

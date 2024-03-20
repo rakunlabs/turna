@@ -36,6 +36,7 @@ func (t *Token) GetKeyFunc() InfKeyFuncParser {
 }
 
 type Provider struct {
+	Name   string  `cfg:"name"`
 	Oauth2 *Oauth2 `cfg:"oauth2"`
 	// PasswordFlow is use password flow to get token.
 	PasswordFlow bool `cfg:"password_flow"`

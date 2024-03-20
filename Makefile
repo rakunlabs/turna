@@ -38,6 +38,7 @@ consul: ## Run consul server
 keycloak: export KEYCLOAK_PORT ?= 8080
 keycloak: ## Run keycloak server
 	docker run --rm -it -p $(KEYCLOAK_PORT):8080 -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:23.0.4 start-dev
+# docker run --rm -it -p $(KEYCLOAK_PORT):8080 -e KEYCLOAK_USER=admin -e KEYCLOAK_PASSWORD=admin quay.io/keycloak/keycloak:11.0.3
 
 .PHONY: whoami
 whoami: ## Run whoami server

@@ -1,0 +1,15 @@
+server:
+  entrypoints:
+    ssh:
+      address: ":8822"
+  tcp:
+    middlewares:
+      redirect:
+        redirect:
+          address: "example.com:22"
+    routers:
+      mytcprouter:
+        entrypoints:
+          - ssh
+        middlewares:
+          - redirect

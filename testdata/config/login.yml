@@ -68,6 +68,7 @@ server:
             same_site: 2
           provider:
             test1:
+              name: keycloak
               password_flow: true
               oauth2:
                 client_id: "test"
