@@ -73,7 +73,7 @@ func (m *Session) SetStore(ctx context.Context) error {
 			return fmt.Errorf("file store is not configured")
 		}
 
-		m.store = m.Store.File.Store([]byte(m.SessionKey), sessionOpts)
+		m.store = m.Store.File.Store(sessionOpts)
 
 		return nil
 	case "":
@@ -87,7 +87,7 @@ func (m *Session) SetStore(ctx context.Context) error {
 		}
 
 		if m.Store.File != nil {
-			m.store = m.Store.File.Store([]byte(m.SessionKey), sessionOpts)
+			m.store = m.Store.File.Store(sessionOpts)
 
 			return nil
 		}

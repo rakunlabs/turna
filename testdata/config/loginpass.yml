@@ -1,0 +1,73 @@
+server:
+  entrypoints:
+    web:
+      address: ":8082"
+  http:
+    middlewares:
+      session:
+        session:
+          cookie_name: "turna_test"
+          store:
+            active: file
+            file:
+              session_key: "my_secret_key"
+          options:
+            http_only: true
+            secure: false
+            same_site: 2
+          provider:
+            test1:
+              name: keycloak
+              password_flow: true
+              oauth2:
+                client_id: "test"
+                client_secret: ""
+                cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
+                token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
+                auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth"
+                logout_url: "http://localhost:8080/realms/master/protocol/openid-connect/logout"
+          action:
+            token:
+              login_path: "/login/"
+      logout:
+        set:
+          values:
+          - logout
+      login:
+        login:
+          path:
+            base: "/login/"
+          redirect:
+            schema: http
+          info:
+            title: "Turna Login"
+          session_middleware: "session"
+      pass:
+        service:
+          loadbalancer:
+            servers:
+              - url: "http://localhost:3000"
+      redirect:
+        service:
+          loadbalancer:
+            servers:
+              - url: "http://localhost:3000"
+    routers:
+      api:
+        path: /api/*
+        middlewares:
+          - redirect
+      login:
+        path: /login/*
+        middlewares:
+          - login
+      logout:
+        path: /logout
+        middlewares:
+          - logout
+          - login
+      pass:
+        path: /*
+        middlewares:
+          - session
+          - pass

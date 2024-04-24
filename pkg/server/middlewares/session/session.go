@@ -17,9 +17,9 @@ const (
 )
 
 type Session struct {
-	SessionKey string  `cfg:"session_key"`
-	Store      Store   `cfg:"store"`
-	Options    Options `cfg:"options"`
+	Store Store `cfg:"store"`
+	// Options for main cookie.
+	Options Options `cfg:"options"`
 
 	// CookieName for default cookie name.
 	// Overwrite this value with 'cookie_name' ctx value.

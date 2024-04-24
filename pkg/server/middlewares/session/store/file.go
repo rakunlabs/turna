@@ -1,14 +1,22 @@
 package store
 
 import (
+	"github.com/gorilla/securecookie"
 	"github.com/gorilla/sessions"
 )
 
 type File struct {
-	Path string `cfg:"path"`
+	// SessionKey for file store.
+	SessionKey string `cfg:"session_key"`
+	Path       string `cfg:"path"`
 }
 
-func (f File) Store(sessionKey []byte, opts sessions.Options) *sessions.FilesystemStore {
+func (f File) Store(opts sessions.Options) *sessions.FilesystemStore {
+	sessionKey := []byte(f.SessionKey)
+	if len(sessionKey) == 0 {
+		sessionKey = securecookie.GenerateRandomKey(32)
+	}
+
 	fStore := sessions.NewFilesystemStore(f.Path, sessionKey)
 	fStore.Options = &opts
 

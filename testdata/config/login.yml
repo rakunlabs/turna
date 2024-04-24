@@ -55,10 +55,10 @@ server:
               cookie_name: "turna_test_localhost"
             - host: "localx:8082"
               cookie_name: "turna_test_localx"
-          session_key: "my_secret_key"
           store:
             active: file
-            file: {}
+            file:
+              session_key: "my_secret_key"
             redis:
               address: "localhost:6379"
               key_prefix: "turna_test_"
