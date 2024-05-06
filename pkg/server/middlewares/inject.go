@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/worldline-go/turna/pkg/render"
-	"github.com/worldline-go/turna/pkg/server/model"
+	"github.com/rakunlabs/turna/pkg/render"
+	"github.com/rakunlabs/turna/pkg/server/model"
 )
 
 type Inject struct {

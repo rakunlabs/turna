@@ -1,10 +1,10 @@
 package config
 
 import (
+	"github.com/rakunlabs/turna/pkg/preprocess"
+	"github.com/rakunlabs/turna/pkg/server"
+	"github.com/rakunlabs/turna/pkg/service"
 	"github.com/rytsh/liz/loader"
-	"github.com/worldline-go/turna/pkg/preprocess"
-	"github.com/worldline-go/turna/pkg/server"
-	"github.com/worldline-go/turna/pkg/service"
 )
 
 var Application = struct {

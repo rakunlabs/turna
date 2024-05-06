@@ -6,9 +6,9 @@ import (
 	"net/url"
 
 	"github.com/labstack/echo/v4"
+	"github.com/rakunlabs/turna/pkg/server/middlewares/session"
+	"github.com/rakunlabs/turna/pkg/server/model"
 	"github.com/rs/zerolog/log"
-	"github.com/worldline-go/turna/pkg/server/middlewares/session"
-	"github.com/worldline-go/turna/pkg/server/model"
 )
 
 func (m *Login) Logout(c echo.Context) error {

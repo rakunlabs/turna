@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/worldline-go/turna/pkg/server/middlewares/session"
+	"github.com/rakunlabs/turna/pkg/server/middlewares/session"
 )
 
 func (m *Login) PasswordToken(ctx context.Context, username, password string, oauth2 *session.Oauth2) ([]byte, int, error) {

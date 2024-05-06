@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/worldline-go/turna/pkg/server/registry"
-	"github.com/worldline-go/turna/pkg/server/tcp/middlewares"
+	"github.com/rakunlabs/turna/pkg/server/registry"
+	"github.com/rakunlabs/turna/pkg/server/tcp/middlewares"
 )
 
 type TCPMiddleware struct {

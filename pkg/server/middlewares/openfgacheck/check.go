@@ -13,7 +13,7 @@ import (
 	"github.com/worldline-go/auth/claims"
 	"github.com/worldline-go/klient"
 
-	"github.com/worldline-go/turna/pkg/server/model"
+	"github.com/rakunlabs/turna/pkg/server/model"
 )
 
 type OpenFGACheck struct {

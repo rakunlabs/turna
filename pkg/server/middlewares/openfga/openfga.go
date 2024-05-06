@@ -12,8 +12,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/rakunlabs/turna/pkg/server/middlewares"
 	"github.com/worldline-go/initializer"
-	"github.com/worldline-go/turna/pkg/server/middlewares"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"

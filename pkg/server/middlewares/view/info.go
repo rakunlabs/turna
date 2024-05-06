@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/worldline-go/turna/pkg/server/model"
+	"github.com/rakunlabs/turna/pkg/server/model"
 	"gopkg.in/yaml.v3"
 )
 

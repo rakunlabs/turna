@@ -7,10 +7,10 @@ import (
 	"sync"
 
 	"github.com/kballard/go-shellquote"
+	"github.com/rakunlabs/turna/pkg/render"
+	"github.com/rakunlabs/turna/pkg/runner"
 	"github.com/rs/zerolog/log"
 	"github.com/rytsh/liz/loader"
-	"github.com/worldline-go/turna/pkg/render"
-	"github.com/worldline-go/turna/pkg/runner"
 )
 
 type Service struct {

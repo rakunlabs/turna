@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/worldline-go/turna/pkg/server/middlewares"
+	"github.com/rakunlabs/turna/pkg/server/middlewares"
 )
 
 //go:embed _ui/dist/*

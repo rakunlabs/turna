@@ -11,7 +11,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/worldline-go/turna/pkg/filter"
+	"github.com/rakunlabs/turna/pkg/filter"
 )
 
 var ErrRunInit = fmt.Errorf("run init error")

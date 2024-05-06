@@ -7,8 +7,8 @@ import (
 	"github.com/worldline-go/initializer"
 	"github.com/worldline-go/logz"
 
-	"github.com/worldline-go/turna/cmd/turna/args"
-	"github.com/worldline-go/turna/internal/config"
+	"github.com/rakunlabs/turna/cmd/turna/args"
+	"github.com/rakunlabs/turna/internal/config"
 )
 
 var (

@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rs/zerolog/log"
-	"github.com/worldline-go/turna/pkg/render"
 )
 
 type Config struct {

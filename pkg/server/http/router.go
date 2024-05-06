@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/worldline-go/turna/pkg/server/registry"
+	"github.com/rakunlabs/turna/pkg/server/registry"
 )
 
 var ServerInfo = "Turna"
