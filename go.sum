@@ -497,8 +497,8 @@ github.com/worldline-go/igconfig v0.2.4 h1:xFaTHklA6RDpr9Qpt5PqDTm+UrZLhTYSMOGJ9
 github.com/worldline-go/igconfig v0.2.4/go.mod h1:sjiKlVEYoJrbWLf+lXcyJSn9yGln+NLP7T3A233GJ3U=
 github.com/worldline-go/initializer v0.2.4 h1:niJKtvdE9T3fupzhc4d1+FfHin4QHn0Go+qxLjwpsD4=
 github.com/worldline-go/initializer v0.2.4/go.mod h1:UkLyW92jTTU3faHv/95dHisu36SszZRMt98Es22ye0Q=
-github.com/worldline-go/klient v0.7.6 h1:MEIyWTy/+T3Vixj3FabBO5Yx6QU5fMfWnuovk9mWCIY=
-github.com/worldline-go/klient v0.7.6/go.mod h1:H6/AMxcD+3Vl1+cyKEA4wTwxw2K0W1tsGOlKZcvEvQA=
+github.com/worldline-go/klient v0.8.0 h1:/5lQOGm5gMJXDrxRfzpNB800Q5SUKwRYgpCTsyXrpqE=
+github.com/worldline-go/klient v0.8.0/go.mod h1:H6/AMxcD+3Vl1+cyKEA4wTwxw2K0W1tsGOlKZcvEvQA=
 github.com/worldline-go/logz v0.5.0 h1:o/xVrxo51Lt1F1Otu3In6wHSZlmCjzLZA8f9pEeGnE0=
 github.com/worldline-go/logz v0.5.0/go.mod h1:CWLYHvL+YkzCRfZmQ86zbMyWR/9mmZ2dIQEeDugaIXo=
 github.com/worldline-go/struct2 v1.2.5 h1:JjXhGcjrA4N+0ns7Zo7feGVFZgxa6axwmmm/y+jKNkY=

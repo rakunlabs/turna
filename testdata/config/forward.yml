@@ -1,0 +1,13 @@
+server:
+  entrypoints:
+    web:
+      address: ":8080"
+  http:
+    middlewares:
+      forward:
+        forward: {}
+    routers:
+      project:
+        path: /*
+        middlewares:
+          - forward

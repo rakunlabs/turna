@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/labstack/echo/v4"
+
 	"github.com/worldline-go/turna/pkg/server/middlewares"
 	"github.com/worldline-go/turna/pkg/server/middlewares/login"
 	"github.com/worldline-go/turna/pkg/server/middlewares/openfga"
@@ -51,6 +52,7 @@ type HTTPMiddleware struct {
 	RoleDataMiddleware         *roledata.RoleData               `cfg:"role_data"`
 	TokenPassMiddleware        *middlewares.TokenPass           `cfg:"token_pass"`
 	RedirectContinueMiddleware *middlewares.RedirectionContinue `cfg:"redirect_continue"`
+	ForwardMiddleware          *middlewares.Forward             `cfg:"forward"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo.MiddlewareFunc, error) {
@@ -139,6 +141,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo
 		return []echo.MiddlewareFunc{m}, err
 	case h.RedirectContinueMiddleware != nil:
 		m, err := h.RedirectContinueMiddleware.Middleware()
+		return []echo.MiddlewareFunc{m}, err
+	case h.ForwardMiddleware != nil:
+		m, err := h.ForwardMiddleware.Middleware()
 		return []echo.MiddlewareFunc{m}, err
 	}
 
