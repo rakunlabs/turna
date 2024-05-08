@@ -12,7 +12,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/rakunlabs/turna/pkg/server/middlewares"
+	"github.com/rakunlabs/turna/pkg/server/http/middlewares"
 	"github.com/worldline-go/initializer"
 
 	_ "github.com/jackc/pgx/v5/stdlib"

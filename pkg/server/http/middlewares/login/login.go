@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/rakunlabs/turna/pkg/server/middlewares/session"
+	"github.com/rakunlabs/turna/pkg/server/http/middlewares/session"
 	"github.com/rakunlabs/turna/pkg/server/model"
 	"github.com/worldline-go/klient"
 )

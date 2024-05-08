@@ -8,7 +8,7 @@ import (
 
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo/v4"
-	"github.com/rakunlabs/turna/pkg/server/middlewares/session/store"
+	"github.com/rakunlabs/turna/pkg/server/http/middlewares/session/store"
 )
 
 type Store struct {

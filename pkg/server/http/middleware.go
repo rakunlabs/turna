@@ -5,15 +5,15 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/rakunlabs/turna/pkg/server/middlewares"
-	"github.com/rakunlabs/turna/pkg/server/middlewares/login"
-	"github.com/rakunlabs/turna/pkg/server/middlewares/openfga"
-	"github.com/rakunlabs/turna/pkg/server/middlewares/openfgacheck"
-	"github.com/rakunlabs/turna/pkg/server/middlewares/rolecheck"
-	"github.com/rakunlabs/turna/pkg/server/middlewares/roledata"
-	"github.com/rakunlabs/turna/pkg/server/middlewares/session"
-	"github.com/rakunlabs/turna/pkg/server/middlewares/sessioninfo"
-	"github.com/rakunlabs/turna/pkg/server/middlewares/view"
+	"github.com/rakunlabs/turna/pkg/server/http/middlewares"
+	"github.com/rakunlabs/turna/pkg/server/http/middlewares/login"
+	"github.com/rakunlabs/turna/pkg/server/http/middlewares/openfga"
+	"github.com/rakunlabs/turna/pkg/server/http/middlewares/openfgacheck"
+	"github.com/rakunlabs/turna/pkg/server/http/middlewares/rolecheck"
+	"github.com/rakunlabs/turna/pkg/server/http/middlewares/roledata"
+	"github.com/rakunlabs/turna/pkg/server/http/middlewares/session"
+	"github.com/rakunlabs/turna/pkg/server/http/middlewares/sessioninfo"
+	"github.com/rakunlabs/turna/pkg/server/http/middlewares/view"
 	"github.com/rakunlabs/turna/pkg/server/registry"
 )
 

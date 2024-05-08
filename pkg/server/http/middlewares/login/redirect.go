@@ -7,7 +7,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/rakunlabs/turna/pkg/server/middlewares/session"
+	"github.com/rakunlabs/turna/pkg/server/http/middlewares/session"
 )
 
 type Redirect struct {
