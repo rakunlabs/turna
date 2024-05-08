@@ -49,37 +49,33 @@ func (f *FileFilter) Start(ctx context.Context, wg *sync.WaitGroup) (*os.File, e
 
 		buff := bufio.NewReader(f.r)
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				f.w.Close()
 
-			<-ctx.Done()
+				var err error
 
-			f.w.Close()
+				// read remainings
+				for {
+					if err = f.read(buff); err != nil {
+						break
+					}
+				}
 
-			var err error
+				if !errors.Is(err, io.EOF) {
+					log.Error().Err(err).Msg("loop read remainings failed")
+				}
 
-			// read remainings
-			for {
-				if err = f.read(buff); err != nil {
+				f.r.Close()
+			default:
+				if err := f.read(buff); err != nil && !errors.Is(err, io.EOF) {
+					if !errors.Is(err, os.ErrClosed) {
+						log.Error().Err(err).Msg("loop read failed")
+					}
+
 					break
 				}
-			}
-
-			if !errors.Is(err, io.EOF) {
-				log.Error().Err(err).Msg("loop read remainings failed")
-			}
-
-			f.r.Close()
-		}()
-
-		for {
-			if err := f.read(buff); err != nil && !errors.Is(err, io.EOF) {
-				if !errors.Is(err, os.ErrClosed) {
-					log.Error().Err(err).Msg("loop read failed")
-				}
-
-				break
 			}
 		}
 	}()
