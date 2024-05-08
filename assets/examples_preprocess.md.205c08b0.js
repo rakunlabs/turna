@@ -1,0 +1,33 @@
+import{_ as s,o as a,c as n,S as l}from"./chunks/framework.662a2917.js";const i=JSON.parse('{"title":"PreProcess","description":"","frontmatter":{},"headers":[],"relativePath":"examples/preprocess.md","filePath":"examples/preprocess.md"}'),p={name:"examples/preprocess.md"},o=l(`<h1 id="preprocess" tabindex="-1">PreProcess <a class="header-anchor" href="#preprocess" aria-label="Permalink to &quot;PreProcess&quot;">​</a></h1><p>Replace all values in a file with the values from a static before serving it.</p><div class="language-yaml"><button title="Copy Code" class="copy"></button><span class="lang">yaml</span><pre class="shiki material-theme-palenight"><code><span class="line"><span style="color:#F07178;">loads</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">  </span><span style="color:#89DDFF;">-</span><span style="color:#A6ACCD;"> </span><span style="color:#F07178;">statics</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">    </span><span style="color:#89DDFF;">-</span><span style="color:#A6ACCD;"> </span><span style="color:#F07178;">content</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">        </span><span style="color:#F07178;">content</span><span style="color:#89DDFF;">:</span><span style="color:#A6ACCD;"> </span><span style="color:#89DDFF;font-style:italic;">|</span></span>
+<span class="line"><span style="color:#C3E88D;">          Turna: XXX2</span></span>
+<span class="line"><span style="color:#A6ACCD;">        </span><span style="color:#F07178;">name</span><span style="color:#89DDFF;">:</span><span style="color:#A6ACCD;"> </span><span style="color:#C3E88D;">values</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F07178;">preprocess</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">  </span><span style="color:#89DDFF;">-</span><span style="color:#A6ACCD;"> </span><span style="color:#F07178;">replace</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">      </span><span style="color:#F07178;">path</span><span style="color:#89DDFF;">:</span><span style="color:#A6ACCD;"> </span><span style="color:#C3E88D;">./testdata/html</span></span>
+<span class="line"><span style="color:#A6ACCD;">      </span><span style="color:#F07178;">contents</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">        </span><span style="color:#F07178;">value</span><span style="color:#89DDFF;">:</span><span style="color:#A6ACCD;"> </span><span style="color:#C3E88D;">values</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F07178;">server</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">  </span><span style="color:#F07178;">entrypoints</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">    </span><span style="color:#F07178;">web</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">      </span><span style="color:#F07178;">address</span><span style="color:#89DDFF;">:</span><span style="color:#A6ACCD;"> </span><span style="color:#89DDFF;">&quot;</span><span style="color:#C3E88D;">:8082</span><span style="color:#89DDFF;">&quot;</span></span>
+<span class="line"><span style="color:#A6ACCD;">  </span><span style="color:#F07178;">http</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">    </span><span style="color:#F07178;">middlewares</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">      </span><span style="color:#F07178;">project</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">        </span><span style="color:#F07178;">folder</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">          </span><span style="color:#F07178;">path</span><span style="color:#89DDFF;">:</span><span style="color:#A6ACCD;"> </span><span style="color:#C3E88D;">./testdata/html</span></span>
+<span class="line"><span style="color:#A6ACCD;">          </span><span style="color:#F07178;">browse</span><span style="color:#89DDFF;">:</span><span style="color:#A6ACCD;"> </span><span style="color:#FF9CAC;">false</span></span>
+<span class="line"><span style="color:#A6ACCD;">          </span><span style="color:#F07178;">spa</span><span style="color:#89DDFF;">:</span><span style="color:#A6ACCD;"> </span><span style="color:#FF9CAC;">false</span></span>
+<span class="line"><span style="color:#A6ACCD;">          </span><span style="color:#F07178;">index</span><span style="color:#89DDFF;">:</span><span style="color:#A6ACCD;"> </span><span style="color:#FF9CAC;">true</span></span>
+<span class="line"><span style="color:#A6ACCD;">          </span><span style="color:#F07178;">cache_regex</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">            </span><span style="color:#89DDFF;">-</span><span style="color:#A6ACCD;"> </span><span style="color:#F07178;">regex</span><span style="color:#89DDFF;">:</span><span style="color:#A6ACCD;"> </span><span style="color:#C3E88D;">.*</span></span>
+<span class="line"><span style="color:#A6ACCD;">              </span><span style="color:#F07178;">cache_control</span><span style="color:#89DDFF;">:</span><span style="color:#A6ACCD;"> </span><span style="color:#C3E88D;">no-cache</span></span>
+<span class="line"><span style="color:#A6ACCD;">    </span><span style="color:#F07178;">routers</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">      </span><span style="color:#F07178;">project</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">        </span><span style="color:#F07178;">path</span><span style="color:#89DDFF;">:</span><span style="color:#A6ACCD;"> </span><span style="color:#C3E88D;">/*</span></span>
+<span class="line"><span style="color:#A6ACCD;">        </span><span style="color:#F07178;">middlewares</span><span style="color:#89DDFF;">:</span></span>
+<span class="line"><span style="color:#A6ACCD;">          </span><span style="color:#89DDFF;">-</span><span style="color:#A6ACCD;"> </span><span style="color:#C3E88D;">project</span></span></code></pre></div>`,3),e=[o];function c(t,r,D,y,F,C){return a(),n("div",null,e)}const d=s(p,[["render",c]]);export{i as __pageData,d as default};
