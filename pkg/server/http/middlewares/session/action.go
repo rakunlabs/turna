@@ -142,26 +142,26 @@ func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 	if m.Action.Active == actionToken {
 		if authorizationHeader := c.Request().Header.Get("Authorization"); authorizationHeader != "" {
 			// get token from header
-			token := strings.TrimPrefix(authorizationHeader, "Bearer ")
-			// validate token
-			// check if token is valid
-			customClaims := &claims.Custom{}
-			jwtToken, err := m.Action.Token.keyFunc.ParseWithClaims(token, customClaims)
-			if err != nil {
-				c.Logger().Debugf("token is not valid: %v", err)
+			if token := strings.TrimPrefix(authorizationHeader, "Bearer "); token != "" {
+				// validate token, check if token is valid
+				customClaims := &claims.Custom{}
+				jwtToken, err := m.Action.Token.keyFunc.ParseWithClaims(token, customClaims)
+				if err != nil {
+					c.Logger().Debugf("token is not valid: %v", err)
 
-				return c.JSON(http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+					return c.JSON(http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+				}
+
+				// next middlewares can check roles
+				c.Set("claims", customClaims)
+				c.Set("provider", jwtToken.Header["provider_name"])
+
+				if v, _ := c.Get(CtxTokenHeaderDelKey).(bool); v {
+					c.Request().Header.Del("Authorization")
+				}
+
+				return next(c)
 			}
-
-			// next middlewares can check roles
-			c.Set("claims", customClaims)
-			c.Set("provider", jwtToken.Header["provider_name"])
-
-			if v, _ := c.Get(CtxTokenHeaderDelKey).(bool); v {
-				c.Request().Header.Del("Authorization")
-			}
-
-			return next(c)
 		}
 
 		// get token from store
