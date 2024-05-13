@@ -39,11 +39,49 @@ func TestRoleCheck_Middleware(t *testing.T) {
 			fields: fields{
 				PathMap: []PathMap{
 					{
-						RegexPath: "/test/(.*)",
+						RegexPath: "/test/.*",
 						Map: []Map{
 							{
 								AllMethods: true,
 								Roles:      []string{"admin"},
+							},
+						},
+					},
+					{
+						RegexPath: "/read/.*",
+						Map: []Map{
+							{
+								ReadMethods: true,
+								Roles:       []string{"admin"},
+							},
+						},
+					},
+					{
+						RegexPath: "/write/.*",
+						Map: []Map{
+							{
+								WriteMethods: true,
+								Roles:        []string{"admin"},
+							},
+						},
+					},
+					{
+						RegexPath: "/path/.*",
+						Map: []Map{
+							{
+								WriteMethods: true,
+								ReadMethods:  true,
+								Roles:        []string{"admin"},
+							},
+						},
+					},
+					{
+						RegexPath: "/no-role/.*",
+						Map: []Map{
+							{
+								ReadMethods:   true,
+								RolesDisabled: true,
+								Roles:         []string{"admin"},
 							},
 						},
 					},
@@ -66,6 +104,52 @@ func TestRoleCheck_Middleware(t *testing.T) {
 					method:    http.MethodGet,
 					path:      "/test2/one",
 					roles:     []string{"admin"},
+					isAllowed: false,
+				},
+				{
+					method:    http.MethodGet,
+					path:      "/read/one",
+					roles:     []string{"admin"},
+					isAllowed: true,
+				},
+				{
+					method:    http.MethodDelete,
+					path:      "/read/one",
+					roles:     []string{"admin"},
+					isAllowed: false,
+				},
+				{
+					method:    http.MethodGet,
+					path:      "/write/one",
+					roles:     []string{"admin"},
+					isAllowed: false,
+				},
+				{
+					method:    http.MethodPost,
+					path:      "/write/one",
+					roles:     []string{"admin"},
+					isAllowed: true,
+				},
+				{
+					method:    http.MethodGet,
+					path:      "/path/one",
+					roles:     []string{"admin"},
+					isAllowed: true,
+				},
+				{
+					method:    http.MethodPost,
+					path:      "/path/one",
+					roles:     []string{"admin"},
+					isAllowed: true,
+				},
+				{
+					method:    http.MethodGet,
+					path:      "/no-role/one",
+					isAllowed: true,
+				},
+				{
+					method:    http.MethodDelete,
+					path:      "/no-role/one",
 					isAllowed: false,
 				},
 			},

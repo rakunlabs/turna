@@ -10,6 +10,22 @@ import (
 	"github.com/worldline-go/auth/claims"
 )
 
+var (
+	ReadMethods = map[string]struct{}{
+		"GET":     {},
+		"HEAD":    {},
+		"OPTIONS": {},
+		"TRACE":   {},
+		"CONNECT": {},
+	}
+	WriteMethods = map[string]struct{}{
+		"POST":   {},
+		"PUT":    {},
+		"PATCH":  {},
+		"DELETE": {},
+	}
+)
+
 type RoleCheck struct {
 	PathMap     []PathMap `cfg:"path_map"`
 	AllowOthers bool      `cfg:"allow_others"`
@@ -30,9 +46,12 @@ type PathMap struct {
 }
 
 type Map struct {
-	AllMethods bool     `cfg:"all_methods"`
-	Methods    []string `cfg:"methods"`
-	Roles      []string `cfg:"roles"`
+	AllMethods    bool     `cfg:"all_methods"`
+	ReadMethods   bool     `cfg:"read_methods"`
+	WriteMethods  bool     `cfg:"write_methods"`
+	Methods       []string `cfg:"methods"`
+	Roles         []string `cfg:"roles"`
+	RolesDisabled bool     `cfg:"roles_disabled"`
 
 	methods map[string]struct{} `cfg:"-"`
 }
@@ -73,6 +92,10 @@ func (m *RoleCheck) Middleware() (echo.MiddlewareFunc, error) {
 				if pathMap.regexPath.MatchString(path) {
 					for _, m := range pathMap.Map {
 						if m.AllMethods {
+							if m.RolesDisabled {
+								return next(c)
+							}
+
 							for _, role := range m.Roles {
 								if _, ok := roles[role]; ok {
 									return next(c)
@@ -80,7 +103,39 @@ func (m *RoleCheck) Middleware() (echo.MiddlewareFunc, error) {
 							}
 						}
 
+						if m.ReadMethods {
+							if _, ok := ReadMethods[method]; ok {
+								if m.RolesDisabled {
+									return next(c)
+								}
+
+								for _, role := range m.Roles {
+									if _, ok := roles[role]; ok {
+										return next(c)
+									}
+								}
+							}
+						}
+
+						if m.WriteMethods {
+							if _, ok := WriteMethods[method]; ok {
+								if m.RolesDisabled {
+									return next(c)
+								}
+
+								for _, role := range m.Roles {
+									if _, ok := roles[role]; ok {
+										return next(c)
+									}
+								}
+							}
+						}
+
 						if _, ok := m.methods[method]; ok {
+							if m.RolesDisabled {
+								return next(c)
+							}
+
 							for _, role := range m.Roles {
 								if _, ok := roles[role]; ok {
 									return next(c)
