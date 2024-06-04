@@ -21,7 +21,7 @@ server:
     routers:
       one:
         host: proxy-consul-x
-        path: /v1/*
+        path: /v1/
         middlewares:
           - consul-path-x
           - try

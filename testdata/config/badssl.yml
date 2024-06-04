@@ -13,6 +13,6 @@ server:
               - url: "https://expired.badssl.com/"
     routers:
       test:
-        path: /*
+        path: /
         middlewares:
           - myservice

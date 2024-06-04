@@ -3,11 +3,10 @@ package runner
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"sort"
 	"sync"
-
-	"github.com/rs/zerolog/log"
 )
 
 // GlobalReg using in server requests.
@@ -44,7 +43,7 @@ func (o *OrderCommand) Run(ctxParent context.Context, wg *sync.WaitGroup) error 
 
 			// run command
 			if err := o.StoreReg.reg[name].Run(ctx); err != nil {
-				log.Error().Msgf("command [%s] failed: %s", name, err)
+				slog.Error(fmt.Sprintf("failed command [%s]", name), "err", err.Error())
 
 				errStore = append(errStore, err)
 
@@ -62,10 +61,10 @@ func (o *OrderCommand) Run(ctxParent context.Context, wg *sync.WaitGroup) error 
 				defer ctxCancel()
 
 				for _, depend := range o.StoreReg.reg[name].trigger {
-					log.Info().Msgf("command [%s] dependecy trigger [%s]", name, depend)
+					slog.Info(fmt.Sprintf("command [%s] dependecy trigger [%s]", name, depend))
 
 					if err := o.StoreReg.reg[depend].DependecyTrigger(ctx, name); err != nil {
-						log.Error().Msgf("command [%s] failed: %s", name, err)
+						slog.Error(fmt.Sprintf("failed command [%s]", name), "err", err.Error())
 
 						errStore = append(errStore, err)
 
@@ -80,7 +79,7 @@ func (o *OrderCommand) Run(ctxParent context.Context, wg *sync.WaitGroup) error 
 
 	o.wg.Wait()
 
-	log.Info().Msgf("Order [%d] done", o.Order)
+	slog.Info("order [%d] done", o.Order)
 
 	if len(errStore) > 0 {
 		return fmt.Errorf("command [%s] failed: %s", o.Names, errStore)
@@ -170,13 +169,13 @@ func (s *StoreReg) Get(name string) *Command {
 }
 
 func (s *StoreReg) KillAll() {
-	log.Warn().Msg("killing all process")
+	slog.Warn("killing all process")
 
 	for key := range s.reg {
 		s.reg[key].Kill()
 	}
 
-	log.Warn().Msg("killing all process done")
+	slog.Warn("killing all process done")
 }
 
 func (s *StoreReg) SetAsGlobal() *StoreReg {

@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"sync"
 
 	"github.com/rakunlabs/turna/pkg/server/registry"
-	"github.com/rs/zerolog/log"
 )
 
 type TCP struct {
@@ -66,7 +66,7 @@ func (h *TCP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 					conn, err := listener.AcceptTCP()
 					if err != nil {
 						if !(errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed)) {
-							log.Warn().Msgf("failed to accept connection '%s'", err)
+							slog.Warn("failed to accept connection", "err", err.Error())
 						}
 
 						continue
@@ -89,7 +89,7 @@ func (h *TCP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 						// do something with conn
 						for _, middleware := range middlewares {
 							if err := middleware(conn); err != nil {
-								log.Warn().Err(err).Msg("middleware failed")
+								slog.Warn("middleware failed", "err", err.Error())
 
 								return
 							}

@@ -11,7 +11,7 @@ server:
               - url: "http://localhost:9090"
     routers:
       test:
-        path: /*
+        path: /
         middlewares:
           - whoami
 # declare commands to run

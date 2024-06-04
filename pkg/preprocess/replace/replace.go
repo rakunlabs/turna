@@ -5,12 +5,12 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
 
 	"github.com/rakunlabs/turna/pkg/render"
-	"github.com/rs/zerolog/log"
 )
 
 type Config struct {
@@ -104,7 +104,7 @@ func (c *Config) Run(ctx context.Context) error {
 
 		if info.IsDir() {
 			if _, ok := skipDirsMap[path]; ok {
-				log.Debug().Msgf("skip dir: %s", path)
+				slog.Debug("skip dir", "dir", path)
 
 				return filepath.SkipDir
 			}
@@ -113,7 +113,7 @@ func (c *Config) Run(ctx context.Context) error {
 		}
 
 		if _, ok := skipFilesMap[path]; ok {
-			log.Debug().Msgf("skip file: %s", path)
+			slog.Debug("skip file", "file", path)
 		}
 
 		for i := range c.Contents {

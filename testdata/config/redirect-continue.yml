@@ -18,7 +18,7 @@ server:
               replacement: "/api/x/z$1"
     routers:
       dashboard:
-        path: /*
+        path: /
         middlewares:
           - redirect_continue
           - whoami

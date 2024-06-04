@@ -2,149 +2,230 @@ package http
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/rakunlabs/turna/pkg/server/http/middlewares"
-	"github.com/rakunlabs/turna/pkg/server/http/middlewares/login"
-	"github.com/rakunlabs/turna/pkg/server/http/middlewares/openfga"
-	"github.com/rakunlabs/turna/pkg/server/http/middlewares/openfgacheck"
-	"github.com/rakunlabs/turna/pkg/server/http/middlewares/rolecheck"
-	"github.com/rakunlabs/turna/pkg/server/http/middlewares/roledata"
-	"github.com/rakunlabs/turna/pkg/server/http/middlewares/session"
-	"github.com/rakunlabs/turna/pkg/server/http/middlewares/sessioninfo"
-	"github.com/rakunlabs/turna/pkg/server/http/middlewares/view"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/addprefix"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/basicauth"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/block"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/cors"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/decompress"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/forward"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/grpcui"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/gzip"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/headers"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/hello"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/info"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/inject"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/log"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/login"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/openfga"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/openfgacheck"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/print"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/redirectcontinue"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/redirection"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/regexpath"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/request"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/role"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/rolecheck"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/roledata"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/scope"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/service"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/sessioninfo"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/set"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/stripprefix"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/template"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/tokenpass"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/try"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/view"
+
+	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
 	"github.com/rakunlabs/turna/pkg/server/registry"
 )
 
-type HTTPMiddleware struct {
-	AddPrefixMiddleware        *middlewares.AddPrefix           `cfg:"add_prefix"`
-	AuthMiddleware             *middlewares.Auth                `cfg:"auth"`
-	InjectMiddleware           *middlewares.Inject              `cfg:"inject"`
-	HelloMiddleware            *middlewares.Hello               `cfg:"hello"`
-	TemplateMiddleware         *middlewares.Template            `cfg:"template"`
-	InfoMiddleware             *middlewares.Info                `cfg:"info"`
-	SetMiddleware              *middlewares.Set                 `cfg:"set"`
-	StripPrefixMiddleware      *middlewares.StripPrefix         `cfg:"strip_prefix"`
-	RoleMiddleware             *middlewares.Role                `cfg:"role"`
-	ScopeMiddleware            *middlewares.Scope               `cfg:"scope"`
-	ServiceMiddleware          *middlewares.Service             `cfg:"service"`
-	FolderMiddleware           *middlewares.Folder              `cfg:"folder"`
-	BasicAuthMiddleware        *middlewares.BasicAuth           `cfg:"basic_auth"`
-	CorsMiddleware             *middlewares.Cors                `cfg:"cors"`
-	HeadersMiddleware          *middlewares.Headers             `cfg:"headers"`
-	BlockMiddleware            *middlewares.Block               `cfg:"block"`
-	RegexPathMiddleware        *middlewares.RegexPath           `cfg:"regex_path"`
-	GzipMiddleware             *middlewares.Gzip                `cfg:"gzip"`
-	DecompressMiddleware       *middlewares.Decompress          `cfg:"decompress"`
-	LogMiddleware              *middlewares.Log                 `cfg:"log"`
-	PrintMiddleware            *middlewares.Print               `cfg:"print"`
-	LoginMiddleware            *login.Login                     `cfg:"login"`
-	SessionMiddleware          *session.Session                 `cfg:"session"`
-	ViewMiddleware             *view.View                       `cfg:"view"`
-	RequestMiddleware          *middlewares.Request             `cfg:"request"`
-	RedirectionMiddleware      *middlewares.Redirection         `cfg:"redirection"`
-	TryMiddleware              *middlewares.Try                 `cfg:"try"`
-	SessionInfoMiddleware      *sessioninfo.Info                `cfg:"session_info"`
-	OpenFgaMiddleware          *openfga.OpenFGA                 `cfg:"openfga"`
-	OpenFgaCheckMiddleware     *openfgacheck.OpenFGACheck       `cfg:"openfga_check"`
-	RoleCheckMiddleware        *rolecheck.RoleCheck             `cfg:"role_check"`
-	RoleDataMiddleware         *roledata.RoleData               `cfg:"role_data"`
-	TokenPassMiddleware        *middlewares.TokenPass           `cfg:"token_pass"`
-	RedirectContinueMiddleware *middlewares.RedirectionContinue `cfg:"redirect_continue"`
-	ForwardMiddleware          *middlewares.Forward             `cfg:"forward"`
+type MiddlewareFunc = func(http.Handler) http.Handler
+
+func adaptEchoMiddleware(mw echo.MiddlewareFunc) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Convert http.Handler to echo.HandlerFunc
+			handler := func(c echo.Context) error {
+				next.ServeHTTP(c.Response(), c.Request())
+
+				return nil
+			}
+
+			// Use echo's MiddlewareFunc
+			echoHandler := mw(handler)
+
+			// Create an echo.Context from http.Request
+			var c echo.Context
+			turna, _ := r.Context().Value(tcontext.TurnaKey).(*tcontext.Turna)
+			if turna == nil {
+				c = echo.New().NewContext(r, w)
+			} else {
+				c = turna.EchoContext
+			}
+
+			// Execute echo's handler
+			if err := echoHandler(c); err != nil {
+				c.Error(err)
+			}
+		})
+	}
 }
 
-func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]echo.MiddlewareFunc, error) {
+func adaptEchoMiddlewares(mws []echo.MiddlewareFunc) []func(http.Handler) http.Handler {
+	adapted := make([]func(http.Handler) http.Handler, 0, len(mws))
+	for _, mw := range mws {
+		adapted = append(adapted, adaptEchoMiddleware(mw))
+	}
+
+	return adapted
+}
+
+type HTTPMiddleware struct {
+	AddPrefixMiddleware        *addprefix.AddPrefix                  `cfg:"add_prefix"`
+	AuthMiddleware             *auth.Auth                            `cfg:"auth"`
+	InjectMiddleware           *inject.Inject                        `cfg:"inject"`
+	HelloMiddleware            *hello.Hello                          `cfg:"hello"`
+	TemplateMiddleware         *template.Template                    `cfg:"template"`
+	InfoMiddleware             *info.Info                            `cfg:"info"`
+	SetMiddleware              *set.Set                              `cfg:"set"`
+	StripPrefixMiddleware      *stripprefix.StripPrefix              `cfg:"strip_prefix"`
+	RoleMiddleware             *role.Role                            `cfg:"role"`
+	ScopeMiddleware            *scope.Scope                          `cfg:"scope"`
+	ServiceMiddleware          *service.Service                      `cfg:"service"`
+	FolderMiddleware           *folder.Folder                        `cfg:"folder"`
+	BasicAuthMiddleware        *basicauth.BasicAuth                  `cfg:"basic_auth"`
+	CorsMiddleware             *cors.Cors                            `cfg:"cors"`
+	HeadersMiddleware          *headers.Headers                      `cfg:"headers"`
+	BlockMiddleware            *block.Block                          `cfg:"block"`
+	RegexPathMiddleware        *regexpath.RegexPath                  `cfg:"regex_path"`
+	GzipMiddleware             *gzip.Gzip                            `cfg:"gzip"`
+	DecompressMiddleware       *decompress.Decompress                `cfg:"decompress"`
+	LogMiddleware              *log.Log                              `cfg:"log"`
+	PrintMiddleware            *print.Print                          `cfg:"print"`
+	LoginMiddleware            *login.Login                          `cfg:"login"`
+	SessionMiddleware          *session.Session                      `cfg:"session"`
+	ViewMiddleware             *view.View                            `cfg:"view"`
+	RequestMiddleware          *request.Request                      `cfg:"request"`
+	RedirectionMiddleware      *redirection.Redirection              `cfg:"redirection"`
+	TryMiddleware              *try.Try                              `cfg:"try"`
+	SessionInfoMiddleware      *sessioninfo.Info                     `cfg:"session_info"`
+	OpenFgaMiddleware          *openfga.OpenFGA                      `cfg:"openfga"`
+	OpenFgaCheckMiddleware     *openfgacheck.OpenFGACheck            `cfg:"openfga_check"`
+	RoleCheckMiddleware        *rolecheck.RoleCheck                  `cfg:"role_check"`
+	RoleDataMiddleware         *roledata.RoleData                    `cfg:"role_data"`
+	TokenPassMiddleware        *tokenpass.TokenPass                  `cfg:"token_pass"`
+	RedirectContinueMiddleware *redirectcontinue.RedirectionContinue `cfg:"redirect_continue"`
+	ForwardMiddleware          *forward.Forward                      `cfg:"forward"`
+	GrpcUIMiddleware           *grpcui.GrpcUI                        `cfg:"grpcui"`
+}
+
+func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
 	switch {
 	case h.AddPrefixMiddleware != nil:
-		return []echo.MiddlewareFunc{h.AddPrefixMiddleware.Middleware()}, nil
+		return []MiddlewareFunc{h.AddPrefixMiddleware.Middleware()}, nil
 	case h.AuthMiddleware != nil:
-		return h.AuthMiddleware.Middleware(ctx, name)
+		m, err := h.AuthMiddleware.Middleware(ctx, name)
+		return adaptEchoMiddlewares(m), err
 	case h.InjectMiddleware != nil:
-		return h.InjectMiddleware.Middleware()
+		m, err := h.InjectMiddleware.Middleware()
+		return adaptEchoMiddlewares(m), err
 	case h.HelloMiddleware != nil:
-		return h.HelloMiddleware.Middleware()
+		m, err := h.HelloMiddleware.Middleware()
+		return adaptEchoMiddlewares(m), err
 	case h.TemplateMiddleware != nil:
 		m, err := h.TemplateMiddleware.Middleware()
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.InfoMiddleware != nil:
-		return []echo.MiddlewareFunc{h.InfoMiddleware.Middleware()}, nil
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.InfoMiddleware.Middleware()}), nil
 	case h.SetMiddleware != nil:
-		return []echo.MiddlewareFunc{h.SetMiddleware.Middleware()}, nil
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.SetMiddleware.Middleware()}), nil
 	case h.StripPrefixMiddleware != nil:
-		return []echo.MiddlewareFunc{h.StripPrefixMiddleware.Middleware()}, nil
+		return []MiddlewareFunc{h.StripPrefixMiddleware.Middleware()}, nil
 	case h.RoleMiddleware != nil:
-		return []echo.MiddlewareFunc{h.RoleMiddleware.Middleware()}, nil
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.RoleMiddleware.Middleware()}), nil
 	case h.ScopeMiddleware != nil:
-		return []echo.MiddlewareFunc{h.ScopeMiddleware.Middleware()}, nil
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.ScopeMiddleware.Middleware()}), nil
 	case h.ServiceMiddleware != nil:
-		return h.ServiceMiddleware.Middleware()
+		m, err := h.ServiceMiddleware.Middleware()
+		return adaptEchoMiddlewares(m), err
 	case h.FolderMiddleware != nil:
 		m, err := h.FolderMiddleware.Middleware()
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.BasicAuthMiddleware != nil:
-		return h.BasicAuthMiddleware.Middleware(name)
+		m, err := h.BasicAuthMiddleware.Middleware(name)
+		return adaptEchoMiddlewares(m), err
 	case h.CorsMiddleware != nil:
-		return []echo.MiddlewareFunc{h.CorsMiddleware.Middleware()}, nil
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.CorsMiddleware.Middleware()}), nil
 	case h.HeadersMiddleware != nil:
-		return []echo.MiddlewareFunc{h.HeadersMiddleware.Middleware()}, nil
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.HeadersMiddleware.Middleware()}), nil
 	case h.BlockMiddleware != nil:
 		m, err := h.BlockMiddleware.Middleware()
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.RegexPathMiddleware != nil:
-		return h.RegexPathMiddleware.Middleware()
+		m, err := h.RegexPathMiddleware.Middleware()
+		return adaptEchoMiddlewares(m), err
 	case h.GzipMiddleware != nil:
-		return []echo.MiddlewareFunc{h.GzipMiddleware.Middleware()}, nil
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.GzipMiddleware.Middleware()}), nil
 	case h.DecompressMiddleware != nil:
-		return []echo.MiddlewareFunc{h.DecompressMiddleware.Middleware()}, nil
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.DecompressMiddleware.Middleware()}), nil
 	case h.LogMiddleware != nil:
-		return h.LogMiddleware.Middleware()
+		m, err := h.LogMiddleware.Middleware()
+		return adaptEchoMiddlewares(m), err
 	case h.PrintMiddleware != nil:
 		m, err := h.PrintMiddleware.Middleware()
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.LoginMiddleware != nil:
 		m, err := h.LoginMiddleware.Middleware(ctx, name)
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.SessionMiddleware != nil:
 		m, err := h.SessionMiddleware.Middleware(ctx, name)
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.ViewMiddleware != nil:
 		m, err := h.ViewMiddleware.Middleware(ctx, name)
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.RequestMiddleware != nil:
 		m, err := h.RequestMiddleware.Middleware()
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.RedirectionMiddleware != nil:
 		m, err := h.RedirectionMiddleware.Middleware()
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.TryMiddleware != nil:
 		m, err := h.TryMiddleware.Middleware()
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.SessionInfoMiddleware != nil:
 		m, err := h.SessionInfoMiddleware.Middleware()
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.OpenFgaMiddleware != nil:
 		m, err := h.OpenFgaMiddleware.Middleware(ctx, name)
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.OpenFgaCheckMiddleware != nil:
 		m, err := h.OpenFgaCheckMiddleware.Middleware(ctx, name)
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.RoleCheckMiddleware != nil:
 		m, err := h.RoleCheckMiddleware.Middleware()
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.RoleDataMiddleware != nil:
 		m, err := h.RoleDataMiddleware.Middleware()
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.TokenPassMiddleware != nil:
 		m, err := h.TokenPassMiddleware.Middleware()
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.RedirectContinueMiddleware != nil:
 		m, err := h.RedirectContinueMiddleware.Middleware()
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.ForwardMiddleware != nil:
 		m, err := h.ForwardMiddleware.Middleware()
-		return []echo.MiddlewareFunc{m}, err
+		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+	case h.GrpcUIMiddleware != nil:
+		return []MiddlewareFunc{h.GrpcUIMiddleware.Middleware()}, nil
 	}
 
 	return nil, nil

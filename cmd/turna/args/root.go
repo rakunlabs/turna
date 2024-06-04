@@ -3,8 +3,10 @@ package args
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 
+	"github.com/rakunlabs/logi"
 	"github.com/rakunlabs/turna/internal/config"
 	"github.com/rakunlabs/turna/internal/oven"
 	"github.com/rakunlabs/turna/pkg/render"
@@ -12,8 +14,8 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http"
 	serverReg "github.com/rakunlabs/turna/pkg/server/registry"
 	"github.com/worldline-go/initializer"
+	"github.com/worldline-go/struct2"
 
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	load "github.com/rytsh/liz/loader"
 	"github.com/spf13/cobra"
@@ -31,9 +33,9 @@ type overrideHold struct {
 var rootCmd = &cobra.Command{
 	Use:   "turna",
 	Short: "process manager",
-	Long:  fmt.Sprintf("%s\nturna extends functionality of services", config.GetBanner()),
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		if err := logz.SetLogLevel(config.Application.LogLevel); err != nil {
+	Long:  config.GetBanner() + "\nturna extends functionality of services",
+	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+		if err := logi.SetLogLevel(config.Application.LogLevel); err != nil {
 			return err //nolint:wrapcheck // no need
 		}
 
@@ -41,7 +43,7 @@ var rootCmd = &cobra.Command{
 	},
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		// load configuration
 		if err := loadConfig(cmd.Context(), cmd.Flags().Visit); err != nil {
 			return err
@@ -97,7 +99,7 @@ func loadConfig(ctx context.Context, visit func(fn func(*pflag.Flag))) error {
 		return fmt.Errorf("unable to load prefix settings: %w", err)
 	}
 
-	log.Info().Msgf("config loading from %+v", config.LoadConfig)
+	slog.Info("config loading from", "config", config.LoadConfig)
 
 	loader.ConsulConfigPathPrefix = config.LoadConfig.Prefix.Consul
 	loader.VaultSecretBasePath = config.LoadConfig.Prefix.Vault
@@ -129,23 +131,27 @@ func loadConfig(ctx context.Context, visit func(fn func(*pflag.Flag))) error {
 	})
 
 	// set log again to get changes
-	if err := logz.SetLogLevel(config.Application.LogLevel); err != nil {
+	if err := logi.SetLogLevel(config.Application.LogLevel); err != nil {
 		return err //nolint:wrapcheck // no need
 	}
 
-	// print loaded object
-	log.Debug().Object("config", igconfig.Printer{Value: config.Application}).Msg("loaded config")
+	if slog.Default().Enabled(ctx, slog.LevelDebug) {
+		decoder := struct2.Decoder{TagName: "cfg", OmitNilPtr: true}
+
+		m := decoder.Map(config.Application)
+		slog.Debug("loaded config", "config", m)
+	}
 
 	return nil
 }
 
 func runRoot(ctx context.Context) error {
 	// appname and version
-	log.WithLevel(zerolog.NoLevel).Msgf(
+	logi.Log(fmt.Sprintf(
 		"TURNA [%s] [%s] buildCommit=[%s] buildDate=[%s]",
 		config.LoadConfig.AppName, config.BuildVars.Version,
 		config.BuildVars.Commit, config.BuildVars.Date,
-	)
+	))
 
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
@@ -171,7 +177,7 @@ func runRoot(ctx context.Context) error {
 		}
 
 		// notify
-		log.Info().Msg("dynamic config loaded")
+		slog.Info("dynamic config loaded")
 	}
 
 	// load configurations
@@ -235,7 +241,7 @@ func Print() error {
 		return err
 	}
 
-	log.Info().Msg(vPrint)
+	slog.Info(vPrint)
 
 	return nil
 }

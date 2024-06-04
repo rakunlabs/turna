@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/kballard/go-shellquote"
 	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/runner"
-	"github.com/rs/zerolog/log"
 	"github.com/rytsh/liz/loader"
 )
 
@@ -57,7 +57,7 @@ func (s *Service) SetFilters() {
 			for _, val := range vInner {
 				rV, err := render.GlobalRender.Execute(val)
 				if err != nil {
-					log.Warn().Msgf("failed to render filter value %s: %v", s.Name, err)
+					slog.Warn("failed to render filter value "+s.Name, "err", err.Error())
 
 					continue
 				}
@@ -118,7 +118,7 @@ func (s *Service) Register() error {
 		return err
 	}
 
-	log.Info().Msgf("added service [%s] to registry", s.Name)
+	slog.Info(fmt.Sprintf("added service [%s] to registry", s.Name))
 
 	return nil
 }

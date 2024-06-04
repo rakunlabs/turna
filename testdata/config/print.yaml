@@ -8,6 +8,6 @@ server:
         print: {}
     routers:
       print:
-        path: /*
+        path: /
         middlewares:
           - print

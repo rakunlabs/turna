@@ -6,10 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"sync"
-
-	"github.com/rs/zerolog/log"
 )
 
 // FileFilter filter *os.File with a defined filter function.
@@ -64,14 +63,14 @@ func (f *FileFilter) Start(ctx context.Context, wg *sync.WaitGroup) (*os.File, e
 				}
 
 				if !errors.Is(err, io.EOF) {
-					log.Error().Err(err).Msg("loop read remainings failed")
+					slog.Error("loop read remainings failed", "err", err)
 				}
 
 				f.r.Close()
 			default:
 				if err := f.read(buff); err != nil && !errors.Is(err, io.EOF) {
 					if !errors.Is(err, os.ErrClosed) {
-						log.Error().Err(err).Msg("loop read failed")
+						slog.Error("loop read failed", "err", err)
 					}
 
 					break

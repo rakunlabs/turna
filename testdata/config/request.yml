@@ -13,6 +13,6 @@ server:
             Accept: application/json
     routers:
       whoami:
-        path: /beers/*
+        path: /beers/
         middlewares:
           - request

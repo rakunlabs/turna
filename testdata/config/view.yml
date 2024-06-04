@@ -7,6 +7,11 @@ server:
       info:
         hello:
           message: |
+            grpc:
+              - name: "greet"
+                addr: "dns:///localhost:8080"
+              - name: "greet-2"
+                addr: "dns:///localhost:8080"
             swagger_settings:
               base_path_prefix: /api
               disable_authorize_button: true
@@ -24,9 +29,14 @@ server:
       view:
         view:
           prefix_path: /view/
-          # info_url: http://localhost:8082/info
+          info_url: http://localhost:8082/info
           info_url_type: YAML
           info:
+            grpc:
+              - name: "greet"
+                addr: "dns:///localhost:8080"
+              - name: "greet-2"
+                addr: "dns:///localhost:8080"
             swagger_settings:
               base_path_prefix: /api
               disable_authorize_button: true
@@ -81,7 +91,7 @@ server:
                 link: https://petstore.swagger.io/v2/swagger.json
     routers:
       view:
-        path: /view/*
+        path: /view/
         middlewares:
           - view
       info:

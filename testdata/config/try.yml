@@ -19,7 +19,7 @@ server:
               - url: "http://localhost:9090"
     routers:
       one:
-        path: /v1/*
+        path: /v1/
         middlewares:
           - try
           - block

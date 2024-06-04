@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
 	"time"
-
-	"github.com/labstack/echo/v4"
-	"github.com/rs/zerolog/log"
 )
 
 var ShutdownTimeout = 5 * time.Second
@@ -18,7 +16,7 @@ var ShutdownTimeout = 5 * time.Second
 var GlobalReg = Registry{
 	listeners:      make(map[string]net.Listener),
 	server:         make(map[string]*http.Server),
-	httpMiddleware: make(map[string][]echo.MiddlewareFunc),
+	httpMiddleware: make(map[string][]func(http.Handler) http.Handler),
 	tcpMiddleware:  make(map[string][]func(lconn *net.TCPConn) error),
 	shutdownFuncs:  make(map[string]func()),
 }
@@ -26,7 +24,7 @@ var GlobalReg = Registry{
 type Registry struct {
 	listeners      map[string]net.Listener
 	server         map[string]*http.Server
-	httpMiddleware map[string][]echo.MiddlewareFunc
+	httpMiddleware map[string][]func(http.Handler) http.Handler
 	tcpMiddleware  map[string][]func(lconn *net.TCPConn) error
 	shutdownFuncs  map[string]func()
 	mutex          sync.RWMutex
@@ -76,14 +74,14 @@ func (r *Registry) GetTcpMiddleware(name string) ([]func(lconn *net.TCPConn) err
 	return m, nil
 }
 
-func (r *Registry) AddHttpMiddleware(name string, m []echo.MiddlewareFunc) {
+func (r *Registry) AddHttpMiddleware(name string, m []func(http.Handler) http.Handler) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	r.httpMiddleware[name] = m
 }
 
-func (r *Registry) GetHttpMiddleware(name string) ([]echo.MiddlewareFunc, error) {
+func (r *Registry) GetHttpMiddleware(name string) ([]func(http.Handler) http.Handler, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
@@ -131,7 +129,7 @@ func (r *Registry) ClearHttpServer(name string) {
 	defer cancel()
 
 	if err := s.Shutdown(ctx); err != nil {
-		log.Error().Err(err).Msgf("http [%s] shutdown error", name)
+		slog.Error(fmt.Sprintf("http [%s] shutdown error", name), "err", err.Error())
 	}
 
 	r.DeleteHttpServer(name)
@@ -211,9 +209,9 @@ func (r *Registry) Shutdown() {
 
 	for name := range r.listeners {
 		if err := r.ClearListener(name); err != nil && !errors.Is(err, net.ErrClosed) {
-			log.Error().Err(err).Msgf("listener [%s] shutdown error", name)
+			slog.Error(fmt.Sprintf("listener [%s] shutdown error", name), "err", err.Error())
 		} else {
-			log.Warn().Msgf("listener [%s] shutdown", name)
+			slog.Warn(fmt.Sprintf("listener [%s] shutdown", name))
 		}
 	}
 }

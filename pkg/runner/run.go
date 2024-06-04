@@ -3,13 +3,12 @@ package runner
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"github.com/rs/zerolog/log"
 
 	"github.com/rakunlabs/turna/pkg/filter"
 )
@@ -87,7 +86,7 @@ func (c *Command) start(ctx context.Context, wg *sync.WaitGroup) (*os.Process, e
 		return nil, fmt.Errorf("lookpath error; %w", err)
 	}
 
-	log.Debug().Msgf("starting [%s] command", cmdx)
+	slog.Debug(fmt.Sprintf("starting [%s] command", cmdx))
 
 	stdin := c.stdin
 	if stdin == nil {
@@ -105,7 +104,7 @@ func (c *Command) start(ctx context.Context, wg *sync.WaitGroup) (*os.Process, e
 	}
 
 	if c.Filter != nil {
-		log.Info().Msgf("filtering [%s]", c.Name)
+		slog.Info(fmt.Sprintf("filtering [%s]", c.Name))
 		// filter for stdout
 		filteredStdout := filter.FileFilter{To: stdout, Filter: c.Filter}
 
@@ -172,7 +171,7 @@ func (c *Command) Run(ctx context.Context) error {
 
 	var err error
 
-	log.Info().Msgf("starting [%s] command", c.Name)
+	slog.Info(fmt.Sprintf("starting [%s] command", c.Name))
 	c.killLock.Lock()
 	c.proc, err = c.start(ctx, &c.wgProg)
 	c.killLock.Unlock()
@@ -191,17 +190,17 @@ func (c *Command) Run(ctx context.Context) error {
 
 	state, err := c.proc.Wait()
 	if err != nil {
-		log.Warn().Err(err).Msg("process wait")
+		slog.Warn(fmt.Sprintf("process [%s] wait", c.Name), "err", err)
 	}
 
 	exitCode := state.ExitCode()
 	if exitCode != 0 {
-		log.Warn().Msgf("process [%s] exited with code %d", c.Name, exitCode)
+		slog.Warn(fmt.Sprintf("process [%s] exited with code %d", c.Name, exitCode))
 		if !c.AllowFailure {
 			return fmt.Errorf("process [%s] exited with code %d", c.Name, exitCode)
 		}
 	} else {
-		log.Info().Msgf("process [%s] exited with code %d", c.Name, exitCode)
+		slog.Info(fmt.Sprintf("process [%s] exited with code %d", c.Name, exitCode))
 	}
 
 	return nil
@@ -227,10 +226,10 @@ func (c *Command) Kill() {
 	}()
 
 	if v != nil {
-		log.Warn().Msgf("killing process [%s] [%d]", c.Name, v.Pid)
+		slog.Warn(fmt.Sprintf("killing process [%s] [%d]", c.Name, v.Pid))
 
 		if err := terminateProcess(v.Pid); err != nil {
-			log.Logger.Error().Err(err).Msg("syscall kill failed")
+			slog.Error(fmt.Sprintf("failed to kill process [%s] [%d]", c.Name, v.Pid), "err", err)
 		}
 
 		c.wgProg.Wait()
@@ -242,7 +241,7 @@ func (c *Command) Kill() {
 // Restart is kill command after that run again that command.
 func (c *Command) Restart(ctx context.Context) error {
 	// minus PID to send signal child PIDs
-	log.Info().Msg("restarting process..")
+	slog.Info(fmt.Sprintf("restarting [%s] command", c.Name))
 	c.Kill()
 
 	return c.Run(ctx)

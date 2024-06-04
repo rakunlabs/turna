@@ -18,7 +18,7 @@ server:
               - url: "http://localhost:7071"
     routers:
       test:
-        path: /kafka/*
+        path: /kafka/
         middlewares:
           # - add_path
           # - del_path

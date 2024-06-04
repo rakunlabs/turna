@@ -8,6 +8,6 @@ server:
         forward: {}
     routers:
       project:
-        path: /*
+        path: /
         middlewares:
           - forward

@@ -3,16 +3,10 @@ package http
 import (
 	"net/http"
 	"strings"
-
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
-	"github.com/rs/zerolog/log"
-	"github.com/worldline-go/logz/logecho"
-	"github.com/ziflex/lecho/v3"
 )
 
 type RuleRouter struct {
-	ruleEcho map[RuleSelection]*echo.Echo
+	ruleMux map[RuleSelection]*http.ServeMux
 
 	entrypoint string
 }
@@ -24,7 +18,7 @@ type RuleSelection struct {
 
 func NewRuleRouter() *RuleRouter {
 	return &RuleRouter{
-		ruleEcho: make(map[RuleSelection]*echo.Echo),
+		ruleMux: make(map[RuleSelection]*http.ServeMux),
 	}
 }
 
@@ -35,9 +29,9 @@ func (s RuleRouter) Serve(entrypoint string) http.Handler {
 }
 
 func (s *RuleRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	found := s.ruleEcho[RuleSelection{Entrypoint: s.entrypoint}]
+	found := s.ruleMux[RuleSelection{Entrypoint: s.entrypoint}]
 
-	if v := s.ruleEcho[RuleSelection{Host: hostSanitizer(r.Host), Entrypoint: s.entrypoint}]; v != nil {
+	if v := s.ruleMux[RuleSelection{Host: hostSanitizer(r.Host), Entrypoint: s.entrypoint}]; v != nil {
 		found = v
 	}
 
@@ -52,43 +46,15 @@ func (s *RuleRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *RuleRouter) SetRule(selection RuleSelection) {
-	if _, ok := s.ruleEcho[selection]; !ok {
-		s.ruleEcho[selection] = EchoNew()
+	if _, ok := s.ruleMux[selection]; !ok {
+		s.ruleMux[selection] = http.NewServeMux()
 	}
 }
 
-func (s *RuleRouter) GetEcho(r RuleSelection) *echo.Echo {
-	return s.ruleEcho[r]
+func (s *RuleRouter) GetMux(r RuleSelection) *http.ServeMux {
+	return s.ruleMux[r]
 }
 
 func hostSanitizer(host string) string {
 	return strings.SplitN(host, ":", 2)[0]
-}
-
-func EchoNew() *echo.Echo {
-	e := echo.New()
-
-	e.HideBanner = true
-	e.Logger = lecho.New(log.With().Str("component", "server").Logger())
-
-	recoverConfig := middleware.DefaultRecoverConfig
-	recoverConfig.LogErrorFunc = func(c echo.Context, err error, stack []byte) error {
-		log.Error().Err(err).Msgf("panic: %s", stack)
-
-		return err
-	}
-
-	// default middlewares
-	e.Use(
-		middleware.RecoverWithConfig(recoverConfig),
-	)
-
-	// log middlewares
-	e.Use(
-		middleware.RequestID(),
-		middleware.RequestLoggerWithConfig(logecho.RequestLoggerConfig()),
-		logecho.ZerologLogger(),
-	)
-
-	return e
 }

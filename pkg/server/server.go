@@ -3,13 +3,13 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"sync"
 
 	"github.com/rakunlabs/turna/pkg/server/http"
 	"github.com/rakunlabs/turna/pkg/server/registry"
 	"github.com/rakunlabs/turna/pkg/server/tcp"
-	"github.com/rs/zerolog/log"
 )
 
 type Server struct {
@@ -35,7 +35,7 @@ func (e *EntryPoint) Serve(ctx context.Context, name string) error {
 		return fmt.Errorf("address cannot listen %s: %w", e.Address, err)
 	}
 
-	log.Info().Msgf("entrypoint %s is listening on %s with %s", name, e.Address, network)
+	slog.Info(fmt.Sprintf("entrypoint %s is listening on %s with %s", name, e.Address, network))
 
 	registry.GlobalReg.AddListener(name, listener)
 
