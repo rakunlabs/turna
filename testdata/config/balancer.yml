@@ -1,0 +1,58 @@
+server:
+  entrypoints:
+    web:
+      address: ":8080"
+    default:
+      address: ":9090"
+    test1:
+      address: ":9091"
+    test2:
+      address: ":9092"
+  http:
+    middlewares:
+      test1:
+        hello:
+          message: "Hello from test1"
+      test2:
+        hello:
+          message: "Hello from test2"
+      default:
+        hello:
+          message: "Hello from default"
+      balancer:
+        service:
+          prefixbalancer:
+            prefixes:
+              - prefix: "/test1/"
+                servers:
+                  - url: "http://localhost:9091"
+              - prefix: "/test2/"
+                servers:
+                  - url: "http://localhost:9092"
+            default_servers:
+              - url: "http://localhost:9090"
+    routers:
+      web:
+        path: /
+        entrypoints:
+          - web
+        middlewares:
+          - balancer
+      test:
+        path: /test1/
+        entrypoints:
+          - test1
+        middlewares:
+          - test1
+      test2:
+        path: /test2/
+        entrypoints:
+          - test2
+        middlewares:
+          - test2
+      default:
+        path: /
+        entrypoints:
+          - default
+        middlewares:
+          - default

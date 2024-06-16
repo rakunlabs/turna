@@ -79,7 +79,7 @@ func (o *OrderCommand) Run(ctxParent context.Context, wg *sync.WaitGroup) error 
 
 	o.wg.Wait()
 
-	slog.Info("order [%d] done", o.Order)
+	slog.Info(fmt.Sprintf("order [%d] done", o.Order))
 
 	if len(errStore) > 0 {
 		return fmt.Errorf("command [%s] failed: %s", o.Names, errStore)

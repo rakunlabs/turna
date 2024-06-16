@@ -10,9 +10,11 @@ import (
 )
 
 type Service struct {
-	InsecureSkipVerify bool         `cfg:"insecure_skip_verify"`
-	PassHostHeader     bool         `cfg:"pass_host_header"`
-	LoadBalancer       LoadBalancer `cfg:"loadbalancer"`
+	InsecureSkipVerify bool `cfg:"insecure_skip_verify"`
+	PassHostHeader     bool `cfg:"pass_host_header"`
+
+	PrefixBalancer PrefixBalancer `cfg:"prefixbalancer"`
+	LoadBalancer   LoadBalancer   `cfg:"loadbalancer"`
 }
 
 type LoadBalancer struct {
@@ -23,7 +25,43 @@ type Server struct {
 	URL string `cfg:"url"`
 }
 
-func (m *Service) Middleware() ([]echo.MiddlewareFunc, error) {
+func (m *Service) GetBalancer() (middleware.ProxyBalancer, error) {
+	if m.PrefixBalancer.IsEnabled() {
+		for i, prefix := range m.PrefixBalancer.Prefixes {
+			targets := make([]*middleware.ProxyTarget, 0, len(prefix.Servers))
+
+			for _, server := range prefix.Servers {
+				u, err := url.Parse(server.URL)
+				if err != nil {
+					return nil, fmt.Errorf("cannot parse url %s: %w", server.URL, err)
+				}
+
+				targets = append(targets, &middleware.ProxyTarget{
+					URL: u,
+				})
+			}
+
+			m.PrefixBalancer.Prefixes[i].balancer = middleware.NewRoundRobinBalancer(targets)
+		}
+
+		if len(m.PrefixBalancer.DefaultServers) > 0 {
+			targets := make([]*middleware.ProxyTarget, 0, len(m.PrefixBalancer.DefaultServers))
+
+			for _, server := range m.PrefixBalancer.DefaultServers {
+				u, err := url.Parse(server.URL)
+				if err != nil {
+					return nil, fmt.Errorf("cannot parse url %s: %w", server.URL, err)
+				}
+
+				targets = append(targets, &middleware.ProxyTarget{URL: u})
+			}
+
+			m.PrefixBalancer.defaultBalancer = middleware.NewRoundRobinBalancer(targets)
+		}
+
+		return &m.PrefixBalancer, nil
+	}
+
 	targets := make([]*middleware.ProxyTarget, 0, len(m.LoadBalancer.Servers))
 
 	for _, server := range m.LoadBalancer.Servers {
@@ -37,13 +75,19 @@ func (m *Service) Middleware() ([]echo.MiddlewareFunc, error) {
 		})
 	}
 
-	cfg := middleware.DefaultProxyConfig
-	cfg.Balancer = middleware.NewRoundRobinBalancer(targets)
+	return middleware.NewRoundRobinBalancer(targets), nil
+}
 
-	client, err := klient.New(
-		klient.WithDisableBaseURLCheck(true),
-		klient.WithDisableRetry(true),
-		klient.WithDisableEnvValues(true),
+func (m *Service) Middleware() ([]echo.MiddlewareFunc, error) {
+	cfg := middleware.DefaultProxyConfig
+	balancer, err := m.GetBalancer()
+	if err != nil {
+		return nil, fmt.Errorf("cannot get balancer: %w", err)
+	}
+
+	cfg.Balancer = balancer
+
+	client, err := klient.NewPlain(
 		klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
 	)
 	if err != nil {
