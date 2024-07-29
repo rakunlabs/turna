@@ -59,7 +59,7 @@ server:
           # - replace_path
           - transaction
       proxy:
-        path: /api/metabase/
+        path: /api/metabase/*
         middlewares:
           # - replace_js
           - redirect

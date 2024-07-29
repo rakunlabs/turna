@@ -27,7 +27,7 @@ server:
             postgres: "postgres://postgres:password@localhost:5432/postgres?sslmode=disable&search_path=openfga"
     routers:
       main:
-        path: /openfga/
+        path: /openfga/*
         middlewares:
           - openfga
           - view

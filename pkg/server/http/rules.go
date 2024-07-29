@@ -3,10 +3,17 @@ package http
 import (
 	"net/http"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
 )
 
+type RouterHandler interface {
+	Handle(pattern string, handler http.Handler)
+	ServeHTTP(w http.ResponseWriter, r *http.Request)
+}
+
 type RuleRouter struct {
-	ruleMux map[RuleSelection]*http.ServeMux
+	ruleMux map[RuleSelection]RouterHandler
 
 	entrypoint string
 }
@@ -18,7 +25,7 @@ type RuleSelection struct {
 
 func NewRuleRouter() *RuleRouter {
 	return &RuleRouter{
-		ruleMux: make(map[RuleSelection]*http.ServeMux),
+		ruleMux: make(map[RuleSelection]RouterHandler),
 	}
 }
 
@@ -47,11 +54,11 @@ func (s *RuleRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *RuleRouter) SetRule(selection RuleSelection) {
 	if _, ok := s.ruleMux[selection]; !ok {
-		s.ruleMux[selection] = http.NewServeMux()
+		s.ruleMux[selection] = chi.NewRouter()
 	}
 }
 
-func (s *RuleRouter) GetMux(r RuleSelection) *http.ServeMux {
+func (s *RuleRouter) GetMux(r RuleSelection) RouterHandler {
 	return s.ruleMux[r]
 }
 

@@ -42,6 +42,8 @@ entrypoints:
 
 Routers combine entrypoints and middlewares with a path.
 
+Path uses [chi](https://github.com/go-chi/chi) definitions.
+
 ```yaml
 routers:
   test:

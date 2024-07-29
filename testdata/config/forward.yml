@@ -1,13 +1,14 @@
 server:
   entrypoints:
     web:
-      address: ":8080"
+      address: ":9292"
   http:
     middlewares:
       forward:
         forward: {}
     routers:
       project:
-        path: /
+        path: /*
+        # tls: {}
         middlewares:
           - forward

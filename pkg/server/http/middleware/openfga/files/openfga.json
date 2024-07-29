@@ -3,7 +3,7 @@
   "info": {
     "title": "OpenFGA",
     "description": "A high performance and flexible authorization/permission engine built for developers and inspired by Google Zanzibar.",
-    "version": "0.1",
+    "version": "1.x",
     "contact": {
       "name": "OpenFGA",
       "url": "https://openfga.dev",
@@ -47,6 +47,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -57,6 +63,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -102,6 +114,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -112,6 +130,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -154,6 +178,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -164,6 +194,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -199,6 +235,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -209,6 +251,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -249,6 +297,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -259,6 +313,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -300,6 +360,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -310,6 +376,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -342,6 +414,7 @@
                 "assertions": {
                   "type": "array",
                   "items": {
+                    "type": "object",
                     "$ref": "#/definitions/Assertion",
                     "maximum": 100
                   }
@@ -376,6 +449,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -386,6 +465,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -437,6 +522,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -447,6 +538,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -473,6 +570,7 @@
                 "type_definitions": {
                   "type": "array",
                   "items": {
+                    "type": "object",
                     "$ref": "#/definitions/TypeDefinition",
                     "minimum": 1
                   }
@@ -517,6 +615,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -527,6 +631,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -573,6 +683,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -583,6 +699,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -627,7 +749,7 @@
     "/stores/{store_id}/check": {
       "post": {
         "summary": "Check whether a user is authorized to access an object",
-        "description": "The Check API queries to check if the user has a certain relationship with an object in a certain store.\nA `contextual_tuples` object may also be included in the body of the request. This object contains one field `tuple_keys`, which is an array of tuple keys. Each of these tuples may have an associated `condition`.\nYou may also provide an `authorization_model_id` in the body. This will be used to assert that the input `tuple_key` is valid for the model specified. If not specified, the assertion will be made against the latest authorization model ID. It is strongly recommended to specify authorization model id for better performance.\nYou may also provide a `context` object that will be used to evaluate the conditioned tuples in the system. It is strongly recommended to provide a value for all the input parameters of all the conditions, to ensure that all tuples be evaluated correctly.\nThe response will return whether the relationship exists in the field `allowed`.\n\n## Example\nIn order to check if user `user:anne` of type `user` has a `reader` relationship with object `document:2021-budget` given the following contextual tuple\n```json\n{\n  \"user\": \"user:anne\",\n  \"relation\": \"member\",\n  \"object\": \"time_slot:office_hours\"\n}\n```\nthe Check API can be used with the following request body:\n```json\n{\n  \"tuple_key\": {\n    \"user\": \"user:anne\",\n    \"relation\": \"reader\",\n    \"object\": \"document:2021-budget\"\n  },\n  \"contextual_tuples\": {\n    \"tuple_keys\": [\n      {\n        \"user\": \"user:anne\",\n        \"relation\": \"member\",\n        \"object\": \"time_slot:office_hours\"\n      }\n    ]\n  },\n  \"authorization_model_id\": \"01G50QVV17PECNVAHX1GG4Y5NC\"\n}\n```\nOpenFGA's response will include `{ \"allowed\": true }` if there is a relationship and `{ \"allowed\": false }` if there isn't.",
+        "description": "The Check API returns whether a given user has a relationship with a given object in a given store.\nThe `user` field of the request can be a specific target, such as `user:anne`, or a userset (set of users) such as `group:marketing#member` or a type-bound public access `user:*`.\nTo arrive at a result, the API uses: an authorization model, explicit tuples written through the Write API, contextual tuples present in the request, and implicit tuples that exist by virtue of applying set theory (such as `document:2021-budget#viewer@document:2021-budget#viewer`; the set of users who are viewers of `document:2021-budget` are the set of users who are the viewers of `document:2021-budget`).\nA `contextual_tuples` object may also be included in the body of the request. This object contains one field `tuple_keys`, which is an array of tuple keys. Each of these tuples may have an associated `condition`.\nYou may also provide an `authorization_model_id` in the body. This will be used to assert that the input `tuple_key` is valid for the model specified. If not specified, the assertion will be made against the latest authorization model ID. It is strongly recommended to specify authorization model id for better performance.\nYou may also provide a `context` object that will be used to evaluate the conditioned tuples in the system. It is strongly recommended to provide a value for all the input parameters of all the conditions, to ensure that all tuples be evaluated correctly.\nThe response will return whether the relationship exists in the field `allowed`.\n\nSome exceptions apply, but in general, if a Check API responds with `{allowed: true}`, then you can expect the equivalent ListObjects query to return the object, and viceversa. \nFor example, if `Check(user:anne, reader, document:2021-budget)` responds with `{allowed: true}`, then `ListObjects(user:anne, reader, document)` may include `document:2021-budget` in the response.\n## Examples\n### Querying with contextual tuples\nIn order to check if user `user:anne` of type `user` has a `reader` relationship with object `document:2021-budget` given the following contextual tuple\n```json\n{\n  \"user\": \"user:anne\",\n  \"relation\": \"member\",\n  \"object\": \"time_slot:office_hours\"\n}\n```\nthe Check API can be used with the following request body:\n```json\n{\n  \"tuple_key\": {\n    \"user\": \"user:anne\",\n    \"relation\": \"reader\",\n    \"object\": \"document:2021-budget\"\n  },\n  \"contextual_tuples\": {\n    \"tuple_keys\": [\n      {\n        \"user\": \"user:anne\",\n        \"relation\": \"member\",\n        \"object\": \"time_slot:office_hours\"\n      }\n    ]\n  },\n  \"authorization_model_id\": \"01G50QVV17PECNVAHX1GG4Y5NC\"\n}\n```\n### Querying usersets\nSome Checks will always return `true`, even without any tuples. For example, for the following authorization model\n```python\nmodel\n  schema 1.1\ntype user\ntype document\n  relations\n    define reader: [user]\n```\nthe following query\n```json\n{\n  \"tuple_key\": {\n     \"user\": \"document:2021-budget#reader\",\n     \"relation\": \"reader\",\n     \"object\": \"document:2021-budget\"\n  }\n}\n```\nwill always return `{ \"allowed\": true }`. This is because usersets are self-defining: the userset `document:2021-budget#reader` will always have the `reader` relation with `document:2021-budget`.\n### Querying usersets with difference in the model\nA Check for a userset can yield results that must be treated carefully if the model involves difference. For example, for the following authorization model\n```python\nmodel\n  schema 1.1\ntype user\ntype group\n  relations\n    define member: [user]\ntype document\n  relations\n    define blocked: [user]\n    define reader: [group#member] but not blocked\n```\nthe following query\n```json\n{\n  \"tuple_key\": {\n     \"user\": \"group:finance#member\",\n     \"relation\": \"reader\",\n     \"object\": \"document:2021-budget\"\n  },\n  \"contextual_tuples\": {\n    \"tuple_keys\": [\n      {\n        \"user\": \"user:anne\",\n        \"relation\": \"member\",\n        \"object\": \"group:finance\"\n      },\n      {\n        \"user\": \"group:finance#member\",\n        \"relation\": \"reader\",\n        \"object\": \"document:2021-budget\"\n      },\n      {\n        \"user\": \"user:anne\",\n        \"relation\": \"blocked\",\n        \"object\": \"document:2021-budget\"\n      }\n    ]\n  },\n}\n```\nwill return `{ \"allowed\": true }`, even though a specific user of the userset `group:finance#member` does not have the `reader` relationship with the given object.\n",
         "operationId": "Check",
         "responses": {
           "200": {
@@ -642,6 +764,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -652,6 +780,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -725,6 +859,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -735,6 +875,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -780,7 +926,7 @@
     "/stores/{store_id}/list-objects": {
       "post": {
         "summary": "List all objects of the given type that the user has a relation with",
-        "description": "The ListObjects API returns a list of all the objects of the given type that the user has a relation with. To achieve this, both the store tuples and the authorization model are used.\nAn `authorization_model_id` may be specified in the body. If it is not specified, the latest authorization model ID will be used. It is strongly recommended to specify authorization model id for better performance.\nYou may also specify `contextual_tuples` that will be treated as regular tuples. Each of these tuples may have an associated `condition`.\nYou may also provide a `context` object that will be used to evaluate the conditioned tuples in the system. It is strongly recommended to provide a value for all the input parameters of all the conditions, to ensure that all tuples be evaluated correctly.\nThe response will contain the related objects in an array in the \"objects\" field of the response and they will be strings in the object format `<type>:<id>` (e.g. \"document:roadmap\").\nThe number of objects in the response array will be limited by the execution timeout specified in the flag OPENFGA_LIST_OBJECTS_DEADLINE and by the upper bound specified in the flag OPENFGA_LIST_OBJECTS_MAX_RESULTS, whichever is hit first.\nThe objects given will not be sorted, and therefore two identical calls can give a given different set of objects.",
+        "description": "The ListObjects API returns a list of all the objects of the given type that the user has a relation with.\n To arrive at a result, the API uses: an authorization model, explicit tuples written through the Write API, contextual tuples present in the request, and implicit tuples that exist by virtue of applying set theory (such as `document:2021-budget#viewer@document:2021-budget#viewer`; the set of users who are viewers of `document:2021-budget` are the set of users who are the viewers of `document:2021-budget`).\nAn `authorization_model_id` may be specified in the body. If it is not specified, the latest authorization model ID will be used. It is strongly recommended to specify authorization model id for better performance.\nYou may also specify `contextual_tuples` that will be treated as regular tuples. Each of these tuples may have an associated `condition`.\nYou may also provide a `context` object that will be used to evaluate the conditioned tuples in the system. It is strongly recommended to provide a value for all the input parameters of all the conditions, to ensure that all tuples be evaluated correctly.\nThe response will contain the related objects in an array in the \"objects\" field of the response and they will be strings in the object format `<type>:<id>` (e.g. \"document:roadmap\").\nThe number of objects in the response array will be limited by the execution timeout specified in the flag OPENFGA_LIST_OBJECTS_DEADLINE and by the upper bound specified in the flag OPENFGA_LIST_OBJECTS_MAX_RESULTS, whichever is hit first.\nThe objects given will not be sorted, and therefore two identical calls can give a given different set of objects.",
         "operationId": "ListObjects",
         "responses": {
           "200": {
@@ -795,6 +941,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -805,6 +957,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -867,6 +1025,124 @@
         ]
       }
     },
+    "/stores/{store_id}/list-users": {
+      "post": {
+        "summary": "List the users matching the provided filter who have a certain relation to a particular type.",
+        "description": "The ListUsers API returns a list of all the users of a specific type that have a relation to a given object.\n To arrive at a result, the API uses: an authorization model, explicit tuples written through the Write API, contextual tuples present in the request, and implicit tuples that exist by virtue of applying set theory (such as `document:2021-budget#viewer@document:2021-budget#viewer`; the set of users who are viewers of `document:2021-budget` are the set of users who are the viewers of `document:2021-budget`).\nAn `authorization_model_id` may be specified in the body. If it is not specified, the latest authorization model ID will be used. It is strongly recommended to specify authorization model id for better performance.\nYou may also specify `contextual_tuples` that will be treated as regular tuples. Each of these tuples may have an associated `condition`.\nYou may also provide a `context` object that will be used to evaluate the conditioned tuples in the system. It is strongly recommended to provide a value for all the input parameters of all the conditions, to ensure that all tuples be evaluated correctly.\nThe response will contain the related users in an array in the \"users\" field of the response. These results may include specific objects, usersets \nor type-bound public access. Each of these types of results is encoded in its own type and not represented as a string.In cases where a type-bound public acces result is returned (e.g. `user:*`), it cannot be inferred that all subjects\nof that type have a relation to the object; it is possible that negations exist and checks should still be queried\non individual subjects to ensure access to that document.The number of users in the response array will be limited by the execution timeout specified in the flag OPENFGA_LIST_USERS_DEADLINE and by the upper bound specified in the flag OPENFGA_LIST_USERS_MAX_RESULTS, whichever is hit first.\nThe returned users will not be sorted, and therefore two identical calls may yield different sets of users.",
+        "operationId": "ListUsers",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/ListUsersResponse"
+            }
+          },
+          "400": {
+            "description": "Request failed due to invalid input.",
+            "schema": {
+              "$ref": "#/definitions/ValidationErrorMessageResponse"
+            }
+          },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
+          "404": {
+            "description": "Request failed due to incorrect path.",
+            "schema": {
+              "$ref": "#/definitions/PathUnknownErrorMessageResponse"
+            }
+          },
+          "409": {
+            "description": "Request was aborted due a transaction conflict.",
+            "schema": {
+              "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
+            }
+          },
+          "500": {
+            "description": "Request failed due to internal server error.",
+            "schema": {
+              "$ref": "#/definitions/InternalErrorMessageResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "authorization_model_id": {
+                  "type": "string",
+                  "example": "01G5JAVJ41T49E9TT3SKVS7X1J"
+                },
+                "object": {
+                  "$ref": "#/definitions/Object",
+                  "example": "document:example"
+                },
+                "relation": {
+                  "type": "string",
+                  "example": "reader"
+                },
+                "user_filters": {
+                  "type": "array",
+                  "example": [
+                    {
+                      "type": "user"
+                    },
+                    {
+                      "type": "group",
+                      "relation": "member"
+                    }
+                  ],
+                  "items": {
+                    "type": "object",
+                    "$ref": "#/definitions/UserTypeFilter"
+                  },
+                  "description": "The type of results returned. Only accepts exactly one value."
+                },
+                "contextual_tuples": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "$ref": "#/definitions/TupleKey",
+                    "maximum": 20
+                  }
+                },
+                "context": {
+                  "type": "object",
+                  "description": "Additional request context that will be used to evaluate any ABAC conditions encountered\nin the query evaluation."
+                }
+              },
+              "required": [
+                "object",
+                "relation",
+                "user_filters"
+              ]
+            }
+          }
+        ],
+        "tags": [
+          "Relationship Queries"
+        ]
+      }
+    },
     "/stores/{store_id}/read": {
       "post": {
         "summary": "Get tuples from the store that matches a query, without following userset rewrite rules",
@@ -885,6 +1161,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -895,6 +1177,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -941,7 +1229,7 @@
     },
     "/stores/{store_id}/streamed-list-objects": {
       "post": {
-        "summary": "[EXPERIMENTAL] Stream all objects of the given type that the user has a relation with",
+        "summary": "Stream all objects of the given type that the user has a relation with",
         "description": "The Streamed ListObjects API is very similar to the the ListObjects API, with two differences: \n1. Instead of collecting all objects before returning a response, it streams them to the client as they are collected. \n2. The number of results returned is only limited by the execution timeout specified in the flag OPENFGA_LIST_OBJECTS_DEADLINE. \n",
         "operationId": "StreamedListObjects",
         "responses": {
@@ -966,6 +1254,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -976,6 +1270,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -1041,7 +1341,7 @@
     "/stores/{store_id}/write": {
       "post": {
         "summary": "Add or delete tuples from the store",
-        "description": "The Write API will update the tuples for a certain store. Tuples and type definitions allow OpenFGA to determine whether a relationship exists between an object and an user.\nIn the body, `writes` adds new tuples and `deletes` removes existing tuples. When deleting a tuple, any `condition` specified with it is ignored.\nThe API is not idempotent: if, later on, you try to add the same tuple key (even if the `condition` is different), or if you try to delete a non-existing tuple, it will throw an error.\nAn `authorization_model_id` may be specified in the body. If it is, it will be used to assert that each written tuple (not deleted) is valid for the model specified. If it is not specified, the latest authorization model ID will be used.\n## Example\n### Adding relationships\nTo add `user:anne` as a `writer` for `document:2021-budget`, call write API with the following \n```json\n{\n  \"writes\": {\n    \"tuple_keys\": [\n      {\n        \"user\": \"user:anne\",\n        \"relation\": \"writer\",\n        \"object\": \"document:2021-budget\"\n      }\n    ]\n  },\n  \"authorization_model_id\": \"01G50QVV17PECNVAHX1GG4Y5NC\"\n}\n```\n### Removing relationships\nTo remove `user:bob` as a `reader` for `document:2021-budget`, call write API with the following \n```json\n{\n  \"deletes\": {\n    \"tuple_keys\": [\n      {\n        \"user\": \"user:bob\",\n        \"relation\": \"reader\",\n        \"object\": \"document:2021-budget\"\n      }\n    ]\n  }\n}\n```\n",
+        "description": "The Write API will transactionally update the tuples for a certain store. Tuples and type definitions allow OpenFGA to determine whether a relationship exists between an object and an user.\nIn the body, `writes` adds new tuples and `deletes` removes existing tuples. When deleting a tuple, any `condition` specified with it is ignored.\nThe API is not idempotent: if, later on, you try to add the same tuple key (even if the `condition` is different), or if you try to delete a non-existing tuple, it will throw an error.\nThe API will not allow you to write tuples such as `document:2021-budget#viewer@document:2021-budget#viewer`, because they are implicit.\nAn `authorization_model_id` may be specified in the body. If it is, it will be used to assert that each written tuple (not deleted) is valid for the model specified. If it is not specified, the latest authorization model ID will be used.\n## Example\n### Adding relationships\nTo add `user:anne` as a `writer` for `document:2021-budget`, call write API with the following \n```json\n{\n  \"writes\": {\n    \"tuple_keys\": [\n      {\n        \"user\": \"user:anne\",\n        \"relation\": \"writer\",\n        \"object\": \"document:2021-budget\"\n      }\n    ]\n  },\n  \"authorization_model_id\": \"01G50QVV17PECNVAHX1GG4Y5NC\"\n}\n```\n### Removing relationships\nTo remove `user:bob` as a `reader` for `document:2021-budget`, call write API with the following \n```json\n{\n  \"deletes\": {\n    \"tuple_keys\": [\n      {\n        \"user\": \"user:bob\",\n        \"relation\": \"reader\",\n        \"object\": \"document:2021-budget\"\n      }\n    ]\n  }\n}\n```\n",
         "operationId": "Write",
         "responses": {
           "200": {
@@ -1056,6 +1356,12 @@
               "$ref": "#/definitions/ValidationErrorMessageResponse"
             }
           },
+          "401": {
+            "description": "Not authenticated.",
+            "schema": {
+              "$ref": "#/definitions/UnauthenticatedResponse"
+            }
+          },
           "404": {
             "description": "Request failed due to incorrect path.",
             "schema": {
@@ -1066,6 +1372,12 @@
             "description": "Request was aborted due a transaction conflict.",
             "schema": {
               "$ref": "#/definitions/AbortedMessageResponse"
+            }
+          },
+          "422": {
+            "description": "Request timed out due to excessive request throttling.",
+            "schema": {
+              "$ref": "#/definitions/UnprocessableContentMessageResponse"
             }
           },
           "500": {
@@ -1233,6 +1545,7 @@
             }
           ],
           "items": {
+            "type": "object",
             "$ref": "#/definitions/TypeDefinition"
           }
         },
@@ -1315,12 +1628,26 @@
             "$ref": "#/definitions/ConditionParamTypeRef"
           },
           "description": "A map of parameter names to the parameter's defined type reference."
+        },
+        "metadata": {
+          "$ref": "#/definitions/ConditionMetadata"
         }
       },
       "required": [
         "name",
         "expression"
       ]
+    },
+    "ConditionMetadata": {
+      "type": "object",
+      "properties": {
+        "module": {
+          "type": "string"
+        },
+        "source_info": {
+          "$ref": "#/definitions/SourceInfo"
+        }
+      }
     },
     "ConditionParamTypeRef": {
       "type": "object",
@@ -1331,6 +1658,7 @@
         "generic_types": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/ConditionParamTypeRef"
           }
         }
@@ -1345,6 +1673,7 @@
         "tuple_keys": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/TupleKey",
             "maximum": 20
           }
@@ -1581,6 +1910,7 @@
         "stores": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/Store"
           }
         },
@@ -1595,6 +1925,21 @@
         "continuation_token"
       ]
     },
+    "ListUsersResponse": {
+      "type": "object",
+      "properties": {
+        "users": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/User"
+          }
+        }
+      },
+      "required": [
+        "users"
+      ]
+    },
     "Metadata": {
       "type": "object",
       "properties": {
@@ -1603,6 +1948,12 @@
           "additionalProperties": {
             "$ref": "#/definitions/RelationMetadata"
           }
+        },
+        "module": {
+          "type": "string"
+        },
+        "source_info": {
+          "$ref": "#/definitions/SourceInfo"
         }
       }
     },
@@ -1635,6 +1986,7 @@
         "nodes": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/Node"
           }
         }
@@ -1660,6 +2012,24 @@
       ],
       "default": "NULL_VALUE",
       "description": "`NullValue` is a singleton enumeration to represent the null value for the\n`Value` type union.\n\nThe JSON representation for `NullValue` is JSON `null`.\n\n - NULL_VALUE: Null value."
+    },
+    "Object": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "example": "document"
+        },
+        "id": {
+          "type": "string",
+          "example": "0bcdf6fa-a6aa-4730-a8eb-9cf172ff16d9"
+        }
+      },
+      "description": "Object represents an OpenFGA Object.\n\nAn Object is composed of a type and identifier (e.g. 'document:1')\n\nSee https://openfga.dev/docs/concepts#what-is-an-object",
+      "required": [
+        "type",
+        "id"
+      ]
     },
     "ObjectRelation": {
       "type": "object",
@@ -1697,6 +2067,7 @@
         "assertions": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/Assertion"
           }
         }
@@ -1719,6 +2090,7 @@
         "authorization_models": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/AuthorizationModel"
           }
         },
@@ -1738,6 +2110,7 @@
         "changes": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/TupleChange"
           }
         },
@@ -1777,6 +2150,7 @@
         "tuples": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/Tuple"
           }
         },
@@ -1797,8 +2171,15 @@
         "directly_related_user_types": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/RelationReference"
           }
+        },
+        "module": {
+          "type": "string"
+        },
+        "source_info": {
+          "$ref": "#/definitions/SourceInfo"
         }
       }
     },
@@ -1844,6 +2225,14 @@
         "name"
       ]
     },
+    "SourceInfo": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string"
+        }
+      }
+    },
     "Status": {
       "type": "object",
       "properties": {
@@ -1857,6 +2246,7 @@
         "details": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/Any"
           }
         }
@@ -2037,7 +2427,7 @@
         },
         "metadata": {
           "$ref": "#/definitions/Metadata",
-          "description": "A map whose keys are the name of the relation and whose value is the Metadata for that relation."
+          "description": "A map whose keys are the name of the relation and whose value is the Metadata for that relation.\nIt also holds information around the module name and source file if this model was constructed\nfrom a modular model."
         }
       },
       "required": [
@@ -2061,6 +2451,88 @@
         "TYPE_NAME_IPADDRESS"
       ],
       "default": "TYPE_NAME_UNSPECIFIED"
+    },
+    "TypedWildcard": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "example": "employee"
+        }
+      },
+      "description": "Type bound public access.\n\nNormally represented using the `<type>:*` syntax\n\n`employee:*` represents every object of type `employee`, including those not currently present in the system\n\nSee https://openfga.dev/docs/concepts#what-is-type-bound-public-access",
+      "required": [
+        "type"
+      ]
+    },
+    "UnauthenticatedResponse": {
+      "type": "object",
+      "example": {
+        "code": "unauthenticated",
+        "message": "unauthenticated"
+      },
+      "properties": {
+        "code": {
+          "$ref": "#/definitions/ErrorCode"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "UnprocessableContentErrorCode": {
+      "type": "string",
+      "enum": [
+        "no_throttled_error_code",
+        "throttled_timeout_error"
+      ],
+      "default": "no_throttled_error_code"
+    },
+    "UnprocessableContentMessageResponse": {
+      "type": "object",
+      "example": {
+        "code": "throttled_timeout_error",
+        "message": "timeout due to throttling on complex request"
+      },
+      "properties": {
+        "code": {
+          "$ref": "#/definitions/UnprocessableContentErrorCode"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "User": {
+      "type": "object",
+      "properties": {
+        "object": {
+          "$ref": "#/definitions/Object"
+        },
+        "userset": {
+          "$ref": "#/definitions/UsersetUser"
+        },
+        "wildcard": {
+          "$ref": "#/definitions/TypedWildcard"
+        }
+      },
+      "description": "User.\n\nRepresents any possible value for a user (subject or principal). Can be a:\n- Specific user object e.g.: 'user:will', 'folder:marketing', 'org:contoso', ...)\n- Specific userset (e.g. 'group:engineering#member')\n- Public-typed wildcard (e.g. 'user:*')\n\nSee https://openfga.dev/docs/concepts#what-is-a-user"
+    },
+    "UserTypeFilter": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "example": "group"
+        },
+        "relation": {
+          "type": "string",
+          "example": "member"
+        }
+      },
+      "required": [
+        "type"
+      ]
     },
     "Users": {
       "type": "object",
@@ -2132,6 +2604,7 @@
         "computed": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/Computed"
           }
         }
@@ -2141,12 +2614,36 @@
         "computed"
       ]
     },
+    "UsersetUser": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "example": "group"
+        },
+        "id": {
+          "type": "string",
+          "example": "fga"
+        },
+        "relation": {
+          "type": "string",
+          "example": "member"
+        }
+      },
+      "description": "Userset.\n\nA set or group of users, represented in the `<type>:<id>#<relation>` format\n\n`group:fga#member` represents all members of group FGA, not to be confused by `group:fga` which represents the group itself as a specific object.\n\nSee: https://openfga.dev/docs/modeling/building-blocks/usersets#what-is-a-userset",
+      "required": [
+        "type",
+        "id",
+        "relation"
+      ]
+    },
     "Usersets": {
       "type": "object",
       "properties": {
         "child": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/Userset"
           }
         }
@@ -2194,6 +2691,7 @@
         "tuple_keys": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/TupleKeyWithoutCondition",
             "minimum": 1
           }
@@ -2209,6 +2707,7 @@
         "tuple_keys": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/TupleKey",
             "minimum": 1
           }

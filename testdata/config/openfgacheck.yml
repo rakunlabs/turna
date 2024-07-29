@@ -98,23 +98,23 @@ server:
                 delete: editor
     routers:
       api:
-        path: /api/
+        path: /api/*
         middlewares:
           - token
           - session
           - openfga_check
           - response
       login:
-        path: /login/
+        path: /login/*
         middlewares:
           - login
       logout:
-        path: /logout/
+        path: /logout/*
         middlewares:
           - logout
           - login
       main:
-        path: /
+        path: /*
         middlewares:
           - session
           - main

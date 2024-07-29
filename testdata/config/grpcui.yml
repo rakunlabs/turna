@@ -10,6 +10,6 @@ server:
           basepath: /xyz/
     routers:
       project:
-        path: /xyz/
+        path: /xyz/*
         middlewares:
           - grpcui

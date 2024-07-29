@@ -33,25 +33,25 @@ server:
               - url: "http://localhost:9090"
     routers:
       web:
-        path: /
+        path: /*
         entrypoints:
           - web
         middlewares:
           - balancer
       test:
-        path: /test1/
+        path: /test1/*
         entrypoints:
           - test1
         middlewares:
           - test1
       test2:
-        path: /test2/
+        path: /test2/*
         entrypoints:
           - test2
         middlewares:
           - test2
       default:
-        path: /
+        path: /*
         entrypoints:
           - default
         middlewares:

@@ -21,7 +21,7 @@
   onMount(async () => {
     try {
       const { data } = await axios.get("./?view_info=true");
-      if (data.swagger) {
+      if (data) {
         storeInfo.set(data);
       }
     } catch (error) {

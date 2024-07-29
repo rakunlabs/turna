@@ -11,6 +11,6 @@ server:
               - url: "http://localhost:8500"
     routers:
       consul:
-        path: /
+        path: /*
         middlewares:
           - consul

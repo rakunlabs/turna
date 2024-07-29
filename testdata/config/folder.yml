@@ -31,6 +31,6 @@ server:
         #       replacement: "/$1/latest/$2"
     routers:
       project:
-        path: /
+        path: /*
         middlewares:
           - project

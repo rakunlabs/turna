@@ -1,6 +1,7 @@
 package forward
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -8,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 
-	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/klient"
 )
 
@@ -16,7 +16,7 @@ type Forward struct {
 	InsecureSkipVerify bool `cfg:"insecure_skip_verify"`
 }
 
-func (m *Forward) Middleware() (echo.MiddlewareFunc, error) {
+func (m *Forward) Middleware() (func(http.Handler) http.Handler, error) {
 	client, err := klient.NewPlain(
 		klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
 	)
@@ -24,25 +24,24 @@ func (m *Forward) Middleware() (echo.MiddlewareFunc, error) {
 		return nil, fmt.Errorf("cannot create klient: %w", err)
 	}
 
-	return func(_ echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			if c.Request().Method == http.MethodConnect {
-				slog.Info("CONNECT requested")
-				return m.proxyConnect(c.Response(), c.Request())
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodConnect {
+				m.proxyConnect(w, r)
+
+				return
 			}
 
-			proxy := httputil.NewSingleHostReverseProxy(c.Request().URL)
+			proxy := httputil.NewSingleHostReverseProxy(r.URL)
 			proxy.Transport = client.HTTP.Transport
 
-			proxy.ServeHTTP(c.Response(), c.Request())
-
-			return nil
-		}
+			proxy.ServeHTTP(w, r)
+		})
 	}, nil
 }
 
 func (m *Forward) proxyConnect(w http.ResponseWriter, req *http.Request) error {
-	slog.Info(fmt.Sprintf("CONNECT requested to %v (from %v)", req.Host, req.RemoteAddr))
+	slog.Debug(fmt.Sprintf("CONNECT requested to %v (from %v)", req.Host, req.RemoteAddr))
 	targetConn, err := net.Dial("tcp", req.Host)
 	if err != nil {
 		slog.Error(fmt.Sprintf("failed to dial to target %v", req.Host), "err", err.Error())
@@ -61,7 +60,7 @@ func (m *Forward) proxyConnect(w http.ResponseWriter, req *http.Request) error {
 		return fmt.Errorf("http hijacking failed: %w", err)
 	}
 
-	slog.Info(fmt.Sprintf("CONNECT tunnel established to %v (from %v)", req.Host, req.RemoteAddr))
+	slog.Debug(fmt.Sprintf("CONNECT tunnel established to %v (from %v)", req.Host, req.RemoteAddr))
 	go m.tunnelConn(targetConn, clientConn)
 	go m.tunnelConn(clientConn, targetConn)
 
@@ -70,7 +69,7 @@ func (m *Forward) proxyConnect(w http.ResponseWriter, req *http.Request) error {
 
 func (m *Forward) tunnelConn(dst io.WriteCloser, src io.ReadCloser) {
 	_, err := io.Copy(dst, src)
-	if err != nil {
+	if err != nil && !errors.Is(err, net.ErrClosed) {
 		slog.Error("failed to copy data", "err", err.Error())
 	}
 

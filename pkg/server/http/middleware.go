@@ -223,7 +223,7 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.ForwardMiddleware != nil:
 		m, err := h.ForwardMiddleware.Middleware()
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return []MiddlewareFunc{m}, err
 	case h.GrpcUIMiddleware != nil:
 		return []MiddlewareFunc{h.GrpcUIMiddleware.Middleware()}, nil
 	}

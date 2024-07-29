@@ -33,11 +33,11 @@ server:
               - url: "http://localhost:9090"
     routers:
       private:
-        path: /pkg/server/
+        path: /pkg/server/*
         middlewares:
           - basic_auth
           - myfolder
       test:
-        path: /
+        path: /*
         middlewares:
           - myfolder

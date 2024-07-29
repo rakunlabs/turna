@@ -28,6 +28,6 @@ server:
               cache_control: no-cache
     routers:
       project:
-        path: /
+        path: /*
         middlewares:
           - project

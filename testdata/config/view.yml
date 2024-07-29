@@ -91,7 +91,7 @@ server:
                 link: https://petstore.swagger.io/v2/swagger.json
     routers:
       view:
-        path: /view/
+        path: /view/*
         middlewares:
           - view
       info:

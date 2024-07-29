@@ -54,11 +54,11 @@ server:
               - url: "http://localhost:3000"
     routers:
       api:
-        path: /api/
+        path: /api/*
         middlewares:
           - redirect
       login:
-        path: /login/
+        path: /login/*
         middlewares:
           - login
       logout:
@@ -67,7 +67,7 @@ server:
           - logout
           - login
       pass:
-        path: /
+        path: /*
         middlewares:
           - session
           - pass

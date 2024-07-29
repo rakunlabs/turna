@@ -115,15 +115,17 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 
 		wg.Add(1)
 		go func(n string) {
-			defer wg.Done()
-			defer slog.Info(fmt.Sprintf("http tls-server %s is stopped", n))
+			defer func() {
+				slog.Info(fmt.Sprintf("http tls-server [%s] is stopped", n))
+				registry.GlobalReg.DeleteHttpServer(n + "-TLS")
 
-			slog.Info(fmt.Sprintf("http tls-server %s is listening on %s", n, listener.Addr().String()))
+				wg.Done()
+			}()
+
+			slog.Info(fmt.Sprintf("http tls-server [%s] is listening on %s", n, listener.Addr().String()))
 			// certificates are loaded from TLSConfig
 			if err := s.ServeTLS(listener, "", ""); err != nil && errors.Is(err, http.ErrServerClosed) {
-				slog.Error(fmt.Sprintf("cannot serve tls listener %s", n), "err", err.Error())
-
-				registry.GlobalReg.DeleteHttpServer(n + "-TLS")
+				slog.Error(fmt.Sprintf("cannot serve tls listener [%s]", n), "err", err.Error())
 			}
 		}(entrypoint)
 	}
@@ -137,7 +139,7 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 
 		listener, err := registry.GlobalReg.GetListener(entrypoint)
 		if err != nil {
-			slog.Error(fmt.Sprintf("cannot get listener %s", entrypoint), "err", err.Error())
+			slog.Error(fmt.Sprintf("cannot get listener [%s]", entrypoint), "err", err.Error())
 
 			continue
 		}
@@ -148,12 +150,12 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 		wg.Add(1)
 		go func(n string) {
 			defer wg.Done()
-			defer slog.Info(fmt.Sprintf("http server %s is stopped", n))
+			defer slog.Info(fmt.Sprintf("http server [%s] is stopped", n))
 
-			slog.Info(fmt.Sprintf("http server %s is listening on %s", n, listener.Addr().String()))
+			slog.Info(fmt.Sprintf("http server [%s] is listening on %s", n, listener.Addr().String()))
 			// certificates are loaded from TLSConfig
 			if err := s.Serve(listener); err != nil && errors.Is(err, http.ErrServerClosed) {
-				slog.Error(fmt.Sprintf("cannot serve listener %s", n), "err", err.Error())
+				slog.Error(fmt.Sprintf("cannot serve listener [%s]", n), "err", err.Error())
 
 				registry.GlobalReg.DeleteHttpServer(n)
 			}

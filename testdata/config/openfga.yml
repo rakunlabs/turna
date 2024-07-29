@@ -5,14 +5,14 @@ services:
     inherit_env: true
     env:
       OPENFGA_DATASTORE_ENGINE: postgres
-      OPENFGA_DATASTORE_URI: postgres://postgres:password@localhost:5432/postgres?sslmode=disable&search_path=openfga
+      OPENFGA_DATASTORE_URI: postgres://postgres@localhost:5432/postgres?sslmode=disable&search_path=openfga
   - name: openfga_server
     command: "openfga run --datastore-max-open-conns 5 --datastore-conn-max-lifetime 15m"
     order: 1
     inherit_env: true
     env:
       OPENFGA_DATASTORE_ENGINE: postgres
-      OPENFGA_DATASTORE_URI: postgres://postgres:password@localhost:5432/postgres?sslmode=disable&search_path=openfga
+      OPENFGA_DATASTORE_URI: postgres://postgres@localhost:5432/postgres?sslmode=disable&search_path=openfga
       OPENFGA_LOG_FORMAT: json
       OPENFGA_AUTHN_METHOD: preshared
       OPENFGA_AUTHN_PRESHARED_KEYS: testkey

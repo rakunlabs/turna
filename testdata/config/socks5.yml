@@ -1,0 +1,15 @@
+server:
+  entrypoints:
+    socks5:
+      address: ":1080"
+  tcp:
+    middlewares:
+      socks5:
+        socks5:
+          no_auth_authenticator: true
+    routers:
+      socks5:
+        entrypoints:
+          - socks5
+        middlewares:
+          - socks5

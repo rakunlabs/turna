@@ -18,6 +18,6 @@ server:
             replacement: "/$1/latest/$2"
     routers:
       docs:
-        path: /docs/
+        path: /docs/*
         middlewares:
           - docs
