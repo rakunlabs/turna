@@ -16,7 +16,7 @@ build: ## Build the binary
 
 .PHONY: build-container
 build-container: build ## Build the container image with test tag
-	docker build -t $(PROJECT):test --build-arg ALPINE=alpine:3.20.0 -f ci/alpine.Dockerfile dist/turna_linux_amd64_v1/
+	docker build -t $(PROJECT):test --build-arg ALPINE=alpine:3.20.1 -f ci/alpine.Dockerfile dist/turna_linux_amd64_v1/
 
 .PHONY: lint
 lint: ## Run linter

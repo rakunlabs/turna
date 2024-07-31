@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/labstack/echo/v4"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
 	"github.com/worldline-go/klient"
 )
@@ -35,7 +34,7 @@ type View struct {
 //go:embed _ui/dist/*
 var uiFS embed.FS
 
-func (m *View) SetView() (echo.MiddlewareFunc, error) {
+func (m *View) SetView() (func(http.Handler) http.Handler, error) {
 	f, err := fs.Sub(uiFS, "_ui/dist")
 	if err != nil {
 		return nil, err
@@ -64,13 +63,13 @@ func (m *View) SetView() (echo.MiddlewareFunc, error) {
 	return folderM.Middleware()
 }
 
-func (m *View) Middleware(_ context.Context, _ string) (echo.MiddlewareFunc, error) {
+func (m *View) Middleware(_ context.Context, _ string) (func(http.Handler) http.Handler, error) {
 	setView, err := m.SetView()
 	if err != nil {
 		return nil, err
 	}
 
-	embedUIFunc := setView(nil)
+	embedUI := setView(nil)
 
 	if m.InfoURL != "" {
 		client, err := klient.New(
@@ -88,17 +87,22 @@ func (m *View) Middleware(_ context.Context, _ string) (echo.MiddlewareFunc, err
 
 	regexPathGrpc := regexp.MustCompile(`/grpc/([^/]+)/?.*`)
 
-	return func(_ echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			if viewInfo, _ := strconv.ParseBool(c.QueryParam("view_info")); viewInfo {
-				return m.InformationUI(c)
+	return func(_ http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			query := r.URL.Query()
+			if viewInfo, _ := strconv.ParseBool(query.Get("view_info")); viewInfo {
+				m.InformationUI(w, r)
+
+				return
 			}
 
-			if v := regexPathGrpc.FindStringSubmatch(c.Request().URL.Path); len(v) > 1 {
-				return m.GrpcUI(c, v[1])
+			if v := regexPathGrpc.FindStringSubmatch(r.URL.Path); len(v) > 1 {
+				_ = m.GrpcUI(w, r, v[1])
+
+				return
 			}
 
-			return embedUIFunc(c)
-		}
+			embedUI.ServeHTTP(w, r)
+		})
 	}, nil
 }

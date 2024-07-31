@@ -158,7 +158,7 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return adaptEchoMiddlewares(m), err
 	case h.FolderMiddleware != nil:
 		m, err := h.FolderMiddleware.Middleware()
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return []MiddlewareFunc{m}, err
 	case h.BasicAuthMiddleware != nil:
 		m, err := h.BasicAuthMiddleware.Middleware(name)
 		return adaptEchoMiddlewares(m), err
@@ -190,7 +190,7 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.ViewMiddleware != nil:
 		m, err := h.ViewMiddleware.Middleware(ctx, name)
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return []MiddlewareFunc{m}, err
 	case h.RequestMiddleware != nil:
 		m, err := h.RequestMiddleware.Middleware()
 		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err

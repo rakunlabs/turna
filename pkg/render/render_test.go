@@ -53,8 +53,8 @@ func TestRender_Execute(t *testing.T) {
 				t.Errorf("Render.Execute() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if got != tt.want {
-				t.Errorf("Render.Execute() = %v, want %v", got, tt.want)
+			if string(got) != tt.want {
+				t.Errorf("Render.Execute() = %v, want %v", string(got), tt.want)
 			}
 		})
 	}

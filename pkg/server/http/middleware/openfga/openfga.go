@@ -36,10 +36,10 @@ var uiFS embed.FS
 var (
 	ConnMaxLifetime = 15 * time.Minute
 	MaxIdleConns    = 3
-	MaxOpenConns    = 5
+	MaxOpenConns    = 3
 )
 
-func (m *OpenFGA) SetFs() (echo.MiddlewareFunc, error) {
+func (m *OpenFGA) SetFs() (func(http.Handler) http.Handler, error) {
 	f, err := fs.Sub(uiFS, "files")
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func (m *OpenFGA) Middleware(ctx context.Context, _ string) (echo.MiddlewareFunc
 		return nil, err
 	}
 
-	embedFunc := setFs(nil)
+	embedUI := setFs(nil)
 
 	if m.APIURL == "" {
 		return nil, fmt.Errorf("api url is required")
@@ -116,7 +116,9 @@ func (m *OpenFGA) Middleware(ctx context.Context, _ string) (echo.MiddlewareFunc
 			}
 
 			if strings.HasPrefix(path, m.PrefixPath+"/api/swagger/") {
-				return embedFunc(c)
+				embedUI.ServeHTTP(c.Response(), c.Request())
+
+				return nil
 			}
 
 			if strings.HasPrefix(path, m.PrefixPath+"/api/") {

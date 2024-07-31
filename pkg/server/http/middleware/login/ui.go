@@ -5,14 +5,13 @@ import (
 	"io/fs"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
 )
 
 //go:embed _ui/dist/*
 var uiFS embed.FS
 
-func (m *Login) SetView() (echo.MiddlewareFunc, error) {
+func (m *Login) SetView() (func(http.Handler) http.Handler, error) {
 	f, err := fs.Sub(uiFS, "_ui/dist")
 	if err != nil {
 		return nil, err
@@ -41,6 +40,8 @@ func (m *Login) SetView() (echo.MiddlewareFunc, error) {
 	return folder.Middleware()
 }
 
-func (m *Login) View(c echo.Context) error {
-	return m.UI.embedUIFunc(c)
+func (m *Login) View(w http.ResponseWriter, r *http.Request) error {
+	m.UI.embedUI.ServeHTTP(w, r)
+
+	return nil
 }

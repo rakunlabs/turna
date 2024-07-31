@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/model"
 	"gopkg.in/yaml.v3"
 )
@@ -114,24 +114,24 @@ func (m *View) infoRequest(ctx context.Context, cached bool) ([]byte, error) {
 	return body, nil
 }
 
-func (m *View) InformationUI(c echo.Context) error {
+func (m *View) InformationUI(w http.ResponseWriter, r *http.Request) error {
 	if m.InfoURL == "" {
-		return c.JSON(http.StatusOK, m.Info)
+		return httputil.JSON(w, http.StatusOK, m.Info)
 	}
 
-	body, err := m.infoRequest(c.Request().Context(), true)
+	body, err := m.infoRequest(r.Context(), true)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+		return httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
 	}
 
 	if strings.ToLower(m.InfoURLType) == "yaml" {
 		var info interface{}
 		if err := yaml.Unmarshal(body, &info); err != nil {
-			return c.JSON(http.StatusNotAcceptable, model.MetaData{Message: err.Error()})
+			return httputil.JSON(w, http.StatusNotAcceptable, model.MetaData{Message: err.Error()})
 		}
 
-		return c.JSON(http.StatusOK, info)
+		return httputil.JSON(w, http.StatusOK, body)
 	}
 
-	return c.JSONBlob(http.StatusOK, body)
+	return httputil.JSONBlob(w, http.StatusOK, body)
 }

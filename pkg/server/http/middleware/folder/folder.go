@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"path"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/rakunlabs/turna/pkg/render"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 )
 
 const indexPage = "/index.html"
@@ -72,7 +74,7 @@ type RegexCacheStore struct {
 	rgx          *regexp.Regexp
 }
 
-func (f *Folder) Middleware() (echo.MiddlewareFunc, error) {
+func (f *Folder) Middleware() (func(http.Handler) http.Handler, error) {
 	if f.IndexName == "" {
 		f.IndexName = indexPage
 	}
@@ -118,9 +120,9 @@ func (f *Folder) Middleware() (echo.MiddlewareFunc, error) {
 		f.fs = http.Dir(f.Path)
 	}
 
-	return func(_ echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			upath := c.Request().URL.Path
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			upath := r.URL.Path
 			if !strings.HasPrefix(upath, "/") {
 				upath = "/" + upath
 			}
@@ -142,42 +144,42 @@ func (f *Folder) Middleware() (echo.MiddlewareFunc, error) {
 				}
 			}
 
-			return f.serveFile(c, upath, cPath)
-		}
+			httputil.HandleError(w, f.serveFile(w, r, upath, cPath))
+		})
 	}, nil
 }
 
 // name is '/'-separated, not filepath.Separator.
-func (f *Folder) serveFile(c echo.Context, uPath, cPath string) error {
+func (f *Folder) serveFile(w http.ResponseWriter, r *http.Request, uPath, cPath string) error {
 	// redirect .../index.html to .../
 	// can't use Redirect() because that would make the path absolute,
 	// which would be a problem running under StripPrefix
 	if f.StripIndexName && strings.HasSuffix(uPath, f.IndexName) {
-		return localRedirect(c, strings.TrimSuffix(uPath, f.IndexName))
+		return localRedirect(w, r, strings.TrimSuffix(uPath, f.IndexName))
 	}
 
 	file, err := f.fs.Open(cPath)
 	if err != nil {
 		if os.IsNotExist(err) && f.SPA {
 			if f.SPAEnableFile || !strings.Contains(filepath.Base(cPath), ".") {
-				for _, r := range f.SPAIndexRegex {
-					spaFile := r.rgx.ReplaceAllString(uPath, r.Replacement)
+				for _, spaR := range f.SPAIndexRegex {
+					spaFile := spaR.rgx.ReplaceAllString(uPath, spaR.Replacement)
 					if spaFile != uPath {
-						return f.fsFile(c, spaFile)
+						return f.fsFile(w, r, spaFile)
 					}
 				}
 
-				return f.fsFile(c, f.SPAIndex)
+				return f.fsFile(w, r, f.SPAIndex)
 			}
 		}
 
-		return toHTTPError(c, err)
+		return toHTTPError(err)
 	}
 	defer file.Close()
 
 	d, err := file.Stat()
 	if err != nil {
-		return toHTTPError(c, err)
+		return toHTTPError(err)
 	}
 
 	// redirect to canonical path: / at end of directory url
@@ -185,12 +187,12 @@ func (f *Folder) serveFile(c echo.Context, uPath, cPath string) error {
 	if d.IsDir() {
 		if uPath[len(uPath)-1] != '/' {
 			if !f.DisableFolderSlashRedirect {
-				return localRedirect(c, path.Base(uPath)+"/")
+				return localRedirect(w, r, path.Base(uPath)+"/")
 			}
 		}
 	} else {
 		if uPath[len(uPath)-1] == '/' {
-			return localRedirect(c, "../"+path.Base(uPath))
+			return localRedirect(w, r, "../"+path.Base(uPath))
 		}
 	}
 
@@ -210,16 +212,16 @@ func (f *Folder) serveFile(c echo.Context, uPath, cPath string) error {
 	// Still a directory? (we didn't find an index.html file)
 	if d.IsDir() {
 		if f.Browse {
-			return f.dirList(c, file)
+			return f.dirList(w, r, file)
 		}
 
-		return toHTTPError(c, os.ErrNotExist)
+		return toHTTPError(os.ErrNotExist)
 	}
 
-	return f.fsFileInfo(c, d, file)
+	return f.fsFileInfo(w, r, d, file)
 }
 
-func (f *Folder) dirList(c echo.Context, folder http.File) error {
+func (f *Folder) dirList(w http.ResponseWriter, r *http.Request, folder http.File) error {
 	dirs, err := folder.Readdir(-1)
 	if err != nil {
 		return fmt.Errorf("Error reading directory")
@@ -234,8 +236,9 @@ func (f *Folder) dirList(c echo.Context, folder http.File) error {
 		}
 	}
 
-	sortField := c.QueryParam("sort")
-	sortDesc, _ := strconv.ParseBool(c.QueryParam("desc"))
+	query := r.URL.Query()
+	sortField := query.Get("sort")
+	sortDesc, _ := strconv.ParseBool(query.Get("desc"))
 
 	sort.Slice(folderDirs, sortTable(sortField, sortDesc, folderDirs))
 	sort.Slice(folderFiles, sortTable(sortField, sortDesc, folderFiles))
@@ -244,7 +247,7 @@ func (f *Folder) dirList(c echo.Context, folder http.File) error {
 
 	values := map[string]interface{}{
 		"dirs":      dirs,
-		"url":       c.Request().URL.Path,
+		"url":       r.URL.Path,
 		"utc":       f.UTC,
 		"sortField": sortField,
 		"sortDesc":  sortDesc,
@@ -309,44 +312,52 @@ table tr:hover a, th a {
 {{ execTemplate "html" . | codec.StringToByte | minify "html" | codec.ByteToString }}
 `, values)
 	if err != nil {
-		c.Logger().Error(err)
-
 		return fmt.Errorf("error executing template")
 	}
 
 	if f.BrowseCache != "" {
-		c.Response().Header().Set("Cache-Control", f.BrowseCache)
+		w.Header().Set("Cache-Control", f.BrowseCache)
 	}
 
-	return c.HTML(http.StatusOK, v)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, err = w.Write(v)
+
+	return err
 }
 
 // localRedirect gives a Moved Permanently response.
 // It does not convert relative paths to absolute paths like Redirect does.
-func localRedirect(c echo.Context, newPath string) error {
-	if q := c.Request().URL.RawQuery; q != "" {
+func localRedirect(w http.ResponseWriter, r *http.Request, newPath string) error {
+	if q := r.URL.RawQuery; q != "" {
 		newPath += "?" + q
 	}
 
-	c.Logger().Debug("redirecting to", newPath)
+	slog.Debug("redirecting to " + newPath)
 
-	return c.Redirect(http.StatusMovedPermanently, newPath)
+	return httputil.Redirect(w, http.StatusMovedPermanently, newPath)
 }
 
 // toHTTPError returns a non-specific HTTP error message for the given error.
-func toHTTPError(c echo.Context, err error) error {
+func toHTTPError(err error) error {
 	if os.IsNotExist(err) {
-		return c.String(http.StatusNotFound, fmt.Sprintf("%d - %s", http.StatusNotFound, http.StatusText(http.StatusNotFound)))
+		return httputil.Error{
+			Message: fmt.Sprintf("%d - %s", http.StatusNotFound, http.StatusText(http.StatusNotFound)),
+			Status:  http.StatusNotFound,
+		}
 	}
 	if os.IsPermission(err) {
-		return c.String(http.StatusForbidden, fmt.Sprintf("%d - %s", http.StatusForbidden, http.StatusText(http.StatusForbidden)))
+		return httputil.Error{
+			Message: fmt.Sprintf("%d - %s", http.StatusForbidden, http.StatusText(http.StatusForbidden)),
+			Status:  http.StatusForbidden,
+		}
 	}
 
 	// Default:
 	return err
 }
 
-func (f *Folder) fsFile(c echo.Context, file string) error {
+func (f *Folder) fsFile(w http.ResponseWriter, r *http.Request, file string) error {
 	hFile, err := f.fs.Open(file)
 	if err != nil {
 		return echo.ErrNotFound
@@ -358,13 +369,13 @@ func (f *Folder) fsFile(c echo.Context, file string) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	f.ServeContent(c.Response(), c.Request(), fi.Name(), fi.ModTime(), hFile)
+	f.ServeContent(w, r, fi.Name(), fi.ModTime(), hFile)
 
 	return nil
 }
 
-func (f *Folder) fsFileInfo(c echo.Context, fi fs.FileInfo, file http.File) error {
-	f.ServeContent(c.Response(), c.Request(), fi.Name(), fi.ModTime(), file)
+func (f *Folder) fsFileInfo(w http.ResponseWriter, r *http.Request, fi fs.FileInfo, file http.File) error {
+	f.ServeContent(w, r, fi.Name(), fi.ModTime(), file)
 
 	return nil
 }

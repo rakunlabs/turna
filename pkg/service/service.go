@@ -97,7 +97,7 @@ func (s *Service) Register() error {
 		return fmt.Errorf("failed to render command %s: %w", s.Name, err)
 	}
 
-	commands, err := shellquote.Split(renderedCommand)
+	commands, err := shellquote.Split(string(renderedCommand))
 	if err != nil {
 		return fmt.Errorf("failed to parse command %s: %w", s.Name, err)
 	}

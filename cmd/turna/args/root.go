@@ -241,7 +241,7 @@ func Print() error {
 		return err
 	}
 
-	slog.Info(vPrint)
+	slog.Info(string(vPrint))
 
 	return nil
 }

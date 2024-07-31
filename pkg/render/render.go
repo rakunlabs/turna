@@ -35,19 +35,19 @@ func (r *Render) IsTemplateExist() bool {
 	return r.template != nil
 }
 
-func (r *Render) Execute(content any) (string, error) {
+func (r *Render) Execute(content any) ([]byte, error) {
 	return r.ExecuteWithData(content, r.Data)
 }
 
-func (r *Render) ExecuteWithData(content any, data any) (string, error) {
+func (r *Render) ExecuteWithData(content any, data any) ([]byte, error) {
 	if r.template == nil {
-		return "", fmt.Errorf("template is nil")
+		return nil, fmt.Errorf("template is nil")
 	}
 
 	contentStr := cast.ToString(content)
 
 	if err := r.template.Parse(contentStr); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	var buf bytes.Buffer
@@ -57,8 +57,8 @@ func (r *Render) ExecuteWithData(content any, data any) (string, error) {
 		templatex.WithParsed(true),
 	)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return buf.String(), err
+	return buf.Bytes(), err
 }

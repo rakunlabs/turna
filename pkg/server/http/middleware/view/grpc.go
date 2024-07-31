@@ -5,8 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/labstack/echo/v4"
-
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/grpcui"
 	"github.com/rakunlabs/turna/pkg/server/model"
 )
@@ -55,11 +54,11 @@ func (m *GrpcUI) Set(name, addr, prefixPath string) *grpcui.GrpcUI {
 	return v.GrpcUI
 }
 
-func (m *View) GrpcUI(c echo.Context, name string) error {
+func (m *View) GrpcUI(w http.ResponseWriter, r *http.Request, name string) error {
 	// get addr
-	info, err := m.GetInfo(c.Request().Context())
+	info, err := m.GetInfo(r.Context())
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, model.MetaData{Message: err.Error()})
+		return httputil.JSON(w, http.StatusBadRequest, model.MetaData{Message: err.Error()})
 	}
 
 	addr := ""
@@ -72,7 +71,7 @@ func (m *View) GrpcUI(c echo.Context, name string) error {
 	}
 
 	if addr == "" {
-		return c.JSON(http.StatusBadRequest, model.MetaData{Message: name + " not found any addr"})
+		return httputil.JSON(w, http.StatusBadRequest, model.MetaData{Message: name + " not found any addr"})
 	}
 
 	gUI := m.grpcUI.Get(name, addr)
@@ -80,7 +79,7 @@ func (m *View) GrpcUI(c echo.Context, name string) error {
 		gUI = m.grpcUI.Set(name, addr, m.PrefixPath)
 	}
 
-	gUI.Middleware()(nil).ServeHTTP(c.Response(), c.Request())
+	gUI.Middleware()(nil).ServeHTTP(w, r)
 
 	return nil
 }

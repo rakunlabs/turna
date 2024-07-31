@@ -52,8 +52,8 @@ type Request struct {
 }
 
 type UI struct {
-	ExternalFolder bool             `cfg:"external_folder"`
-	embedUIFunc    echo.HandlerFunc `cfg:"-"`
+	ExternalFolder bool         `cfg:"external_folder"`
+	embedUI        http.Handler `cfg:"-"`
 }
 
 type Provider struct {
@@ -75,7 +75,7 @@ func (m *Login) Middleware(ctx context.Context, _ string) (echo.MiddlewareFunc, 
 		return nil, err
 	}
 
-	m.UI.embedUIFunc = embedUIFunc(nil)
+	m.UI.embedUI = embedUIFunc(nil)
 
 	// set auth client
 	client, err := klient.New(
@@ -186,7 +186,7 @@ func (m *Login) Middleware(ctx context.Context, _ string) (echo.MiddlewareFunc, 
 					return next(c)
 				}
 
-				return m.View(c)
+				return m.View(c.Response(), c.Request())
 			case http.MethodPost:
 				if strings.HasPrefix(urlPath, m.pathFixed.Token) {
 					return m.PasswordFlow(c)

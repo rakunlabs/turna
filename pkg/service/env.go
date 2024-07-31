@@ -25,7 +25,7 @@ func (s *Service) GetEnv(predefined map[string]interface{}, environ bool, envPat
 				if err != nil {
 					return nil, err
 				}
-				v[k] = rV
+				v[k] = string(rV)
 			}
 		}
 	}
@@ -35,7 +35,7 @@ func (s *Service) GetEnv(predefined map[string]interface{}, environ bool, envPat
 		if err != nil {
 			return nil, err
 		}
-		v[k] = rV
+		v[k] = string(rV)
 	}
 
 	env := []string{}
