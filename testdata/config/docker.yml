@@ -1,0 +1,21 @@
+server:
+  entrypoints:
+    docker:
+      address: ":2375"
+  tcp:
+    middlewares:
+      ip:
+        ip_allow_list:
+          source_range:
+            - 127.0.0.1/32
+      redirect:
+        redirect:
+          address: "/var/run/docker.sock"
+          network: "unix"
+    routers:
+      mytcprouter:
+        entrypoints:
+          - docker
+        middlewares:
+          - ip
+          - redirect

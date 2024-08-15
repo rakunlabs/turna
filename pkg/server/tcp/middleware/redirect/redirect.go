@@ -14,6 +14,7 @@ import (
 
 type Redirect struct {
 	Address string `cfg:"address"`
+	Network string `cfg:"network"`
 
 	DisableNagle bool `cfg:"disable_nagle"`
 	Buffer       int  `cfg:"buffer"`
@@ -24,9 +25,29 @@ type Redirect struct {
 }
 
 func (m *Redirect) Middleware(ctx context.Context, _ string) (func(lconn *net.TCPConn) error, error) {
-	raddr, err := net.ResolveTCPAddr("tcp", m.Address)
-	if err != nil {
-		return nil, fmt.Errorf("address cannot resolve %s: %w", m.Address, err)
+	network := m.Network
+	if network == "" {
+		network = "tcp"
+	}
+
+	proxyProtocol := false
+
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+		if _, err := net.ResolveTCPAddr(network, m.Address); err != nil {
+			return nil, fmt.Errorf("address cannot resolve %s: %w", m.Address, err)
+		}
+		proxyProtocol = m.ProxyProtocol
+	case "unix", "unixpacket":
+		if _, err := net.ResolveUnixAddr(network, m.Address); err != nil {
+			return nil, fmt.Errorf("address cannot resolve %s: %w", m.Address, err)
+		}
+	case "udp", "udp4", "udp6":
+		if _, err := net.ResolveUDPAddr(network, m.Address); err != nil {
+			return nil, fmt.Errorf("address cannot resolve %s: %w", m.Address, err)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported network %s", network)
 	}
 
 	if m.Buffer <= 0 {
@@ -39,21 +60,21 @@ func (m *Redirect) Middleware(ctx context.Context, _ string) (func(lconn *net.TC
 
 		wg := &sync.WaitGroup{}
 
-		var rconn *net.TCPConn
+		var rconn net.Conn
 		if m.DialTimeout > 0 {
 			dialCtx, cancel := context.WithTimeout(ctx, m.DialTimeout)
 			defer cancel()
 
 			d := net.Dialer{}
-			conn, err := d.DialContext(dialCtx, "tcp", m.Address)
+			conn, err := d.DialContext(dialCtx, network, m.Address)
 			if err != nil {
 				return fmt.Errorf("failed to dial to %s: %w", m.Address, err)
 			}
 
-			rconn = conn.(*net.TCPConn)
+			rconn = conn
 		} else {
 			var err error
-			rconn, err = net.DialTCP("tcp", nil, raddr)
+			rconn, err = net.Dial(network, m.Address)
 			if err != nil {
 				return fmt.Errorf("failed to dial to %s: %w", m.Address, err)
 			}
@@ -63,10 +84,12 @@ func (m *Redirect) Middleware(ctx context.Context, _ string) (func(lconn *net.TC
 
 		if m.DisableNagle {
 			_ = lconn.SetNoDelay(true)
-			_ = rconn.SetNoDelay(true)
+			if rconn, ok := rconn.(*net.TCPConn); ok {
+				_ = rconn.SetNoDelay(true)
+			}
 		}
 
-		if m.ProxyProtocol {
+		if proxyProtocol {
 			// Append protocol version
 			proxyBuilder := strings.Builder{}
 			proxyBuilder.WriteString("PROXY ")

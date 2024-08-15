@@ -22,6 +22,11 @@ type Router struct {
 	Middlewares []string `cfg:"middlewares"`
 }
 
+type Middleware struct {
+	Name string
+	Conn func(lconn *net.TCPConn) error
+}
+
 func (h *TCP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 	for name, middleware := range h.Middlewares {
 		if err := middleware.Set(ctx, name); err != nil {
@@ -30,15 +35,17 @@ func (h *TCP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 	}
 
 	for _, router := range h.Routers {
-		middlewares := make([]func(lconn *net.TCPConn) error, 0, len(router.Middlewares))
+		middlewares := make([]Middleware, 0, len(router.Middlewares))
 
 		for _, middlewareName := range router.Middlewares {
-			middleware, err := registry.GlobalReg.GetTcpMiddleware(middlewareName)
+			middlewaresGet, err := registry.GlobalReg.GetTcpMiddleware(middlewareName)
 			if err != nil {
 				return fmt.Errorf("middleware '%s' not found", middlewareName)
 			}
 
-			middlewares = append(middlewares, middleware...)
+			for _, m := range middlewaresGet {
+				middlewares = append(middlewares, Middleware{Name: middlewareName, Conn: m})
+			}
 		}
 
 		for _, entrypoint := range router.EntryPoints {
@@ -87,9 +94,9 @@ func (h *TCP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 						defer conn.Close()
 
 						// do something with conn
-						for _, middleware := range middlewares {
-							if err := middleware(conn); err != nil {
-								slog.Warn("middleware failed", "err", err.Error())
+						for _, m := range middlewares {
+							if err := m.Conn(conn); err != nil {
+								slog.Warn("middleware ["+m.Name+"] failed", "err", err.Error())
 
 								return
 							}
