@@ -32,7 +32,7 @@
     "stylelint-config-standard": "^36.0.0",
     "stylelint-scss": "6.0.0",
     "svelte": "^4.2.9",
-    "svelte-check": "^3.6.2",
+    "svelte-check": "^3.6.3",
     "svelte-preprocess": "^5.1.3",
     "svelte-spa-router": "^4.0.1",
     "swagger-ui": "^5.11.1",

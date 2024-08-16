@@ -120,7 +120,7 @@ func (f *Folder) Middleware() (func(http.Handler) http.Handler, error) {
 		f.fs = http.Dir(f.Path)
 	}
 
-	return func(next http.Handler) http.Handler {
+	return func(_ http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			upath := r.URL.Path
 			if !strings.HasPrefix(upath, "/") {
@@ -144,7 +144,9 @@ func (f *Folder) Middleware() (func(http.Handler) http.Handler, error) {
 				}
 			}
 
-			httputil.HandleError(w, f.serveFile(w, r, upath, cPath))
+			if err := f.serveFile(w, r, upath, cPath); err != nil {
+				httputil.HandleError(w, httputil.NewErrorAs(err))
+			}
 		})
 	}, nil
 }
@@ -341,19 +343,12 @@ func localRedirect(w http.ResponseWriter, r *http.Request, newPath string) error
 // toHTTPError returns a non-specific HTTP error message for the given error.
 func toHTTPError(err error) error {
 	if os.IsNotExist(err) {
-		return httputil.Error{
-			Message: fmt.Sprintf("%d - %s", http.StatusNotFound, http.StatusText(http.StatusNotFound)),
-			Status:  http.StatusNotFound,
-		}
+		return httputil.NewError("", nil, http.StatusNotFound)
 	}
 	if os.IsPermission(err) {
-		return httputil.Error{
-			Message: fmt.Sprintf("%d - %s", http.StatusForbidden, http.StatusText(http.StatusForbidden)),
-			Status:  http.StatusForbidden,
-		}
+		return httputil.NewError("", nil, http.StatusForbidden)
 	}
 
-	// Default:
 	return err
 }
 

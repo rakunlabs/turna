@@ -26,6 +26,7 @@ func main() {
 	initializer.Init(
 		run,
 		initializer.WithInitLog(false),
+		initializer.WithMsgf("turna [%s]", version),
 		initializer.WithLogger(initializer.Slog),
 		initializer.WithOptionsLogi(logi.WithCaller(false)),
 		initializer.WithOptionsLogz(logz.WithCaller(false)),

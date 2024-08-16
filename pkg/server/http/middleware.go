@@ -22,9 +22,9 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/inject"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/log"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/login"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/openfga"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/openfgacheck"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/print"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebaccheck"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/redirectcontinue"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/redirection"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/regexpath"
@@ -63,13 +63,7 @@ func adaptEchoMiddleware(mw echo.MiddlewareFunc) func(http.Handler) http.Handler
 			echoHandler := mw(handler)
 
 			// Create an echo.Context from http.Request
-			var c echo.Context
-			turna, _ := r.Context().Value(tcontext.TurnaKey).(*tcontext.Turna)
-			if turna == nil {
-				c = echo.New().NewContext(r, w)
-			} else {
-				c = turna.EchoContext
-			}
+			c := tcontext.GetEchoContext(r, w)
 
 			// Execute echo's handler
 			if err := echoHandler(c); err != nil {
@@ -117,8 +111,8 @@ type HTTPMiddleware struct {
 	RedirectionMiddleware      *redirection.Redirection              `cfg:"redirection"`
 	TryMiddleware              *try.Try                              `cfg:"try"`
 	SessionInfoMiddleware      *sessioninfo.Info                     `cfg:"session_info"`
-	OpenFgaMiddleware          *openfga.OpenFGA                      `cfg:"openfga"`
-	OpenFgaCheckMiddleware     *openfgacheck.OpenFGACheck            `cfg:"openfga_check"`
+	RebacMiddleware            *rebac.Rebac                          `cfg:"rebac"`
+	RebacCheckMiddleware       *rebaccheck.RebacCheck                `cfg:"rebac_check"`
 	RoleCheckMiddleware        *rolecheck.RoleCheck                  `cfg:"role_check"`
 	RoleDataMiddleware         *roledata.RoleData                    `cfg:"role_data"`
 	TokenPassMiddleware        *tokenpass.TokenPass                  `cfg:"token_pass"`
@@ -155,7 +149,7 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.ScopeMiddleware.Middleware()}), nil
 	case h.ServiceMiddleware != nil:
 		m, err := h.ServiceMiddleware.Middleware()
-		return adaptEchoMiddlewares(m), err
+		return m, err
 	case h.FolderMiddleware != nil:
 		m, err := h.FolderMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
@@ -203,12 +197,12 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 	case h.SessionInfoMiddleware != nil:
 		m, err := h.SessionInfoMiddleware.Middleware()
 		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
-	case h.OpenFgaMiddleware != nil:
-		m, err := h.OpenFgaMiddleware.Middleware(ctx, name)
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
-	case h.OpenFgaCheckMiddleware != nil:
-		m, err := h.OpenFgaCheckMiddleware.Middleware(ctx, name)
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+	case h.RebacMiddleware != nil:
+		m, err := h.RebacMiddleware.Middleware(ctx)
+		return []MiddlewareFunc{m}, err
+	case h.RebacCheckMiddleware != nil:
+		m, err := h.RebacCheckMiddleware.Middleware()
+		return []MiddlewareFunc{m}, err
 	case h.RoleCheckMiddleware != nil:
 		m, err := h.RoleCheckMiddleware.Middleware()
 		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err

@@ -38,6 +38,9 @@ func (t *Token) GetKeyFunc() InfKeyFuncParser {
 type Provider struct {
 	Name   string  `cfg:"name"`
 	Oauth2 *Oauth2 `cfg:"oauth2"`
+	// XUser header set from token claims. Default is email and preferred_username.
+	// It set first found value.
+	XUser []string `cfg:"x_user"`
 	// PasswordFlow is use password flow to get token.
 	PasswordFlow bool `cfg:"password_flow"`
 	// Priority is use to sort provider.
@@ -138,6 +141,22 @@ func (m *Session) GetCookieName(c echo.Context) string {
 	return cookieName
 }
 
+func addXUserHeader(r *http.Request, claim *claims.Custom, xUser []string) {
+	r.Header.Del("X-User")
+
+	if len(xUser) == 0 {
+		xUser = []string{"email", "preferred_username"}
+	}
+
+	for _, v := range xUser {
+		if claimValue, ok := claim.Map[v].(string); ok {
+			r.Header.Set("X-User", claimValue)
+
+			break
+		}
+	}
+}
+
 func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 	if m.Action.Active == actionToken {
 		if authorizationHeader := c.Request().Header.Get("Authorization"); authorizationHeader != "" {
@@ -155,6 +174,7 @@ func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 				// next middlewares can check roles
 				c.Set("claims", customClaims)
 				c.Set("provider", jwtToken.Header["provider_name"])
+				addXUserHeader(c.Request(), customClaims, m.Provider[jwtToken.Header["provider_name"].(string)].XUser)
 
 				if v, _ := c.Get(CtxTokenHeaderDelKey).(bool); v {
 					c.Request().Header.Del("Authorization")
@@ -249,6 +269,7 @@ func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 		// next middlewares can check roles
 		c.Set("claims", customClaims)
 		c.Set("provider", jwtToken.Header["provider_name"])
+		addXUserHeader(c.Request(), customClaims, m.Provider[jwtToken.Header["provider_name"].(string)].XUser)
 
 		// add the access token to the request
 		if v, _ := c.Get(CtxTokenHeaderKey).(bool); v {

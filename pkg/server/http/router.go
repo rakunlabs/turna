@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 
 	"github.com/labstack/echo/v4"
 	"github.com/oklog/ulid/v2"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
 	"github.com/rakunlabs/turna/pkg/server/registry"
 )
@@ -16,7 +18,7 @@ var ServerInfo = "turna"
 
 type Router struct {
 	Host        string    `cfg:"host"`
-	Path        string    `cfg:"path"`
+	Path        []string  `cfg:"path"`
 	Middlewares []string  `cfg:"middlewares"`
 	TLS         *struct{} `cfg:"tls"`
 	EntryPoints []string  `cfg:"entrypoints"`
@@ -35,7 +37,7 @@ func (r *Router) Set(_ string, ruleRouter *RuleRouter) error {
 		})
 
 		if e == nil {
-			return fmt.Errorf("entrypoint %s, host %s, echo does not exist", entrypoint, r.Host)
+			return fmt.Errorf("entrypoint %s, host %s, does not exist", entrypoint, r.Host)
 		}
 
 		middlewares := make([]func(http.Handler) http.Handler, 0, len(r.Middlewares)+4)
@@ -52,7 +54,14 @@ func (r *Router) Set(_ string, ruleRouter *RuleRouter) error {
 
 		middlewares = append(middlewares, PostMiddleware)
 
-		e.Handle(r.Path, NewMiddlewareHandler(middlewares))
+		mPath := make(map[string]struct{}, len(r.Path))
+		for _, path := range r.Path {
+			mPath[path] = struct{}{}
+		}
+
+		for path := range mPath {
+			e.Handle(path, NewMiddlewareHandler(middlewares))
+		}
 	}
 
 	return nil
@@ -75,8 +84,7 @@ var ErrorMiddleware = func(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), "error-handler", func(err error) {
 			slog.Error(err.Error(), "request_id", r.Header.Get("X-Request-Id"))
 
-			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte(fmt.Sprintf("error: %s", err.Error())))
+			httputil.HandleError(w, httputil.NewError("", err, http.StatusInternalServerError))
 		})
 
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -95,7 +103,8 @@ var RecoverMiddleware = func(next http.Handler) http.Handler {
 					err = fmt.Errorf("%v", r)
 				}
 
-				slog.Error(fmt.Sprintf("panic: %s", err.Error()), "stack", fmt.Sprintf("%+v", r))
+				slog.Error(fmt.Sprintf("panic: %s", err.Error()))
+				debug.PrintStack()
 
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = w.Write([]byte(fmt.Sprintf("panic: %s", err.Error())))
@@ -116,6 +125,7 @@ var RequestIDMiddleware = func(next http.Handler) http.Handler {
 		}
 
 		r.Header.Set("X-Request-Id", requestID)
+		w.Header().Set("X-Request-Id", requestID)
 
 		next.ServeHTTP(w, r)
 	})

@@ -1,15 +1,30 @@
 import { writable } from "svelte/store";
 
 const config: Config = {
+  iframe: [],
+  page: [],
   grpc: [],
   swagger: [],
   swagger_settings: {}
 }
 
 type Config = {
+  iframe: Iframe[];
+  page: Page[];
   grpc: GRPC[];
   swagger: Swagger[];
   swagger_settings: SwaggerSettings;
+}
+
+type Page = {
+  name: string;
+  path: string;
+}
+
+type Iframe = {
+  name: string;
+  path: string;
+  url: string;
 }
 
 type GRPC = {

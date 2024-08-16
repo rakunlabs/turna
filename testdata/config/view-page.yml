@@ -1,0 +1,35 @@
+server:
+  entrypoints:
+    web:
+      address: ":8080"
+  http:
+    middlewares:
+      hello:
+        hello:
+          message: "Hello from TURNA\n"
+      view:
+        view:
+          prefix_path: /view/
+          info:
+            iframe:
+              - name: Map
+                path: street
+                url: https://www.openstreetmap.org/export/embed.html?bbox=-0.004017949104309083%2C51.47612752641776%2C0.00030577182769775396%2C51.478569861898606&layer=mapnik
+            page:
+              - name: Hello Page
+                url: http://localhost:8080/hello
+                path: hello
+                host: false
+                header:
+                  response:
+                    add_header:
+                      X-Test-Header: "test"
+    routers:
+      hello:
+        path: /hello
+        middlewares:
+          - hello
+      view:
+        path: /view/*
+        middlewares:
+          - view

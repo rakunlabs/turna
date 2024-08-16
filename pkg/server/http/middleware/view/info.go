@@ -16,9 +16,36 @@ import (
 )
 
 type Info struct {
+	Iframe          []Iframe        `cfg:"iframe"           json:"iframe"`
+	Page            []Page          `cfg:"page"             json:"page"`
 	Grpc            []Grpc          `cfg:"grpc"             json:"grpc"`
 	Swagger         []Swagger       `cfg:"swagger"          json:"swagger"`
 	SwaggerSettings SwaggerSettings `cfg:"swagger_settings" json:"swagger_settings"`
+}
+
+type Iframe struct {
+	Name string `cfg:"name" json:"name,omitempty"`
+	Path string `cfg:"path" json:"path,omitempty"`
+	URL  string `cfg:"url"  json:"url,omitempty"`
+}
+
+// Page for iframe view.
+type Page struct {
+	Name   string       `cfg:"name"   json:"name,omitempty"`
+	Path   string       `cfg:"path"   json:"path,omitempty"`
+	URL    string       `cfg:"url"    json:"-"`
+	Header HeaderHolder `cfg:"header" json:"-"`
+	Host   bool         `cfg:"host"   json:"-"`
+}
+
+type HeaderHolder struct {
+	Request  Header `cfg:"request"`
+	Response Header `cfg:"response"`
+}
+
+type Header struct {
+	AddHeader    map[string]string `cfg:"add_header"`
+	RemoveHeader []string          `cfg:"remove_header"`
 }
 
 type Grpc struct {
@@ -83,6 +110,7 @@ func (m *View) infoRequest(ctx context.Context, cached bool) ([]byte, error) {
 
 			return m.infoTmpBody, nil
 		}
+
 		return nil, err
 	}
 
@@ -105,6 +133,7 @@ func (m *View) infoRequest(ctx context.Context, cached bool) ([]byte, error) {
 
 			return m.infoTmpBody, nil
 		}
+
 		return nil, err
 	}
 
@@ -114,24 +143,32 @@ func (m *View) infoRequest(ctx context.Context, cached bool) ([]byte, error) {
 	return body, nil
 }
 
-func (m *View) InformationUI(w http.ResponseWriter, r *http.Request) error {
+func (m *View) InformationUI(w http.ResponseWriter, r *http.Request) {
 	if m.InfoURL == "" {
-		return httputil.JSON(w, http.StatusOK, m.Info)
+		httputil.JSON(w, http.StatusOK, m.Info)
+
+		return
 	}
 
 	body, err := m.infoRequest(r.Context(), true)
 	if err != nil {
-		return httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+		httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+
+		return
 	}
 
 	if strings.ToLower(m.InfoURLType) == "yaml" {
 		var info interface{}
 		if err := yaml.Unmarshal(body, &info); err != nil {
-			return httputil.JSON(w, http.StatusNotAcceptable, model.MetaData{Message: err.Error()})
+			httputil.JSON(w, http.StatusNotAcceptable, model.MetaData{Message: err.Error()})
+
+			return
 		}
 
-		return httputil.JSON(w, http.StatusOK, body)
+		httputil.JSON(w, http.StatusOK, body)
+
+		return
 	}
 
-	return httputil.JSONBlob(w, http.StatusOK, body)
+	httputil.JSONBlob(w, http.StatusOK, body)
 }

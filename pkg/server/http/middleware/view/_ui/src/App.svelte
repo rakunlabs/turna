@@ -9,6 +9,8 @@
   import Swagger from "./components/Swagger.svelte";
   import Grpc from "./components/Grpc.svelte";
   import Main from "./components/Main.svelte";
+  import Page from "./components/Page.svelte";
+  import Iframe from "./components/Iframe.svelte";
 
   let layout: HTMLElement;
   let mounted = false;
@@ -16,6 +18,8 @@
   const routes = new Map<string | RegExp, ComponentType>();
   routes.set("/swagger/:service", Swagger);
   routes.set("/grpc/:name", Grpc);
+  routes.set("/page/:name", Page);
+  routes.set("/iframe/:name", Iframe);
   routes.set("*", Main);
 
   onMount(async () => {

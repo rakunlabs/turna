@@ -29,6 +29,7 @@ type View struct {
 
 	client *klient.Client `cfg:"-"`
 	grpcUI GrpcUI         `cfg:"-"`
+	pageUI PageUI         `cfg:"-"`
 }
 
 //go:embed _ui/dist/*
@@ -85,7 +86,12 @@ func (m *View) Middleware(_ context.Context, _ string) (func(http.Handler) http.
 		m.client = client
 	}
 
+	if err := m.SetPageUI(m.Info.Page); err != nil {
+		return nil, err
+	}
+
 	regexPathGrpc := regexp.MustCompile(`/grpc/([^/]+)/?.*`)
+	regexPathPage := regexp.MustCompile(`/page/([^/]+)/?.*`)
 
 	return func(_ http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +103,13 @@ func (m *View) Middleware(_ context.Context, _ string) (func(http.Handler) http.
 			}
 
 			if v := regexPathGrpc.FindStringSubmatch(r.URL.Path); len(v) > 1 {
-				_ = m.GrpcUI(w, r, v[1])
+				m.GrpcUI(w, r, v[1])
+
+				return
+			}
+
+			if v := regexPathPage.FindStringSubmatch(r.URL.Path); len(v) > 1 {
+				m.Page(w, r, v[1])
 
 				return
 			}

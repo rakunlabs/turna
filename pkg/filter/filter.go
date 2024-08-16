@@ -41,40 +41,47 @@ func (f *FileFilter) Start(ctx context.Context, wg *sync.WaitGroup) (*os.File, e
 		return nil, fmt.Errorf("failed to start FileFilter %w", err)
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		defer func() { f.started = false }()
+		defer cancel()
 
 		buff := bufio.NewReader(f.r)
 
-		for {
-			select {
-			case <-ctx.Done():
-				f.w.Close()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 
-				var err error
+			<-ctx.Done()
 
-				// read remainings
-				for {
-					if err = f.read(buff); err != nil {
-						break
-					}
-				}
+			f.w.Close()
 
-				if !errors.Is(err, io.EOF) {
-					slog.Error("loop read remainings failed", "err", err)
-				}
+			var err error
 
-				f.r.Close()
-			default:
-				if err := f.read(buff); err != nil && !errors.Is(err, io.EOF) {
-					if !errors.Is(err, os.ErrClosed) {
-						slog.Error("loop read failed", "err", err)
-					}
-
+			// read remainings
+			for {
+				if err = f.read(buff); err != nil {
 					break
 				}
+			}
+
+			if !errors.Is(err, io.EOF) {
+				slog.Error("loop read remainings failed", "err", err)
+			}
+
+			f.r.Close()
+		}()
+
+		for {
+			if err := f.read(buff); err != nil && !errors.Is(err, io.EOF) {
+				if !errors.Is(err, os.ErrClosed) {
+					slog.Error("loop read failed", "err", err)
+				}
+
+				break
 			}
 		}
 	}()

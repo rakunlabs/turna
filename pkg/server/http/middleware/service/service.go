@@ -2,10 +2,9 @@ package service
 
 import (
 	"fmt"
+	"net/http"
 	"net/url"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/worldline-go/klient"
 )
 
@@ -21,14 +20,10 @@ type LoadBalancer struct {
 	Servers []Server `cfg:"servers"`
 }
 
-type Server struct {
-	URL string `cfg:"url"`
-}
-
-func (m *Service) GetBalancer() (middleware.ProxyBalancer, error) {
+func (m *Service) GetBalancer() (ProxyBalancer, error) {
 	if m.PrefixBalancer.IsEnabled() {
 		for i, prefix := range m.PrefixBalancer.Prefixes {
-			targets := make([]*middleware.ProxyTarget, 0, len(prefix.Servers))
+			targets := make([]*ProxyTarget, 0, len(prefix.Servers))
 
 			for _, server := range prefix.Servers {
 				u, err := url.Parse(server.URL)
@@ -36,16 +31,16 @@ func (m *Service) GetBalancer() (middleware.ProxyBalancer, error) {
 					return nil, fmt.Errorf("cannot parse url %s: %w", server.URL, err)
 				}
 
-				targets = append(targets, &middleware.ProxyTarget{
+				targets = append(targets, &ProxyTarget{
 					URL: u,
 				})
 			}
 
-			m.PrefixBalancer.Prefixes[i].balancer = middleware.NewRoundRobinBalancer(targets)
+			m.PrefixBalancer.Prefixes[i].Balancer = NewRoundRobinBalancer(targets)
 		}
 
 		if len(m.PrefixBalancer.DefaultServers) > 0 {
-			targets := make([]*middleware.ProxyTarget, 0, len(m.PrefixBalancer.DefaultServers))
+			targets := make([]*ProxyTarget, 0, len(m.PrefixBalancer.DefaultServers))
 
 			for _, server := range m.PrefixBalancer.DefaultServers {
 				u, err := url.Parse(server.URL)
@@ -53,16 +48,16 @@ func (m *Service) GetBalancer() (middleware.ProxyBalancer, error) {
 					return nil, fmt.Errorf("cannot parse url %s: %w", server.URL, err)
 				}
 
-				targets = append(targets, &middleware.ProxyTarget{URL: u})
+				targets = append(targets, &ProxyTarget{URL: u})
 			}
 
-			m.PrefixBalancer.defaultBalancer = middleware.NewRoundRobinBalancer(targets)
+			m.PrefixBalancer.DefaultBalancer = NewRoundRobinBalancer(targets)
 		}
 
 		return &m.PrefixBalancer, nil
 	}
 
-	targets := make([]*middleware.ProxyTarget, 0, len(m.LoadBalancer.Servers))
+	targets := make([]*ProxyTarget, 0, len(m.LoadBalancer.Servers))
 
 	for _, server := range m.LoadBalancer.Servers {
 		u, err := url.Parse(server.URL)
@@ -70,16 +65,16 @@ func (m *Service) GetBalancer() (middleware.ProxyBalancer, error) {
 			return nil, fmt.Errorf("cannot parse url %s: %w", server.URL, err)
 		}
 
-		targets = append(targets, &middleware.ProxyTarget{
+		targets = append(targets, &ProxyTarget{
 			URL: u,
 		})
 	}
 
-	return middleware.NewRoundRobinBalancer(targets), nil
+	return NewRoundRobinBalancer(targets), nil
 }
 
-func (m *Service) Middleware() ([]echo.MiddlewareFunc, error) {
-	cfg := middleware.DefaultProxyConfig
+func (m *Service) Middleware() ([]func(http.Handler) http.Handler, error) {
+	cfg := DefaultProxyConfig
 	balancer, err := m.GetBalancer()
 	if err != nil {
 		return nil, fmt.Errorf("cannot get balancer: %w", err)
@@ -96,15 +91,18 @@ func (m *Service) Middleware() ([]echo.MiddlewareFunc, error) {
 
 	cfg.Transport = client.HTTP.Transport
 
-	checkHost := func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+	checkHost := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !m.PassHostHeader {
-				c.Request().Host = ""
+				r.Host = ""
 			}
 
-			return next(c)
-		}
+			next.ServeHTTP(w, r)
+		})
 	}
 
-	return []echo.MiddlewareFunc{checkHost, middleware.ProxyWithConfig(cfg)}, nil
+	return []func(http.Handler) http.Handler{
+		checkHost,
+		ProxyWithConfig(cfg),
+	}, nil
 }

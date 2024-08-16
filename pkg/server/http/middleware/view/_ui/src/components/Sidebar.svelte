@@ -18,10 +18,64 @@
         <span class="block px-2 py-1">View</span>
       </a>
     </div>
+    {#if $storeInfo.iframe?.length > 0}
+      <div>
+        <span
+          class="block h-8 leading-8 bg-yellow-100 border-b border-black px-2 w-full text-left"
+        >
+          Iframes
+        </span>
+        {#each $storeInfo.iframe as iframe}
+          <a
+            href={`#/iframe/${iframe.path}`}
+            class="block border-b border-black h-8 leading-8"
+            use:active={{
+              path: `/iframe/${encodeURIComponent(iframe.path)}`,
+              className: "sb-link-active",
+              inactiveClassName: "sb-link-inactive hover:bg-gray-100",
+            }}
+            title={iframe.path}
+          >
+            <span
+              class="block px-1 border-l-4 border-gray-400 whitespace-nowrap overflow-hidden overflow-ellipsis"
+            >
+              {iframe.name}
+            </span>
+          </a>
+        {/each}
+      </div>
+    {/if}
+    {#if $storeInfo.page?.length > 0}
+      <div>
+        <span
+          class="block h-8 leading-8 bg-yellow-100 border-b border-black px-2 w-full text-left"
+        >
+          Pages
+        </span>
+        {#each $storeInfo.page as page}
+          <a
+            href={`#/page/${page.path}`}
+            class="block border-b border-black h-8 leading-8"
+            use:active={{
+              path: `/page/${encodeURIComponent(page.path)}`,
+              className: "sb-link-active",
+              inactiveClassName: "sb-link-inactive hover:bg-gray-100",
+            }}
+            title={page.path}
+          >
+            <span
+              class="block px-1 border-l-4 border-gray-400 whitespace-nowrap overflow-hidden overflow-ellipsis"
+            >
+              {page.name}
+            </span>
+          </a>
+        {/each}
+      </div>
+    {/if}
     {#if $storeInfo.grpc?.length > 0}
       <div>
         <span
-          class="block h-8 leading-8 bg-gray-50 border-b border-black px-2 w-full text-left"
+          class="block h-8 leading-8 bg-yellow-100 border-b border-black px-2 w-full text-left"
         >
           gRPC APIs
         </span>
@@ -48,7 +102,7 @@
     {#if $storeInfo.swagger?.length > 0}
       <div>
         <span
-          class="block h-8 leading-8 bg-gray-50 border-b border-black px-2 w-full text-left"
+          class="block h-8 leading-8 bg-yellow-100 border-b border-black px-2 w-full text-left"
         >
           Swagger APIs
         </span>

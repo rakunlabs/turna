@@ -1,0 +1,53 @@
+services:
+  - name: openfga_migrate
+    command: "openfga migrate"
+    order: 0
+    inherit_env: true
+    env:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://postgres@localhost:5432/postgres?sslmode=disable&search_path=openfga
+  - name: openfga_server
+    command: "openfga run --datastore-max-open-conns 5 --datastore-conn-max-lifetime 15m"
+    order: 1
+    inherit_env: true
+    env:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://postgres@localhost:5432/postgres?sslmode=disable&search_path=openfga
+      OPENFGA_LOG_FORMAT: json
+      OPENFGA_GRPC_ADDR: localhost:8081
+      OPENFGA_HTTP_ADDR: localhost:8080
+      OPENFGA_METRICS_ENABLED: "false"
+      # OPENFGA_PLAYGROUND_ENABLED: "false"
+
+server:
+  entrypoints:
+    web:
+      address: ":8082"
+  http:
+    middlewares:
+      view:
+        view:
+          prefix_path: /openfga/
+          info:
+            swagger_settings:
+              disable_authorize_button: true
+              schemes: ["HTTP"]
+            swagger:
+              - name: openfga
+                link: http://localhost:8082/openfga/api/swagger/openfga.json
+                base_path: /openfga/api/openfga
+              - name: api
+                link: http://localhost:8082/openfga/api/swagger/api.json
+                base_path: /openfga/api
+      rebac:
+        rebac:
+          prefix_path: "/openfga"
+          api_url: "http://localhost:8080"
+          database:
+            postgres: "postgres://postgres:password@localhost:5432/postgres?sslmode=disable&search_path=openfga"
+    routers:
+      main:
+        path: /openfga/*
+        middlewares:
+          - openfga
+          - view

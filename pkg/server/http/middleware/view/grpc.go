@@ -54,11 +54,13 @@ func (m *GrpcUI) Set(name, addr, prefixPath string) *grpcui.GrpcUI {
 	return v.GrpcUI
 }
 
-func (m *View) GrpcUI(w http.ResponseWriter, r *http.Request, name string) error {
+func (m *View) GrpcUI(w http.ResponseWriter, r *http.Request, name string) {
 	// get addr
 	info, err := m.GetInfo(r.Context())
 	if err != nil {
-		return httputil.JSON(w, http.StatusBadRequest, model.MetaData{Message: err.Error()})
+		httputil.JSON(w, http.StatusBadRequest, model.MetaData{Message: err.Error()})
+
+		return
 	}
 
 	addr := ""
@@ -71,7 +73,9 @@ func (m *View) GrpcUI(w http.ResponseWriter, r *http.Request, name string) error
 	}
 
 	if addr == "" {
-		return httputil.JSON(w, http.StatusBadRequest, model.MetaData{Message: name + " not found any addr"})
+		httputil.JSON(w, http.StatusBadRequest, model.MetaData{Message: name + " not found any addr"})
+
+		return
 	}
 
 	gUI := m.grpcUI.Get(name, addr)
@@ -80,6 +84,4 @@ func (m *View) GrpcUI(w http.ResponseWriter, r *http.Request, name string) error
 	}
 
 	gUI.Middleware()(nil).ServeHTTP(w, r)
-
-	return nil
 }
