@@ -29,10 +29,10 @@ type Role struct {
 
 // User is a struct that represents a user table in the database.
 type User struct {
-	ID     string                 `json:"id"     badgerhold:"unique"`
-	Alias  []string               `json:"alias"`
-	Roles  []string               `json:"roles"`
-	Detail map[string]interface{} `json:"detail"`
+	ID      string                 `json:"id"      badgerhold:"unique"`
+	Alias   []string               `json:"alias"`
+	Roles   []string               `json:"roles"`
+	Details map[string]interface{} `json:"details"`
 }
 
 type UserExtended struct {

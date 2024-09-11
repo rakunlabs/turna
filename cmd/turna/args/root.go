@@ -6,14 +6,13 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/logi"
 	"github.com/rakunlabs/turna/internal/config"
-	"github.com/rakunlabs/turna/internal/oven"
 	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/runner"
 	"github.com/rakunlabs/turna/pkg/server/http"
 	serverReg "github.com/rakunlabs/turna/pkg/server/registry"
-	"github.com/worldline-go/initializer"
 	"github.com/worldline-go/struct2"
 
 	"github.com/rs/zerolog/log"
@@ -158,14 +157,7 @@ func runRoot(ctx context.Context) error {
 
 	// add store runner
 	runner.NewStoreReg(wg).SetAsGlobal()
-	initializer.Shutdown.Add(
-		func() error {
-			runner.GlobalReg.KillAll()
-
-			return nil
-		},
-		initializer.WithShutdownName("runner"),
-	)
+	into.ShutdownAdd(into.FnWarp(runner.GlobalReg.KillAll), "runner")
 
 	// this function will be called after all configs are loaded and dynamically changes
 	call := func(_ context.Context, _ string, data map[string]interface{}) {
@@ -196,17 +188,10 @@ func runRoot(ctx context.Context) error {
 	}
 
 	// server
-	initializer.Shutdown.Add(
-		func() error {
-			serverReg.GlobalReg.Shutdown()
-
-			return nil
-		},
-		initializer.WithShutdownName("server"),
-	)
+	into.ShutdownAdd(into.FnWarp(serverReg.GlobalReg.Shutdown), "server registry")
 
 	if config.Application.Server.LoadValue != "" {
-		if err := oven.CookConfig(
+		if err := config.Decode(
 			render.GlobalRender.Data[config.Application.Server.LoadValue],
 			&config.Application.Server,
 		); err != nil {
@@ -216,14 +201,14 @@ func runRoot(ctx context.Context) error {
 
 	http.ServerInfo = config.AppName + " [" + config.BuildVars.Version + "]"
 	if err := config.Application.Server.Run(ctx, wg); err != nil {
-		initializer.Shutdown.CtxCancel()
+		into.CtxCancel()
 
 		return err
 	}
 
 	// run services
 	if err := config.Application.Services.Run(ctx); err != nil {
-		initializer.Shutdown.CtxCancel()
+		into.CtxCancel()
 
 		return err
 	}

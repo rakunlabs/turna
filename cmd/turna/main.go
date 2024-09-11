@@ -1,12 +1,7 @@
 package main
 
 import (
-	"context"
-	"sync"
-
-	"github.com/worldline-go/initializer"
-	"github.com/worldline-go/logz"
-
+	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/logi"
 	"github.com/rakunlabs/turna/cmd/turna/args"
 	"github.com/rakunlabs/turna/internal/config"
@@ -23,16 +18,11 @@ func main() {
 	config.BuildVars.Date = date
 	config.BuildVars.Commit = commit
 
-	initializer.Init(
-		run,
-		initializer.WithInitLog(false),
-		initializer.WithMsgf("turna [%s]", version),
-		initializer.WithLogger(initializer.Slog),
-		initializer.WithOptionsLogi(logi.WithCaller(false)),
-		initializer.WithOptionsLogz(logz.WithCaller(false)),
+	into.Init(
+		args.Execute,
+		into.WithLogger(logi.InitializeLog(logi.WithCaller(false))),
+		into.WithMsgf("turna [%s]", version),
+		into.WithStartFn(nil),
+		into.WithStopFn(nil),
 	)
-}
-
-func run(ctx context.Context, _ *sync.WaitGroup) error {
-	return args.Execute(ctx)
 }

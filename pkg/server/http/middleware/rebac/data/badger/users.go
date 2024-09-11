@@ -13,22 +13,24 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.User],
 	var users []data.User
 
 	badgerHoldQuery := &badgerhold.Query{}
+	badgerHoldQueryLimited := &badgerhold.Query{}
 
 	if req.ID != "" {
 		badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID)
+		badgerHoldQueryLimited = badgerHoldQuery
 	} else if req.Alias != "" {
 		badgerHoldQuery = badgerhold.Where("Alias").Contains(req.Alias)
+		badgerHoldQueryLimited = badgerHoldQuery
 	}
 
 	if req.Offset > 0 {
-		badgerHoldQuery = badgerHoldQuery.Skip(int(req.Offset))
+		badgerHoldQueryLimited = badgerHoldQueryLimited.Skip(int(req.Offset))
 	}
-
 	if req.Limit > 0 {
-		badgerHoldQuery = badgerHoldQuery.Limit(int(req.Limit))
+		badgerHoldQueryLimited = badgerHoldQueryLimited.Limit(int(req.Limit))
 	}
 
-	if err := b.db.Find(&users, badgerHoldQuery); err != nil {
+	if err := b.db.Find(&users, badgerHoldQueryLimited); err != nil {
 		return nil, err
 	}
 
@@ -111,8 +113,8 @@ func (b *Badger) PatchUser(user data.User) error {
 		}
 	}
 
-	for k, v := range user.Detail {
-		foundUser.Detail[k] = v
+	for k, v := range user.Details {
+		foundUser.Details[k] = v
 	}
 
 	if err := b.db.Update(user.ID, foundUser); err != nil {

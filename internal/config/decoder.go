@@ -1,8 +1,8 @@
-package oven
+package config
 
 import "github.com/worldline-go/struct2"
 
-func CookConfig(input, output interface{}) error {
+func Decode(input, output interface{}) error {
 	if input == nil {
 		return nil
 	}

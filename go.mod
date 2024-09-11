@@ -12,10 +12,10 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/gorilla/securecookie v1.1.2
 	github.com/gorilla/sessions v1.4.0
-	github.com/jackc/pgx/v5 v5.6.0
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/labstack/echo/v4 v4.12.0
 	github.com/oklog/ulid/v2 v2.1.0
+	github.com/rakunlabs/into v0.3.3
 	github.com/rakunlabs/logi v0.3.2
 	github.com/rbcervilla/redisstore/v9 v9.0.0
 	github.com/redis/go-redis/v9 v9.6.1
@@ -30,7 +30,6 @@ require (
 	github.com/twmb/tlscfg v1.2.1
 	github.com/worldline-go/auth v0.7.7
 	github.com/worldline-go/igconfig v0.3.0
-	github.com/worldline-go/initializer v0.3.2
 	github.com/worldline-go/klient v0.8.3
 	github.com/worldline-go/logz v0.5.0
 	github.com/worldline-go/struct2 v1.3.0
@@ -86,9 +85,6 @@ require (
 	github.com/huandu/xstrings v1.4.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
-	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/jaswdr/faker v1.18.0 // indirect
 	github.com/jhump/protoreflect v1.16.0 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect

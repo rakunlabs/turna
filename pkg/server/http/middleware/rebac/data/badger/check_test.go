@@ -35,7 +35,7 @@ func TestBadgerCheck(t *testing.T) {
 					Name: "perm",
 					Requests: []data.Request{
 						{
-							Methods: []string{"GET"},
+							Methods: []string{"*"},
 							Path:    "/test",
 						},
 					},
@@ -60,7 +60,7 @@ func TestBadgerCheck(t *testing.T) {
 					checkRequest: data.CheckRequest{
 						Alias:  "my-user",
 						Path:   "/test",
-						Method: "GET",
+						Method: "POST",
 					},
 					expected: true,
 				},

@@ -12,19 +12,21 @@ func (b *Badger) GetLMaps(req data.GetLMapRequest) (*data.Response[[]data.LMap],
 	var lmaps []data.LMap
 
 	badgerHoldQuery := &badgerhold.Query{}
+	badgerHoldQueryLimited := &badgerhold.Query{}
 
 	if req.Name != "" {
 		badgerHoldQuery = badgerhold.Where("Name").Eq(req.Name)
+		badgerHoldQueryLimited = badgerHoldQuery
 	}
 
 	if req.Offset > 0 {
-		badgerHoldQuery = badgerHoldQuery.Skip(int(req.Offset))
+		badgerHoldQueryLimited = badgerHoldQueryLimited.Skip(int(req.Offset))
 	}
 	if req.Limit > 0 {
-		badgerHoldQuery = badgerHoldQuery.Limit(int(req.Limit))
+		badgerHoldQueryLimited = badgerHoldQueryLimited.Limit(int(req.Limit))
 	}
 
-	if err := b.db.Find(&lmaps, badgerHoldQuery); err != nil {
+	if err := b.db.Find(&lmaps, badgerHoldQueryLimited); err != nil {
 		return nil, err
 	}
 

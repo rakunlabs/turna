@@ -12,21 +12,24 @@ func (b *Badger) GetRoles(req data.GetRoleRequest) (*data.Response[[]data.Role],
 	var roles []data.Role
 
 	badgerHoldQuery := &badgerhold.Query{}
+	badgerHoldQueryLimited := &badgerhold.Query{}
 
 	if req.ID != "" {
 		badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID)
+		badgerHoldQueryLimited = badgerHoldQuery
 	} else if req.Name != "" {
 		badgerHoldQuery = badgerhold.Where("Name").Eq(req.Name)
+		badgerHoldQueryLimited = badgerHoldQuery
 	}
 
 	if req.Offset > 0 {
-		badgerHoldQuery = badgerHoldQuery.Skip(int(req.Offset))
+		badgerHoldQueryLimited = badgerHoldQueryLimited.Skip(int(req.Offset))
 	}
 	if req.Limit > 0 {
-		badgerHoldQuery = badgerHoldQuery.Limit(int(req.Limit))
+		badgerHoldQueryLimited = badgerHoldQueryLimited.Limit(int(req.Limit))
 	}
 
-	if err := b.db.Find(&roles, badgerHoldQuery); err != nil {
+	if err := b.db.Find(&roles, badgerHoldQueryLimited); err != nil {
 		return nil, err
 	}
 

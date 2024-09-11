@@ -67,6 +67,10 @@ func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 func CheckAccess(perm *data.Permission, pathRequest, method string) bool {
 	for _, req := range perm.Requests {
 		if !slices.ContainsFunc(req.Methods, func(v string) bool {
+			if v == "*" {
+				return true
+			}
+
 			return strings.EqualFold(v, method)
 		}) {
 			continue

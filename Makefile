@@ -5,7 +5,7 @@ VERSION := $(or $(IMAGE_TAG),$(shell git describe --tags --first-parent --match 
 
 .PHONY: run
 run: export LOG_LEVEL ?= debug
-run: export CONFIG_FILE ?= testdata/config/local.yml
+run: export CONFIG_FILE ?= testdata/config/hello.yml
 run: ## Run the application; CONFIG_FILE to specify a config file
 	go run cmd/$(PROJECT)/main.go
 

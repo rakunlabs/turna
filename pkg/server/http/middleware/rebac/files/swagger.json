@@ -7,7 +7,7 @@
     },
     "basePath": "/",
     "paths": {
-        "/check": {
+        "/v1/check": {
             "post": {
                 "tags": [
                     "check"
@@ -46,7 +46,7 @@
                 }
             }
         },
-        "/ldap/groups": {
+        "/v1/ldap/groups": {
             "get": {
                 "tags": [
                     "ldap"
@@ -71,7 +71,7 @@
                 }
             }
         },
-        "/ldap/maps": {
+        "/v1/ldap/maps": {
             "get": {
                 "tags": [
                     "ldap"
@@ -165,7 +165,7 @@
                 }
             }
         },
-        "/ldap/maps/{name}": {
+        "/v1/ldap/maps/{name}": {
             "get": {
                 "tags": [
                     "ldap"
@@ -293,7 +293,7 @@
                 }
             }
         },
-        "/ldap/sync": {
+        "/v1/ldap/sync": {
             "post": {
                 "tags": [
                     "ldap"
@@ -312,7 +312,7 @@
                 }
             }
         },
-        "/ldap/users/{uid}": {
+        "/v1/ldap/users/{uid}": {
             "get": {
                 "tags": [
                     "ldap"
@@ -355,7 +355,7 @@
                 }
             }
         },
-        "/permissions": {
+        "/v1/permissions": {
             "get": {
                 "tags": [
                     "permissions"
@@ -446,7 +446,7 @@
                 }
             }
         },
-        "/permissions/{id}": {
+        "/v1/permissions/{id}": {
             "get": {
                 "tags": [
                     "permissions"
@@ -574,7 +574,7 @@
                 }
             }
         },
-        "/roles": {
+        "/v1/roles": {
             "get": {
                 "tags": [
                     "roles"
@@ -665,7 +665,7 @@
                 }
             }
         },
-        "/roles/{id}": {
+        "/v1/roles/{id}": {
             "get": {
                 "tags": [
                     "roles"
@@ -793,7 +793,7 @@
                 }
             }
         },
-        "/users": {
+        "/v1/users": {
             "get": {
                 "tags": [
                     "users"
@@ -884,7 +884,7 @@
                 }
             }
         },
-        "/users/{id}": {
+        "/v1/users/{id}": {
             "get": {
                 "tags": [
                     "users"
@@ -1230,7 +1230,7 @@
                         "type": "string"
                     }
                 },
-                "detail": {
+                "details": {
                     "type": "object",
                     "additionalProperties": true
                 },

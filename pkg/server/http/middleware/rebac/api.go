@@ -23,36 +23,36 @@ func (m *Rebac) MuxSet(prefix string) *chi.Mux {
 
 	prefix = strings.TrimRight(prefix, "/")
 
-	mux.Get(prefix+"/users", m.GetUsers)
-	mux.Post(prefix+"/users", m.CreateUser)
-	mux.Get(prefix+"/users/{id}", m.GetUser)
-	mux.Patch(prefix+"/users/{id}", m.PatchUser)
-	mux.Put(prefix+"/users/{id}", m.PutUser)
-	mux.Delete(prefix+"/users/{id}", m.DeleteUser)
+	mux.Get(prefix+"/v1/users", m.GetUsers)
+	mux.Post(prefix+"/v1/users", m.CreateUser)
+	mux.Get(prefix+"/v1/users/{id}", m.GetUser)
+	mux.Patch(prefix+"/v1/users/{id}", m.PatchUser)
+	mux.Put(prefix+"/v1/users/{id}", m.PutUser)
+	mux.Delete(prefix+"/v1/users/{id}", m.DeleteUser)
 
-	mux.Get(prefix+"/roles", m.GetRoles)
-	mux.Post(prefix+"/roles", m.CreateRole)
-	mux.Get(prefix+"/roles/{id}", m.GetRole)
-	mux.Put(prefix+"/roles/{id}", m.PutRole)
-	mux.Delete(prefix+"/roles/{id}", m.DeleteRole)
+	mux.Get(prefix+"/v1/roles", m.GetRoles)
+	mux.Post(prefix+"/v1/roles", m.CreateRole)
+	mux.Get(prefix+"/v1/roles/{id}", m.GetRole)
+	mux.Put(prefix+"/v1/roles/{id}", m.PutRole)
+	mux.Delete(prefix+"/v1/roles/{id}", m.DeleteRole)
 
-	mux.Get(prefix+"/permissions", m.GetPermissions)
-	mux.Post(prefix+"/permissions", m.CreatePermission)
-	mux.Get(prefix+"/permissions/{id}", m.GetPermission)
-	mux.Put(prefix+"/permissions/{id}", m.PutPermission)
-	mux.Delete(prefix+"/permissions/{id}", m.DeletePermission)
+	mux.Get(prefix+"/v1/permissions", m.GetPermissions)
+	mux.Post(prefix+"/v1/permissions", m.CreatePermission)
+	mux.Get(prefix+"/v1/permissions/{id}", m.GetPermission)
+	mux.Put(prefix+"/v1/permissions/{id}", m.PutPermission)
+	mux.Delete(prefix+"/v1/permissions/{id}", m.DeletePermission)
 
-	mux.Get(prefix+"/ldap/users/{uid}", m.LdapGetUsers)
-	mux.Get(prefix+"/ldap/groups", m.LdapGetGroups)
-	mux.Post(prefix+"/ldap/sync", m.LdapSyncGroups)
+	mux.Get(prefix+"/v1/ldap/users/{uid}", m.LdapGetUsers)
+	mux.Get(prefix+"/v1/ldap/groups", m.LdapGetGroups)
+	mux.Post(prefix+"/v1/ldap/sync", m.LdapSyncGroups)
 
-	mux.Get(prefix+"/ldap/maps", m.LdapGetGroupMaps)
-	mux.Post(prefix+"/ldap/maps", m.LdapCreateGroupMaps)
-	mux.Get(prefix+"/ldap/maps/{name}", m.LdapGetGroupMap)
-	mux.Put(prefix+"/ldap/maps/{name}", m.LdapPutGroupMaps)
-	mux.Delete(prefix+"/ldap/maps/{name}", m.LdapDeleteGroupMaps)
+	mux.Get(prefix+"/v1/ldap/maps", m.LdapGetGroupMaps)
+	mux.Post(prefix+"/v1/ldap/maps", m.LdapCreateGroupMaps)
+	mux.Get(prefix+"/v1/ldap/maps/{name}", m.LdapGetGroupMap)
+	mux.Put(prefix+"/v1/ldap/maps/{name}", m.LdapPutGroupMaps)
+	mux.Delete(prefix+"/v1/ldap/maps/{name}", m.LdapDeleteGroupMaps)
 
-	mux.Post(prefix+"/check", m.PostCheck)
+	mux.Post(prefix+"/v1/check", m.PostCheck)
 
 	mux.Get(prefix+"/ui/info", m.Info)
 	mux.Handle(prefix+"/swagger/*", m.swaggerFS)
@@ -85,7 +85,7 @@ func (m *Rebac) Info(w http.ResponseWriter, _ *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 409 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /users [POST]
+// @Router /v1/users [POST]
 func (m *Rebac) CreateUser(w http.ResponseWriter, r *http.Request) {
 	user := data.User{}
 	if err := httputil.Decode(r, &user); err != nil {
@@ -117,7 +117,7 @@ func (m *Rebac) CreateUser(w http.ResponseWriter, r *http.Request) {
 // @Param offset query int false "offset"
 // @Success 200 {object} data.Response[[]data.User]
 // @Failure 500 {object} httputil.Error
-// @Router /users [GET]
+// @Router /v1/users [GET]
 func (m *Rebac) GetUsers(w http.ResponseWriter, r *http.Request) {
 	var req data.GetUserRequest
 
@@ -142,7 +142,7 @@ func (m *Rebac) GetUsers(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 404 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /users/{id} [GET]
+// @Router /v1/users/{id} [GET]
 func (m *Rebac) GetUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -171,7 +171,7 @@ func (m *Rebac) GetUser(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 404 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /users/{id} [POST]
+// @Router /v1/users/{id} [POST]
 func (m *Rebac) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -198,7 +198,7 @@ func (m *Rebac) DeleteUser(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 404 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /users/{id} [PATCH]
+// @Router /v1/users/{id} [PATCH]
 func (m *Rebac) PatchUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -233,7 +233,7 @@ func (m *Rebac) PatchUser(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 404 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /users/{id} [PUT]
+// @Router /v1/users/{id} [PUT]
 func (m *Rebac) PutUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -268,7 +268,7 @@ func (m *Rebac) PutUser(w http.ResponseWriter, r *http.Request) {
 // @Param offset query int false "offset"
 // @Success 200 {object} data.Response[[]data.Role]
 // @Failure 500 {object} httputil.Error
-// @Router /roles [GET]
+// @Router /v1/roles [GET]
 func (m *Rebac) GetRoles(w http.ResponseWriter, r *http.Request) {
 	var req data.GetRoleRequest
 
@@ -293,7 +293,7 @@ func (m *Rebac) GetRoles(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 409 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /roles [POST]
+// @Router /v1/roles [POST]
 func (m *Rebac) CreateRole(w http.ResponseWriter, r *http.Request) {
 	role := data.Role{}
 	if err := httputil.Decode(r, &role); err != nil {
@@ -324,7 +324,7 @@ func (m *Rebac) CreateRole(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 404 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /roles/{id} [GET]
+// @Router /v1/roles/{id} [GET]
 func (m *Rebac) GetRole(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -354,7 +354,7 @@ func (m *Rebac) GetRole(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 404 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /roles/{id} [PUT]
+// @Router /v1/roles/{id} [PUT]
 func (m *Rebac) PutRole(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -388,7 +388,7 @@ func (m *Rebac) PutRole(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 404 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /roles/{id} [DELETE]
+// @Router /v1/roles/{id} [DELETE]
 func (m *Rebac) DeleteRole(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -415,7 +415,7 @@ func (m *Rebac) DeleteRole(w http.ResponseWriter, r *http.Request) {
 // @Param offset query int false "offset"
 // @Success 200 {object} data.Response[[]data.Permission]
 // @Failure 500 {object} httputil.Error
-// @Router /permissions [GET]
+// @Router /v1/permissions [GET]
 func (m *Rebac) GetPermissions(w http.ResponseWriter, r *http.Request) {
 	var req data.GetPermissionRequest
 
@@ -440,7 +440,7 @@ func (m *Rebac) GetPermissions(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 409 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /permissions [POST]
+// @Router /v1/permissions [POST]
 func (m *Rebac) CreatePermission(w http.ResponseWriter, r *http.Request) {
 	permission := data.Permission{}
 	if err := httputil.Decode(r, &permission); err != nil {
@@ -471,7 +471,7 @@ func (m *Rebac) CreatePermission(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 404 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /permissions/{id} [GET]
+// @Router /v1/permissions/{id} [GET]
 func (m *Rebac) GetPermission(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -501,7 +501,7 @@ func (m *Rebac) GetPermission(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 404 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /permissions/{id} [PUT]
+// @Router /v1/permissions/{id} [PUT]
 func (m *Rebac) PutPermission(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -535,7 +535,7 @@ func (m *Rebac) PutPermission(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 404 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /permissions/{id} [DELETE]
+// @Router /v1/permissions/{id} [DELETE]
 func (m *Rebac) DeletePermission(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -560,7 +560,7 @@ func (m *Rebac) DeletePermission(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} data.CheckResponse
 // @Failure 400 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /check [POST]
+// @Router /v1/check [POST]
 func (m *Rebac) PostCheck(w http.ResponseWriter, r *http.Request) {
 	body := data.CheckRequest{}
 	if err := httputil.Decode(r, &body); err != nil {
@@ -584,7 +584,7 @@ func (m *Rebac) PostCheck(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 409 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /ldap/maps [POST]
+// @Router /v1/ldap/maps [POST]
 func (m *Rebac) LdapCreateGroupMaps(w http.ResponseWriter, r *http.Request) {
 	lmap := data.LMap{}
 	if err := httputil.Decode(r, &lmap); err != nil {
@@ -615,7 +615,7 @@ func (m *Rebac) LdapCreateGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Param offset query int false "offset"
 // @Success 200 {object} []data.GetLMapRequest
 // @Failure 500 {object} httputil.Error
-// @Router /ldap/maps [GET]
+// @Router /v1/ldap/maps [GET]
 func (m *Rebac) LdapGetGroupMaps(w http.ResponseWriter, r *http.Request) {
 	req := data.GetLMapRequest{}
 
@@ -640,7 +640,7 @@ func (m *Rebac) LdapGetGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 404 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /ldap/maps/{name} [GET]
+// @Router /v1/ldap/maps/{name} [GET]
 func (m *Rebac) LdapGetGroupMap(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if name == "" {
@@ -670,7 +670,7 @@ func (m *Rebac) LdapGetGroupMap(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 404 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /ldap/maps/{name} [PUT]
+// @Router /v1/ldap/maps/{name} [PUT]
 func (m *Rebac) LdapPutGroupMaps(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if name == "" {
@@ -704,7 +704,7 @@ func (m *Rebac) LdapPutGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httputil.Error
 // @Failure 404 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
-// @Router /ldap/maps/{name} [DELETE]
+// @Router /v1/ldap/maps/{name} [DELETE]
 func (m *Rebac) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if name == "" {

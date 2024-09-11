@@ -12,6 +12,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/block"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/cors"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/decompress"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/dnspath"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/forward"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/grpcui"
@@ -119,6 +120,7 @@ type HTTPMiddleware struct {
 	RedirectContinueMiddleware *redirectcontinue.RedirectionContinue `cfg:"redirect_continue"`
 	ForwardMiddleware          *forward.Forward                      `cfg:"forward"`
 	GrpcUIMiddleware           *grpcui.GrpcUI                        `cfg:"grpcui"`
+	DNSPathMiddleware          *dnspath.DNSPath                      `cfg:"dns_path"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
@@ -220,6 +222,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	case h.GrpcUIMiddleware != nil:
 		return []MiddlewareFunc{h.GrpcUIMiddleware.Middleware()}, nil
+	case h.DNSPathMiddleware != nil:
+		m, err := h.DNSPathMiddleware.Middleware()
+		return []MiddlewareFunc{m}, err
 	}
 
 	return nil, nil
