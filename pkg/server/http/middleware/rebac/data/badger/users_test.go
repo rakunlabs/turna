@@ -19,20 +19,18 @@ func TestBadgerGetUsers(t *testing.T) {
 	defer db.Close()
 
 	user := data.User{
-		ID:    "test",
 		Alias: []string{"test"},
 	}
 
-	if err := db.CreateUser(user); err != nil {
+	if _, err := db.CreateUser(user); err != nil {
 		t.Fatalf("failed to create user: %v", err)
 	}
 
 	user2 := data.User{
-		ID:    "test2",
 		Alias: []string{"test2"},
 	}
 
-	if err := db.CreateUser(user2); err != nil {
+	if _, err := db.CreateUser(user2); err != nil {
 		t.Fatalf("failed to create user: %v", err)
 	}
 
@@ -91,7 +89,7 @@ func TestBadgerCreateUser(t *testing.T) {
 		Alias: []string{"test", "test2"},
 	}
 
-	if err := db.CreateUser(user); err != nil {
+	if _, err := db.CreateUser(user); err != nil {
 		t.Fatalf("failed to create user: %v", err)
 	}
 
@@ -99,13 +97,13 @@ func TestBadgerCreateUser(t *testing.T) {
 		Alias: []string{"test2", "test3"},
 	}
 
-	err = db.CreateUser(user)
+	_, err = db.CreateUser(user)
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
 
 	if !errors.Is(err, data.ErrConflict) {
-		t.Fatalf("failed to create user: %v", err)
+		t.Fatalf("failed to create user error miss match: %v", err)
 	}
 
 	res, err := db.GetUsers(data.GetUserRequest{
@@ -134,7 +132,7 @@ func TestBadgerPutUser(t *testing.T) {
 		Alias: []string{"test"},
 	}
 
-	if err := db.CreateUser(user); err != nil {
+	if _, err := db.CreateUser(user); err != nil {
 		t.Fatalf("failed to create user: %v", err)
 	}
 
@@ -186,7 +184,7 @@ func TestBadgerPatchUser(t *testing.T) {
 		RoleIDs: []string{"role-1"},
 	}
 
-	if err := db.CreateUser(user); err != nil {
+	if _, err := db.CreateUser(user); err != nil {
 		t.Fatalf("failed to create user: %v", err)
 	}
 

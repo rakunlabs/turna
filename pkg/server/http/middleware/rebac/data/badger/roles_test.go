@@ -16,20 +16,18 @@ func TestGetRoles(t *testing.T) {
 	defer db.Close()
 
 	role := data.Role{
-		ID:   "test",
 		Name: "test",
 	}
 
-	if err := db.CreateRole(role); err != nil {
+	if _, err := db.CreateRole(role); err != nil {
 		t.Fatalf("failed to create role: %v", err)
 	}
 
 	role2 := data.Role{
-		ID:   "test2",
-		Name: "test2",
+		Name: "role2",
 	}
 
-	if err := db.CreateRole(role2); err != nil {
+	if _, err := db.CreateRole(role2); err != nil {
 		t.Fatalf("failed to create role: %v", err)
 	}
 

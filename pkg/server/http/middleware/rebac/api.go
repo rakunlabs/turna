@@ -2,20 +2,23 @@ package rebac
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-chi/chi/v5"
-	"github.com/oklog/ulid/v2"
+
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
 )
 
 // @Title ReBAC API
 // @BasePath /
-// @description ReBAC API
+// @description Authorization server with Relationship Based Access Control (ReBAC) model.
 //
 //go:generate swag init -pd -d ./ -g api.go --ot json -o ./files
 func (m *Rebac) MuxSet(prefix string) *chi.Mux {
@@ -58,6 +61,9 @@ func (m *Rebac) MuxSet(prefix string) *chi.Mux {
 	mux.Post(prefix+"/v1/check", m.PostCheck)
 	mux.Get(prefix+"/v1/info", m.Info)
 
+	mux.Get(prefix+"/v1/backup", m.Backup)
+	mux.Post(prefix+"/v1/restore", m.Restore)
+
 	mux.Get(prefix+"/ui/info", m.UIInfo)
 	mux.Handle(prefix+"/swagger/*", m.swaggerFS)
 	mux.Handle(prefix+"/ui/*", m.uiFS)
@@ -97,8 +103,8 @@ func (m *Rebac) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user.ID = ulid.Make().String()
-	if err := m.db.CreateUser(user); err != nil {
+	id, err := m.db.CreateUser(user)
+	if err != nil {
 		if errors.Is(err, data.ErrConflict) {
 			httputil.HandleError(w, httputil.NewError("User already exists", err, http.StatusConflict))
 			return
@@ -109,7 +115,7 @@ func (m *Rebac) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.JSON(w, http.StatusOK, data.ResponseCreate{
-		ID:      user.ID,
+		ID:      id,
 		Message: "User created",
 	})
 }
@@ -348,8 +354,8 @@ func (m *Rebac) CreateRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	role.ID = ulid.Make().String()
-	if err := m.db.CreateRole(role); err != nil {
+	id, err := m.db.CreateRole(role)
+	if err != nil {
 		if errors.Is(err, data.ErrConflict) {
 			httputil.HandleError(w, httputil.NewError("Role already exists", err, http.StatusConflict))
 			return
@@ -360,7 +366,7 @@ func (m *Rebac) CreateRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.JSON(w, http.StatusOK, data.ResponseCreate{
-		ID:      role.ID,
+		ID:      id,
 		Message: "Role created",
 	})
 }
@@ -547,8 +553,8 @@ func (m *Rebac) CreatePermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	permission.ID = ulid.Make().String()
-	if err := m.db.CreatePermission(permission); err != nil {
+	id, err := m.db.CreatePermission(permission)
+	if err != nil {
 		if errors.Is(err, data.ErrConflict) {
 			httputil.HandleError(w, httputil.NewError("Permission already exists", err, http.StatusConflict))
 			return
@@ -559,7 +565,7 @@ func (m *Rebac) CreatePermission(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.JSON(w, http.StatusOK, data.ResponseCreate{
-		ID:      permission.ID,
+		ID:      id,
 		Message: "Permission created",
 	})
 }
@@ -880,7 +886,9 @@ func (m *Rebac) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
 
 // @Summary Get current user's info
 // @Tags info
-// @Success 200 {object} data.UserExtended
+// @Param X-User header string true "User alias"
+// @Param datas query bool false "add role datas"
+// @Success 200 {object} data.UserInfo
 // @Failure 400 {object} httputil.Error
 // @Failure 404 {object} httputil.Error
 // @Failure 500 {object} httputil.Error
@@ -904,5 +912,79 @@ func (m *Rebac) Info(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, user)
+	var datas []interface{}
+
+	if v, _ := strconv.ParseBool(r.URL.Query().Get("datas")); v {
+		datas = user.Datas
+	}
+
+	userInfo := data.UserInfo{
+		Details:     user.Details,
+		Roles:       user.Roles,
+		Permissions: user.Permissions,
+		Datas:       datas,
+	}
+
+	httputil.JSON(w, http.StatusOK, userInfo)
+}
+
+// @Summary Backup Database
+// @Tags backup
+// @Param since query number false "since txid"
+// @Success 200
+// @Failure 500 {object} httputil.Error
+// @Router /v1/backup [GET]
+func (m *Rebac) Backup(w http.ResponseWriter, r *http.Request) {
+	var since uint64
+	sinceStr := r.URL.Query().Get("since")
+	if sinceStr != "" {
+		var err error
+		since, err = strconv.ParseUint(sinceStr, 10, 64)
+		if err != nil {
+			httputil.HandleError(w, httputil.NewError("Cannot parse since", err, http.StatusBadRequest))
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", "attachment; filename=rebac_"+time.Now().Format("2006-01-02_15-04-05")+".db")
+	if err := m.db.Backup(w, since); err != nil {
+		httputil.HandleError(w, httputil.NewError("Cannot backup", err, http.StatusInternalServerError))
+		return
+	}
+}
+
+// @Summary Restore Database
+// @Tags backup
+// @Param file formData file true "Backup file"
+// @Success 200 {object} httputil.Response
+// @Failure 400 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/restore [POST]
+func (m *Rebac) Restore(w http.ResponseWriter, r *http.Request) {
+	file, fileHeader, err := r.FormFile("file")
+	if err != nil {
+		httputil.HandleError(w, httputil.NewError("Cannot get file", err, http.StatusBadRequest))
+		return
+	}
+	if file == nil {
+		httputil.HandleError(w, httputil.NewError("File is required", nil, http.StatusBadRequest))
+		return
+	}
+
+	defer file.Close()
+
+	slog.Info("restoring database",
+		slog.String("file_name", fileHeader.Filename),
+		slog.String("file_size", humanize.Bytes(uint64(fileHeader.Size))),
+	)
+
+	if err := m.db.Restore(file); err != nil {
+		httputil.HandleError(w, httputil.NewError("Cannot restore", err, http.StatusInternalServerError))
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, httputil.Response{
+		Msg: "Database restored",
+	})
 }

@@ -10,6 +10,9 @@ import (
 )
 
 func (b *Badger) GetLMaps(req data.GetLMapRequest) (*data.Response[[]data.LMap], error) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	var lmaps []data.LMap
 
 	badgerHoldQuery := &badgerhold.Query{}
@@ -47,6 +50,9 @@ func (b *Badger) GetLMaps(req data.GetLMapRequest) (*data.Response[[]data.LMap],
 }
 
 func (b *Badger) GetLMap(name string) (*data.LMap, error) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	var lmap data.LMap
 
 	if err := b.db.Get(name, &lmap); err != nil {
@@ -60,6 +66,9 @@ func (b *Badger) GetLMap(name string) (*data.LMap, error) {
 }
 
 func (b *Badger) CreateLMap(lmap data.LMap) error {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	if err := b.db.Insert(lmap.Name, lmap); err != nil {
 		if errors.Is(err, badgerhold.ErrKeyExists) {
 			return fmt.Errorf("lmap with name %s already exists; %w", lmap.Name, data.ErrConflict)
@@ -70,6 +79,9 @@ func (b *Badger) CreateLMap(lmap data.LMap) error {
 }
 
 func (b *Badger) PutLMap(lmap data.LMap) error {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	if err := b.db.Update(lmap.Name, lmap); err != nil {
 		if errors.Is(err, badgerhold.ErrNotFound) {
 			return fmt.Errorf("lmap with name %s not found; %w", lmap.Name, data.ErrNotFound)
@@ -82,6 +94,9 @@ func (b *Badger) PutLMap(lmap data.LMap) error {
 }
 
 func (b *Badger) DeleteLMap(name string) error {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	if err := b.db.Delete(name, data.LMap{}); err != nil {
 		if errors.Is(err, badgerhold.ErrNotFound) {
 			return fmt.Errorf("lmap with name %s not found; %w", name, data.ErrNotFound)
@@ -111,6 +126,9 @@ func NewLMapCacheRoleIDs(b *Badger) *LMapCacheRoleIDs {
 }
 
 func (l *LMapCacheRoleIDs) Get(names []string) ([]string, error) {
+	l.b.dbBackupLock.RLock()
+	defer l.b.dbBackupLock.RUnlock()
+
 	mapRoleIDs := make(map[string]struct{})
 	for _, name := range names {
 		if roleIDs, ok := l.cache[name]; ok {

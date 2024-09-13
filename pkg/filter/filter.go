@@ -51,6 +51,8 @@ func (f *FileFilter) Start(ctx context.Context, wg *sync.WaitGroup) (*os.File, e
 
 		buff := bufio.NewReader(f.r)
 
+		ctxReadWait, ctxReadCancel := context.WithCancel(context.Background())
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -62,6 +64,7 @@ func (f *FileFilter) Start(ctx context.Context, wg *sync.WaitGroup) (*os.File, e
 			var err error
 
 			// read remainings
+			<-ctxReadWait.Done()
 			for {
 				if err = f.read(buff); err != nil {
 					break
@@ -84,6 +87,8 @@ func (f *FileFilter) Start(ctx context.Context, wg *sync.WaitGroup) (*os.File, e
 				break
 			}
 		}
+
+		ctxReadCancel()
 	}()
 
 	return f.w, nil

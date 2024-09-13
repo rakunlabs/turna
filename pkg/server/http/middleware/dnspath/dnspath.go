@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"regexp"
 	"sync"
 	"time"
@@ -37,6 +38,7 @@ type Path struct {
 	Replacement string `cfg:"replacement"`
 
 	Schema             string        `cfg:"schema"`
+	Port               string        `cfg:"port"`
 	InsecureSkipVerify bool          `cfg:"insecure_skip_verify"`
 	Duration           time.Duration `cfg:"duration"`
 
@@ -48,15 +50,17 @@ type Path struct {
 	m         sync.RWMutex
 }
 
-func (p *Path) Check() bool {
+func (p *Path) IsFetched() bool {
 	p.m.RLock()
 	defer p.m.RUnlock()
 
-	return !p.lastCheck.IsZero() && time.Since(p.lastCheck) < p.Duration
+	check := !p.lastCheck.IsZero() && time.Since(p.lastCheck) < p.Duration
+
+	return check
 }
 
 func (p *Path) DNSFetch() {
-	if p.Check() {
+	if p.IsFetched() {
 		return
 	}
 
@@ -69,6 +73,9 @@ func (p *Path) DNSFetch() {
 	}
 
 	p.ipHolder.Set(ips)
+
+	slog.Debug("dnsPath resolved dns", slog.String("dns", p.DNS), slog.String("ips", p.ipHolder.Dump()))
+
 	p.lastCheck = time.Now()
 }
 
@@ -101,20 +108,20 @@ func (m *DNSPath) Middleware() (func(http.Handler) http.Handler, error) {
 
 	return func(_ http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			client := m.ReplaceRequest(r)
+			target, transport := m.ReplaceRequest(r)
 
-			if r.Host == "" || client == nil {
+			if r.Host == "" || target == nil {
 				httputil2.HandleError(w, httputil2.NewError("cannot find host", nil, http.StatusServiceUnavailable))
 
 				return
 			}
 
-			m.ForwardRequest(w, r, client.HTTP.Transport)
+			m.ForwardRequest(w, r, target, transport)
 		})
 	}, nil
 }
 
-func (m *DNSPath) ReplaceRequest(r *http.Request) *klient.Client {
+func (m *DNSPath) ReplaceRequest(r *http.Request) (*url.URL, http.RoundTripper) {
 	for _, p := range m.Paths {
 		if p.rgx.MatchString(r.URL.Path) {
 			p.DNSFetch()
@@ -122,18 +129,22 @@ func (m *DNSPath) ReplaceRequest(r *http.Request) *klient.Client {
 			number := p.rgx.ReplaceAllString(r.URL.Path, p.Number)
 			r.URL.Path = p.rgx.ReplaceAllString(r.URL.Path, p.Replacement)
 
-			r.Host = p.ipHolder.GetStr(number)
-			r.URL.Scheme = p.Schema
+			target := &url.URL{
+				Scheme: p.Schema,
+				Host:   p.ipHolder.GetStr(number) + ":" + p.Port,
+			}
 
-			return p.client
+			// slog.Debug("dnsPath replaced path", slog.String("path", r.URL.Path), slog.String("host", target.Host), slog.String("schema", target.Scheme))
+
+			return target, p.client.HTTP.Transport
 		}
 	}
 
-	return nil
+	return nil, nil
 }
 
-func (m *DNSPath) ForwardRequest(w http.ResponseWriter, r *http.Request, transport http.RoundTripper) {
-	proxy := httputil.NewSingleHostReverseProxy(r.URL)
+func (m *DNSPath) ForwardRequest(w http.ResponseWriter, r *http.Request, target *url.URL, transport http.RoundTripper) {
+	proxy := httputil.NewSingleHostReverseProxy(target)
 	proxy.Transport = transport
 
 	proxy.ServeHTTP(w, r)

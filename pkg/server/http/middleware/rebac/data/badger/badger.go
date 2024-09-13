@@ -2,13 +2,18 @@ package badger
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
 )
 
+var DefaultCacheSize = 100 << 20 // 100 MB
+
 type Badger struct {
 	db *badgerhold.Store
+
+	dbBackupLock sync.RWMutex
 }
 
 var _ data.Database = &Badger{}
@@ -17,6 +22,8 @@ func New(path string) (*Badger, error) {
 	options := badgerhold.DefaultOptions
 	options.Dir = path
 	options.ValueDir = path
+	options.IndexCacheSize = int64(DefaultCacheSize)
+	options.Logger = NewLogger()
 
 	db, err := badgerhold.Open(options)
 	if err != nil {

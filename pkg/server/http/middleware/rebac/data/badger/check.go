@@ -13,6 +13,9 @@ import (
 var ErrFuncExit = errors.New("function exit")
 
 func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	var query *badgerhold.Query
 	if req.ID != "" {
 		query = badgerhold.Where("ID").Eq(req.ID)

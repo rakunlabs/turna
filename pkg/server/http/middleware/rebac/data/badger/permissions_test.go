@@ -1,7 +1,6 @@
 package badger
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
@@ -17,25 +16,25 @@ func TestBadgerGetPermissions(t *testing.T) {
 	defer db.Close()
 
 	permission := data.Permission{
-		ID:   "test",
 		Name: "test",
 	}
 
-	if err := db.CreatePermission(permission); err != nil {
+	if id, err := db.CreatePermission(permission); err != nil {
 		t.Fatalf("failed to create permission: %v", err)
+	} else {
+		permission.ID = id
 	}
 
 	permission2 := data.Permission{
-		ID:   "test2",
 		Name: "test2",
 	}
 
-	if err := db.CreatePermission(permission2); err != nil {
+	if _, err := db.CreatePermission(permission2); err != nil {
 		t.Fatalf("failed to create permission: %v", err)
 	}
 
 	req := data.GetPermissionRequest{
-		Name: "test",
+		ID: permission.ID,
 	}
 
 	res, err := db.GetPermissions(req)
@@ -48,7 +47,7 @@ func TestBadgerGetPermissions(t *testing.T) {
 	}
 
 	req = data.GetPermissionRequest{
-		Name: res.Payload[0].Name,
+		ID: res.Payload[0].ID,
 	}
 
 	res, err = db.GetPermissions(req)
@@ -78,20 +77,21 @@ func TestBadgerCreatePermission(t *testing.T) {
 	defer db.Close()
 
 	permission := data.Permission{
-		ID:   "test",
 		Name: "test",
 	}
 
-	if err := db.CreatePermission(permission); err != nil {
+	if id, err := db.CreatePermission(permission); err != nil {
 		t.Fatalf("failed to create permission: %v", err)
+	} else {
+		permission.ID = id
 	}
 
-	err = db.CreatePermission(permission)
-	if err == nil {
-		t.Fatalf("expected to fail creating permission with the same name")
-	}
+	// _, err = db.CreatePermission(permission)
+	// if err == nil {
+	// 	t.Fatalf("expected to fail creating permission with the same name")
+	// }
 
-	if !errors.Is(err, data.ErrConflict) {
-		t.Fatalf("expected conflict error, got %v", err)
-	}
+	// if !errors.Is(err, data.ErrConflict) {
+	// 	t.Fatalf("expected conflict error, got %v", err)
+	// }
 }

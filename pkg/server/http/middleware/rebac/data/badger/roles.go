@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
 )
 
 func (b *Badger) GetRoles(req data.GetRoleRequest) (*data.Response[[]data.Role], error) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	var roles []data.Role
 
 	badgerHoldQuery := &badgerhold.Query{}
@@ -91,6 +95,9 @@ func (b *Badger) GetRoles(req data.GetRoleRequest) (*data.Response[[]data.Role],
 }
 
 func (b *Badger) GetRole(id string) (*data.Role, error) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	var role data.Role
 
 	if err := b.db.Get(id, &role); err != nil {
@@ -104,19 +111,27 @@ func (b *Badger) GetRole(id string) (*data.Role, error) {
 	return &role, nil
 }
 
-func (b *Badger) CreateRole(role data.Role) error {
+func (b *Badger) CreateRole(role data.Role) (string, error) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
+	role.ID = ulid.Make().String()
+
 	if err := b.db.Insert(role.ID, role); err != nil {
 		if errors.Is(err, badgerhold.ErrKeyExists) {
-			return fmt.Errorf("role with name %s already exists; %w", role.Name, data.ErrConflict)
+			return "", fmt.Errorf("role with name %s already exists; %w", role.Name, data.ErrConflict)
 		}
 
-		return err
+		return "", err
 	}
 
-	return nil
+	return role.ID, nil
 }
 
 func (b *Badger) PatchRole(role data.Role) error {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	var foundRole data.Role
 	if err := b.db.FindOne(&foundRole, badgerhold.Where("ID").Eq(role.ID)); err != nil {
 		if errors.Is(err, badgerhold.ErrNotFound) {
@@ -154,6 +169,9 @@ func (b *Badger) PatchRole(role data.Role) error {
 }
 
 func (b *Badger) PutRole(role data.Role) error {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	if err := b.db.Update(role.ID, role); err != nil {
 		if errors.Is(err, badgerhold.ErrNotFound) {
 			return fmt.Errorf("role with id %s not found; %w", role.ID, data.ErrNotFound)
@@ -166,8 +184,56 @@ func (b *Badger) PutRole(role data.Role) error {
 }
 
 func (b *Badger) DeleteRole(id string) error {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	if err := b.db.Delete(id, data.Role{}); err != nil {
 		return err
+	}
+
+	// Delete the role from all roles
+	if err := b.db.ForEach(badgerhold.Where("RoleIDs").Contains(id), func(role *data.Role) error {
+		role.RoleIDs = slices.DeleteFunc(role.RoleIDs, func(cmp string) bool {
+			return cmp == id
+		})
+
+		if err := b.db.Update(role.ID, role); err != nil {
+			return err
+		}
+
+		return nil
+	}); err != nil {
+		return fmt.Errorf("failed to delete role from roles; %w", err)
+	}
+
+	// Delete the role from all users
+	if err := b.db.ForEach(badgerhold.Where("RoleIDs").Contains(id), func(user *data.User) error {
+		user.RoleIDs = slices.DeleteFunc(user.RoleIDs, func(cmp string) bool {
+			return cmp == id
+		})
+
+		if err := b.db.Update(user.ID, user); err != nil {
+			return err
+		}
+
+		return nil
+	}); err != nil {
+		return fmt.Errorf("failed to delete role from users; %w", err)
+	}
+
+	// Delete the role from all users with sync roles
+	if err := b.db.ForEach(badgerhold.Where("SyncRoleIDs").Contains(id), func(user *data.User) error {
+		user.SyncRoleIDs = slices.DeleteFunc(user.SyncRoleIDs, func(cmp string) bool {
+			return cmp == id
+		})
+
+		if err := b.db.Update(user.ID, user); err != nil {
+			return err
+		}
+
+		return nil
+	}); err != nil {
+		return fmt.Errorf("failed to delete role from users with sync roles; %w", err)
 	}
 
 	return nil

@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
 	"github.com/timshannon/badgerhold/v4"
 )
 
 func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserExtended], error) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	var users []data.User
 
 	badgerHoldQuery := &badgerhold.Query{}
@@ -120,6 +124,9 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserEx
 }
 
 func (b *Badger) GetUser(req data.GetUserRequest) (*data.UserExtended, error) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	var user data.User
 
 	badgerHoldQuery := &badgerhold.Query{}
@@ -143,7 +150,12 @@ func (b *Badger) GetUser(req data.GetUserRequest) (*data.UserExtended, error) {
 	return &extendedUser, err
 }
 
-func (b *Badger) CreateUser(user data.User) error {
+func (b *Badger) CreateUser(user data.User) (string, error) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
+	user.ID = ulid.Make().String()
+
 	var foundUser data.User
 	alias := make([]interface{}, len(user.Alias))
 	for i, a := range user.Alias {
@@ -152,18 +164,25 @@ func (b *Badger) CreateUser(user data.User) error {
 
 	if err := b.db.FindOne(&foundUser, badgerhold.Where("Alias").ContainsAny(alias...)); err != nil {
 		if !errors.Is(err, badgerhold.ErrNotFound) {
-			return err
+			return "", err
 		}
 	}
 
 	if foundUser.ID != "" {
-		return fmt.Errorf("user with alias %v already exists; %w", user.Alias, data.ErrConflict)
+		return "", fmt.Errorf("user with alias %v already exists; %w", user.Alias, data.ErrConflict)
 	}
 
-	return b.db.Insert(user.ID, user)
+	if err := b.db.Insert(user.ID, user); err != nil {
+		return "", err
+	}
+
+	return user.ID, nil
 }
 
 func (b *Badger) PatchUser(user data.User) error {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	var foundUser data.User
 	if err := b.db.FindOne(&foundUser, badgerhold.Where("ID").Eq(user.ID)); err != nil {
 		if errors.Is(err, badgerhold.ErrNotFound) {
@@ -197,6 +216,9 @@ func (b *Badger) PatchUser(user data.User) error {
 }
 
 func (b *Badger) PutUser(user data.User) error {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	var foundUser data.User
 	if err := b.db.FindOne(&foundUser, badgerhold.Where("ID").Eq(user.ID)); err != nil {
 		if errors.Is(err, badgerhold.ErrNotFound) {
@@ -214,6 +236,9 @@ func (b *Badger) PutUser(user data.User) error {
 }
 
 func (b *Badger) DeleteUser(id string) error {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	return b.db.Delete(id, data.User{})
 }
 

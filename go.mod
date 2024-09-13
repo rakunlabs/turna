@@ -6,6 +6,7 @@ require (
 	github.com/MicahParks/keyfunc/v2 v2.0.3
 	github.com/abbot/go-http-auth v0.4.1-0.20220112235402-e1cee1c72f2f
 	github.com/ajg/form v1.5.1
+	github.com/dustin/go-humanize v1.0.1
 	github.com/fullstorydev/grpcui v1.5.0
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/go-ldap/ldap/v3 v3.4.8
@@ -54,7 +55,6 @@ require (
 	github.com/dgraph-io/badger/v4 v4.3.0 // indirect
 	github.com/dgraph-io/ristretto v0.1.2-0.20240116140435-c67e07994f91 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/envoyproxy/go-control-plane v0.12.1-0.20240621013728-1eb8caab5155 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.0.4 // indirect
 	github.com/fatih/color v1.17.0 // indirect

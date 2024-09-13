@@ -1,0 +1,19 @@
+server:
+  entrypoints:
+    web:
+      address: ":8080"
+  http:
+    middlewares:
+      dns_path:
+        dns_path:
+          paths:
+            - dns: 'tasks.hello'
+              regex: '/metrics/hello/(\d+)/(.*)'
+              number: '$1'
+              replacement: '/$2'
+              port: 8080
+    routers:
+      dns:
+        path: /*
+        middlewares:
+          - dns_path

@@ -3,12 +3,17 @@ package badger
 import (
 	"errors"
 	"fmt"
+	"slices"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
 )
 
 func (b *Badger) GetPermissions(req data.GetPermissionRequest) (*data.Response[[]data.Permission], error) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	var permissions []data.Permission
 
 	badgerHoldQuery := &badgerhold.Query{}
@@ -69,6 +74,12 @@ func (b *Badger) GetPermissions(req data.GetPermissionRequest) (*data.Response[[
 }
 
 func (b *Badger) GetPermission(name string) (*data.Permission, error) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	var permission data.Permission
 
 	if err := b.db.Get(name, &permission); err != nil {
@@ -82,17 +93,22 @@ func (b *Badger) GetPermission(name string) (*data.Permission, error) {
 	return &permission, nil
 }
 
-func (b *Badger) CreatePermission(permission data.Permission) error {
+func (b *Badger) CreatePermission(permission data.Permission) (string, error) {
+	permission.ID = ulid.Make().String()
+
 	if err := b.db.Insert(permission.ID, permission); err != nil {
 		if errors.Is(err, badgerhold.ErrKeyExists) {
-			return fmt.Errorf("permission with name %s already exists; %w", permission.Name, data.ErrConflict)
+			return "", fmt.Errorf("permission with ID %s already exists; %w", permission.ID, data.ErrConflict)
 		}
 	}
 
-	return nil
+	return permission.ID, nil
 }
 
 func (b *Badger) PatchPermission(patch data.Permission) error {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
 	var foundPermission data.Permission
 	if err := b.db.FindOne(&foundPermission, badgerhold.Where("ID").Eq(patch.ID)); err != nil {
 		if errors.Is(err, badgerhold.ErrNotFound) {
@@ -122,16 +138,37 @@ func (b *Badger) PatchPermission(patch data.Permission) error {
 }
 
 func (b *Badger) PutPermission(permission data.Permission) error {
-	if err := b.db.Update(permission.Name, permission); err != nil {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
+	if err := b.db.Update(permission.ID, permission); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (b *Badger) DeletePermission(name string) error {
-	if err := b.db.Delete(name, data.Permission{}); err != nil {
+func (b *Badger) DeletePermission(id string) error {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
+	if err := b.db.Delete(id, data.Permission{}); err != nil {
 		return err
+	}
+
+	// Delete the permission from all roles
+	if err := b.db.ForEach(badgerhold.Where("PermissionIDs").Contains(id), func(role *data.Role) error {
+		role.PermissionIDs = slices.DeleteFunc(role.PermissionIDs, func(cmp string) bool {
+			return cmp == id
+		})
+
+		if err := b.db.Update(role.ID, role); err != nil {
+			return err
+		}
+
+		return nil
+	}); err != nil {
+		return fmt.Errorf("failed to delete permission from roles; %w", err)
 	}
 
 	return nil

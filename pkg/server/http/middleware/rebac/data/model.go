@@ -1,6 +1,9 @@
 package data
 
-import "errors"
+import (
+	"errors"
+	"io"
+)
 
 var (
 	ErrConflict       = errors.New("conflict")
@@ -45,6 +48,13 @@ type UserExtended struct {
 	Roles       []string      `json:"roles,omitempty"`
 	Permissions []string      `json:"permissions,omitempty"`
 	Datas       []interface{} `json:"datas,omitempty"`
+}
+
+type UserInfo struct {
+	Details     map[string]interface{} `json:"details"`
+	Roles       []string               `json:"roles,omitempty"`
+	Permissions []string               `json:"permissions,omitempty"`
+	Datas       []interface{}          `json:"datas,omitempty"`
 }
 
 type LMap struct {
@@ -144,21 +154,21 @@ type LMapRoleIDs interface {
 type Database interface {
 	GetUsers(req GetUserRequest) (*Response[[]UserExtended], error)
 	GetUser(req GetUserRequest) (*UserExtended, error)
-	CreateUser(user User) error
+	CreateUser(user User) (string, error)
 	DeleteUser(id string) error
 	PutUser(user User) error
 	PatchUser(user User) error
 
 	GetPermissions(req GetPermissionRequest) (*Response[[]Permission], error)
 	GetPermission(id string) (*Permission, error)
-	CreatePermission(permission Permission) error
+	CreatePermission(permission Permission) (string, error)
 	DeletePermission(id string) error
 	PutPermission(permission Permission) error
 	PatchPermission(permission Permission) error
 
 	GetRoles(req GetRoleRequest) (*Response[[]Role], error)
 	GetRole(id string) (*Role, error)
-	CreateRole(role Role) error
+	CreateRole(role Role) (string, error)
 	PutRole(role Role) error
 	DeleteRole(id string) error
 	PatchRole(role Role) error
@@ -172,6 +182,9 @@ type Database interface {
 	DeleteLMap(name string) error
 
 	LMapRoleIDs() LMapRoleIDs
+
+	Backup(w io.Writer, since uint64) error
+	Restore(r io.Reader) error
 }
 
 func CompareSlices(a, b []string) bool {

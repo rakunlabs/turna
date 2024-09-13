@@ -1,12 +1,39 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "ReBAC API",
+        "description": "Authorization server with Relationship Based Access Control (ReBAC) model.",
         "title": "ReBAC API",
         "contact": {}
     },
     "basePath": "/",
     "paths": {
+        "/v1/backup": {
+            "get": {
+                "tags": [
+                    "backup"
+                ],
+                "summary": "Backup Database",
+                "parameters": [
+                    {
+                        "type": "number",
+                        "description": "since txid",
+                        "name": "since",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httputil.Error"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/check": {
             "post": {
                 "tags": [
@@ -52,11 +79,26 @@
                     "info"
                 ],
                 "summary": "Get current user's info",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User alias",
+                        "name": "X-User",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "add role datas",
+                        "name": "datas",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/data.UserExtended"
+                            "$ref": "#/definitions/data.UserInfo"
                         }
                     },
                     "400": {
@@ -725,6 +767,43 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httputil.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httputil.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/restore": {
+            "post": {
+                "tags": [
+                    "backup"
+                ],
+                "summary": "Restore Database",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Backup file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httputil.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/httputil.Error"
                         }
@@ -1630,6 +1709,31 @@
                     }
                 },
                 "sync_role_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "data.UserInfo": {
+            "type": "object",
+            "properties": {
+                "datas": {
+                    "type": "array",
+                    "items": {}
+                },
+                "details": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "roles": {
                     "type": "array",
                     "items": {
                         "type": "string"

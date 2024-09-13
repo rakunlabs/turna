@@ -31,7 +31,6 @@ func TestBadgerCheck(t *testing.T) {
 			name: "test",
 			permissions: []data.Permission{
 				{
-					ID:   "perm",
 					Name: "perm",
 					Requests: []data.Request{
 						{
@@ -50,7 +49,6 @@ func TestBadgerCheck(t *testing.T) {
 			},
 			users: []data.User{
 				{
-					ID:      "my-user",
 					Alias:   []string{"my-user"},
 					RoleIDs: []string{"role-test"},
 				},
@@ -69,22 +67,55 @@ func TestBadgerCheck(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		for _, permission := range tc.permissions {
-			if err := db.CreatePermission(permission); err != nil {
+		for i := range tc.permissions {
+			id, err := db.CreatePermission(tc.permissions[i])
+			if err != nil {
 				t.Fatalf("failed to create permission: %v", err)
 			}
+
+			tc.permissions[i].ID = id
 		}
 
-		for _, role := range tc.roles {
-			if err := db.CreateRole(role); err != nil {
+		for i := range tc.roles {
+			// find permission ids
+			permissions := make([]string, 0)
+			for _, permission := range tc.permissions {
+				for _, rolePermissionID := range tc.roles[i].PermissionIDs {
+					if rolePermissionID == permission.Name {
+						permissions = append(permissions, permission.ID)
+					}
+				}
+			}
+
+			tc.roles[i].PermissionIDs = permissions
+
+			id, err := db.CreateRole(tc.roles[i])
+			if err != nil {
 				t.Fatalf("failed to create role: %v", err)
 			}
+
+			tc.roles[i].ID = id
 		}
 
-		for _, user := range tc.users {
-			if err := db.CreateUser(user); err != nil {
+		for i := range tc.users {
+			// find role ids
+			roles := make([]string, 0)
+			for _, role := range tc.roles {
+				for _, userRoleID := range tc.users[i].RoleIDs {
+					if userRoleID == role.Name {
+						roles = append(roles, role.ID)
+					}
+				}
+			}
+
+			tc.users[i].RoleIDs = roles
+
+			id, err := db.CreateUser(tc.users[i])
+			if err != nil {
 				t.Fatalf("failed to create user: %v", err)
 			}
+
+			tc.users[i].ID = id
 		}
 
 		for _, check := range tc.check {

@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
 )
@@ -84,6 +83,10 @@ func (m *Rebac) LdapSync(force bool, uid string) error {
 
 	users := make(map[string][]string)
 
+	if uid != "" {
+		users[uid] = nil
+	}
+
 	for _, group := range groups {
 		for _, member := range group.Members {
 			if uid != "" && member != uid {
@@ -136,6 +139,10 @@ func (m *Rebac) LdapSync(force bool, uid string) error {
 			}
 
 			for _, u := range userLdap {
+				if userDB.User.Details == nil {
+					userDB.User.Details = make(map[string]interface{})
+				}
+
 				userDB.User.Alias = []string{u.Email, u.UID}
 				userDB.User.Details["email"] = u.Email
 				userDB.User.Details["uid"] = u.UID
@@ -166,8 +173,7 @@ func (m *Rebac) LdapSync(force bool, uid string) error {
 
 			for _, u := range userLdap {
 				// add user to the database
-				if err := m.db.CreateUser(data.User{
-					ID:      ulid.Make().String(),
+				id, err := m.db.CreateUser(data.User{
 					RoleIDs: roleIDs,
 					Alias:   []string{u.Email, u.UID},
 					Details: map[string]interface{}{
@@ -175,9 +181,12 @@ func (m *Rebac) LdapSync(force bool, uid string) error {
 						"uid":   u.UID,
 						"name":  u.Name,
 					},
-				}); err != nil {
+				})
+				if err != nil {
 					return httputil.NewError("failed creating user", err, http.StatusInternalServerError)
 				}
+
+				slog.Info("user created", slog.String("id", id), slog.String("email", u.Email))
 			}
 		default:
 			return httputil.NewError("failed getting user", err, http.StatusInternalServerError)

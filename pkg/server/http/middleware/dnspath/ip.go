@@ -1,6 +1,7 @@
 package dnspath
 
 import (
+	"fmt"
 	"net"
 	"sort"
 	"strconv"
@@ -20,6 +21,10 @@ func (h *IPHolder) GetStr(i string) string {
 	number, _ := strconv.ParseInt(i, 10, 64)
 
 	return h.Get(int(number))
+}
+
+func (h *IPHolder) Dump() string {
+	return fmt.Sprintf("%v", h.ip)
 }
 
 func (h *IPHolder) Get(i int) string {
