@@ -105,6 +105,8 @@ func (m *DNSPath) Middleware() (func(http.Handler) http.Handler, error) {
 
 			if r.Host == "" || client == nil {
 				httputil2.HandleError(w, httputil2.NewError("cannot find host", nil, http.StatusServiceUnavailable))
+
+				return
 			}
 
 			m.ForwardRequest(w, r, client.HTTP.Transport)

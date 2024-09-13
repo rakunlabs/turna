@@ -9,10 +9,10 @@
 
   onMount(() => {
     let iframe = $storeInfo.iframe.find(
-      (iframe) => iframe.path === params?.name
+      (iframe) => iframe.path === params?.name,
     );
 
-    console.log(iframe);
+    // console.log(iframe);
 
     if (iframe) {
       error = "";

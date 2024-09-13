@@ -6,11 +6,48 @@ server:
     middlewares:
       hello:
         hello:
-          message: "Hello from TURNA\n"
+          message: "<h1>Hello from TURNA</h1>"
       view:
         view:
           prefix_path: /view/
           info:
+            home:
+              type: "MARKDOWN"
+              content: |
+                # Welcome to TURNA
+                This is a test page
+
+                ## Features
+                - [x] Markdown support
+                - [x] HTML support
+
+                ## Lists
+
+                - Item 1
+                  - Item 1.1
+                  - Item 1.2
+                    - Item 1.2.1
+                    - Item 1.2.2
+                - Item 2
+
+                1. Item 1
+                1. Item 2
+
+                ## Example
+
+                ```go
+                package main
+
+                func main() {
+                  fmt.Println("Hello, World!")
+                }
+                ```
+
+                ## Table
+
+                | Name | Links |
+                | ---- | ----- |
+                | TURNA | [GitHub](github.com/rakunlabs/turna) |
             iframe:
               - name: Map
                 path: street
@@ -22,8 +59,9 @@ server:
                 host: false
                 header:
                   response:
-                    add_header:
+                    set_header:
                       X-Test-Header: "test"
+                      Content-Type: "text/html"
     routers:
       hello:
         path: /hello

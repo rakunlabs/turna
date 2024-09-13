@@ -16,11 +16,18 @@ import (
 )
 
 type Info struct {
+	Home            Home            `cfg:"home"             json:"home"`
 	Iframe          []Iframe        `cfg:"iframe"           json:"iframe"`
 	Page            []Page          `cfg:"page"             json:"page"`
 	Grpc            []Grpc          `cfg:"grpc"             json:"grpc"`
 	Swagger         []Swagger       `cfg:"swagger"          json:"swagger"`
 	SwaggerSettings SwaggerSettings `cfg:"swagger_settings" json:"swagger_settings"`
+}
+
+type Home struct {
+	// Type can be HTML or MARKDOWN
+	Type    string `cfg:"type"    json:"type,omitempty"`
+	Content string `cfg:"content" json:"content,omitempty"`
 }
 
 type Iframe struct {
@@ -44,6 +51,7 @@ type HeaderHolder struct {
 }
 
 type Header struct {
+	SetHeader    map[string]string `cfg:"set_header"`
 	AddHeader    map[string]string `cfg:"add_header"`
 	RemoveHeader []string          `cfg:"remove_header"`
 }
@@ -165,7 +173,7 @@ func (m *View) InformationUI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		httputil.JSON(w, http.StatusOK, body)
+		httputil.JSON(w, http.StatusOK, info)
 
 		return
 	}

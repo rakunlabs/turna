@@ -4,6 +4,6 @@
 
 <iframe
   class="w-full h-full"
-  src="./page/{params?.name}/"
+  src="./page/{params?.name}"
   title={params?.name}
 />

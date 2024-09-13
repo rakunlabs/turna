@@ -43,16 +43,16 @@ func TestBadgerCheck(t *testing.T) {
 			},
 			roles: []data.Role{
 				{
-					ID:          "role-test",
-					Name:        "role-test",
-					Permissions: []string{"perm"},
+					ID:            "role-test",
+					Name:          "role-test",
+					PermissionIDs: []string{"perm"},
 				},
 			},
 			users: []data.User{
 				{
-					ID:    "my-user",
-					Alias: []string{"my-user"},
-					Roles: []string{"role-test"},
+					ID:      "my-user",
+					Alias:   []string{"my-user"},
+					RoleIDs: []string{"role-test"},
 				},
 			},
 			check: []checkData{

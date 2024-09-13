@@ -7,3 +7,11 @@ html,
 body {
   @apply h-full w-full;
 }
+
+ul {
+  @apply list-[square];
+}
+
+ol {
+  @apply list-[decimal];
+}

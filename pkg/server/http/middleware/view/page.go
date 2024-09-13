@@ -36,6 +36,10 @@ func (m *View) SetPageUI(pages []Page) error {
 					r.SetURL(apiURL)
 				}
 
+				for k, v := range page.Header.Request.SetHeader {
+					r.Out.Header.Set(k, v)
+				}
+
 				for k, v := range page.Header.Request.AddHeader {
 					r.Out.Header.Add(k, v)
 				}
@@ -49,6 +53,10 @@ func (m *View) SetPageUI(pages []Page) error {
 				}
 			},
 			ModifyResponse: func(r *http.Response) error {
+				for k, v := range page.Header.Response.SetHeader {
+					r.Header.Set(k, v)
+				}
+
 				for k, v := range page.Header.Response.AddHeader {
 					r.Header.Add(k, v)
 				}

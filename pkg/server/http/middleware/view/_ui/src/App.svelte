@@ -24,7 +24,7 @@
 
   onMount(async () => {
     try {
-      const { data } = await axios.get("./?view_info=true");
+      const { data } = await axios.get("./info");
       if (data) {
         storeInfo.set(data);
       }

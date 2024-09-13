@@ -5,8 +5,8 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"path"
 	"regexp"
-	"strconv"
 	"sync"
 	"time"
 
@@ -95,8 +95,7 @@ func (m *View) Middleware(_ context.Context, _ string) (func(http.Handler) http.
 
 	return func(_ http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			query := r.URL.Query()
-			if viewInfo, _ := strconv.ParseBool(query.Get("view_info")); viewInfo {
+			if r.URL.Path == path.Join("/", m.PrefixPath, "/info") {
 				m.InformationUI(w, r)
 
 				return

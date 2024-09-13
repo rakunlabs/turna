@@ -133,6 +133,7 @@
   .sidebar-bg {
     background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAAXNSR0IArs4c6QAAAB1JREFUKFNjvHjx4n99fX1GBgKAcVQhvhCifvAAAM43KAsXWPfwAAAAAElFTkSuQmCC)
       repeat;
+    @apply bg-gray-50;
   }
 
   :global(.sb-link-active) {

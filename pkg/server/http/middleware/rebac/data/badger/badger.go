@@ -1,6 +1,8 @@
 package badger
 
 import (
+	"strings"
+
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
 )
@@ -39,4 +41,70 @@ func toInterfaceSlice(slice []string) []any {
 	}
 
 	return interfaceSlice
+}
+
+func matchAll(value string) badgerhold.MatchFunc {
+	return func(ra *badgerhold.RecordAccess) (bool, error) {
+		record, _ := ra.Field().(string)
+
+		if strings.Contains(strings.ToLower(record), strings.ToLower(value)) {
+			return true, nil
+		}
+
+		return false, nil
+	}
+}
+
+func matchAllField(field string, value string) badgerhold.MatchFunc {
+	return func(ra *badgerhold.RecordAccess) (bool, error) {
+		record, _ := ra.Field().(map[string]any)
+
+		if record == nil {
+			return false, nil
+		}
+
+		if v, ok := record[field].(string); ok {
+			if strings.Contains(strings.ToLower(v), strings.ToLower(value)) {
+				return true, nil
+			}
+		}
+
+		return false, nil
+	}
+}
+
+func matchRequestMethod(value string) badgerhold.MatchFunc {
+	return func(ra *badgerhold.RecordAccess) (bool, error) {
+		record, _ := ra.Field().([]data.Request)
+
+		if record == nil {
+			return false, nil
+		}
+
+		for _, r := range record {
+			if checkMethod(r.Methods, value) {
+				return true, nil
+			}
+		}
+
+		return false, nil
+	}
+}
+
+func matchRequestPath(value string) badgerhold.MatchFunc {
+	return func(ra *badgerhold.RecordAccess) (bool, error) {
+		record, _ := ra.Field().([]data.Request)
+
+		if record == nil {
+			return false, nil
+		}
+
+		for _, r := range record {
+			if checkPath(r.Path, value) {
+				return true, nil
+			}
+		}
+
+		return false, nil
+	}
 }

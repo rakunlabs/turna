@@ -14,6 +14,9 @@ importers:
       '@tsconfig/svelte':
         specifier: ^5.0.2
         version: 5.0.2
+      '@types/showdown':
+        specifier: ^2.0.6
+        version: 2.0.6
       '@types/swagger-ui':
         specifier: ^3.52.4
         version: 3.52.4
@@ -44,6 +47,9 @@ importers:
       gh-pages:
         specifier: ^6.1.1
         version: 6.1.1
+      github-markdown-css:
+        specifier: ^5.6.1
+        version: 5.6.1
       immutability-helper:
         specifier: ^3.1.1
         version: 3.1.1
@@ -62,6 +68,9 @@ importers:
       sass:
         specifier: ^1.70.0
         version: 1.70.0
+      showdown:
+        specifier: ^2.1.0
+        version: 2.1.0
       stylelint:
         specifier: ^16.2.0
         version: 16.2.0(typescript@5.3.3)
@@ -563,6 +572,9 @@ packages:
   '@types/semver@7.5.6':
     resolution: {integrity: sha512-dn1l8LaMea/IjDoHNd9J52uBbInB796CDffS6VdIxvqYCPSG0V0DzHp76GpaWnlhg88uYyPbXCDIowa86ybd5A==}
 
+  '@types/showdown@2.0.6':
+    resolution: {integrity: sha512-pTvD/0CIeqe4x23+YJWlX2gArHa8G0J0Oh6GKaVXV7TAeickpkkZiNOgFcFcmLQ5lB/K0qBJL1FtRYltBfbGCQ==}
+
   '@types/swagger-ui@3.52.4':
     resolution: {integrity: sha512-7NV7q8BfupqdQxr26OkM0g0YEPB9uXnKGzXadgcearvI9MoCHt3F72lPTX3fZZIlrr21DC0IK26wcDMZ37oFDA==}
 
@@ -879,6 +891,10 @@ packages:
   commander@8.3.0:
     resolution: {integrity: sha512-OkTL9umf+He2DZkUq8f8J9of7yL6RJKI24dVITBmNfZBmri9zYZQrKkuXiKhyfPSu8tUhnVBB1iKXevvnlR4Ww==}
     engines: {node: '>= 12'}
+
+  commander@9.5.0:
+    resolution: {integrity: sha512-KRs7WVDKg86PWiuAqhDrAQnTXZKraVcCc6vFdL14qrZ/DcWwuRo7VoiYXalXO7S5GKpqYiVEwCbgFDfxNHKJBQ==}
+    engines: {node: ^12.20.0 || >=14}
 
   commondir@1.0.1:
     resolution: {integrity: sha512-W9pAhw0ja1Edb5GVdIF1mjZw/ASI0AlShXM83UUGe2DVr5TdAPEA1OA8m/g8zWp9x6On7gqufY+FatDbC3MDQg==}
@@ -1311,6 +1327,10 @@ packages:
 
   github-from-package@0.0.0:
     resolution: {integrity: sha512-SyHy3T1v2NUXn29OsWdxmK6RwHD+vkj3v8en8AOBZ1wBQ/hCAQ5bAQTD02kW4W9tUp/3Qh6J8r9EvntiyCmOOw==}
+
+  github-markdown-css@5.6.1:
+    resolution: {integrity: sha512-DItLFgHd+s7HQmk63YN4/TdvLeRqk1QP7pPKTTPrDTYoI5x7f/luJWSOZxesmuxBI2srHp8RDyoZd+9WF+WK8Q==}
+    engines: {node: '>=10'}
 
   glob-parent@5.1.2:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
@@ -2267,6 +2287,10 @@ packages:
 
   short-unique-id@5.0.3:
     resolution: {integrity: sha512-yhniEILouC0s4lpH0h7rJsfylZdca10W9mDJRAFh3EpcSUanCHGb0R7kcFOIUCZYSAPo0PUD5ZxWQdW0T4xaug==}
+    hasBin: true
+
+  showdown@2.1.0:
+    resolution: {integrity: sha512-/6NVYu4U819R2pUIk79n67SYgJHWCce0a5xTP979WbNp0FL9MN1I1QK662IDU1b6JzKTvmhgI7T7JYIxBi3kMQ==}
     hasBin: true
 
   side-channel@1.0.4:
@@ -3329,6 +3353,8 @@ snapshots:
 
   '@types/semver@7.5.6': {}
 
+  '@types/showdown@2.0.6': {}
+
   '@types/swagger-ui@3.52.4': {}
 
   '@types/unist@2.0.10': {}
@@ -3665,6 +3691,8 @@ snapshots:
   commander@4.1.1: {}
 
   commander@8.3.0: {}
+
+  commander@9.5.0: {}
 
   commondir@1.0.1: {}
 
@@ -4142,6 +4170,8 @@ snapshots:
 
   github-from-package@0.0.0:
     optional: true
+
+  github-markdown-css@5.6.1: {}
 
   glob-parent@5.1.2:
     dependencies:
@@ -5062,6 +5092,10 @@ snapshots:
   shebang-regex@3.0.0: {}
 
   short-unique-id@5.0.3: {}
+
+  showdown@2.1.0:
+    dependencies:
+      commander: 9.5.0
 
   side-channel@1.0.4:
     dependencies:

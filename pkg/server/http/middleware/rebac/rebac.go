@@ -54,8 +54,10 @@ func (m *Rebac) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 	m.db = db
 
 	if m.Ldap.Addr != "" {
-		if _, err := m.Ldap.ConnectWithCheck(); err != nil {
-			return nil, err
+		if !m.Ldap.DisableFirstConnect {
+			if _, err := m.Ldap.ConnectWithCheck(); err != nil {
+				return nil, err
+			}
 		}
 
 		// start sync

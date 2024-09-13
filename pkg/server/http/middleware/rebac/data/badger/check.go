@@ -23,28 +23,36 @@ func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 	var user data.User
 	if err := b.db.FindOne(&user, query); err != nil {
 		if errors.Is(err, badgerhold.ErrNotFound) {
-			return nil, nil
+			return &data.CheckResponse{
+				Allowed: false,
+			}, nil
 		}
 
 		return nil, err
 	}
 
+	// get all roles of roles
+	roleIDs, err := b.getVirtualRoleIDs(user.RoleIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	// get permissions based on roles
 	var roles []data.Role
-	query = badgerhold.Where("ID").In(toInterfaceSlice(user.Roles)...)
+	query = badgerhold.Where("ID").In(toInterfaceSlice(roleIDs)...)
 	if err := b.db.Find(&roles, query); err != nil {
 		return nil, err
 	}
 
-	permissionNames := make([]string, 0)
+	permissionIDs := make([]string, 0)
 	for _, role := range roles {
-		permissionNames = append(permissionNames, role.Permissions...)
+		permissionIDs = append(permissionIDs, role.PermissionIDs...)
 	}
 
-	query = badgerhold.Where("ID").In(toInterfaceSlice(permissionNames)...)
+	query = badgerhold.Where("ID").In(toInterfaceSlice(permissionIDs)...)
 
 	access := false
-	err := b.db.ForEach(query, func(perm *data.Permission) error {
+	if err := b.db.ForEach(query, func(perm *data.Permission) error {
 		if CheckAccess(perm, req.Path, req.Method) {
 			access = true
 
@@ -52,8 +60,7 @@ func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 		}
 
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		if !errors.Is(err, ErrFuncExit) {
 			return nil, err
 		}
@@ -66,20 +73,30 @@ func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 
 func CheckAccess(perm *data.Permission, pathRequest, method string) bool {
 	for _, req := range perm.Requests {
-		if !slices.ContainsFunc(req.Methods, func(v string) bool {
-			if v == "*" {
-				return true
-			}
-
-			return strings.EqualFold(v, method)
-		}) {
+		if !checkMethod(req.Methods, method) {
 			continue
 		}
 
-		if v, _ := path.Match(req.Path, pathRequest); v {
+		if checkPath(req.Path, pathRequest) {
 			return true
 		}
 	}
 
 	return false
+}
+
+func checkMethod(methods []string, method string) bool {
+	return slices.ContainsFunc(methods, func(v string) bool {
+		if v == "*" {
+			return true
+		}
+
+		return strings.EqualFold(v, method)
+	})
+}
+
+func checkPath(pattern, pathRequest string) bool {
+	v, _ := path.Match(pattern, pathRequest)
+
+	return v
 }

@@ -4,21 +4,21 @@ import (
 	"net"
 	"sort"
 	"strconv"
-	"sync"
 )
 
 type IPHolder struct {
 	ip map[int]string
-
-	m sync.RWMutex
 }
 
 func NewIPHolder() *IPHolder {
-	return &IPHolder{}
+	return &IPHolder{
+		ip: make(map[int]string),
+	}
 }
 
 func (h *IPHolder) GetStr(i string) string {
 	number, _ := strconv.ParseInt(i, 10, 64)
+
 	return h.Get(int(number))
 }
 

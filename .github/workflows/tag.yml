@@ -28,7 +28,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create release
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v3
         with:
           version: latest
           args: release --clean

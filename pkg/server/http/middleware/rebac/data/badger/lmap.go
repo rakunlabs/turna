@@ -3,6 +3,7 @@ package badger
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
@@ -12,26 +13,26 @@ func (b *Badger) GetLMaps(req data.GetLMapRequest) (*data.Response[[]data.LMap],
 	var lmaps []data.LMap
 
 	badgerHoldQuery := &badgerhold.Query{}
-	badgerHoldQueryLimited := &badgerhold.Query{}
 
 	if req.Name != "" {
 		badgerHoldQuery = badgerhold.Where("Name").Eq(req.Name)
-		badgerHoldQueryLimited = badgerHoldQuery
-	}
-
-	if req.Offset > 0 {
-		badgerHoldQueryLimited = badgerHoldQueryLimited.Skip(int(req.Offset))
-	}
-	if req.Limit > 0 {
-		badgerHoldQueryLimited = badgerHoldQueryLimited.Limit(int(req.Limit))
-	}
-
-	if err := b.db.Find(&lmaps, badgerHoldQueryLimited); err != nil {
-		return nil, err
+	} else if len(req.RoleIDs) > 0 {
+		badgerHoldQuery = badgerhold.Where("RoleIDs").ContainsAny(toInterfaceSlice(req.RoleIDs)...)
 	}
 
 	count, err := b.db.Count(data.LMap{}, badgerHoldQuery)
 	if err != nil {
+		return nil, err
+	}
+
+	if req.Offset > 0 {
+		badgerHoldQuery = badgerHoldQuery.Skip(int(req.Offset))
+	}
+	if req.Limit > 0 {
+		badgerHoldQuery = badgerHoldQuery.Limit(int(req.Limit))
+	}
+
+	if err := b.db.Find(&lmaps, badgerHoldQuery); err != nil {
 		return nil, err
 	}
 
@@ -90,4 +91,60 @@ func (b *Badger) DeleteLMap(name string) error {
 	}
 
 	return nil
+}
+
+func (b *Badger) LMapRoleIDs() data.LMapRoleIDs {
+	return NewLMapCacheRoleIDs(b)
+}
+
+type LMapCacheRoleIDs struct {
+	b *Badger
+
+	cache map[string][]string
+}
+
+func NewLMapCacheRoleIDs(b *Badger) *LMapCacheRoleIDs {
+	return &LMapCacheRoleIDs{
+		b:     b,
+		cache: make(map[string][]string),
+	}
+}
+
+func (l *LMapCacheRoleIDs) Get(names []string) ([]string, error) {
+	mapRoleIDs := make(map[string]struct{})
+	for _, name := range names {
+		if roleIDs, ok := l.cache[name]; ok {
+			for _, roleID := range roleIDs {
+				mapRoleIDs[roleID] = struct{}{}
+			}
+
+			continue
+		}
+
+		var lmap data.LMap
+		if err := l.b.db.Get(name, &lmap); err != nil {
+			if errors.Is(err, badgerhold.ErrNotFound) {
+				slog.Warn("lmap not found", slog.String("name", name))
+
+				l.cache[name] = []string{}
+
+				continue
+			}
+
+			return nil, err
+		}
+
+		for _, roleID := range lmap.RoleIDs {
+			mapRoleIDs[roleID] = struct{}{}
+		}
+
+		l.cache[name] = lmap.RoleIDs
+	}
+
+	roleIDSlice := make([]string, 0, len(mapRoleIDs))
+	for roleID := range mapRoleIDs {
+		roleIDSlice = append(roleIDSlice, roleID)
+	}
+
+	return roleIDSlice, nil
 }

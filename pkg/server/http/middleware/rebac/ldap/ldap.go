@@ -19,13 +19,15 @@ var DefaultLdapSyncDuration = 10 * time.Minute
 type Conn = ldap.Conn
 
 type Ldap struct {
-	Addr string   `cfg:"addr"`
-	Bind LdapBind `cfg:"bind"`
+	DisableFirstConnect bool     `cfg:"disable_first_connect"`
+	Addr                string   `cfg:"addr"`
+	Bind                LdapBind `cfg:"bind"`
 
 	Group      Group  `cfg:"group"`
 	UserBaseDN string `cfg:"user_base_dn"`
 
 	SyncDuration time.Duration `cfg:"sync_duration"`
+	DisableSync  bool          `cfg:"disable_sync"`
 
 	conn *ldap.Conn
 	m    sync.Mutex
@@ -48,10 +50,9 @@ type Group struct {
 }
 
 type LdapUser struct {
-	UID         string `json:"uid"`
-	Email       string `json:"email"`
-	Gecos       string `json:"gecos"`
-	DisplayName string `json:"display_name"`
+	UID   string `json:"uid"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
 }
 
 type LdapGroup struct {
@@ -180,10 +181,9 @@ func (l *Ldap) Users(conn *ldap.Conn, uids []string) ([]LdapUser, error) {
 	ldapUsers := make([]LdapUser, 0, len(result.Entries))
 	for _, entry := range result.Entries {
 		user := LdapUser{
-			UID:         entry.GetAttributeValue("uid"),
-			Email:       entry.GetAttributeValue("mail"),
-			Gecos:       entry.GetAttributeValue("gecos"),
-			DisplayName: entry.GetAttributeValue("displayName"),
+			UID:   entry.GetAttributeValue("uid"),
+			Email: entry.GetAttributeValue("mail"),
+			Name:  entry.GetAttributeValue("gecos"),
 		}
 
 		ldapUsers = append(ldapUsers, user)

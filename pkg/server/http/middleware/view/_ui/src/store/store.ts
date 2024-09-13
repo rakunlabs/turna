@@ -1,6 +1,7 @@
 import { writable } from "svelte/store";
 
 const config: Config = {
+  home: {},
   iframe: [],
   page: [],
   grpc: [],
@@ -9,6 +10,7 @@ const config: Config = {
 }
 
 type Config = {
+  home?: Home;
   iframe: Iframe[];
   page: Page[];
   grpc: GRPC[];
@@ -47,6 +49,11 @@ type SwaggerSettings = {
   base_path?: string;
   base_path_prefix?: string;
   disable_authorize_button?: boolean;
+}
+
+type Home = {
+  type?: string;
+  content?: string;
 }
 
 export const storeInfo = writable(config);
