@@ -18,7 +18,7 @@ func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 
 	var query *badgerhold.Query
 	if req.ID != "" {
-		query = badgerhold.Where("ID").Eq(req.ID)
+		query = badgerhold.Where("ID").Eq(req.ID).Index("ID")
 	} else if req.Alias != "" {
 		query = badgerhold.Where("Alias").Contains(req.Alias)
 	}
@@ -75,7 +75,7 @@ func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 }
 
 func CheckAccess(perm *data.Permission, pathRequest, method string) bool {
-	for _, req := range perm.Requests {
+	for _, req := range perm.Resources {
 		if !checkMethod(req.Methods, method) {
 			continue
 		}

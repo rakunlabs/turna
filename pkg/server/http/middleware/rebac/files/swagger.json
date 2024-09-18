@@ -1538,15 +1538,15 @@
                 "name": {
                     "type": "string"
                 },
-                "requests": {
+                "resources": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/data.Request"
+                        "$ref": "#/definitions/data.Resource"
                     }
                 }
             }
         },
-        "data.Request": {
+        "data.Resource": {
             "type": "object",
             "properties": {
                 "methods": {

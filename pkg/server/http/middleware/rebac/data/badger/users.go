@@ -20,7 +20,7 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserEx
 
 	switch {
 	case req.ID != "":
-		badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID)
+		badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID).Index("ID")
 	case req.Alias != "":
 		badgerHoldQuery = badgerhold.Where("Alias").Contains(req.Alias)
 	default:
@@ -132,7 +132,7 @@ func (b *Badger) GetUser(req data.GetUserRequest) (*data.UserExtended, error) {
 	badgerHoldQuery := &badgerhold.Query{}
 
 	if req.ID != "" {
-		badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID)
+		badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID).Index("ID")
 	} else if req.Alias != "" {
 		badgerHoldQuery = badgerhold.Where("Alias").Contains(req.Alias)
 	}

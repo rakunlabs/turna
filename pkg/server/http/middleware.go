@@ -135,7 +135,7 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return adaptEchoMiddlewares(m), err
 	case h.HelloMiddleware != nil:
 		m, err := h.HelloMiddleware.Middleware()
-		return adaptEchoMiddlewares(m), err
+		return []MiddlewareFunc{m}, err
 	case h.TemplateMiddleware != nil:
 		m, err := h.TemplateMiddleware.Middleware()
 		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err

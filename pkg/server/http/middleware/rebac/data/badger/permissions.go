@@ -19,7 +19,7 @@ func (b *Badger) GetPermissions(req data.GetPermissionRequest) (*data.Response[[
 	badgerHoldQuery := &badgerhold.Query{}
 
 	if req.ID != "" {
-		badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID)
+		badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID).Index("ID")
 	} else {
 		var badgerHoldQueryInternal *badgerhold.Query
 		if req.Name != "" {
@@ -110,7 +110,7 @@ func (b *Badger) PatchPermission(patch data.Permission) error {
 	defer b.dbBackupLock.RUnlock()
 
 	var foundPermission data.Permission
-	if err := b.db.FindOne(&foundPermission, badgerhold.Where("ID").Eq(patch.ID)); err != nil {
+	if err := b.db.FindOne(&foundPermission, badgerhold.Where("ID").Eq(patch.ID).Index("ID")); err != nil {
 		if errors.Is(err, badgerhold.ErrNotFound) {
 			return fmt.Errorf("patch with id %s not found; %w", patch.ID, badgerhold.ErrNotFound)
 		}
@@ -126,8 +126,8 @@ func (b *Badger) PatchPermission(patch data.Permission) error {
 		foundPermission.Description = patch.Description
 	}
 
-	if len(patch.Requests) > 0 {
-		foundPermission.Requests = append(foundPermission.Requests, patch.Requests...)
+	if len(patch.Resources) > 0 {
+		foundPermission.Resources = append(foundPermission.Resources, patch.Resources...)
 	}
 
 	if err := b.db.Update(foundPermission.ID, foundPermission); err != nil {

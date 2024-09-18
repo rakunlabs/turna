@@ -19,7 +19,7 @@ func (b *Badger) GetRoles(req data.GetRoleRequest) (*data.Response[[]data.Role],
 	badgerHoldQuery := &badgerhold.Query{}
 
 	if req.ID != "" {
-		badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID)
+		badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID).Index("ID")
 	} else {
 		var badgerHoldQueryInternal *badgerhold.Query
 		if req.Name != "" {
@@ -133,7 +133,7 @@ func (b *Badger) PatchRole(role data.Role) error {
 	defer b.dbBackupLock.RUnlock()
 
 	var foundRole data.Role
-	if err := b.db.FindOne(&foundRole, badgerhold.Where("ID").Eq(role.ID)); err != nil {
+	if err := b.db.FindOne(&foundRole, badgerhold.Where("ID").Eq(role.ID).Index("ID")); err != nil {
 		if errors.Is(err, badgerhold.ErrNotFound) {
 			return fmt.Errorf("role with id %s not found; %w", role.ID, badgerhold.ErrNotFound)
 		}

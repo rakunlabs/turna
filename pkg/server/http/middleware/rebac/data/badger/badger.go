@@ -82,7 +82,7 @@ func matchAllField(field string, value string) badgerhold.MatchFunc {
 
 func matchRequestMethod(value string) badgerhold.MatchFunc {
 	return func(ra *badgerhold.RecordAccess) (bool, error) {
-		record, _ := ra.Field().([]data.Request)
+		record, _ := ra.Field().([]data.Resource)
 
 		if record == nil {
 			return false, nil
@@ -100,7 +100,7 @@ func matchRequestMethod(value string) badgerhold.MatchFunc {
 
 func matchRequestPath(value string) badgerhold.MatchFunc {
 	return func(ra *badgerhold.RecordAccess) (bool, error) {
-		record, _ := ra.Field().([]data.Request)
+		record, _ := ra.Field().([]data.Resource)
 
 		if record == nil {
 			return false, nil

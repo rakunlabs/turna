@@ -40,7 +40,8 @@ type Provider struct {
 	Oauth2 *Oauth2 `cfg:"oauth2"`
 	// XUser header set from token claims. Default is email and preferred_username.
 	// It set first found value.
-	XUser []string `cfg:"x_user"`
+	XUser            []string `cfg:"x_user"`
+	EmailVerifyCheck bool     `cfg:"email_verify_check"`
 	// PasswordFlow is use password flow to get token.
 	PasswordFlow bool `cfg:"password_flow"`
 	// Priority is use to sort provider.
@@ -141,7 +142,7 @@ func (m *Session) GetCookieName(c echo.Context) string {
 	return cookieName
 }
 
-func addXUserHeader(r *http.Request, claim *claims.Custom, xUser []string) {
+func addXUserHeader(r *http.Request, claim *claims.Custom, xUser []string, emailVerify bool) {
 	r.Header.Del("X-User")
 
 	if len(xUser) == 0 {
@@ -150,6 +151,10 @@ func addXUserHeader(r *http.Request, claim *claims.Custom, xUser []string) {
 
 	for _, v := range xUser {
 		if claimValue, ok := claim.Map[v].(string); ok {
+			if v == "email" && emailVerify && claim.Map["email_verified"] != "true" {
+				continue
+			}
+
 			r.Header.Set("X-User", claimValue)
 
 			break
@@ -174,7 +179,7 @@ func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 				// next middlewares can check roles
 				c.Set("claims", customClaims)
 				c.Set("provider", jwtToken.Header["provider_name"])
-				addXUserHeader(c.Request(), customClaims, m.Provider[jwtToken.Header["provider_name"].(string)].XUser)
+				addXUserHeader(c.Request(), customClaims, m.Provider[jwtToken.Header["provider_name"].(string)].XUser, m.Provider[jwtToken.Header["provider_name"].(string)].EmailVerifyCheck)
 
 				if v, _ := c.Get(CtxTokenHeaderDelKey).(bool); v {
 					c.Request().Header.Del("Authorization")
@@ -239,7 +244,7 @@ func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 					AuthRequestConfig: requestConfig,
 				})
 				if err != nil {
-					c.Logger().Errorf("cannot refresh token: %v", err)
+					c.Logger().Warnf("cannot refresh token: %v", err)
 					return m.RedirectToLogin(c, m.store, true, true)
 				}
 
@@ -269,7 +274,7 @@ func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 		// next middlewares can check roles
 		c.Set("claims", customClaims)
 		c.Set("provider", jwtToken.Header["provider_name"])
-		addXUserHeader(c.Request(), customClaims, m.Provider[jwtToken.Header["provider_name"].(string)].XUser)
+		addXUserHeader(c.Request(), customClaims, m.Provider[jwtToken.Header["provider_name"].(string)].XUser, m.Provider[jwtToken.Header["provider_name"].(string)].EmailVerifyCheck)
 
 		// add the access token to the request
 		if v, _ := c.Get(CtxTokenHeaderKey).(bool); v {

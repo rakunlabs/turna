@@ -32,7 +32,7 @@ func TestBadgerCheck(t *testing.T) {
 			permissions: []data.Permission{
 				{
 					Name: "perm",
-					Requests: []data.Request{
+					Resources: []data.Resource{
 						{
 							Methods: []string{"*"},
 							Path:    "/test",

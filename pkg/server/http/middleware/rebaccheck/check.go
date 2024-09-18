@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path"
+	"slices"
+	"strings"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
@@ -12,11 +15,22 @@ import (
 )
 
 type RebacCheck struct {
-	CheckAPI string         `cfg:"check_api"`
-	Public   []data.Request `cfg:"public"`
+	CheckAPI  string          `cfg:"check_api"`
+	Public    []data.Resource `cfg:"public"`
+	Responses []Response      `cfg:"responses"`
 
 	InsecureSkipVerify bool           `cfg:"insecure_skip_verify"`
 	client             *klient.Client `cfg:"-"`
+}
+
+type Response struct {
+	Path    string   `cfg:"path"`
+	Methods []string `cfg:"methods"`
+
+	// Message adds custom message to the response
+	Message string `cfg:"message"`
+	// Redirect is not empty, it will redirect to the given URL
+	Redirect string `cfg:"redirect"`
 }
 
 func (m *RebacCheck) Middleware() (func(http.Handler) http.Handler, error) {
@@ -32,6 +46,18 @@ func (m *RebacCheck) Middleware() (func(http.Handler) http.Handler, error) {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// check if the path is public
+			for _, resource := range m.Public {
+				if v, _ := path.Match(resource.Path, r.URL.Path); v {
+					if len(resource.Methods) == 0 || slices.ContainsFunc(resource.Methods, func(cmp string) bool {
+						return strings.EqualFold(cmp, r.Method)
+					}) {
+						next.ServeHTTP(w, r)
+						return
+					}
+				}
+			}
+
 			xUser := r.Header.Get("X-User")
 			if xUser == "" {
 				httputil.HandleError(w, httputil.NewError("", nil, http.StatusUnauthorized))
@@ -80,6 +106,22 @@ func (m *RebacCheck) Middleware() (func(http.Handler) http.Handler, error) {
 			}
 
 			if !resp.Allowed {
+				for _, response := range m.Responses {
+					if v, _ := path.Match(response.Path, r.URL.Path); v {
+						if len(response.Methods) == 0 || slices.ContainsFunc(response.Methods, func(cmp string) bool {
+							return strings.EqualFold(cmp, r.Method)
+						}) {
+							if response.Redirect != "" {
+								http.Redirect(w, r, response.Redirect, http.StatusTemporaryRedirect)
+								return
+							}
+
+							httputil.HandleError(w, httputil.NewError(response.Message, nil, http.StatusForbidden))
+							return
+						}
+					}
+				}
+
 				httputil.HandleError(w, httputil.NewError("", nil, http.StatusForbidden))
 				return
 			}

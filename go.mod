@@ -22,7 +22,7 @@ require (
 	github.com/redis/go-redis/v9 v9.6.1
 	github.com/rs/zerolog v1.33.0
 	github.com/rytsh/liz/loader v0.2.5
-	github.com/rytsh/mugo v0.7.5
+	github.com/rytsh/mugo v0.7.6
 	github.com/spf13/cast v1.7.0
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
@@ -101,7 +101,6 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
-	github.com/rytsh/call v0.2.1 // indirect
 	github.com/rytsh/liz/consul v0.1.0 // indirect
 	github.com/rytsh/liz/file v0.1.4 // indirect
 	github.com/rytsh/liz/mapx v0.2.0 // indirect

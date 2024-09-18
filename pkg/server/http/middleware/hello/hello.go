@@ -2,13 +2,11 @@ package hello
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rs/zerolog/log"
 	"github.com/rytsh/mugo/pkg/fstore"
 	"github.com/rytsh/mugo/pkg/templatex"
@@ -22,8 +20,7 @@ type Hello struct {
 	StatusCode int               `cfg:"status_code"`
 	Headers    map[string]string `cfg:"headers"`
 
-	// Type of return (json, json-pretty, html, string), default is string
-	Type string `cfg:"type"`
+	ContentType string `cfg:"content_type"`
 
 	// Template to render go template
 	Template bool `cfg:"template"`
@@ -35,7 +32,7 @@ type Hello struct {
 	Delims []string `cfg:"delims"`
 }
 
-func (h *Hello) Middleware() ([]echo.MiddlewareFunc, error) {
+func (h *Hello) Middleware() (func(http.Handler) http.Handler, error) {
 	if h.Delims != nil {
 		if len(h.Delims) != 2 {
 			return nil, fmt.Errorf("delims must be a pair of strings")
@@ -62,57 +59,53 @@ func (h *Hello) Middleware() ([]echo.MiddlewareFunc, error) {
 		tpl.SetDelims(h.Delims[0], h.Delims[1])
 	}
 
-	return []echo.MiddlewareFunc{func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+	contentType := h.ContentType
+	if contentType == "" {
+		contentType = httputil.MIMETextPlainCharsetUTF8
+	}
+
+	return func(_ http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			for k, v := range h.Headers {
-				c.Response().Header().Set(k, v)
+				w.Header().Set(k, v)
 			}
 
 			message := h.Message
 
 			if h.Template {
 				// max body size is 4MB
-				body, error := io.ReadAll(io.LimitReader(c.Request().Body, 1<<22))
-				if error != nil {
-					return error
+				body, err := io.ReadAll(io.LimitReader(r.Body, 1<<22))
+				if err != nil {
+					httputil.HandleError(w, httputil.NewError("Cannot read body", err, http.StatusInternalServerError))
+					return
 				}
 
-				c.Request().Body.Close()
+				r.Body.Close()
 
 				// get all data for the template
 				data := map[string]interface{}{
 					"body":         body,
-					"method":       c.Request().Method,
-					"headers":      c.Request().Header,
-					"query_params": c.QueryParams(),
-					"cookies":      c.Cookies(),
-					"path":         c.Request().URL.Path,
+					"method":       r.Method,
+					"headers":      r.Header,
+					"query_params": r.URL.Query(),
+					"cookies":      r.Cookies(),
+					"path":         r.URL.Path,
 				}
 
 				var buf bytes.Buffer
-				err := tpl.Execute(
+				if err = tpl.Execute(
 					templatex.WithIO(&buf),
 					templatex.WithContent(message),
 					templatex.WithData(data),
-				)
-
-				if err != nil {
-					return err
+				); err != nil {
+					httputil.HandleError(w, httputil.NewError("Cannot execute template", err, http.StatusInternalServerError))
+					return
 				}
 
 				message = buf.String()
 			}
 
-			switch strings.ToLower(h.Type) {
-			case "json-pretty":
-				return c.JSONPretty(h.StatusCode, json.RawMessage(message), "  ")
-			case "json":
-				return c.JSON(h.StatusCode, json.RawMessage(message))
-			case "html":
-				return c.HTML(h.StatusCode, message)
-			default:
-				return c.String(h.StatusCode, message)
-			}
-		}
-	}}, nil
+			httputil.Blob(w, h.StatusCode, contentType, []byte(message))
+		})
+	}, nil
 }

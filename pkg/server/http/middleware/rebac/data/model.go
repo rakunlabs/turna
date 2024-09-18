@@ -13,13 +13,13 @@ var (
 
 // Permission is a struct that represents a permission table in the database.
 type Permission struct {
-	ID          string    `json:"id"          badgerhold:"unique"`
-	Name        string    `json:"name"`
-	Requests    []Request `json:"requests"`
-	Description string    `json:"description"`
+	ID          string     `json:"id"          badgerhold:"unique"`
+	Name        string     `json:"name"`
+	Resources   []Resource `json:"resources"`
+	Description string     `json:"description"`
 }
 
-type Request struct {
+type Resource struct {
 	Path    string   `json:"path"`
 	Methods []string `json:"methods"`
 }
