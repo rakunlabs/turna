@@ -151,7 +151,7 @@ func addXUserHeader(r *http.Request, claim *claims.Custom, xUser []string, email
 
 	for _, v := range xUser {
 		if claimValue, ok := claim.Map[v].(string); ok {
-			if v == "email" && emailVerify && claim.Map["email_verified"] != "true" {
+			if v == "email" && emailVerify && claim.Map["email_verified"] != true {
 				continue
 			}
 

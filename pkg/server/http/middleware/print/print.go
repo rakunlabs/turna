@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/labstack/echo/v4"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 )
 
 type Print struct {
@@ -13,34 +13,40 @@ type Print struct {
 	Text string `cfg:"text"`
 }
 
-func (m *Print) Middleware() (echo.MiddlewareFunc, error) {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			switch c.Request().Method {
+func (m *Print) Middleware() (func(http.Handler) http.Handler, error) {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
 			case http.MethodGet:
-				return next(c)
+				next.ServeHTTP(w, r)
+				return
 			case http.MethodPost:
-				body := c.Request().Body
+				body := r.Body
 				if body == nil {
-					return c.NoContent(http.StatusNoContent)
+					httputil.NoContent(w, http.StatusNoContent)
+					return
 				}
 
 				if _, err := bufio.NewReader(body).WriteTo(os.Stderr); err != nil {
-					return err
+					httputil.HandleError(w, httputil.NewError("failed to write to stderr", err, http.StatusInternalServerError))
+					return
 				}
 
 				if m.Text != "" {
 					if _, err := os.Stderr.Write([]byte(m.Text)); err != nil {
-						return err
+						httputil.HandleError(w, httputil.NewError("failed to write to stderr", err, http.StatusInternalServerError))
+						return
 					}
 				}
 
 				os.Stderr.WriteString("\n")
 
-				return c.NoContent(http.StatusNoContent)
+				httputil.NoContent(w, http.StatusNoContent)
+				return
 			default:
-				return c.String(http.StatusMethodNotAllowed, http.StatusText(http.StatusMethodNotAllowed))
+				httputil.HandleError(w, httputil.NewError("method not allowed", nil, http.StatusMethodNotAllowed))
+				return
 			}
-		}
+		})
 	}, nil
 }

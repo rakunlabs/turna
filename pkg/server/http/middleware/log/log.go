@@ -3,9 +3,8 @@ package log
 import (
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
-
-	"github.com/labstack/echo/v4"
 )
 
 type Log struct {
@@ -30,24 +29,24 @@ func (m *Log) LevelCheck() error {
 	return fmt.Errorf("invalid log level: %s", m.Level)
 }
 
-func (m *Log) Middleware() ([]echo.MiddlewareFunc, error) {
+func (m *Log) Middleware() (func(http.Handler) http.Handler, error) {
 	if err := m.LevelCheck(); err != nil {
 		return nil, err
 	}
 
-	return []echo.MiddlewareFunc{func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			args := []interface{}{
-				"method", c.Request().Method,
-				"path", c.Request().URL.Path,
-				"request_id", c.Request().Header.Get("X-Request-Id"),
+				"method", r.Method,
+				"path", r.URL.Path,
+				"request_id", r.Header.Get("X-Request-Id"),
 			}
 
 			// get headers
 			var headers map[string][]string
 			if m.Headers {
-				headers = make(map[string][]string, len(c.Request().Header))
-				for k, v := range c.Request().Header {
+				headers = make(map[string][]string, len(r.Header))
+				for k, v := range r.Header {
 					headers[k] = v
 				}
 
@@ -65,7 +64,7 @@ func (m *Log) Middleware() ([]echo.MiddlewareFunc, error) {
 				slog.Error(m.Message, args...)
 			}
 
-			return next(c)
-		}
-	}}, nil
+			next.ServeHTTP(w, r)
+		})
+	}, nil
 }

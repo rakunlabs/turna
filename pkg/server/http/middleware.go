@@ -174,10 +174,10 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.DecompressMiddleware.Middleware()}), nil
 	case h.LogMiddleware != nil:
 		m, err := h.LogMiddleware.Middleware()
-		return adaptEchoMiddlewares(m), err
+		return []MiddlewareFunc{m}, err
 	case h.PrintMiddleware != nil:
 		m, err := h.PrintMiddleware.Middleware()
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return []MiddlewareFunc{m}, err
 	case h.LoginMiddleware != nil:
 		m, err := h.LoginMiddleware.Middleware(ctx, name)
 		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
