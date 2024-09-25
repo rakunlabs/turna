@@ -6,6 +6,10 @@ import (
 	"net/http"
 )
 
+type ErrorCode interface {
+	GetCode() int
+}
+
 type Error struct {
 	Msg string `json:"message,omitempty"`
 	Err error  `json:"error,omitempty"`
@@ -21,6 +25,10 @@ func (e Error) Error() string {
 	return e.Err.Error()
 }
 
+func (e Error) GetCode() int {
+	return e.Code
+}
+
 func NewError(message string, err error, code int) Error {
 	return Error{
 		Msg:  message,
@@ -30,9 +38,11 @@ func NewError(message string, err error, code int) Error {
 }
 
 func NewErrorAs(err error) Error {
-	e := Error{}
-	if errors.As(err, &e) {
-		return e
+	if err != nil {
+		e := Error{}
+		if errors.As(err, &e) {
+			return e
+		}
 	}
 
 	return NewError("", err, http.StatusInternalServerError)
@@ -59,7 +69,7 @@ func (e Error) MarshalJSON() ([]byte, error) {
 	return json.Marshal(ret)
 }
 
-func HandleError(w http.ResponseWriter, resp Error) {
+func HandleError(w http.ResponseWriter, resp ErrorCode) {
 	h := w.Header()
 
 	// Delete the Content-Length header, which might be for some other content.
@@ -75,7 +85,7 @@ func HandleError(w http.ResponseWriter, resp Error) {
 	// text/plain for the error message.
 	h.Set("Content-Type", "application/json; charset=utf-8")
 
-	code := resp.Code
+	code := resp.GetCode()
 	if code == 0 {
 		code = http.StatusInternalServerError
 	}

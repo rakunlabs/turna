@@ -6,8 +6,10 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/ldap"
 )
 
 type SyncRequest struct {
@@ -17,54 +19,54 @@ type SyncRequest struct {
 // LdapGetGroups returns groups info from LDAP.
 // @Summary Get LDAP groups
 // @Tags ldap
-// @Success 200 {object} []ldap.LdapGroup
-// @Failure 500 {object} httputil.Error
+// @Success 200 {object} data.Response[[]ldap.LdapGroup]
+// @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/groups [GET]
 func (m *Rebac) LdapGetGroups(w http.ResponseWriter, _ *http.Request) {
 	conn, err := m.Ldap.ConnectWithCheck()
 	if err != nil {
-		httputil.HandleError(w, httputil.NewError("LDAP connection problem", err, http.StatusInternalServerError))
+		httputil.HandleError(w, data.NewError("LDAP connection problem", err, http.StatusInternalServerError))
 		return
 	}
 
 	groups, err := m.Ldap.Groups(conn)
 	if err != nil {
-		httputil.HandleError(w, httputil.NewError("failed getting groups", err, http.StatusInternalServerError))
+		httputil.HandleError(w, data.NewError("failed getting groups", err, http.StatusInternalServerError))
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, groups)
+	httputil.JSON(w, http.StatusOK, data.Response[[]ldap.LdapGroup]{Payload: groups})
 }
 
 // LdapGetUsers returns user info from LDAP.
 // @Summary Get LDAP user
 // @Tags ldap
 // @Param uid path string true "user uid"
-// @Success 200 {object} ldap.LdapUser
-// @Failure 400 {object} httputil.Error
-// @Failure 404 {object} httputil.Error
-// @Failure 500 {object} httputil.Error
+// @Success 200 {object} data.Response[ldap.LdapUser]
+// @Failure 400 {object} data.ResponseError
+// @Failure 404 {object} data.ResponseError
+// @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/users/{uid} [GET]
 func (m *Rebac) LdapGetUsers(w http.ResponseWriter, r *http.Request) {
 	conn, err := m.Ldap.ConnectWithCheck()
 	if err != nil {
-		httputil.HandleError(w, httputil.NewError("LDAP connection problem", err, http.StatusInternalServerError))
+		httputil.HandleError(w, data.NewError("LDAP connection problem", err, http.StatusInternalServerError))
 		return
 	}
 
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
-		httputil.HandleError(w, httputil.NewError("uid is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, data.NewError("uid is required", nil, http.StatusBadRequest))
 		return
 	}
 
 	users, err := m.Ldap.Users(conn, []string{uid})
 	if err != nil {
-		httputil.HandleError(w, httputil.NewErrorAs(err))
+		httputil.HandleError(w, data.NewErrorAs(err))
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, users[0])
+	httputil.JSON(w, http.StatusOK, data.Response[ldap.LdapUser]{Payload: users[0]})
 }
 
 func (m *Rebac) LdapSync(force bool, uid string) error {
@@ -73,12 +75,12 @@ func (m *Rebac) LdapSync(force bool, uid string) error {
 
 	conn, err := m.Ldap.ConnectWithCheck()
 	if err != nil {
-		return httputil.NewError("LDAP connection problem", err, http.StatusInternalServerError)
+		return data.NewError("LDAP connection problem", err, http.StatusInternalServerError)
 	}
 
 	groups, err := m.Ldap.Groups(conn)
 	if err != nil {
-		return httputil.NewError("failed getting groups", err, http.StatusInternalServerError)
+		return data.NewError("failed getting groups", err, http.StatusInternalServerError)
 	}
 
 	users := make(map[string][]string)
@@ -108,13 +110,13 @@ func (m *Rebac) LdapSync(force bool, uid string) error {
 			if !data.CompareSlices(userDB.SyncRoleIDs, groupNames) {
 				roleIDs, err := roleIDsCache.Get(groupNames)
 				if err != nil {
-					return httputil.NewError("failed getting role IDs", err, http.StatusInternalServerError)
+					return data.NewError("failed getting role IDs", err, http.StatusInternalServerError)
 				}
 
 				// patch user in the database
 				userDB.User.SyncRoleIDs = roleIDs
-				if err := m.db.PutUser(userDB.User); err != nil {
-					return httputil.NewError("failed updating user", err, http.StatusInternalServerError)
+				if err := m.db.PutUser(*userDB.User); err != nil {
+					return data.NewError("failed updating user", err, http.StatusInternalServerError)
 				}
 			}
 
@@ -126,7 +128,7 @@ func (m *Rebac) LdapSync(force bool, uid string) error {
 			// user exists, update it with fetch
 			userLdap, err := m.Ldap.Users(conn, []string{user})
 			if err != nil {
-				return httputil.NewError("failed getting user", err, http.StatusInternalServerError)
+				return data.NewError("failed getting user", err, http.StatusInternalServerError)
 			}
 
 			if len(userLdap) == 0 {
@@ -135,7 +137,7 @@ func (m *Rebac) LdapSync(force bool, uid string) error {
 
 			roleIDs, err := roleIDsCache.Get(groupNames)
 			if err != nil {
-				return httputil.NewError("failed getting role IDs", err, http.StatusInternalServerError)
+				return data.NewError("failed getting role IDs", err, http.StatusInternalServerError)
 			}
 
 			for _, u := range userLdap {
@@ -151,15 +153,15 @@ func (m *Rebac) LdapSync(force bool, uid string) error {
 				userDB.User.SyncRoleIDs = roleIDs
 
 				// update user in the database
-				if err := m.db.PutUser(userDB.User); err != nil {
-					return httputil.NewError("failed updating user", err, http.StatusInternalServerError)
+				if err := m.db.PutUser(*userDB.User); err != nil {
+					return data.NewError("failed updating user", err, http.StatusInternalServerError)
 				}
 			}
 		case errors.Is(err, data.ErrNotFound):
 			// user not found, add it with fetch
 			userLdap, err := m.Ldap.Users(conn, []string{user})
 			if err != nil {
-				return httputil.NewError("failed getting user", err, http.StatusInternalServerError)
+				return data.NewError("failed getting user", err, http.StatusInternalServerError)
 			}
 
 			if len(userLdap) == 0 {
@@ -168,7 +170,7 @@ func (m *Rebac) LdapSync(force bool, uid string) error {
 
 			roleIDs, err := roleIDsCache.Get(groupNames)
 			if err != nil {
-				return httputil.NewError("failed getting role IDs", err, http.StatusInternalServerError)
+				return data.NewError("failed getting role IDs", err, http.StatusInternalServerError)
 			}
 
 			for _, u := range userLdap {
@@ -183,13 +185,13 @@ func (m *Rebac) LdapSync(force bool, uid string) error {
 					},
 				})
 				if err != nil {
-					return httputil.NewError("failed creating user", err, http.StatusInternalServerError)
+					return data.NewError("failed creating user", err, http.StatusInternalServerError)
 				}
 
 				slog.Info("user created", slog.String("id", id), slog.String("email", u.Email))
 			}
 		default:
-			return httputil.NewError("failed getting user", err, http.StatusInternalServerError)
+			return data.NewError("failed getting user", err, http.StatusInternalServerError)
 		}
 	}
 
@@ -200,21 +202,21 @@ func (m *Rebac) LdapSync(force bool, uid string) error {
 // @Summary Sync LDAP groups
 // @Tags ldap
 // @Param Body body SyncRequest false "force"
-// @Success 200 {object} httputil.Response
-// @Failure 500 {object} httputil.Error
+// @Success 200 {object} data.ResponseMessage
+// @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/sync [POST]
 func (m *Rebac) LdapSyncGroups(w http.ResponseWriter, r *http.Request) {
 	var req SyncRequest
 	if err := httputil.Decode(r, &req); err != nil {
-		httputil.HandleError(w, httputil.NewError("failed decoding request", err, http.StatusBadRequest))
+		httputil.HandleError(w, data.NewError("failed decoding request", err, http.StatusBadRequest))
 		return
 	}
 
 	if err := m.LdapSync(req.Force, ""); err != nil {
-		httputil.HandleError(w, httputil.NewErrorAs(err))
+		httputil.HandleError(w, data.NewErrorAs(err))
 	}
 
-	httputil.JSON(w, http.StatusOK, httputil.Response{Msg: "Users synced"})
+	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Users synced"))
 }
 
 // LdapSyncGroups syncs one user on LDAP groups with mapped groups in the database.
@@ -222,26 +224,26 @@ func (m *Rebac) LdapSyncGroups(w http.ResponseWriter, r *http.Request) {
 // @Tags ldap
 // @Param uid path string true "user uid"
 // @Param Body body SyncRequest false "force"
-// @Success 200 {object} httputil.Response
-// @Failure 500 {object} httputil.Error
+// @Success 200 {object} data.ResponseMessage
+// @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/sync/{uid} [POST]
 func (m *Rebac) LdapSyncGroupsUID(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 
 	if uid == "" {
-		httputil.HandleError(w, httputil.NewError("uid is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, data.NewError("uid is required", nil, http.StatusBadRequest))
 		return
 	}
 
 	var req SyncRequest
 	if err := httputil.Decode(r, &req); err != nil {
-		httputil.HandleError(w, httputil.NewError("failed decoding request", err, http.StatusBadRequest))
+		httputil.HandleError(w, data.NewError("failed decoding request", err, http.StatusBadRequest))
 		return
 	}
 
 	if err := m.LdapSync(req.Force, uid); err != nil {
-		httputil.HandleError(w, httputil.NewErrorAs(err))
+		httputil.HandleError(w, data.NewErrorAs(err))
 	}
 
-	httputil.JSON(w, http.StatusOK, httputil.Response{Msg: "Users synced"})
+	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("User synced"))
 }

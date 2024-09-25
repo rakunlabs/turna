@@ -38,7 +38,7 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserEx
 
 			if len(roleIDs) == 0 {
 				return &data.Response[[]data.UserExtended]{
-					Meta: data.Meta{
+					Meta: &data.Meta{
 						Offset: req.Offset,
 						Limit:  req.Limit,
 					},
@@ -105,7 +105,7 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserEx
 	userExtended := make([]data.UserExtended, len(users))
 
 	for i, user := range users {
-		extended, err := b.extendUser(req.Extend, user)
+		extended, err := b.extendUser(req.AddRoles, req.AddPermissions, req.AddDatas, &user)
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +114,7 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserEx
 	}
 
 	return &data.Response[[]data.UserExtended]{
-		Meta: data.Meta{
+		Meta: &data.Meta{
 			Offset:         req.Offset,
 			Limit:          req.Limit,
 			TotalItemCount: count,
@@ -145,7 +145,7 @@ func (b *Badger) GetUser(req data.GetUserRequest) (*data.UserExtended, error) {
 		return nil, err
 	}
 
-	extendedUser, err := b.extendUser(req.Extend, user)
+	extendedUser, err := b.extendUser(req.AddRoles, req.AddPermissions, req.AddDatas, &user)
 
 	return &extendedUser, err
 }
@@ -179,40 +179,60 @@ func (b *Badger) CreateUser(user data.User) (string, error) {
 	return user.ID, nil
 }
 
-func (b *Badger) PatchUser(user data.User) error {
+func (b *Badger) editUser(id string, fn func(*data.User)) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
 	var foundUser data.User
-	if err := b.db.FindOne(&foundUser, badgerhold.Where("ID").Eq(user.ID)); err != nil {
+	if err := b.db.FindOne(&foundUser, badgerhold.Where("ID").Eq(id)); err != nil {
 		if errors.Is(err, badgerhold.ErrNotFound) {
-			return fmt.Errorf("user with id %s not found; %w", user.ID, badgerhold.ErrNotFound)
+			return fmt.Errorf("user with id %s not found; %w", id, data.ErrNotFound)
 		}
 
 		return err
 	}
 
-	for _, alias := range user.Alias {
-		if !slices.Contains(foundUser.Alias, alias) {
-			foundUser.Alias = append(foundUser.Alias, alias)
-		}
-	}
+	fn(&foundUser)
 
-	for _, role := range user.RoleIDs {
-		if !slices.Contains(foundUser.RoleIDs, role) {
-			foundUser.RoleIDs = append(foundUser.RoleIDs, role)
-		}
-	}
-
-	for k, v := range user.Details {
-		foundUser.Details[k] = v
-	}
-
-	if err := b.db.Update(user.ID, foundUser); err != nil {
+	if err := b.db.Update(foundUser.ID, foundUser); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (b *Badger) AddUserRole(id string, roles data.RoleIDs) error {
+	return b.editUser(id, func(user *data.User) {
+		for _, roleID := range roles.RoleIDs {
+			if !slices.Contains(user.RoleIDs, roleID) {
+				user.RoleIDs = append(user.RoleIDs, roleID)
+			}
+		}
+	})
+}
+
+func (b *Badger) DeleteUserRole(id string, roles data.RoleIDs) error {
+	return b.editUser(id, func(user *data.User) {
+		user.RoleIDs = slices.DeleteFunc(user.RoleIDs, func(roleID string) bool {
+			return slices.Contains(roles.RoleIDs, roleID)
+		})
+	})
+}
+
+func (b *Badger) PatchUser(user data.User) error {
+	return b.editUser(user.ID, func(foundUser *data.User) {
+		if len(user.Alias) > 0 {
+			foundUser.Alias = user.Alias
+		}
+
+		if len(user.RoleIDs) > 0 {
+			foundUser.RoleIDs = user.RoleIDs
+		}
+
+		if len(user.Details) > 0 {
+			foundUser.Details = user.Details
+		}
+	})
 }
 
 func (b *Badger) PutUser(user data.User) error {
@@ -222,13 +242,13 @@ func (b *Badger) PutUser(user data.User) error {
 	var foundUser data.User
 	if err := b.db.FindOne(&foundUser, badgerhold.Where("ID").Eq(user.ID)); err != nil {
 		if errors.Is(err, badgerhold.ErrNotFound) {
-			return fmt.Errorf("user with id %s not found; %w", user.ID, badgerhold.ErrNotFound)
+			return fmt.Errorf("user with id %s not found; %w", user.ID, data.ErrNotFound)
 		}
 
 		return err
 	}
 
-	if err := b.db.Update(user.ID, user); err != nil {
+	if err := b.db.Update(foundUser.ID, user); err != nil {
 		return err
 	}
 
@@ -242,12 +262,12 @@ func (b *Badger) DeleteUser(id string) error {
 	return b.db.Delete(id, data.User{})
 }
 
-func (b *Badger) extendUser(extend bool, user data.User) (data.UserExtended, error) {
+func (b *Badger) extendUser(addRoles, addRolePermissions, addDatas bool, user *data.User) (data.UserExtended, error) {
 	userExtended := data.UserExtended{
 		User: user,
 	}
 
-	if !extend {
+	if !addRoles {
 		return userExtended, nil
 	}
 
@@ -264,18 +284,22 @@ func (b *Badger) extendUser(extend bool, user data.User) (data.UserExtended, err
 	// get roles permissions
 	if err := b.db.ForEach(badgerhold.Where("ID").In(toInterfaceSlice(roleIDs)...), func(role *data.Role) error {
 		roles = append(roles, role.Name)
-		if role.Data != nil {
-			datas = append(datas, role.Data)
+		if addDatas {
+			if role.Data != nil {
+				datas = append(datas, role.Data)
+			}
 		}
 
-		// get permissions
-		for _, permissionID := range role.PermissionIDs {
-			var permission data.Permission
-			if err := b.db.Get(permissionID, &permission); err != nil {
-				return err
-			}
+		if addRolePermissions {
+			// get permissions
+			for _, permissionID := range role.PermissionIDs {
+				var permission data.Permission
+				if err := b.db.Get(permissionID, &permission); err != nil {
+					return err
+				}
 
-			permissions = append(permissions, permission.Name)
+				permissions = append(permissions, permission.Name)
+			}
 		}
 
 		return nil

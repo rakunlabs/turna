@@ -218,11 +218,11 @@ func TestBadgerPatchUser(t *testing.T) {
 		t.Fatalf("expected 1 user, got %d", len(res.Payload))
 	}
 
-	if slices.Compare(res.Payload[0].Alias, []string{"test", "test2"}) != 0 {
+	if slices.Compare(res.Payload[0].Alias, []string{"test2"}) != 0 {
 		t.Fatalf("expected alias test2, got %v", res.Payload[0].Alias)
 	}
 
-	if slices.Compare(res.Payload[0].RoleIDs, []string{"role-1", "role-2"}) != 0 {
+	if slices.Compare(res.Payload[0].RoleIDs, []string{"role-2"}) != 0 {
 		t.Fatalf("expected role-1, got %v", res.Payload[0].RoleIDs)
 	}
 }

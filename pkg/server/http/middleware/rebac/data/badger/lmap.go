@@ -18,7 +18,7 @@ func (b *Badger) GetLMaps(req data.GetLMapRequest) (*data.Response[[]data.LMap],
 	badgerHoldQuery := &badgerhold.Query{}
 
 	if req.Name != "" {
-		badgerHoldQuery = badgerhold.Where("Name").Eq(req.Name)
+		badgerHoldQuery = badgerhold.Where("Name").Eq(req.Name).Index("Name")
 	} else if len(req.RoleIDs) > 0 {
 		badgerHoldQuery = badgerhold.Where("RoleIDs").ContainsAny(toInterfaceSlice(req.RoleIDs)...)
 	}
@@ -40,7 +40,7 @@ func (b *Badger) GetLMaps(req data.GetLMapRequest) (*data.Response[[]data.LMap],
 	}
 
 	return &data.Response[[]data.LMap]{
-		Meta: data.Meta{
+		Meta: &data.Meta{
 			Offset:         req.Offset,
 			Limit:          req.Limit,
 			TotalItemCount: count,

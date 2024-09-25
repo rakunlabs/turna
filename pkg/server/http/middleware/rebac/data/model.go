@@ -14,7 +14,7 @@ var (
 // Permission is a struct that represents a permission table in the database.
 type Permission struct {
 	ID          string     `json:"id"          badgerhold:"unique"`
-	Name        string     `json:"name"`
+	Name        string     `json:"name"        badgerhold:"index"`
 	Resources   []Resource `json:"resources"`
 	Description string     `json:"description"`
 }
@@ -27,10 +27,27 @@ type Resource struct {
 // Role is a struct that represents a role table in the database.
 type Role struct {
 	ID            string                 `json:"id"             badgerhold:"unique"`
-	Name          string                 `json:"name"`
+	Name          string                 `json:"name"           badgerhold:"index"`
 	PermissionIDs []string               `json:"permission_ids"`
 	RoleIDs       []string               `json:"role_ids"`
 	Data          map[string]interface{} `json:"data"`
+	Description   string                 `json:"description"`
+}
+
+type RoleExtended struct {
+	*Role
+
+	Roles       []string `json:"roles,omitempty"`
+	Permissions []string `json:"permissions,omitempty"`
+	TotalUsers  uint64   `json:"total_users,omitempty"`
+}
+
+type PermissionIDs struct {
+	PermissionIDs []string `json:"permission_ids"`
+}
+
+type RoleIDs struct {
+	RoleIDs []string `json:"role_ids"`
 }
 
 // User is a struct that represents a user table in the database.
@@ -43,7 +60,7 @@ type User struct {
 }
 
 type UserExtended struct {
-	User
+	*User
 
 	Roles       []string      `json:"roles,omitempty"`
 	Permissions []string      `json:"permissions,omitempty"`
@@ -65,8 +82,21 @@ type LMap struct {
 // //////////////////////////////////////////////////////////////////////
 
 type Response[T any] struct {
-	Meta    Meta `json:"meta"`
-	Payload T    `json:"payload"`
+	Message *Message `json:"message,omitempty"`
+	Meta    *Meta    `json:"meta,omitempty"`
+	Payload T        `json:"payload,omitempty"`
+}
+
+type ResponseMessage struct {
+	Message *Message `json:"message,omitempty"`
+}
+
+func NewResponseMessage(text string) ResponseMessage {
+	return ResponseMessage{
+		Message: &Message{
+			Text: text,
+		},
+	}
 }
 
 type Meta struct {
@@ -75,9 +105,13 @@ type Meta struct {
 	TotalItemCount uint64 `json:"total_item_count,omitempty"`
 }
 
+type Message struct {
+	Text string `json:"text,omitempty"`
+	Err  string `json:"error,omitempty"`
+}
+
 type ResponseCreate struct {
-	ID      string `json:"id"`
-	Message string `json:"message"`
+	ID string `json:"id"`
 }
 
 // //////////////////////////////////////////////////////////////////////
@@ -98,7 +132,9 @@ type GetUserRequest struct {
 	Limit  int64 `json:"limit"`
 	Offset int64 `json:"offset"`
 
-	Extend bool `json:"extend"`
+	AddRoles       bool `json:"add_role"`
+	AddPermissions bool `json:"add_permissions"`
+	AddDatas       bool `json:"add_datas"`
 }
 
 type GetPermissionRequest struct {
@@ -124,6 +160,10 @@ type GetRoleRequest struct {
 
 	Limit  int64 `json:"limit"`
 	Offset int64 `json:"offset"`
+
+	AddPermissions bool `json:"add_permissions"`
+	AddRoles       bool `json:"add_roles"`
+	AddTotalUsers  bool `json:"add_total_users"`
 }
 
 type GetLMapRequest struct {
@@ -158,6 +198,8 @@ type Database interface {
 	DeleteUser(id string) error
 	PutUser(user User) error
 	PatchUser(user User) error
+	AddUserRole(id string, roles RoleIDs) error
+	DeleteUserRole(id string, roles RoleIDs) error
 
 	GetPermissions(req GetPermissionRequest) (*Response[[]Permission], error)
 	GetPermission(id string) (*Permission, error)
@@ -166,12 +208,16 @@ type Database interface {
 	PutPermission(permission Permission) error
 	PatchPermission(permission Permission) error
 
-	GetRoles(req GetRoleRequest) (*Response[[]Role], error)
-	GetRole(id string) (*Role, error)
+	GetRoles(req GetRoleRequest) (*Response[[]RoleExtended], error)
+	GetRole(req GetRoleRequest) (*RoleExtended, error)
 	CreateRole(role Role) (string, error)
 	PutRole(role Role) error
 	DeleteRole(id string) error
 	PatchRole(role Role) error
+	AddRolePermission(id string, permissions PermissionIDs) error
+	DeleteRolePermission(id string, permissions PermissionIDs) error
+	AddRoleRole(id string, roles RoleIDs) error
+	DeleteRoleRole(id string, roles RoleIDs) error
 
 	Check(req CheckRequest) (*CheckResponse, error)
 

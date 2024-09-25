@@ -28,7 +28,7 @@
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -61,13 +61,13 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -98,25 +98,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/data.UserInfo"
+                            "$ref": "#/definitions/data.Response-data_UserInfo"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -132,16 +132,13 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/ldap.LdapGroup"
-                            }
+                            "$ref": "#/definitions/data.Response-array_ldap_LdapGroup"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -172,6 +169,7 @@
                     },
                     {
                         "type": "integer",
+                        "default": 20,
                         "description": "limit",
                         "name": "limit",
                         "in": "query"
@@ -187,16 +185,13 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/data.GetLMapRequest"
-                            }
+                            "$ref": "#/definitions/data.Response-array_data_LMap"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -221,25 +216,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.ResponseMessage"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -264,25 +259,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/data.LMap"
+                            "$ref": "#/definitions/data.Response-data_LMap"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -314,25 +309,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.ResponseMessage"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -355,25 +350,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.ResponseMessage"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -399,13 +394,13 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.ResponseMessage"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -438,13 +433,13 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.ResponseMessage"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -469,25 +464,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/ldap.LdapUser"
+                            "$ref": "#/definitions/data.Response-ldap_LdapUser"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -526,6 +521,7 @@
                     },
                     {
                         "type": "integer",
+                        "default": 20,
                         "description": "limit",
                         "name": "limit",
                         "in": "query"
@@ -547,7 +543,7 @@
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -572,25 +568,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/data.ResponseCreate"
+                            "$ref": "#/definitions/data.Response-data_ResponseCreate"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -621,19 +617,19 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -665,25 +661,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.ResponseMessage"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -706,25 +702,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.ResponseMessage"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -756,25 +752,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.ResponseMessage"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -799,19 +795,19 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.ResponseMessage"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -869,7 +865,26 @@
                         "in": "query"
                     },
                     {
+                        "type": "boolean",
+                        "description": "add permissions",
+                        "name": "add_permissions",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "add roles",
+                        "name": "add_roles",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "add total users",
+                        "name": "add_total_users",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
+                        "default": 20,
                         "description": "limit",
                         "name": "limit",
                         "in": "query"
@@ -885,13 +900,13 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/data.Response-array_data_Role"
+                            "$ref": "#/definitions/data.Response-array_data_RoleExtended"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -916,25 +931,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/data.ResponseCreate"
+                            "$ref": "#/definitions/data.Response-data_ResponseCreate"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -953,31 +968,49 @@
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "add permissions",
+                        "name": "add_permissions",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "add roles",
+                        "name": "add_roles",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "add total users",
+                        "name": "add_total_users",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/data.Role"
+                            "$ref": "#/definitions/data.Response-data_RoleExtended"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -1009,25 +1042,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.ResponseMessage"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -1050,25 +1083,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.ResponseMessage"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -1100,25 +1133,229 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.ResponseMessage"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/roles/{id}/permissions": {
+            "post": {
+                "tags": [
+                    "roles"
+                ],
+                "summary": "Add role permission",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "role id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Permission",
+                        "name": "permission",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/data.PermissionIDs"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseMessage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "roles"
+                ],
+                "summary": "Delete role permission",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "role id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Permission",
+                        "name": "permission",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/data.PermissionIDs"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseMessage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/roles/{id}/roles": {
+            "post": {
+                "tags": [
+                    "roles"
+                ],
+                "summary": "Add role role",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "role id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Role",
+                        "name": "role",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/data.RoleIDs"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseMessage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "roles"
+                ],
+                "summary": "Delete role role",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "role id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Role",
+                        "name": "role",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/data.RoleIDs"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseMessage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -1185,12 +1422,25 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "extend datas",
-                        "name": "extend",
+                        "description": "add roles",
+                        "name": "add_roles",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "add permissions",
+                        "name": "add_permissions",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "add datas",
+                        "name": "add_datas",
                         "in": "query"
                     },
                     {
                         "type": "integer",
+                        "default": 20,
                         "description": "limit",
                         "name": "limit",
                         "in": "query"
@@ -1212,7 +1462,7 @@
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -1237,25 +1487,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.Response-data_ResponseCreate"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -1277,8 +1527,20 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "extend datas",
-                        "name": "extend",
+                        "description": "add roles",
+                        "name": "add_roles",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "add permissions",
+                        "name": "add_permissions",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "add datas",
+                        "name": "add_datas",
                         "in": "query"
                     }
                 ],
@@ -1292,19 +1554,19 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -1336,25 +1598,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.ResponseMessage"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -1377,25 +1639,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.ResponseMessage"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -1427,25 +1689,127 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Response"
+                            "$ref": "#/definitions/data.ResponseMessage"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httputil.Error"
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/users/{id}/roles": {
+            "post": {
+                "tags": [
+                    "users"
+                ],
+                "summary": "Add user role",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "user id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Role",
+                        "name": "role",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/data.RoleIDs"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseMessage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "users"
+                ],
+                "summary": "Delete user role",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "user id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Role",
+                        "name": "role",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/data.RoleIDs"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseMessage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
                         }
                     }
                 }
@@ -1478,26 +1842,6 @@
                 }
             }
         },
-        "data.GetLMapRequest": {
-            "type": "object",
-            "properties": {
-                "limit": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "offset": {
-                    "type": "integer"
-                },
-                "role_ids": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                }
-            }
-        },
         "data.LMap": {
             "type": "object",
             "properties": {
@@ -1509,6 +1853,17 @@
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "data.Message": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
                 }
             }
         },
@@ -1546,6 +1901,17 @@
                 }
             }
         },
+        "data.PermissionIDs": {
+            "type": "object",
+            "properties": {
+                "permission_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "data.Resource": {
             "type": "object",
             "properties": {
@@ -1560,9 +1926,29 @@
                 }
             }
         },
+        "data.Response-array_data_LMap": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
+                "meta": {
+                    "$ref": "#/definitions/data.Meta"
+                },
+                "payload": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/data.LMap"
+                    }
+                }
+            }
+        },
         "data.Response-array_data_Permission": {
             "type": "object",
             "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
                 "meta": {
                     "$ref": "#/definitions/data.Meta"
                 },
@@ -1574,16 +1960,19 @@
                 }
             }
         },
-        "data.Response-array_data_Role": {
+        "data.Response-array_data_RoleExtended": {
             "type": "object",
             "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
                 "meta": {
                     "$ref": "#/definitions/data.Meta"
                 },
                 "payload": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/data.Role"
+                        "$ref": "#/definitions/data.RoleExtended"
                     }
                 }
             }
@@ -1591,6 +1980,9 @@
         "data.Response-array_data_UserExtended": {
             "type": "object",
             "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
                 "meta": {
                     "$ref": "#/definitions/data.Meta"
                 },
@@ -1602,14 +1994,114 @@
                 }
             }
         },
+        "data.Response-array_ldap_LdapGroup": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
+                "meta": {
+                    "$ref": "#/definitions/data.Meta"
+                },
+                "payload": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ldap.LdapGroup"
+                    }
+                }
+            }
+        },
+        "data.Response-data_LMap": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
+                "meta": {
+                    "$ref": "#/definitions/data.Meta"
+                },
+                "payload": {
+                    "$ref": "#/definitions/data.LMap"
+                }
+            }
+        },
+        "data.Response-data_ResponseCreate": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
+                "meta": {
+                    "$ref": "#/definitions/data.Meta"
+                },
+                "payload": {
+                    "$ref": "#/definitions/data.ResponseCreate"
+                }
+            }
+        },
+        "data.Response-data_RoleExtended": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
+                "meta": {
+                    "$ref": "#/definitions/data.Meta"
+                },
+                "payload": {
+                    "$ref": "#/definitions/data.RoleExtended"
+                }
+            }
+        },
+        "data.Response-data_UserInfo": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
+                "meta": {
+                    "$ref": "#/definitions/data.Meta"
+                },
+                "payload": {
+                    "$ref": "#/definitions/data.UserInfo"
+                }
+            }
+        },
+        "data.Response-ldap_LdapUser": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
+                "meta": {
+                    "$ref": "#/definitions/data.Meta"
+                },
+                "payload": {
+                    "$ref": "#/definitions/ldap.LdapUser"
+                }
+            }
+        },
         "data.ResponseCreate": {
             "type": "object",
             "properties": {
                 "id": {
                     "type": "string"
-                },
+                }
+            }
+        },
+        "data.ResponseError": {
+            "type": "object",
+            "properties": {
                 "message": {
-                    "type": "string"
+                    "$ref": "#/definitions/data.Message"
+                }
+            }
+        },
+        "data.ResponseMessage": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
                 }
             }
         },
@@ -1619,6 +2111,9 @@
                 "data": {
                     "type": "object",
                     "additionalProperties": true
+                },
+                "description": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "string"
@@ -1632,6 +2127,62 @@
                         "type": "string"
                     }
                 },
+                "role_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "data.RoleExtended": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "permission_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "role_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "roles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "total_users": {
+                    "type": "integer"
+                }
+            }
+        },
+        "data.RoleIDs": {
+            "type": "object",
+            "properties": {
                 "role_ids": {
                     "type": "array",
                     "items": {
@@ -1738,23 +2289,6 @@
                     "items": {
                         "type": "string"
                     }
-                }
-            }
-        },
-        "httputil.Error": {
-            "type": "object",
-            "properties": {
-                "error": {},
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "httputil.Response": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string"
                 }
             }
         },
