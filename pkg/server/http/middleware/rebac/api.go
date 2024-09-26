@@ -702,7 +702,7 @@ func (m *Rebac) DeleteRolePermission(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Permission deleted from role"))
 }
 
-// @Summary Add role role
+// @Summary Add role to role
 // @Tags roles
 // @Param id path string true "role id"
 // @Param role body data.RoleIDs true "Role"
@@ -737,7 +737,7 @@ func (m *Rebac) AddRoleRole(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Role added to role"))
 }
 
-// @Summary Delete role role
+// @Summary Delete role from role
 // @Tags roles
 // @Param id path string true "role id"
 // @Param role body data.RoleIDs true "Role"
@@ -841,7 +841,7 @@ func (m *Rebac) CreatePermission(w http.ResponseWriter, r *http.Request) {
 // @Summary Get permission
 // @Tags permissions
 // @Param id path string true "permission name"
-// @Success 200 {object} data.Permission
+// @Success 200 {object} data.Response[data.Permission]
 // @Failure 400 {object} data.ResponseError
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
@@ -864,7 +864,9 @@ func (m *Rebac) GetPermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, permission)
+	httputil.JSON(w, http.StatusOK, data.Response[*data.Permission]{
+		Payload: permission,
+	})
 }
 
 // @Summary Patch permission

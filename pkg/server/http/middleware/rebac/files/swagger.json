@@ -611,7 +611,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/data.Permission"
+                            "$ref": "#/definitions/data.Response-data_Permission"
                         }
                     },
                     "400": {
@@ -1264,7 +1264,7 @@
                 "tags": [
                     "roles"
                 ],
-                "summary": "Add role role",
+                "summary": "Add role to role",
                 "parameters": [
                     {
                         "type": "string",
@@ -1314,7 +1314,7 @@
                 "tags": [
                     "roles"
                 ],
-                "summary": "Delete role role",
+                "summary": "Delete role from role",
                 "parameters": [
                     {
                         "type": "string",
@@ -2022,6 +2022,20 @@
                 },
                 "payload": {
                     "$ref": "#/definitions/data.LMap"
+                }
+            }
+        },
+        "data.Response-data_Permission": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
+                "meta": {
+                    "$ref": "#/definitions/data.Meta"
+                },
+                "payload": {
+                    "$ref": "#/definitions/data.Permission"
                 }
             }
         },
