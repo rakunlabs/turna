@@ -24,7 +24,7 @@
 
   onMount(async () => {
     try {
-      const { data } = await axios.get("./info");
+      const { data } = await axios.get("./ui-info");
       if (data) {
         storeInfo.set(data);
       }

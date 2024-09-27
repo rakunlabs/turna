@@ -16,22 +16,34 @@ func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
+	var user *data.User
+
 	var query *badgerhold.Query
 	if req.ID != "" {
 		query = badgerhold.Where("ID").Eq(req.ID).Index("ID")
 	} else if req.Alias != "" {
 		query = badgerhold.Where("Alias").Contains(req.Alias)
+		if userCached := b.GetCachedID(req.Alias); userCached != nil {
+			user = userCached
+		}
 	}
 
-	var user data.User
-	if err := b.db.FindOne(&user, query); err != nil {
-		if errors.Is(err, badgerhold.ErrNotFound) {
-			return &data.CheckResponse{
-				Allowed: false,
-			}, nil
+	if user == nil {
+		var userFind data.User
+
+		if err := b.db.FindOne(&userFind, query); err != nil {
+			if errors.Is(err, badgerhold.ErrNotFound) {
+				return &data.CheckResponse{
+					Allowed: false,
+				}, nil
+			}
+
+			return nil, err
 		}
 
-		return nil, err
+		user = &userFind
+
+		b.SetCachedID(user.Alias, user.ID)
 	}
 
 	// get all roles of roles

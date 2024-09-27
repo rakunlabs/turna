@@ -3,6 +3,8 @@ package badger
 import (
 	"errors"
 	"fmt"
+	"log/slog"
+	"slices"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
@@ -122,6 +124,63 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserEx
 	}, nil
 }
 
+func (b *Badger) GetCachedID(aliasName string) *data.User {
+	if aliasName == "" {
+		return nil
+	}
+
+	// find id in alias table
+	var alias data.Alias
+	if err := b.db.FindOne(&alias, badgerhold.Where("Name").Eq(aliasName)); err != nil {
+		if !errors.Is(err, badgerhold.ErrNotFound) {
+			slog.Error("failed to find alias cache", slog.String("error", err.Error()))
+		}
+
+		return nil
+	}
+
+	if alias.ID != "" {
+		var userFind data.User
+		// find user and it has same id as alias
+		if err := b.db.FindOne(&userFind, badgerhold.Where("ID").Eq(alias.ID)); err != nil {
+			if !errors.Is(err, badgerhold.ErrNotFound) {
+				slog.Error("failed to find user in alias cache", slog.String("error", err.Error()))
+			}
+		} else {
+			if slices.Contains(userFind.Alias, aliasName) {
+				return &userFind
+			}
+		}
+	}
+
+	// delete alias if user not found
+	if err := b.db.Delete(aliasName, data.Alias{}); err != nil {
+		slog.Error("failed to delete alias cache", slog.String("error", err.Error()))
+	}
+
+	return nil
+}
+
+func (b *Badger) SetCachedID(aliasName []string, userID string) error {
+	if len(aliasName) == 0 || userID == "" {
+		return nil
+	}
+
+	for _, alias := range aliasName {
+		// find id in alias table
+		alias := data.Alias{
+			ID:   userID,
+			Name: alias,
+		}
+
+		if err := b.db.Upsert(alias.Name, alias); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (b *Badger) GetUser(req data.GetUserRequest) (*data.UserExtended, error) {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
@@ -173,6 +232,10 @@ func (b *Badger) CreateUser(user data.User) (string, error) {
 
 	if err := b.db.Insert(user.ID, user); err != nil {
 		return "", err
+	}
+
+	if err := b.SetCachedID(user.Alias, user.ID); err != nil {
+		slog.Error("failed to set alias cache", slog.String("error", err.Error()))
 	}
 
 	return user.ID, nil
@@ -244,7 +307,29 @@ func (b *Badger) DeleteUser(id string) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	return b.db.Delete(id, data.User{})
+	if err := b.db.Delete(id, data.User{}); err != nil {
+		if errors.Is(err, badgerhold.ErrNotFound) {
+			return fmt.Errorf("user with id %s not found; %w", id, data.ErrNotFound)
+		}
+
+		return err
+	}
+
+	// delete alias cache
+	var user data.User
+	if err := b.db.FindOne(&user, badgerhold.Where("ID").Eq(id)); err != nil {
+		if !errors.Is(err, badgerhold.ErrNotFound) {
+			return err
+		}
+	}
+
+	for _, alias := range user.Alias {
+		if err := b.db.Delete(alias, data.Alias{}); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (b *Badger) extendUser(addRoles, addRolePermissions, addDatas bool, user *data.User) (data.UserExtended, error) {

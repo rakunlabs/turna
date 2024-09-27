@@ -58,6 +58,11 @@ type RoleIDs struct {
 	RoleIDs []string `json:"role_ids"`
 }
 
+type Alias struct {
+	Name string `json:"name" badgerhold:"unique"`
+	ID   string `json:"id"   badgerhold:"index"`
+}
+
 // User is a struct that represents a user table in the database.
 type User struct {
 	ID          string                 `json:"id"            badgerhold:"unique"`

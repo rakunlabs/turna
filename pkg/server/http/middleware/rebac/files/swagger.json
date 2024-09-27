@@ -10,16 +10,15 @@
         "/check": {
             "post": {
                 "tags": [
-                    "check"
+                    "public"
                 ],
                 "summary": "Post check",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "User alias",
+                        "description": "User alias, X-User is authorized user auto adds",
                         "name": "X-User",
-                        "in": "header",
-                        "required": true
+                        "in": "header"
                     },
                     {
                         "description": "Check",
@@ -27,7 +26,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/data.CheckRequest"
+                            "$ref": "#/definitions/data.CheckRequestUser"
                         }
                     }
                 ],
@@ -56,16 +55,15 @@
         "/info": {
             "get": {
                 "tags": [
-                    "info"
+                    "public"
                 ],
                 "summary": "Get current user's info",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "User alias",
+                        "description": "User alias, X-User is authorized user auto adds",
                         "name": "X-User",
-                        "in": "header",
-                        "required": true
+                        "in": "header"
                     },
                     {
                         "type": "boolean",
@@ -1520,7 +1518,7 @@
                     }
                 }
             },
-            "post": {
+            "delete": {
                 "tags": [
                     "users"
                 ],
@@ -1623,6 +1621,17 @@
                 "id": {
                     "type": "string"
                 },
+                "method": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "data.CheckRequestUser": {
+            "type": "object",
+            "properties": {
                 "method": {
                     "type": "string"
                 },

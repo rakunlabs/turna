@@ -62,7 +62,7 @@ func (m *Rebac) MuxSet(prefix string) *chi.Mux {
 	mux.Get(prefix+"/v1/info", m.Info)
 
 	mux.Post(prefix+"/check", m.PostCheckUser)
-	mux.Get(prefix+"/info", m.Info)
+	mux.Get(prefix+"/info", m.InfoUser)
 
 	mux.Get(prefix+"/v1/backup", m.Backup)
 	mux.Post(prefix+"/v1/restore", m.Restore)
@@ -229,7 +229,7 @@ func (m *Rebac) GetUser(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} data.ResponseError
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
-// @Router /v1/users/{id} [POST]
+// @Router /v1/users/{id} [DELETE]
 func (m *Rebac) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -785,9 +785,9 @@ func (m *Rebac) PostCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary Post check
-// @Tags check
-// @Param X-User header string true "User alias"
-// @Param check body data.CheckRequest true "Check"
+// @Tags public
+// @Param X-User header string false "User alias, X-User is authorized user auto adds"
+// @Param check body data.CheckRequestUser true "Check"
 // @Success 200 {object} data.CheckResponse
 // @Failure 400 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
@@ -1017,8 +1017,8 @@ func (m *Rebac) Info(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary Get current user's info
-// @Tags info
-// @Param X-User header string true "User alias"
+// @Tags public
+// @Param X-User header string false "User alias, X-User is authorized user auto adds"
 // @Param datas query bool false "add role datas"
 // @Success 200 {object} data.Response[data.UserInfo]
 // @Failure 400 {object} data.ResponseError

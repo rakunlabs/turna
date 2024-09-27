@@ -95,7 +95,7 @@ func (m *View) Middleware(_ context.Context, _ string) (func(http.Handler) http.
 
 	return func(_ http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == path.Join("/", m.PrefixPath, "/info") {
+			if r.URL.Path == path.Join("/", m.PrefixPath, "/ui-info") {
 				m.InformationUI(w, r)
 
 				return
