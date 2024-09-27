@@ -6,6 +6,7 @@ require (
 	github.com/MicahParks/keyfunc/v2 v2.0.3
 	github.com/abbot/go-http-auth v0.4.1-0.20220112235402-e1cee1c72f2f
 	github.com/ajg/form v1.5.1
+	github.com/bmatcuk/doublestar/v4 v4.6.1
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fullstorydev/grpcui v1.5.0
 	github.com/go-chi/chi/v5 v5.1.0

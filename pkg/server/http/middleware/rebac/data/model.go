@@ -34,12 +34,20 @@ type Role struct {
 	Description   string                 `json:"description"`
 }
 
+type RolePatch struct {
+	Name          *string                 `json:"name"`
+	PermissionIDs *[]string               `json:"permission_ids"`
+	RoleIDs       *[]string               `json:"role_ids"`
+	Data          *map[string]interface{} `json:"data"`
+	Description   *string                 `json:"description"`
+}
+
 type RoleExtended struct {
 	*Role
 
 	Roles       []string `json:"roles,omitempty"`
 	Permissions []string `json:"permissions,omitempty"`
-	TotalUsers  uint64   `json:"total_users,omitempty"`
+	TotalUsers  uint64   `json:"total_users"`
 }
 
 type PermissionIDs struct {
@@ -59,12 +67,24 @@ type User struct {
 	Details     map[string]interface{} `json:"details"`
 }
 
+type UserPatch struct {
+	Alias       *[]string               `json:"alias"`
+	RoleIDs     *[]string               `json:"role_ids"`
+	SyncRoleIDs *[]string               `json:"sync_role_ids"`
+	Details     *map[string]interface{} `json:"details"`
+}
+
 type UserExtended struct {
 	*User
 
-	Roles       []string      `json:"roles,omitempty"`
-	Permissions []string      `json:"permissions,omitempty"`
+	Roles       []IDName      `json:"roles,omitempty"`
+	Permissions []IDName      `json:"permissions,omitempty"`
 	Datas       []interface{} `json:"datas,omitempty"`
+}
+
+type IDName struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 type UserInfo struct {
@@ -183,6 +203,11 @@ type CheckRequest struct {
 	Method string `json:"method"`
 }
 
+type CheckRequestUser struct {
+	Path   string `json:"path"`
+	Method string `json:"method"`
+}
+
 type CheckResponse struct {
 	Allowed bool `json:"allowed"`
 }
@@ -197,9 +222,7 @@ type Database interface {
 	CreateUser(user User) (string, error)
 	DeleteUser(id string) error
 	PutUser(user User) error
-	PatchUser(user User) error
-	AddUserRole(id string, roles RoleIDs) error
-	DeleteUserRole(id string, roles RoleIDs) error
+	PatchUser(id string, user UserPatch) error
 
 	GetPermissions(req GetPermissionRequest) (*Response[[]Permission], error)
 	GetPermission(id string) (*Permission, error)
@@ -213,11 +236,7 @@ type Database interface {
 	CreateRole(role Role) (string, error)
 	PutRole(role Role) error
 	DeleteRole(id string) error
-	PatchRole(role Role) error
-	AddRolePermission(id string, permissions PermissionIDs) error
-	DeleteRolePermission(id string, permissions PermissionIDs) error
-	AddRoleRole(id string, roles RoleIDs) error
-	DeleteRoleRole(id string, roles RoleIDs) error
+	PatchRole(id string, role RolePatch) error
 
 	Check(req CheckRequest) (*CheckResponse, error)
 

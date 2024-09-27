@@ -35,7 +35,7 @@ func TestBadgerCheck(t *testing.T) {
 					Resources: []data.Resource{
 						{
 							Methods: []string{"*"},
-							Path:    "/test",
+							Path:    "/test/**",
 						},
 					},
 				},
@@ -57,7 +57,7 @@ func TestBadgerCheck(t *testing.T) {
 				{
 					checkRequest: data.CheckRequest{
 						Alias:  "my-user",
-						Path:   "/test",
+						Path:   "/test/example/1234",
 						Method: "POST",
 					},
 					expected: true,

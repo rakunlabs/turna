@@ -152,35 +152,35 @@ func (b *Badger) CreateRole(role data.Role) (string, error) {
 	return role.ID, nil
 }
 
-func (b *Badger) PatchRole(role data.Role) error {
-	return b.editRole(role.ID, func(foundRole *data.Role) error {
-		if role.Name != "" {
+func (b *Badger) PatchRole(id string, rolePatch data.RolePatch) error {
+	return b.editRole(id, func(foundRole *data.Role) error {
+		if rolePatch.Name != nil && *rolePatch.Name != "" {
 			// check role with name already exists
-			if err := b.db.FindOne(&data.Role{}, badgerhold.Where("Name").Eq(role.Name).Index("Name")); err != nil {
+			if err := b.db.FindOne(&data.Role{}, badgerhold.Where("Name").Eq(*rolePatch.Name).Index("Name")); err != nil {
 				if !errors.Is(err, badgerhold.ErrNotFound) {
 					return err
 				}
 			} else {
-				return fmt.Errorf("role with name %s already exists; %w", role.Name, data.ErrConflict)
+				return fmt.Errorf("role with name %s already exists; %w", *rolePatch.Name, data.ErrConflict)
 			}
 
-			foundRole.Name = role.Name
+			foundRole.Name = *rolePatch.Name
 		}
 
-		if role.Description != "" {
-			foundRole.Description = role.Description
+		if rolePatch.Description != nil && *rolePatch.Description != "" {
+			foundRole.Description = *rolePatch.Description
 		}
 
-		if len(role.PermissionIDs) > 0 {
-			foundRole.PermissionIDs = role.PermissionIDs
+		if rolePatch.PermissionIDs != nil {
+			foundRole.PermissionIDs = *rolePatch.PermissionIDs
 		}
 
-		if len(role.RoleIDs) > 0 {
-			foundRole.RoleIDs = role.RoleIDs
+		if rolePatch.RoleIDs != nil {
+			foundRole.RoleIDs = *rolePatch.RoleIDs
 		}
 
-		if len(role.Data) > 0 {
-			foundRole.Data = role.Data
+		if rolePatch.Data != nil {
+			foundRole.Data = *rolePatch.Data
 		}
 
 		return nil
@@ -336,50 +336,6 @@ func (b *Badger) editRole(id string, fn func(*data.Role) error) error {
 	}
 
 	return nil
-}
-
-func (b *Badger) AddRolePermission(id string, permissions data.PermissionIDs) error {
-	return b.editRole(id, func(role *data.Role) error {
-		for _, permissionID := range permissions.PermissionIDs {
-			if !slices.Contains(role.PermissionIDs, permissionID) {
-				role.PermissionIDs = append(role.PermissionIDs, permissionID)
-			}
-		}
-
-		return nil
-	})
-}
-
-func (b *Badger) DeleteRolePermission(id string, permissions data.PermissionIDs) error {
-	return b.editRole(id, func(role *data.Role) error {
-		role.PermissionIDs = slices.DeleteFunc(role.PermissionIDs, func(permissionsID string) bool {
-			return slices.Contains(permissions.PermissionIDs, permissionsID)
-		})
-
-		return nil
-	})
-}
-
-func (b *Badger) AddRoleRole(id string, roleIDs data.RoleIDs) error {
-	return b.editRole(id, func(role *data.Role) error {
-		for _, roleID := range roleIDs.RoleIDs {
-			if !slices.Contains(role.RoleIDs, roleID) {
-				role.RoleIDs = append(role.RoleIDs, roleID)
-			}
-		}
-
-		return nil
-	})
-}
-
-func (b *Badger) DeleteRoleRole(id string, roleIDs data.RoleIDs) error {
-	return b.editRole(id, func(role *data.Role) error {
-		role.RoleIDs = slices.DeleteFunc(role.RoleIDs, func(roleID string) bool {
-			return slices.Contains(roleIDs.RoleIDs, roleID)
-		})
-
-		return nil
-	})
 }
 
 func (b *Badger) ExtendRole(addRoles bool, addPermissions bool, addTotalUsers bool, role *data.Role) (data.RoleExtended, error) {

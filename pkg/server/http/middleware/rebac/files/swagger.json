@@ -7,6 +7,101 @@
     },
     "basePath": "/",
     "paths": {
+        "/check": {
+            "post": {
+                "tags": [
+                    "check"
+                ],
+                "summary": "Post check",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User alias",
+                        "name": "X-User",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Check",
+                        "name": "check",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/data.CheckRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/data.CheckResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    }
+                }
+            }
+        },
+        "/info": {
+            "get": {
+                "tags": [
+                    "info"
+                ],
+                "summary": "Get current user's info",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User alias",
+                        "name": "X-User",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "add role datas",
+                        "name": "datas",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/data.Response-data_UserInfo"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/backup": {
             "get": {
                 "tags": [
@@ -83,8 +178,8 @@
                     {
                         "type": "string",
                         "description": "User alias",
-                        "name": "X-User",
-                        "in": "header",
+                        "name": "alias",
+                        "in": "query",
                         "required": true
                     },
                     {
@@ -866,19 +961,22 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "add permissions",
+                        "default": true,
+                        "description": "add permissions default(true)",
                         "name": "add_permissions",
                         "in": "query"
                     },
                     {
                         "type": "boolean",
-                        "description": "add roles",
+                        "default": true,
+                        "description": "add roles default(true)",
                         "name": "add_roles",
                         "in": "query"
                     },
                     {
                         "type": "boolean",
-                        "description": "add total users",
+                        "default": true,
+                        "description": "add total users default(true)",
                         "name": "add_total_users",
                         "in": "query"
                     },
@@ -971,19 +1069,22 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "add permissions",
+                        "default": true,
+                        "description": "add permissions default(true)",
                         "name": "add_permissions",
                         "in": "query"
                     },
                     {
                         "type": "boolean",
-                        "description": "add roles",
+                        "default": true,
+                        "description": "add roles default(true)",
                         "name": "add_roles",
                         "in": "query"
                     },
                     {
                         "type": "boolean",
-                        "description": "add total users",
+                        "default": true,
+                        "description": "add total users default(true)",
                         "name": "add_total_users",
                         "in": "query"
                     }
@@ -1125,211 +1226,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/data.Role"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseMessage"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/roles/{id}/permissions": {
-            "post": {
-                "tags": [
-                    "roles"
-                ],
-                "summary": "Add role permission",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "role id",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Permission",
-                        "name": "permission",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/data.PermissionIDs"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseMessage"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "tags": [
-                    "roles"
-                ],
-                "summary": "Delete role permission",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "role id",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Permission",
-                        "name": "permission",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/data.PermissionIDs"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseMessage"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/roles/{id}/roles": {
-            "post": {
-                "tags": [
-                    "roles"
-                ],
-                "summary": "Add role to role",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "role id",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Role",
-                        "name": "role",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/data.RoleIDs"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseMessage"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "tags": [
-                    "roles"
-                ],
-                "summary": "Delete role from role",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "role id",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Role",
-                        "name": "role",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/data.RoleIDs"
+                            "$ref": "#/definitions/data.RolePatch"
                         }
                     }
                 ],
@@ -1422,7 +1319,8 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "add roles",
+                        "default": true,
+                        "description": "add roles default(true)",
                         "name": "add_roles",
                         "in": "query"
                     },
@@ -1527,7 +1425,8 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "add roles",
+                        "default": true,
+                        "description": "add roles default(true)",
                         "name": "add_roles",
                         "in": "query"
                     },
@@ -1548,7 +1447,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/data.UserExtended"
+                            "$ref": "#/definitions/data.Response-data_UserExtended"
                         }
                     },
                     "400": {
@@ -1681,109 +1580,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/data.User"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseMessage"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/users/{id}/roles": {
-            "post": {
-                "tags": [
-                    "users"
-                ],
-                "summary": "Add user role",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "user id",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Role",
-                        "name": "role",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/data.RoleIDs"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseMessage"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseError"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "tags": [
-                    "users"
-                ],
-                "summary": "Delete user role",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "user id",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Role",
-                        "name": "role",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/data.RoleIDs"
+                            "$ref": "#/definitions/data.UserPatch"
                         }
                     }
                 ],
@@ -1842,6 +1639,17 @@
                 }
             }
         },
+        "data.IDName": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "data.LMap": {
             "type": "object",
             "properties": {
@@ -1897,17 +1705,6 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/data.Resource"
-                    }
-                }
-            }
-        },
-        "data.PermissionIDs": {
-            "type": "object",
-            "properties": {
-                "permission_ids": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
                     }
                 }
             }
@@ -2067,6 +1864,20 @@
                 }
             }
         },
+        "data.Response-data_UserExtended": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
+                "meta": {
+                    "$ref": "#/definitions/data.Meta"
+                },
+                "payload": {
+                    "$ref": "#/definitions/data.UserExtended"
+                }
+            }
+        },
         "data.Response-data_UserInfo": {
             "type": "object",
             "properties": {
@@ -2194,9 +2005,25 @@
                 }
             }
         },
-        "data.RoleIDs": {
+        "data.RolePatch": {
             "type": "object",
             "properties": {
+                "data": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "permission_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "role_ids": {
                     "type": "array",
                     "items": {
@@ -2258,7 +2085,7 @@
                 "permissions": {
                     "type": "array",
                     "items": {
-                        "type": "string"
+                        "$ref": "#/definitions/data.IDName"
                     }
                 },
                 "role_ids": {
@@ -2270,7 +2097,7 @@
                 "roles": {
                     "type": "array",
                     "items": {
-                        "type": "string"
+                        "$ref": "#/definitions/data.IDName"
                     }
                 },
                 "sync_role_ids": {
@@ -2299,6 +2126,33 @@
                     }
                 },
                 "roles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "data.UserPatch": {
+            "type": "object",
+            "properties": {
+                "alias": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "details": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "role_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "sync_role_ids": {
                     "type": "array",
                     "items": {
                         "type": "string"

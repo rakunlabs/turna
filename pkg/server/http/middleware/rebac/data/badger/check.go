@@ -2,10 +2,10 @@ package badger
 
 import (
 	"errors"
-	"path"
 	"slices"
 	"strings"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
 	"github.com/timshannon/badgerhold/v4"
 )
@@ -99,7 +99,7 @@ func checkMethod(methods []string, method string) bool {
 }
 
 func checkPath(pattern, pathRequest string) bool {
-	v, _ := path.Match(pattern, pathRequest)
+	v, _ := doublestar.Match(pattern, pathRequest)
 
 	return v
 }

@@ -32,8 +32,6 @@ func (m *Rebac) MuxSet(prefix string) *chi.Mux {
 	mux.Patch(prefix+"/v1/users/{id}", m.PatchUser)
 	mux.Put(prefix+"/v1/users/{id}", m.PutUser)
 	mux.Delete(prefix+"/v1/users/{id}", m.DeleteUser)
-	mux.Post(prefix+"/v1/users/{id}/roles", m.AddUserRole)
-	mux.Delete(prefix+"/v1/users/{id}/roles", m.DeleteUserRole)
 
 	mux.Get(prefix+"/v1/roles", m.GetRoles)
 	mux.Post(prefix+"/v1/roles", m.CreateRole)
@@ -41,10 +39,6 @@ func (m *Rebac) MuxSet(prefix string) *chi.Mux {
 	mux.Patch(prefix+"/v1/roles/{id}", m.PatchRole)
 	mux.Put(prefix+"/v1/roles/{id}", m.PutRole)
 	mux.Delete(prefix+"/v1/roles/{id}", m.DeleteRole)
-	mux.Post(prefix+"/v1/roles/{id}/permissions", m.AddRolePermission)
-	mux.Delete(prefix+"/v1/roles/{id}/permissions", m.DeleteRolePermission)
-	mux.Post(prefix+"/v1/roles/{id}/roles", m.AddRoleRole)
-	mux.Delete(prefix+"/v1/roles/{id}/roles", m.DeleteRoleRole)
 
 	mux.Get(prefix+"/v1/permissions", m.GetPermissions)
 	mux.Post(prefix+"/v1/permissions", m.CreatePermission)
@@ -66,6 +60,9 @@ func (m *Rebac) MuxSet(prefix string) *chi.Mux {
 
 	mux.Post(prefix+"/v1/check", m.PostCheck)
 	mux.Get(prefix+"/v1/info", m.Info)
+
+	mux.Post(prefix+"/check", m.PostCheckUser)
+	mux.Get(prefix+"/info", m.Info)
 
 	mux.Get(prefix+"/v1/backup", m.Backup)
 	mux.Post(prefix+"/v1/restore", m.Restore)
@@ -136,7 +133,7 @@ func (m *Rebac) CreateUser(w http.ResponseWriter, r *http.Request) {
 // @Param email query string false "details->email"
 // @Param path query string false "request path"
 // @Param method query string false "request method"
-// @Param add_roles query bool false "add roles"
+// @Param add_roles query bool false "add roles default(true)"
 // @Param add_permissions query bool false "add permissions"
 // @Param add_datas query bool false "add datas"
 // @Param limit query int false "limit" default(20)
@@ -182,10 +179,10 @@ func (m *Rebac) GetUsers(w http.ResponseWriter, r *http.Request) {
 // @Summary Get user
 // @Tags users
 // @Param id path string true "user id"
-// @Param add_roles query bool false "add roles"
+// @Param add_roles query bool false "add roles default(true)"
 // @Param add_permissions query bool false "add permissions"
 // @Param add_datas query bool false "add datas"
-// @Success 200 {object} data.UserExtended
+// @Success 200 {object} data.Response[data.UserExtended]
 // @Failure 400 {object} data.ResponseError
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
@@ -220,7 +217,9 @@ func (m *Rebac) GetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, user)
+	httputil.JSON(w, http.StatusOK, data.Response[*data.UserExtended]{
+		Payload: user,
+	})
 }
 
 // @Summary Delete user
@@ -254,7 +253,7 @@ func (m *Rebac) DeleteUser(w http.ResponseWriter, r *http.Request) {
 // @Summary Patch user
 // @Tags users
 // @Param id path string true "user id"
-// @Param user body data.User true "User"
+// @Param user body data.UserPatch true "User"
 // @Success 200 {object} data.ResponseMessage
 // @Failure 400 {object} data.ResponseError
 // @Failure 404 {object} data.ResponseError
@@ -267,15 +266,13 @@ func (m *Rebac) PatchUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := data.User{}
-	if err := httputil.Decode(r, &user); err != nil {
+	userPatch := data.UserPatch{}
+	if err := httputil.Decode(r, &userPatch); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
-	user.ID = id
-
-	if err := m.db.PatchUser(user); err != nil {
+	if err := m.db.PatchUser(id, userPatch); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("User not found", err, http.StatusNotFound))
 			return
@@ -325,76 +322,6 @@ func (m *Rebac) PutUser(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("User's data replaced"))
 }
 
-// @Summary Add user role
-// @Tags users
-// @Param id path string true "user id"
-// @Param role body data.RoleIDs true "Role"
-// @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
-// @Router /v1/users/{id}/roles [POST]
-func (m *Rebac) AddUserRole(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
-		return
-	}
-
-	role := data.RoleIDs{}
-	if err := httputil.Decode(r, &role); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
-		return
-	}
-
-	if err := m.db.AddUserRole(id, role); err != nil {
-		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("User not found", err, http.StatusNotFound))
-			return
-		}
-
-		httputil.HandleError(w, data.NewError("Cannot add role to user", err, http.StatusInternalServerError))
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Role added to user"))
-}
-
-// @Summary Delete user role
-// @Tags users
-// @Param id path string true "user id"
-// @Param role body data.RoleIDs true "Role"
-// @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
-// @Router /v1/users/{id}/roles [DELETE]
-func (m *Rebac) DeleteUserRole(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
-		return
-	}
-
-	role := data.RoleIDs{}
-	if err := httputil.Decode(r, &role); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
-		return
-	}
-
-	if err := m.db.DeleteUserRole(id, role); err != nil {
-		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("User not found", err, http.StatusNotFound))
-			return
-		}
-
-		httputil.HandleError(w, data.NewError("Cannot add role to user", err, http.StatusInternalServerError))
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Role deleted from user"))
-}
-
 // @Summary Get roles
 // @Tags roles
 // @Param name query string false "role name"
@@ -403,9 +330,9 @@ func (m *Rebac) DeleteUserRole(w http.ResponseWriter, r *http.Request) {
 // @Param role_ids query []string false "role ids" collectionFormat(multi)
 // @Param method query string false "request method"
 // @Param path query string false "request path"
-// @Param add_permissions query bool false "add permissions"
-// @Param add_roles query bool false "add roles"
-// @Param add_total_users query bool false "add total users"
+// @Param add_permissions query bool false "add permissions default(true)"
+// @Param add_roles query bool false "add roles default(true)"
+// @Param add_total_users query bool false "add total users default(true)"
 // @Param limit query int false "limit" default(20)
 // @Param offset query int false "offset"
 // @Success 200 {object} data.Response[[]data.RoleExtended]
@@ -487,9 +414,9 @@ func (m *Rebac) CreateRole(w http.ResponseWriter, r *http.Request) {
 // @Summary Get role
 // @Tags roles
 // @Param id path string true "role ID"
-// @Param add_permissions query bool false "add permissions"
-// @Param add_roles query bool false "add roles"
-// @Param add_total_users query bool false "add total users"
+// @Param add_permissions query bool false "add permissions default(true)"
+// @Param add_roles query bool false "add roles default(true)"
+// @Param add_total_users query bool false "add total users default(true)"
 // @Success 200 {object} data.Response[data.RoleExtended]
 // @Failure 400 {object} data.ResponseError
 // @Failure 404 {object} data.ResponseError
@@ -529,7 +456,7 @@ func (m *Rebac) GetRole(w http.ResponseWriter, r *http.Request) {
 // @Summary Patch role
 // @Tags roles
 // @Param id path string true "role ID"
-// @Param role body data.Role true "Role"
+// @Param role body data.RolePatch true "Role"
 // @Success 200 {object} data.ResponseMessage
 // @Failure 400 {object} data.ResponseError
 // @Failure 404 {object} data.ResponseError
@@ -542,15 +469,13 @@ func (m *Rebac) PatchRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	role := data.Role{}
-	if err := httputil.Decode(r, &role); err != nil {
+	rolePatch := data.RolePatch{}
+	if err := httputil.Decode(r, &rolePatch); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
-	role.ID = id
-
-	if err := m.db.PatchRole(role); err != nil {
+	if err := m.db.PatchRole(id, rolePatch); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("Role not found", err, http.StatusNotFound))
 			return
@@ -630,146 +555,6 @@ func (m *Rebac) DeleteRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Role deleted"))
-}
-
-// @Summary Add role permission
-// @Tags roles
-// @Param id path string true "role id"
-// @Param permission body data.PermissionIDs true "Permission"
-// @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
-// @Router /v1/roles/{id}/permissions [POST]
-func (m *Rebac) AddRolePermission(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
-		return
-	}
-
-	permission := data.PermissionIDs{}
-	if err := httputil.Decode(r, &permission); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
-		return
-	}
-
-	if err := m.db.AddRolePermission(id, permission); err != nil {
-		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("Role not found", err, http.StatusNotFound))
-			return
-		}
-
-		httputil.HandleError(w, data.NewError("Cannot add permission to role", err, http.StatusInternalServerError))
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Permission added to role"))
-}
-
-// @Summary Delete role permission
-// @Tags roles
-// @Param id path string true "role id"
-// @Param permission body data.PermissionIDs true "Permission"
-// @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
-// @Router /v1/roles/{id}/permissions [DELETE]
-func (m *Rebac) DeleteRolePermission(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
-		return
-	}
-
-	permission := data.PermissionIDs{}
-	if err := httputil.Decode(r, &permission); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
-		return
-	}
-
-	if err := m.db.DeleteRolePermission(id, permission); err != nil {
-		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("Role not found", err, http.StatusNotFound))
-			return
-		}
-
-		httputil.HandleError(w, data.NewError("Cannot delete permission from role", err, http.StatusInternalServerError))
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Permission deleted from role"))
-}
-
-// @Summary Add role to role
-// @Tags roles
-// @Param id path string true "role id"
-// @Param role body data.RoleIDs true "Role"
-// @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
-// @Router /v1/roles/{id}/roles [POST]
-func (m *Rebac) AddRoleRole(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
-		return
-	}
-
-	role := data.RoleIDs{}
-	if err := httputil.Decode(r, &role); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
-		return
-	}
-
-	if err := m.db.AddRoleRole(id, role); err != nil {
-		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("Role not found", err, http.StatusNotFound))
-			return
-		}
-
-		httputil.HandleError(w, data.NewError("Cannot add role to role", err, http.StatusInternalServerError))
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Role added to role"))
-}
-
-// @Summary Delete role from role
-// @Tags roles
-// @Param id path string true "role id"
-// @Param role body data.RoleIDs true "Role"
-// @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
-// @Router /v1/roles/{id}/roles [DELETE]
-func (m *Rebac) DeleteRoleRole(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
-		return
-	}
-
-	role := data.RoleIDs{}
-	if err := httputil.Decode(r, &role); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
-		return
-	}
-
-	if err := m.db.DeleteRoleRole(id, role); err != nil {
-		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("Role not found", err, http.StatusNotFound))
-			return
-		}
-
-		httputil.HandleError(w, data.NewError("Cannot delete role from role", err, http.StatusInternalServerError))
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Role deleted from role"))
 }
 
 // @Summary Get permissions
@@ -999,6 +784,40 @@ func (m *Rebac) PostCheck(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, resp)
 }
 
+// @Summary Post check
+// @Tags check
+// @Param X-User header string true "User alias"
+// @Param check body data.CheckRequest true "Check"
+// @Success 200 {object} data.CheckResponse
+// @Failure 400 {object} data.ResponseError
+// @Failure 500 {object} data.ResponseError
+// @Router /check [POST]
+func (m *Rebac) PostCheckUser(w http.ResponseWriter, r *http.Request) {
+	user := r.Header.Get("X-User")
+	if user == "" {
+		httputil.HandleError(w, data.NewError("X-User header is required", nil, http.StatusBadRequest))
+		return
+	}
+
+	body := data.CheckRequestUser{}
+	if err := httputil.Decode(r, &body); err != nil {
+		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		return
+	}
+
+	resp, err := m.db.Check(data.CheckRequest{
+		Alias:  user,
+		Path:   body.Path,
+		Method: body.Method,
+	})
+	if err != nil {
+		httputil.HandleError(w, data.NewError("Cannot check", err, http.StatusInternalServerError))
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, resp)
+}
+
 // @Summary Create LDAP Map
 // @Tags ldap
 // @Param map body data.LMap true "Map"
@@ -1149,7 +968,7 @@ func (m *Rebac) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
 
 // @Summary Get current user's info
 // @Tags info
-// @Param X-User header string true "User alias"
+// @Param alias query string true "User alias"
 // @Param datas query bool false "add role datas"
 // @Success 200 {object} data.Response[data.UserInfo]
 // @Failure 400 {object} data.ResponseError
@@ -1157,14 +976,16 @@ func (m *Rebac) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/info [GET]
 func (m *Rebac) Info(w http.ResponseWriter, r *http.Request) {
-	xUser := r.Header.Get("X-User")
+	alias := r.URL.Query().Get("alias")
 
-	if xUser == "" {
-		httputil.HandleError(w, data.NewError("X-User header is required", nil, http.StatusBadRequest))
+	if alias == "" {
+		httputil.HandleError(w, data.NewError("Alias is required", nil, http.StatusBadRequest))
 		return
 	}
 
-	user, err := m.db.GetUser(data.GetUserRequest{Alias: xUser, AddRoles: true, AddPermissions: true, AddDatas: true})
+	getData, _ := strconv.ParseBool(r.URL.Query().Get("datas"))
+
+	user, err := m.db.GetUser(data.GetUserRequest{Alias: alias, AddRoles: true, AddPermissions: true, AddDatas: getData})
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("User not found", err, http.StatusNotFound))
@@ -1175,17 +996,71 @@ func (m *Rebac) Info(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var datas []interface{}
+	roles := make([]string, 0, len(user.Roles))
+	for _, role := range user.Roles {
+		roles = append(roles, role.Name)
+	}
 
-	if v, _ := strconv.ParseBool(r.URL.Query().Get("datas")); v {
-		datas = user.Datas
+	permissions := make([]string, 0, len(user.Permissions))
+	for _, permission := range user.Permissions {
+		permissions = append(permissions, permission.Name)
 	}
 
 	userInfo := data.UserInfo{
 		Details:     user.Details,
-		Roles:       user.Roles,
-		Permissions: user.Permissions,
-		Datas:       datas,
+		Roles:       roles,
+		Permissions: permissions,
+		Datas:       user.Datas,
+	}
+
+	httputil.JSON(w, http.StatusOK, data.Response[data.UserInfo]{Payload: userInfo})
+}
+
+// @Summary Get current user's info
+// @Tags info
+// @Param X-User header string true "User alias"
+// @Param datas query bool false "add role datas"
+// @Success 200 {object} data.Response[data.UserInfo]
+// @Failure 400 {object} data.ResponseError
+// @Failure 404 {object} data.ResponseError
+// @Failure 500 {object} data.ResponseError
+// @Router /info [GET]
+func (m *Rebac) InfoUser(w http.ResponseWriter, r *http.Request) {
+	xUser := r.Header.Get("X-User")
+
+	if xUser == "" {
+		httputil.HandleError(w, data.NewError("X-User header is required", nil, http.StatusBadRequest))
+		return
+	}
+
+	getData, _ := strconv.ParseBool(r.URL.Query().Get("datas"))
+
+	user, err := m.db.GetUser(data.GetUserRequest{Alias: xUser, AddRoles: true, AddPermissions: true, AddDatas: getData})
+	if err != nil {
+		if errors.Is(err, data.ErrNotFound) {
+			httputil.HandleError(w, data.NewError("User not found", err, http.StatusNotFound))
+			return
+		}
+
+		httputil.HandleError(w, data.NewError("Cannot get user", err, http.StatusInternalServerError))
+		return
+	}
+
+	roles := make([]string, 0, len(user.Roles))
+	for _, role := range user.Roles {
+		roles = append(roles, role.Name)
+	}
+
+	permissions := make([]string, 0, len(user.Permissions))
+	for _, permission := range user.Permissions {
+		permissions = append(permissions, permission.Name)
+	}
+
+	userInfo := data.UserInfo{
+		Details:     user.Details,
+		Roles:       roles,
+		Permissions: permissions,
+		Datas:       user.Datas,
 	}
 
 	httputil.JSON(w, http.StatusOK, data.Response[data.UserInfo]{Payload: userInfo})

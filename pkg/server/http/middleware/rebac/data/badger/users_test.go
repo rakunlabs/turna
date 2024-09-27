@@ -197,11 +197,12 @@ func TestBadgerPatchUser(t *testing.T) {
 		t.Fatalf("failed to get users: %v", err)
 	}
 
-	user.Alias = []string{"test2"}
-	user.ID = res.Payload[0].ID
-	user.RoleIDs = []string{"role-2"}
+	userPath := data.UserPatch{
+		Alias:   &[]string{"test2"},
+		RoleIDs: &[]string{},
+	}
 
-	if err := db.PatchUser(user); err != nil {
+	if err := db.PatchUser(res.Payload[0].ID, userPath); err != nil {
 		t.Fatalf("failed to update user: %v", err)
 	}
 
@@ -222,7 +223,7 @@ func TestBadgerPatchUser(t *testing.T) {
 		t.Fatalf("expected alias test2, got %v", res.Payload[0].Alias)
 	}
 
-	if slices.Compare(res.Payload[0].RoleIDs, []string{"role-2"}) != 0 {
+	if slices.Compare(res.Payload[0].RoleIDs, []string{}) != 0 {
 		t.Fatalf("expected role-1, got %v", res.Payload[0].RoleIDs)
 	}
 }

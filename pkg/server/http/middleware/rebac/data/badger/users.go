@@ -3,7 +3,6 @@ package badger
 import (
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
@@ -201,36 +200,22 @@ func (b *Badger) editUser(id string, fn func(*data.User)) error {
 	return nil
 }
 
-func (b *Badger) AddUserRole(id string, roles data.RoleIDs) error {
-	return b.editUser(id, func(user *data.User) {
-		for _, roleID := range roles.RoleIDs {
-			if !slices.Contains(user.RoleIDs, roleID) {
-				user.RoleIDs = append(user.RoleIDs, roleID)
-			}
-		}
-	})
-}
-
-func (b *Badger) DeleteUserRole(id string, roles data.RoleIDs) error {
-	return b.editUser(id, func(user *data.User) {
-		user.RoleIDs = slices.DeleteFunc(user.RoleIDs, func(roleID string) bool {
-			return slices.Contains(roles.RoleIDs, roleID)
-		})
-	})
-}
-
-func (b *Badger) PatchUser(user data.User) error {
-	return b.editUser(user.ID, func(foundUser *data.User) {
-		if len(user.Alias) > 0 {
-			foundUser.Alias = user.Alias
+func (b *Badger) PatchUser(id string, userPatch data.UserPatch) error {
+	return b.editUser(id, func(foundUser *data.User) {
+		if userPatch.Alias != nil {
+			foundUser.Alias = *userPatch.Alias
 		}
 
-		if len(user.RoleIDs) > 0 {
-			foundUser.RoleIDs = user.RoleIDs
+		if userPatch.RoleIDs != nil {
+			foundUser.RoleIDs = *userPatch.RoleIDs
 		}
 
-		if len(user.Details) > 0 {
-			foundUser.Details = user.Details
+		if userPatch.Details != nil {
+			foundUser.Details = *userPatch.Details
+		}
+
+		if userPatch.SyncRoleIDs != nil {
+			foundUser.SyncRoleIDs = *userPatch.SyncRoleIDs
 		}
 	})
 }
@@ -277,13 +262,17 @@ func (b *Badger) extendUser(addRoles, addRolePermissions, addDatas bool, user *d
 		return data.UserExtended{}, err
 	}
 
-	var roles []string
-	var permissions []string
+	var roles []data.IDName
+	var permissions []data.IDName
 	var datas []interface{}
 
 	// get roles permissions
 	if err := b.db.ForEach(badgerhold.Where("ID").In(toInterfaceSlice(roleIDs)...), func(role *data.Role) error {
-		roles = append(roles, role.Name)
+		roles = append(roles, data.IDName{
+			ID:   role.ID,
+			Name: role.Name,
+		})
+
 		if addDatas {
 			if role.Data != nil {
 				datas = append(datas, role.Data)
@@ -298,7 +287,10 @@ func (b *Badger) extendUser(addRoles, addRolePermissions, addDatas bool, user *d
 					return err
 				}
 
-				permissions = append(permissions, permission.Name)
+				permissions = append(permissions, data.IDName{
+					ID:   permission.ID,
+					Name: permission.Name,
+				})
 			}
 		}
 
