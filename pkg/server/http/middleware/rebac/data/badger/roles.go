@@ -359,9 +359,13 @@ func (b *Badger) ExtendRole(addRoles bool, addPermissions bool, addTotalUsers bo
 
 	// get roles
 	if addRoles {
-		var roles []string
+		var roles []data.IDName
 		if err := b.db.ForEach(badgerhold.Where("ID").In(toInterfaceSlice(role.RoleIDs)...), func(role *data.Role) error {
-			roles = append(roles, role.Name)
+			roles = append(roles, data.IDName{
+				ID:   role.ID,
+				Name: role.Name,
+			})
+
 			return nil
 		}); err != nil {
 			return data.RoleExtended{}, err
@@ -372,9 +376,13 @@ func (b *Badger) ExtendRole(addRoles bool, addPermissions bool, addTotalUsers bo
 
 	// get permissions
 	if addPermissions {
-		var permissions []string
+		var permissions []data.IDName
 		if err := b.db.ForEach(badgerhold.Where("ID").In(toInterfaceSlice(role.PermissionIDs)...), func(permission *data.Permission) error {
-			permissions = append(permissions, permission.Name)
+			permissions = append(permissions, data.IDName{
+				ID:   permission.ID,
+				Name: permission.Name,
+			})
+
 			return nil
 		}); err != nil {
 			return data.RoleExtended{}, err

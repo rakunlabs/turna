@@ -45,8 +45,8 @@ type RolePatch struct {
 type RoleExtended struct {
 	*Role
 
-	Roles       []string `json:"roles,omitempty"`
-	Permissions []string `json:"permissions,omitempty"`
+	Roles       []IDName `json:"roles,omitempty"`
+	Permissions []IDName `json:"permissions,omitempty"`
 	TotalUsers  uint64   `json:"total_users"`
 }
 

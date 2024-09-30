@@ -1994,7 +1994,7 @@
                 "permissions": {
                     "type": "array",
                     "items": {
-                        "type": "string"
+                        "$ref": "#/definitions/data.IDName"
                     }
                 },
                 "role_ids": {
@@ -2006,7 +2006,7 @@
                 "roles": {
                     "type": "array",
                     "items": {
-                        "type": "string"
+                        "$ref": "#/definitions/data.IDName"
                     }
                 },
                 "total_users": {
