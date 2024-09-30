@@ -837,7 +837,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/data.Permission"
+                            "$ref": "#/definitions/data.PermissionPatch"
                         }
                     }
                 ],
@@ -1705,6 +1705,23 @@
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "resources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/data.Resource"
+                    }
+                }
+            }
+        },
+        "data.PermissionPatch": {
+            "type": "object",
+            "properties": {
+                "description": {
                     "type": "string"
                 },
                 "name": {

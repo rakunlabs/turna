@@ -19,6 +19,12 @@ type Permission struct {
 	Description string     `json:"description"`
 }
 
+type PermissionPatch struct {
+	Name        *string     `json:"name"`
+	Resources   *[]Resource `json:"resources"`
+	Description *string     `json:"description"`
+}
+
 type Resource struct {
 	Path    string   `json:"path"`
 	Methods []string `json:"methods"`
@@ -234,7 +240,7 @@ type Database interface {
 	CreatePermission(permission Permission) (string, error)
 	DeletePermission(id string) error
 	PutPermission(permission Permission) error
-	PatchPermission(permission Permission) error
+	PatchPermission(id string, permission PermissionPatch) error
 
 	GetRoles(req GetRoleRequest) (*Response[[]RoleExtended], error)
 	GetRole(req GetRoleRequest) (*RoleExtended, error)

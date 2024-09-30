@@ -657,7 +657,7 @@ func (m *Rebac) GetPermission(w http.ResponseWriter, r *http.Request) {
 // @Summary Patch permission
 // @Tags permissions
 // @Param id path string true "permission ID"
-// @Param permission body data.Permission true "Permission"
+// @Param permission body data.PermissionPatch true "Permission"
 // @Success 200 {object} data.ResponseMessage
 // @Failure 400 {object} data.ResponseError
 // @Failure 404 {object} data.ResponseError
@@ -670,15 +670,13 @@ func (m *Rebac) PatchPermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	permission := data.Permission{}
+	permission := data.PermissionPatch{}
 	if err := httputil.Decode(r, &permission); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
-	permission.ID = id
-
-	if err := m.db.PatchPermission(permission); err != nil {
+	if err := m.db.PatchPermission(id, permission); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("Permission not found", err, http.StatusNotFound))
 			return

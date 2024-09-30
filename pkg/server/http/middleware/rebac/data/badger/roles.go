@@ -154,7 +154,7 @@ func (b *Badger) CreateRole(role data.Role) (string, error) {
 
 func (b *Badger) PatchRole(id string, rolePatch data.RolePatch) error {
 	return b.editRole(id, func(foundRole *data.Role) error {
-		if rolePatch.Name != nil && *rolePatch.Name != "" {
+		if rolePatch.Name != nil && *rolePatch.Name != "" && *rolePatch.Name != foundRole.Name {
 			// check role with name already exists
 			if err := b.db.FindOne(&data.Role{}, badgerhold.Where("Name").Eq(*rolePatch.Name).Index("Name")); err != nil {
 				if !errors.Is(err, badgerhold.ErrNotFound) {
@@ -167,7 +167,7 @@ func (b *Badger) PatchRole(id string, rolePatch data.RolePatch) error {
 			foundRole.Name = *rolePatch.Name
 		}
 
-		if rolePatch.Description != nil && *rolePatch.Description != "" {
+		if rolePatch.Description != nil {
 			foundRole.Description = *rolePatch.Description
 		}
 

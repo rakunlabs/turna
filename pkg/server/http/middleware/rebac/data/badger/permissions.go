@@ -138,27 +138,27 @@ func (b *Badger) editPermission(id string, fn func(*data.Permission) error) erro
 	return nil
 }
 
-func (b *Badger) PatchPermission(patch data.Permission) error {
-	return b.editPermission(patch.ID, func(foundPermission *data.Permission) error {
-		if patch.Name != "" {
+func (b *Badger) PatchPermission(id string, patch data.PermissionPatch) error {
+	return b.editPermission(id, func(foundPermission *data.Permission) error {
+		if patch.Name != nil && *patch.Name != "" && *patch.Name != foundPermission.Name {
 			// Check if permission with the same name exists
 			if err := b.db.FindOne(&data.Permission{}, badgerhold.Where("Name").Eq(patch.Name).Index("Name")); err != nil {
 				if !errors.Is(err, badgerhold.ErrNotFound) {
 					return err
 				}
 			} else {
-				return fmt.Errorf("permission with name %s already exists; %w", patch.Name, data.ErrConflict)
+				return fmt.Errorf("permission with name %s already exists; %w", *patch.Name, data.ErrConflict)
 			}
 
-			foundPermission.Name = patch.Name
+			foundPermission.Name = *patch.Name
 		}
 
-		if patch.Description != "" {
-			foundPermission.Description = patch.Description
+		if patch.Description != nil {
+			foundPermission.Description = *patch.Description
 		}
 
-		if len(patch.Resources) > 0 {
-			foundPermission.Resources = patch.Resources
+		if patch.Resources != nil {
+			foundPermission.Resources = *patch.Resources
 		}
 
 		return nil
