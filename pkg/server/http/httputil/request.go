@@ -64,6 +64,15 @@ func QueryParam(r *http.Request, key string) string {
 	return r.URL.Query().Get(key)
 }
 
+func CommaQueryParam(v []string) []string {
+	var r []string
+	for _, s := range v {
+		r = append(r, strings.Split(s, ",")...)
+	}
+
+	return r
+}
+
 func OffsetLimit(r *http.Request) (offset, limit int64) {
 	offset, limit = 0, 20
 

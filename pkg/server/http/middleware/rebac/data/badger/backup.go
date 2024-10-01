@@ -5,6 +5,8 @@ import (
 	"log/slog"
 )
 
+var maxPendingWrites = 20
+
 func (b *Badger) Backup(w io.Writer, since uint64) error {
 	b.dbBackupLock.Lock()
 	defer b.dbBackupLock.Unlock()
@@ -23,7 +25,7 @@ func (b *Badger) Restore(r io.Reader) error {
 	b.dbBackupLock.Lock()
 	defer b.dbBackupLock.Unlock()
 
-	if err := b.db.Badger().Load(r, 10); err != nil {
+	if err := b.db.Badger().Load(r, maxPendingWrites); err != nil {
 		return err
 	}
 

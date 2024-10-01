@@ -150,7 +150,7 @@ func (m *Rebac) GetUsers(w http.ResponseWriter, r *http.Request) {
 	req.Alias = query.Get("alias")
 	req.ID = query.Get("id")
 
-	req.RoleIDs = query["role_ids"]
+	req.RoleIDs = httputil.CommaQueryParam(query["role_ids"])
 
 	req.UID = query.Get("uid")
 	req.Name = query.Get("name")
@@ -348,8 +348,8 @@ func (m *Rebac) GetRoles(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	req.ID = query.Get("id")
 	req.Name = query.Get("name")
-	req.PermissionIDs = query["permission_ids"]
-	req.RoleIDs = query["role_ids"]
+	req.PermissionIDs = httputil.CommaQueryParam(query["permission_ids"])
+	req.RoleIDs = httputil.CommaQueryParam(query["role_ids"])
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
 	req.Limit, req.Offset = getLimitOffset(query)
