@@ -7,12 +7,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-chi/chi/v5"
+	"github.com/spf13/cast"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
@@ -114,7 +116,7 @@ func isServiceAccount(r *http.Request) bool {
 
 // @Summary Create service account
 // @Tags service-accounts
-// @Param user body data.User true "Service Account"
+// @Param user body data.UserCreate true "Service Account"
 // @Success 200 {object} data.Response[data.ResponseCreate]
 // @Failure 400 {object} data.ResponseError
 // @Failure 409 {object} data.ResponseError
@@ -134,7 +136,7 @@ func (m *Rebac) CreateServiceAccount(w http.ResponseWriter, r *http.Request) {
 // @Param email query string false "details->email"
 // @Param path query string false "request path"
 // @Param method query string false "request method"
-// @Param disabled query bool false "disabled"
+// @Param is_active query bool false "is_active"
 // @Param add_roles query bool false "add roles default(true)"
 // @Param add_permissions query bool false "add permissions"
 // @Param add_datas query bool false "add datas"
@@ -157,7 +159,7 @@ func (m *Rebac) GetServiceAccounts(w http.ResponseWriter, r *http.Request) {
 // @Param email query string false "details->email"
 // @Param path query string false "request path"
 // @Param method query string false "request method"
-// @Param disabled query bool false "disabled"
+// @Param is_active query bool false "is_active"
 // @Success 200
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/service-accounts/export [GET]
@@ -220,22 +222,34 @@ func (m *Rebac) DeleteServiceAccount(w http.ResponseWriter, r *http.Request) {
 
 // @Summary Create user
 // @Tags users
-// @Param user body data.User true "User"
+// @Param user body data.UserCreate true "User"
 // @Success 200 {object} data.Response[data.ResponseCreate]
 // @Failure 400 {object} data.ResponseError
 // @Failure 409 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/users [POST]
 func (m *Rebac) CreateUser(w http.ResponseWriter, r *http.Request) {
-	user := data.User{}
+	user := data.UserCreate{}
 	if err := httputil.Decode(r, &user); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
 	user.ServiceAccount = isServiceAccount(r)
+	user.Disabled = !user.IsActive
 
-	id, err := m.db.CreateUser(user)
+	if user.ServiceAccount {
+		if user.Details == nil || user.Details["name"] == "" || user.Details["secret"] == "" {
+			httputil.HandleError(w, data.NewError("name and secret are required", nil, http.StatusBadRequest))
+			return
+		}
+
+		if !slices.Contains(user.Alias, cast.ToString(user.Details["name"])) {
+			user.Alias = append(user.Alias, cast.ToString(user.Details["name"]))
+		}
+	}
+
+	id, err := m.db.CreateUser(user.User)
 	if err != nil {
 		if errors.Is(err, data.ErrConflict) {
 			httputil.HandleError(w, data.NewError("User already exists", err, http.StatusConflict))
@@ -271,7 +285,7 @@ func (m *Rebac) CreateUser(w http.ResponseWriter, r *http.Request) {
 // @Param email query string false "details->email"
 // @Param path query string false "request path"
 // @Param method query string false "request method"
-// @Param disabled query bool false "disabled"
+// @Param is_active query bool false "is_active"
 // @Param add_roles query bool false "add roles default(true)"
 // @Param add_permissions query bool false "add permissions"
 // @Param add_datas query bool false "add datas"
@@ -299,7 +313,7 @@ func (m *Rebac) GetUsers(w http.ResponseWriter, r *http.Request) {
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
 
-	req.Disabled, _ = strconv.ParseBool(query.Get("disabled"))
+	req.Disabled, _ = strconv.ParseBool(query.Get("is_active"))
 
 	if addRoles, err := strconv.ParseBool(r.URL.Query().Get("add_roles")); err == nil {
 		req.AddRoles = addRoles
@@ -328,7 +342,7 @@ func (m *Rebac) GetUsers(w http.ResponseWriter, r *http.Request) {
 // @Param email query string false "details->email"
 // @Param path query string false "request path"
 // @Param method query string false "request method"
-// @Param disabled query bool false "disabled"
+// @Param is_active query bool false "is_active"
 // @Success 200
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/users/export [GET]
@@ -351,7 +365,7 @@ func (m *Rebac) ExportUsers(w http.ResponseWriter, r *http.Request) {
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
 
-	req.Disabled, _ = strconv.ParseBool(query.Get("disabled"))
+	req.Disabled, _ = strconv.ParseBool(query.Get("is_active"))
 
 	users, err := m.db.GetUsers(req)
 	if err != nil {
@@ -360,7 +374,7 @@ func (m *Rebac) ExportUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// download the result as CSV
-	headers := []string{"UID", "Name", "Email", "Roles", "Disabled"}
+	headers := []string{"UID", "Name", "Email", "Roles", "Is Active"}
 
 	userDatas := make([]map[string]interface{}, 0, len(users.Payload))
 	for _, user := range users.Payload {
@@ -374,11 +388,11 @@ func (m *Rebac) ExportUsers(w http.ResponseWriter, r *http.Request) {
 		}
 
 		userDatas = append(userDatas, map[string]interface{}{
-			"UID":      user.Details["uid"],
-			"Name":     user.Details["name"],
-			"Email":    user.Details["email"],
-			"Roles":    strings.Join(roles, ","),
-			"Disabled": user.Disabled,
+			"UID":       user.Details["uid"],
+			"Name":      user.Details["name"],
+			"Email":     user.Details["email"],
+			"Roles":     strings.Join(roles, ","),
+			"Is Active": !user.Disabled,
 		})
 	}
 
@@ -1384,7 +1398,7 @@ func (m *Rebac) Info(w http.ResponseWriter, r *http.Request) {
 		Roles:       roles,
 		Permissions: permissions,
 		Datas:       user.Datas,
-		Disabled:    user.Disabled,
+		IsActive:    !user.Disabled,
 	}
 
 	httputil.JSON(w, http.StatusOK, data.Response[data.UserInfo]{Payload: userInfo})
@@ -1435,7 +1449,7 @@ func (m *Rebac) InfoUser(w http.ResponseWriter, r *http.Request) {
 		Roles:       roles,
 		Permissions: permissions,
 		Datas:       user.Datas,
-		Disabled:    user.Disabled,
+		IsActive:    !user.Disabled,
 	}
 
 	httputil.JSON(w, http.StatusOK, data.Response[data.UserInfo]{Payload: userInfo})

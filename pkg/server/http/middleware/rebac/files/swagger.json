@@ -1427,8 +1427,8 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "disabled",
-                        "name": "disabled",
+                        "description": "is_active",
+                        "name": "is_active",
                         "in": "query"
                     },
                     {
@@ -1491,7 +1491,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/data.User"
+                            "$ref": "#/definitions/data.UserCreate"
                         }
                     }
                 ],
@@ -1584,8 +1584,8 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "disabled",
-                        "name": "disabled",
+                        "description": "is_active",
+                        "name": "is_active",
                         "in": "query"
                     }
                 ],
@@ -1866,8 +1866,8 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "disabled",
-                        "name": "disabled",
+                        "description": "is_active",
+                        "name": "is_active",
                         "in": "query"
                     },
                     {
@@ -1930,7 +1930,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/data.User"
+                            "$ref": "#/definitions/data.UserCreate"
                         }
                     }
                 ],
@@ -2023,8 +2023,8 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "disabled",
-                        "name": "disabled",
+                        "description": "is_active",
+                        "name": "is_active",
                         "in": "query"
                     }
                 ],
@@ -2705,11 +2705,44 @@
                     "type": "object",
                     "additionalProperties": true
                 },
-                "disabled": {
+                "id": {
+                    "type": "string"
+                },
+                "role_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "service_account": {
                     "type": "boolean"
+                },
+                "sync_role_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "data.UserCreate": {
+            "type": "object",
+            "properties": {
+                "alias": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "details": {
+                    "type": "object",
+                    "additionalProperties": true
                 },
                 "id": {
                     "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
                 },
                 "role_ids": {
                     "type": "array",
@@ -2745,11 +2778,11 @@
                     "type": "object",
                     "additionalProperties": true
                 },
-                "disabled": {
-                    "type": "boolean"
-                },
                 "id": {
                     "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
                 },
                 "permissions": {
                     "type": "array",
@@ -2791,7 +2824,7 @@
                     "type": "object",
                     "additionalProperties": true
                 },
-                "disabled": {
+                "is_active": {
                     "type": "boolean"
                 },
                 "permissions": {
@@ -2821,7 +2854,7 @@
                     "type": "object",
                     "additionalProperties": true
                 },
-                "disabled": {
+                "is_active": {
                     "type": "boolean"
                 },
                 "role_ids": {

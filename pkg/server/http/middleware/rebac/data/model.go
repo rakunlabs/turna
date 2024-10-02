@@ -76,8 +76,14 @@ type User struct {
 	RoleIDs        []string               `json:"role_ids"`
 	SyncRoleIDs    []string               `json:"sync_role_ids"`
 	Details        map[string]interface{} `json:"details"`
-	Disabled       bool                   `json:"disabled"`
+	Disabled       bool                   `json:"-"`
 	ServiceAccount bool                   `json:"service_account"`
+}
+
+type UserCreate struct {
+	User
+
+	IsActive bool `json:"is_active"`
 }
 
 type UserPatch struct {
@@ -85,12 +91,13 @@ type UserPatch struct {
 	RoleIDs     *[]string               `json:"role_ids"`
 	SyncRoleIDs *[]string               `json:"sync_role_ids"`
 	Details     *map[string]interface{} `json:"details"`
-	Disabled    *bool                   `json:"disabled"`
+	IsActive    *bool                   `json:"is_active"`
 }
 
 type UserExtended struct {
 	*User
 
+	IsActive    bool          `json:"is_active"`
 	Roles       []IDName      `json:"roles,omitempty"`
 	Permissions []IDName      `json:"permissions,omitempty"`
 	Datas       []interface{} `json:"datas,omitempty"`
@@ -106,7 +113,7 @@ type UserInfo struct {
 	Roles       []string               `json:"roles,omitempty"`
 	Permissions []string               `json:"permissions,omitempty"`
 	Datas       []interface{}          `json:"datas,omitempty"`
-	Disabled    bool                   `json:"disabled"`
+	IsActive    bool                   `json:"is_active"`
 }
 
 type LMap struct {

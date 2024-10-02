@@ -79,19 +79,18 @@ func (b *Badger) CreateLMap(lmap data.LMap) error {
 	return nil
 }
 
-func (b *Badger) CheckCreateLMap(names []data.LMapCheckCreate) {
+func (b *Badger) CheckCreateLMap(lmapChecks []data.LMapCheckCreate) {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	for _, name := range names {
-		var lmap data.LMap
-		if err := b.db.Get(name, &lmap); err != nil {
+	for _, lmapCheck := range lmapChecks {
+		if err := b.db.Get(lmapCheck.Name, &data.LMap{}); err != nil {
 			if errors.Is(err, badgerhold.ErrNotFound) {
 				// create role
 				role := data.Role{
 					ID:          ulid.Make().String(),
-					Name:        name.Name,
-					Description: name.Description,
+					Name:        lmapCheck.Name,
+					Description: lmapCheck.Description,
 				}
 
 				if err := b.db.Insert(role.ID, role); err != nil {
@@ -104,7 +103,7 @@ func (b *Badger) CheckCreateLMap(names []data.LMapCheckCreate) {
 
 				// create lmap
 				lmap := data.LMap{
-					Name:    name.Name,
+					Name:    lmapCheck.Name,
 					RoleIDs: []string{role.ID},
 				}
 
@@ -115,9 +114,9 @@ func (b *Badger) CheckCreateLMap(names []data.LMapCheckCreate) {
 						slog.Error("failed to create lmap", slog.String("error", err.Error()))
 					}
 				}
+			} else {
+				slog.Warn("failed to get lmap", slog.String("name", lmapCheck.Name), slog.String("error", err.Error()))
 			}
-		} else {
-			slog.Warn("failed to get lmap", slog.String("name", name.Name), slog.String("error", err.Error()))
 		}
 	}
 }

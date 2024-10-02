@@ -117,6 +117,8 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserEx
 			return nil, err
 		}
 
+		extended.IsActive = !user.Disabled
+
 		userExtended[i] = extended
 	}
 
@@ -210,6 +212,7 @@ func (b *Badger) GetUser(req data.GetUserRequest) (*data.UserExtended, error) {
 	}
 
 	extendedUser, err := b.extendUser(req.AddRoles, req.AddPermissions, req.AddDatas, &user)
+	extendedUser.IsActive = !user.Disabled
 
 	return &extendedUser, err
 }
@@ -287,8 +290,8 @@ func (b *Badger) PatchUser(id string, userPatch data.UserPatch) error {
 			foundUser.SyncRoleIDs = *userPatch.SyncRoleIDs
 		}
 
-		if userPatch.Disabled != nil {
-			foundUser.Disabled = *userPatch.Disabled
+		if userPatch.IsActive != nil {
+			foundUser.Disabled = !*userPatch.IsActive
 		}
 	})
 }
