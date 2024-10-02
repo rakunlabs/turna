@@ -3,6 +3,7 @@ package rebac
 import (
 	"context"
 	"net/http"
+	"sync"
 
 	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
@@ -18,6 +19,8 @@ type Rebac struct {
 	db        data.Database    `cfg:"-"`
 	swaggerFS http.HandlerFunc `cfg:"-"`
 	uiFS      http.HandlerFunc `cfg:"-"`
+
+	syncM sync.Mutex `cfg:"-"`
 }
 
 type Database struct {

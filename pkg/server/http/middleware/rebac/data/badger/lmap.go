@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
 )
@@ -76,6 +77,49 @@ func (b *Badger) CreateLMap(lmap data.LMap) error {
 	}
 
 	return nil
+}
+
+func (b *Badger) CheckCreateLMap(names []data.LMapCheckCreate) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
+	for _, name := range names {
+		var lmap data.LMap
+		if err := b.db.Get(name, &lmap); err != nil {
+			if errors.Is(err, badgerhold.ErrNotFound) {
+				// create role
+				role := data.Role{
+					ID:          ulid.Make().String(),
+					Name:        name.Name,
+					Description: name.Description,
+				}
+
+				if err := b.db.Insert(role.ID, role); err != nil {
+					if errors.Is(err, badgerhold.ErrKeyExists) {
+						slog.Warn("role already exists", slog.String("name", role.Name), slog.String("error", err.Error()))
+					} else {
+						slog.Error("failed to create role", slog.String("error", err.Error()))
+					}
+				}
+
+				// create lmap
+				lmap := data.LMap{
+					Name:    name.Name,
+					RoleIDs: []string{role.ID},
+				}
+
+				if err := b.db.Insert(lmap.Name, lmap); err != nil {
+					if errors.Is(err, badgerhold.ErrKeyExists) {
+						slog.Warn("lmap already exists", slog.String("name", lmap.Name), slog.String("error", err.Error()))
+					} else {
+						slog.Error("failed to create lmap", slog.String("error", err.Error()))
+					}
+				}
+			}
+		} else {
+			slog.Warn("failed to get lmap", slog.String("name", name.Name), slog.String("error", err.Error()))
+		}
+	}
 }
 
 func (b *Badger) PutLMap(lmap data.LMap) error {

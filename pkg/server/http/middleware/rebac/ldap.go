@@ -35,7 +35,12 @@ func (m *Rebac) LdapGetGroups(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, data.Response[[]ldap.LdapGroup]{Payload: groups})
+	httputil.JSON(w, http.StatusOK, data.Response[[]ldap.LdapGroup]{
+		Meta: &data.Meta{
+			TotalItemCount: uint64(len(groups)),
+		},
+		Payload: groups,
+	})
 }
 
 // LdapGetUsers returns user info from LDAP.
@@ -70,6 +75,9 @@ func (m *Rebac) LdapGetUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Rebac) LdapSync(force bool, uid string) error {
+	m.syncM.Lock()
+	defer m.syncM.Unlock()
+
 	slog.Info("syncing ldap starting")
 	defer slog.Info("syncing ldap done")
 
@@ -89,7 +97,13 @@ func (m *Rebac) LdapSync(force bool, uid string) error {
 		users[uid] = nil
 	}
 
+	lmapGroups := make([]data.LMapCheckCreate, 0, len(groups))
 	for _, group := range groups {
+		lmapGroups = append(lmapGroups, data.LMapCheckCreate{
+			Name:        group.Name,
+			Description: group.Description,
+		})
+
 		for _, member := range group.Members {
 			if uid != "" && member != uid {
 				continue
@@ -98,6 +112,9 @@ func (m *Rebac) LdapSync(force bool, uid string) error {
 			users[member] = append(users[member], group.Name)
 		}
 	}
+
+	// create role (group) if not exists
+	m.db.CheckCreateLMap(lmapGroups)
 
 	roleIDsCache := m.db.LMapRoleIDs()
 

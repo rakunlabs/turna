@@ -1,6 +1,8 @@
 package rebac
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -28,13 +30,23 @@ func (m *Rebac) MuxSet(prefix string) *chi.Mux {
 
 	mux.Get(prefix+"/v1/users", m.GetUsers)
 	mux.Post(prefix+"/v1/users", m.CreateUser)
+	mux.Get(prefix+"/v1/users/export", m.ExportUsers)
 	mux.Get(prefix+"/v1/users/{id}", m.GetUser)
 	mux.Patch(prefix+"/v1/users/{id}", m.PatchUser)
 	mux.Put(prefix+"/v1/users/{id}", m.PutUser)
 	mux.Delete(prefix+"/v1/users/{id}", m.DeleteUser)
 
+	mux.Get(prefix+"/v1/service-accounts", m.GetServiceAccounts)
+	mux.Post(prefix+"/v1/service-accounts", m.CreateServiceAccount)
+	mux.Get(prefix+"/v1/service-accounts/export", m.ExportServiceAccounts)
+	mux.Get(prefix+"/v1/service-accounts/{id}", m.GetServiceAccount)
+	mux.Patch(prefix+"/v1/service-accounts/{id}", m.PatchServiceAccount)
+	mux.Put(prefix+"/v1/service-accounts/{id}", m.PutServiceAccount)
+	mux.Delete(prefix+"/v1/service-accounts/{id}", m.DeleteServiceAccount)
+
 	mux.Get(prefix+"/v1/roles", m.GetRoles)
 	mux.Post(prefix+"/v1/roles", m.CreateRole)
+	mux.Get(prefix+"/v1/roles/export", m.ExportRoles)
 	mux.Get(prefix+"/v1/roles/{id}", m.GetRole)
 	mux.Patch(prefix+"/v1/roles/{id}", m.PatchRole)
 	mux.Put(prefix+"/v1/roles/{id}", m.PutRole)
@@ -42,6 +54,7 @@ func (m *Rebac) MuxSet(prefix string) *chi.Mux {
 
 	mux.Get(prefix+"/v1/permissions", m.GetPermissions)
 	mux.Post(prefix+"/v1/permissions", m.CreatePermission)
+	mux.Get(prefix+"/v1/permissions/export", m.ExportPermissions)
 	mux.Get(prefix+"/v1/permissions/{id}", m.GetPermission)
 	mux.Patch(prefix+"/v1/permissions/{id}", m.PatchPermission)
 	mux.Put(prefix+"/v1/permissions/{id}", m.PutPermission)
@@ -87,6 +100,124 @@ func (m *Rebac) UIInfo(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+func wrapServiceAccount(r *http.Request) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), "service_account", true))
+}
+
+func isServiceAccount(r *http.Request) bool {
+	if v, _ := r.Context().Value("service_account").(bool); v {
+		return true
+	}
+
+	return false
+}
+
+// @Summary Create service account
+// @Tags service-accounts
+// @Param user body data.User true "Service Account"
+// @Success 200 {object} data.Response[data.ResponseCreate]
+// @Failure 400 {object} data.ResponseError
+// @Failure 409 {object} data.ResponseError
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/service-accounts [POST]
+func (m *Rebac) CreateServiceAccount(w http.ResponseWriter, r *http.Request) {
+	m.CreateUser(w, wrapServiceAccount(r))
+}
+
+// @Summary Get service accounts
+// @Tags service-accounts
+// @Param alias query string false "service alias"
+// @Param id query string false "service id"
+// @Param role_ids query []string false "role ids" collectionFormat(multi)
+// @Param uid query string false "details->uid"
+// @Param name query string false "details->name"
+// @Param email query string false "details->email"
+// @Param path query string false "request path"
+// @Param method query string false "request method"
+// @Param disabled query bool false "disabled"
+// @Param add_roles query bool false "add roles default(true)"
+// @Param add_permissions query bool false "add permissions"
+// @Param add_datas query bool false "add datas"
+// @Param limit query int false "limit" default(20)
+// @Param offset query int false "offset"
+// @Success 200 {object} data.Response[[]data.UserExtended]
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/service-accounts [GET]
+func (m *Rebac) GetServiceAccounts(w http.ResponseWriter, r *http.Request) {
+	m.GetUsers(w, wrapServiceAccount(r))
+}
+
+// @Summary Export service accounts
+// @Tags service-accounts
+// @Param alias query string false "service alias"
+// @Param id query string false "service id"
+// @Param role_ids query []string false "role ids" collectionFormat(multi)
+// @Param uid query string false "details->uid"
+// @Param name query string false "details->name"
+// @Param email query string false "details->email"
+// @Param path query string false "request path"
+// @Param method query string false "request method"
+// @Param disabled query bool false "disabled"
+// @Success 200
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/service-accounts/export [GET]
+func (m *Rebac) ExportServiceAccounts(w http.ResponseWriter, r *http.Request) {
+	m.ExportUsers(w, wrapServiceAccount(r))
+}
+
+// @Summary Get service account
+// @Tags service-accounts
+// @Param id path string true "service id"
+// @Param add_roles query bool false "add roles default(true)"
+// @Param add_permissions query bool false "add permissions"
+// @Param add_datas query bool false "add datas"
+// @Success 200 {object} data.Response[data.UserExtended]
+// @Failure 400 {object} data.ResponseError
+// @Failure 404 {object} data.ResponseError
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/service-accounts/{id} [GET]
+func (m *Rebac) GetServiceAccount(w http.ResponseWriter, r *http.Request) {
+	m.GetUser(w, wrapServiceAccount(r))
+}
+
+// @Summary Patch service account
+// @Tags service-accounts
+// @Param id path string true "service id"
+// @Param user body data.UserPatch true "Service"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} data.ResponseError
+// @Failure 404 {object} data.ResponseError
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/service-accounts/{id} [PATCH]
+func (m *Rebac) PatchServiceAccount(w http.ResponseWriter, r *http.Request) {
+	m.PatchUser(w, wrapServiceAccount(r))
+}
+
+// @Summary Put service account
+// @Tags service-accounts
+// @Param id path string true "service id"
+// @Param user body data.User true "Service"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} data.ResponseError
+// @Failure 404 {object} data.ResponseError
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/service-accounts/{id} [PUT]
+func (m *Rebac) PutServiceAccount(w http.ResponseWriter, r *http.Request) {
+	m.PutUser(w, wrapServiceAccount(r))
+}
+
+// @Summary Delete service account
+// @Tags service-accounts
+// @Param id path string true "service id"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} data.ResponseError
+// @Failure 404 {object} data.ResponseError
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/service-accounts/{id} [DELETE]
+func (m *Rebac) DeleteServiceAccount(w http.ResponseWriter, r *http.Request) {
+	m.DeleteUser(w, wrapServiceAccount(r))
+}
+
 // @Summary Create user
 // @Tags users
 // @Param user body data.User true "User"
@@ -102,6 +233,8 @@ func (m *Rebac) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user.ServiceAccount = isServiceAccount(r)
+
 	id, err := m.db.CreateUser(user)
 	if err != nil {
 		if errors.Is(err, data.ErrConflict) {
@@ -113,9 +246,14 @@ func (m *Rebac) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	text := "User created"
+	if user.ServiceAccount {
+		text = "Service account created"
+	}
+
 	httputil.JSON(w, http.StatusOK, data.Response[data.ResponseCreate]{
 		Message: &data.Message{
-			Text: "User created",
+			Text: text,
 		},
 		Payload: data.ResponseCreate{
 			ID: id,
@@ -133,6 +271,7 @@ func (m *Rebac) CreateUser(w http.ResponseWriter, r *http.Request) {
 // @Param email query string false "details->email"
 // @Param path query string false "request path"
 // @Param method query string false "request method"
+// @Param disabled query bool false "disabled"
 // @Param add_roles query bool false "add roles default(true)"
 // @Param add_permissions query bool false "add permissions"
 // @Param add_datas query bool false "add datas"
@@ -143,7 +282,8 @@ func (m *Rebac) CreateUser(w http.ResponseWriter, r *http.Request) {
 // @Router /v1/users [GET]
 func (m *Rebac) GetUsers(w http.ResponseWriter, r *http.Request) {
 	req := data.GetUserRequest{
-		AddRoles: true,
+		AddRoles:       true,
+		ServiceAccount: isServiceAccount(r),
 	}
 
 	query := r.URL.Query()
@@ -158,6 +298,8 @@ func (m *Rebac) GetUsers(w http.ResponseWriter, r *http.Request) {
 
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
+
+	req.Disabled, _ = strconv.ParseBool(query.Get("disabled"))
 
 	if addRoles, err := strconv.ParseBool(r.URL.Query().Get("add_roles")); err == nil {
 		req.AddRoles = addRoles
@@ -176,6 +318,83 @@ func (m *Rebac) GetUsers(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, users)
 }
 
+// @Summary Export users
+// @Tags users
+// @Param alias query string false "user alias"
+// @Param id query string false "user id"
+// @Param role_ids query []string false "role ids" collectionFormat(multi)
+// @Param uid query string false "details->uid"
+// @Param name query string false "details->name"
+// @Param email query string false "details->email"
+// @Param path query string false "request path"
+// @Param method query string false "request method"
+// @Param disabled query bool false "disabled"
+// @Success 200
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/users/export [GET]
+func (m *Rebac) ExportUsers(w http.ResponseWriter, r *http.Request) {
+	req := data.GetUserRequest{
+		AddRoles:       true,
+		ServiceAccount: isServiceAccount(r),
+	}
+
+	query := r.URL.Query()
+	req.Alias = query.Get("alias")
+	req.ID = query.Get("id")
+
+	req.RoleIDs = httputil.CommaQueryParam(query["role_ids"])
+
+	req.UID = query.Get("uid")
+	req.Name = query.Get("name")
+	req.Email = query.Get("email")
+
+	req.Path = query.Get("path")
+	req.Method = query.Get("method")
+
+	req.Disabled, _ = strconv.ParseBool(query.Get("disabled"))
+
+	users, err := m.db.GetUsers(req)
+	if err != nil {
+		httputil.HandleError(w, data.NewError("Cannot get users", err, http.StatusInternalServerError))
+		return
+	}
+
+	// download the result as CSV
+	headers := []string{"UID", "Name", "Email", "Roles", "Disabled"}
+
+	userDatas := make([]map[string]interface{}, 0, len(users.Payload))
+	for _, user := range users.Payload {
+		if user.Details == nil {
+			user.Details = map[string]interface{}{}
+		}
+
+		roles := make([]string, 0, len(user.Roles))
+		for _, role := range user.Roles {
+			roles = append(roles, role.Name)
+		}
+
+		userDatas = append(userDatas, map[string]interface{}{
+			"UID":      user.Details["uid"],
+			"Name":     user.Details["name"],
+			"Email":    user.Details["email"],
+			"Roles":    strings.Join(roles, ","),
+			"Disabled": user.Disabled,
+		})
+	}
+
+	fileName := time.Now().Format("20060102T1504") + ".csv"
+	if req.ServiceAccount {
+		fileName = "service_" + fileName
+	} else {
+		fileName = "user_" + fileName
+	}
+
+	if err := httputil.NewExport(httputil.ExportTypeCSV).ExportHTTP(w, headers, userDatas, fileName); err != nil {
+		httputil.HandleError(w, data.NewError("Cannot export users", err, http.StatusInternalServerError))
+		return
+	}
+}
+
 // @Summary Get user
 // @Tags users
 // @Param id path string true "user id"
@@ -189,7 +408,8 @@ func (m *Rebac) GetUsers(w http.ResponseWriter, r *http.Request) {
 // @Router /v1/users/{id} [GET]
 func (m *Rebac) GetUser(w http.ResponseWriter, r *http.Request) {
 	req := data.GetUserRequest{
-		AddRoles: true,
+		AddRoles:       true,
+		ServiceAccount: isServiceAccount(r),
 	}
 
 	id := chi.URLParam(r, "id")
@@ -247,6 +467,11 @@ func (m *Rebac) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if isServiceAccount(r) {
+		httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Service account deleted"))
+		return
+	}
+
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("User deleted"))
 }
 
@@ -282,6 +507,11 @@ func (m *Rebac) PatchUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if isServiceAccount(r) {
+		httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Service account's data patched"))
+		return
+	}
+
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("User's data patched"))
 }
 
@@ -308,6 +538,7 @@ func (m *Rebac) PutUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user.ID = id
+	user.ServiceAccount = isServiceAccount(r)
 
 	if err := m.db.PutUser(user); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
@@ -316,6 +547,11 @@ func (m *Rebac) PutUser(w http.ResponseWriter, r *http.Request) {
 		}
 
 		httputil.HandleError(w, data.NewError("Cannot put user", err, http.StatusInternalServerError))
+		return
+	}
+
+	if user.ServiceAccount {
+		httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Service account's data replaced"))
 		return
 	}
 
@@ -373,6 +609,95 @@ func (m *Rebac) GetRoles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.JSON(w, http.StatusOK, roles)
+}
+
+// @Summary Export roles
+// @Tags roles
+// @Param name query string false "role name"
+// @Param id query string false "role id"
+// @Param permission_ids query []string false "role permission ids" collectionFormat(multi)
+// @Param role_ids query []string false "role ids" collectionFormat(multi)
+// @Param method query string false "request method"
+// @Param path query string false "request path"
+// @Success 200
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/roles/export [GET]
+func (m *Rebac) ExportRoles(w http.ResponseWriter, r *http.Request) {
+	req := data.GetRoleRequest{
+		AddPermissions: true,
+		AddRoles:       true,
+		AddTotalUsers:  true,
+	}
+
+	query := r.URL.Query()
+	req.ID = query.Get("id")
+	req.Name = query.Get("name")
+	req.PermissionIDs = httputil.CommaQueryParam(query["permission_ids"])
+	req.RoleIDs = httputil.CommaQueryParam(query["role_ids"])
+	req.Path = query.Get("path")
+	req.Method = query.Get("method")
+	req.Limit, req.Offset = getLimitOffset(query)
+
+	if addPermissions, err := strconv.ParseBool(r.URL.Query().Get("add_permissions")); err == nil {
+		req.AddPermissions = addPermissions
+	}
+
+	if addRoles, err := strconv.ParseBool(r.URL.Query().Get("add_roles")); err == nil {
+		req.AddRoles = addRoles
+	}
+
+	if addTotalUsers, err := strconv.ParseBool(r.URL.Query().Get("add_total_users")); err == nil {
+		req.AddTotalUsers = addTotalUsers
+	}
+
+	roles, err := m.db.GetRoles(req)
+	if err != nil {
+		httputil.HandleError(w, data.NewError("Cannot get roles", err, http.StatusInternalServerError))
+		return
+	}
+
+	// download the result as CSV
+	headers := []string{"Name", "Permissions", "Roles", "Description", "Total Users"}
+
+	roleDatas := make([]map[string]interface{}, 0, len(roles.Payload))
+	for _, role := range roles.Payload {
+		permissions := make([]string, 0, len(role.Permissions))
+		for _, permission := range role.Permissions {
+			permissions = append(permissions, permission.Name)
+		}
+
+		permissionByte, err := json.Marshal(permissions)
+		if err != nil {
+			httputil.HandleError(w, data.NewError("Cannot marshal permissions", err, http.StatusInternalServerError))
+			return
+		}
+
+		roles := make([]string, 0, len(role.Roles))
+		for _, r := range role.Roles {
+			roles = append(roles, r.Name)
+		}
+
+		rolesByte, err := json.Marshal(roles)
+		if err != nil {
+			httputil.HandleError(w, data.NewError("Cannot marshal roles", err, http.StatusInternalServerError))
+			return
+		}
+
+		roleDatas = append(roleDatas, map[string]interface{}{
+			"Name":        role.Name,
+			"Permissions": string(permissionByte),
+			"Roles":       string(rolesByte),
+			"Description": role.Description,
+			"Total Users": humanize.Comma(int64(role.TotalUsers)),
+		})
+	}
+
+	fileName := "roles_" + time.Now().Format("20060102T1504") + ".csv"
+
+	if err := httputil.NewExport(httputil.ExportTypeCSV).ExportHTTP(w, headers, roleDatas, fileName); err != nil {
+		httputil.HandleError(w, data.NewError("Cannot export roles", err, http.StatusInternalServerError))
+		return
+	}
 }
 
 // @Summary Create role
@@ -585,6 +910,56 @@ func (m *Rebac) GetPermissions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.JSON(w, http.StatusOK, permissions)
+}
+
+// @Summary Export permissions
+// @Tags permissions
+// @Param id query string false "permission id"
+// @Param name query string false "permission name"
+// @Param path query string false "request path"
+// @Param method query string false "request method"
+// @Success 200
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/permissions/export [GET]
+func (m *Rebac) ExportPermissions(w http.ResponseWriter, r *http.Request) {
+	var req data.GetPermissionRequest
+
+	query := r.URL.Query()
+	req.ID = query.Get("id")
+	req.Name = query.Get("name")
+	req.Path = query.Get("path")
+	req.Method = query.Get("method")
+
+	permissions, err := m.db.GetPermissions(req)
+	if err != nil {
+		httputil.HandleError(w, data.NewError("Cannot get permissions", err, http.StatusInternalServerError))
+		return
+	}
+
+	// download the result as CSV
+	headers := []string{"Name", "Path", "Method"}
+
+	permissionDatas := make([]map[string]interface{}, 0, len(permissions.Payload))
+	for _, permission := range permissions.Payload {
+		resourceByte, err := json.Marshal(permission.Resources)
+		if err != nil {
+			httputil.HandleError(w, data.NewError("Cannot marshal resources", err, http.StatusInternalServerError))
+			return
+		}
+
+		permissionDatas = append(permissionDatas, map[string]interface{}{
+			"Name":        permission.Name,
+			"Resources":   string(resourceByte),
+			"Description": permission.Description,
+		})
+	}
+
+	fileName := "permissions_" + time.Now().Format("20060102T1504") + ".csv"
+
+	if err := httputil.NewExport(httputil.ExportTypeCSV).ExportHTTP(w, headers, permissionDatas, fileName); err != nil {
+		httputil.HandleError(w, data.NewError("Cannot export permissions", err, http.StatusInternalServerError))
+		return
+	}
 }
 
 // @Summary Create permission
@@ -1009,6 +1384,7 @@ func (m *Rebac) Info(w http.ResponseWriter, r *http.Request) {
 		Roles:       roles,
 		Permissions: permissions,
 		Datas:       user.Datas,
+		Disabled:    user.Disabled,
 	}
 
 	httputil.JSON(w, http.StatusOK, data.Response[data.UserInfo]{Payload: userInfo})
@@ -1059,6 +1435,7 @@ func (m *Rebac) InfoUser(w http.ResponseWriter, r *http.Request) {
 		Roles:       roles,
 		Permissions: permissions,
 		Datas:       user.Datas,
+		Disabled:    user.Disabled,
 	}
 
 	httputil.JSON(w, http.StatusOK, data.Response[data.UserInfo]{Payload: userInfo})

@@ -87,6 +87,12 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserEx
 		}
 	}
 
+	if badgerHoldQuery.IsEmpty() {
+		badgerHoldQuery = badgerhold.Where("ServiceAccount").Eq(req.ServiceAccount).And("Disabled").Eq(req.Disabled)
+	} else {
+		badgerHoldQuery = badgerHoldQuery.And("ServiceAccount").Eq(req.ServiceAccount).And("Disabled").Eq(req.Disabled)
+	}
+
 	count, err := b.db.Count(data.User{}, badgerHoldQuery)
 	if err != nil {
 		return nil, err
@@ -190,9 +196,9 @@ func (b *Badger) GetUser(req data.GetUserRequest) (*data.UserExtended, error) {
 	badgerHoldQuery := &badgerhold.Query{}
 
 	if req.ID != "" {
-		badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID).Index("ID")
+		badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID).Index("ID").And("ServiceAccount").Eq(req.ServiceAccount)
 	} else if req.Alias != "" {
-		badgerHoldQuery = badgerhold.Where("Alias").Contains(req.Alias)
+		badgerHoldQuery = badgerhold.Where("Alias").Contains(req.Alias).And("ServiceAccount").Eq(req.ServiceAccount)
 	}
 
 	if err := b.db.FindOne(&user, badgerHoldQuery); err != nil {
@@ -280,6 +286,10 @@ func (b *Badger) PatchUser(id string, userPatch data.UserPatch) error {
 		if userPatch.SyncRoleIDs != nil {
 			foundUser.SyncRoleIDs = *userPatch.SyncRoleIDs
 		}
+
+		if userPatch.Disabled != nil {
+			foundUser.Disabled = *userPatch.Disabled
+		}
 	})
 }
 
@@ -342,7 +352,7 @@ func (b *Badger) extendUser(addRoles, addRolePermissions, addDatas bool, user *d
 	}
 
 	// get users roleIDs
-	roleIDs, err := b.getVirtualRoleIDs(user.RoleIDs)
+	roleIDs, err := b.getVirtualRoleIDs(slices.Concat(user.RoleIDs, user.SyncRoleIDs))
 	if err != nil {
 		return data.UserExtended{}, err
 	}

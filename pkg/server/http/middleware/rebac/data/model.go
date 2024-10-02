@@ -71,11 +71,13 @@ type Alias struct {
 
 // User is a struct that represents a user table in the database.
 type User struct {
-	ID          string                 `json:"id"            badgerhold:"unique"`
-	Alias       []string               `json:"alias"`
-	RoleIDs     []string               `json:"role_ids"`
-	SyncRoleIDs []string               `json:"sync_role_ids"`
-	Details     map[string]interface{} `json:"details"`
+	ID             string                 `json:"id"              badgerhold:"unique"`
+	Alias          []string               `json:"alias"`
+	RoleIDs        []string               `json:"role_ids"`
+	SyncRoleIDs    []string               `json:"sync_role_ids"`
+	Details        map[string]interface{} `json:"details"`
+	Disabled       bool                   `json:"disabled"`
+	ServiceAccount bool                   `json:"service_account"`
 }
 
 type UserPatch struct {
@@ -83,6 +85,7 @@ type UserPatch struct {
 	RoleIDs     *[]string               `json:"role_ids"`
 	SyncRoleIDs *[]string               `json:"sync_role_ids"`
 	Details     *map[string]interface{} `json:"details"`
+	Disabled    *bool                   `json:"disabled"`
 }
 
 type UserExtended struct {
@@ -103,6 +106,7 @@ type UserInfo struct {
 	Roles       []string               `json:"roles,omitempty"`
 	Permissions []string               `json:"permissions,omitempty"`
 	Datas       []interface{}          `json:"datas,omitempty"`
+	Disabled    bool                   `json:"disabled"`
 }
 
 type LMap struct {
@@ -110,12 +114,21 @@ type LMap struct {
 	RoleIDs []string `json:"role_ids"`
 }
 
+type LMapPatch struct {
+	RoleIDs *[]string `json:"role_ids"`
+}
+
+type LMapCheckCreate struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
 // //////////////////////////////////////////////////////////////////////
 
 type Response[T any] struct {
 	Message *Message `json:"message,omitempty"`
 	Meta    *Meta    `json:"meta,omitempty"`
-	Payload T        `json:"payload,omitempty"`
+	Payload T        `json:"payload"`
 }
 
 type ResponseMessage struct {
@@ -159,6 +172,9 @@ type GetUserRequest struct {
 
 	Path   string `json:"path"`
 	Method string `json:"method"`
+
+	ServiceAccount bool `json:"service_account"`
+	Disabled       bool `json:"disabled"`
 
 	Limit  int64 `json:"limit"`
 	Offset int64 `json:"offset"`
@@ -258,6 +274,7 @@ type Database interface {
 	DeleteLMap(name string) error
 
 	LMapRoleIDs() LMapRoleIDs
+	CheckCreateLMap(groups []LMapCheckCreate)
 
 	Backup(w io.Writer, since uint64) error
 	Restore(r io.Reader) error

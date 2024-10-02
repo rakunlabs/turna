@@ -46,8 +46,14 @@ func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 		b.SetCachedID(user.Alias, user.ID)
 	}
 
+	if user.Disabled {
+		return &data.CheckResponse{
+			Allowed: false,
+		}, nil
+	}
+
 	// get all roles of roles
-	roleIDs, err := b.getVirtualRoleIDs(user.RoleIDs)
+	roleIDs, err := b.getVirtualRoleIDs(slices.Concat(user.RoleIDs, user.SyncRoleIDs))
 	if err != nil {
 		return nil, err
 	}
