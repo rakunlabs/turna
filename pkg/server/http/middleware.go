@@ -23,6 +23,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/inject"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/log"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/login"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/print"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebaccheck"
@@ -121,6 +122,7 @@ type HTTPMiddleware struct {
 	ForwardMiddleware          *forward.Forward                      `cfg:"forward"`
 	GrpcUIMiddleware           *grpcui.GrpcUI                        `cfg:"grpcui"`
 	DNSPathMiddleware          *dnspath.DNSPath                      `cfg:"dns_path"`
+	Oauth2Middleware           *oauth2.Oauth2                        `cfg:"oauth2"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
@@ -224,6 +226,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{h.GrpcUIMiddleware.Middleware()}, nil
 	case h.DNSPathMiddleware != nil:
 		m, err := h.DNSPathMiddleware.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.Oauth2Middleware != nil:
+		m, err := h.Oauth2Middleware.Middleware()
 		return []MiddlewareFunc{m}, err
 	}
 

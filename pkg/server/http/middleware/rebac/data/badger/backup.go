@@ -5,7 +5,7 @@ import (
 	"log/slog"
 )
 
-var maxPendingWrites = 20
+var maxPendingWrites = 256
 
 func (b *Badger) Backup(w io.Writer, since uint64) error {
 	b.dbBackupLock.Lock()
