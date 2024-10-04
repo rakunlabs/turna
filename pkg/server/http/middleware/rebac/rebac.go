@@ -29,6 +29,8 @@ type Database struct {
 
 type Badger struct {
 	Path string `cfg:"path"`
+	// redirect to write request to write api
+	WriteAPI string `cfg:"write_api"`
 }
 
 func (m *Rebac) Middleware(ctx context.Context) (func(http.Handler) http.Handler, error) {

@@ -1,9 +1,11 @@
 package rebac
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -81,6 +83,7 @@ func (m *Rebac) MuxSet(prefix string) *chi.Mux {
 
 	mux.Get(prefix+"/v1/backup", m.Backup)
 	mux.Post(prefix+"/v1/restore", m.Restore)
+	mux.Get(prefix+"/v1/version", m.Version)
 
 	mux.Get(prefix+"/ui/info", m.UIInfo)
 	mux.Handle(prefix+"/swagger/*", m.swaggerFS)
@@ -1475,8 +1478,18 @@ func (m *Rebac) Backup(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", "attachment; filename=rebac_"+time.Now().Format("2006-01-02_15-04-05")+".db")
-	if err := m.db.Backup(w, since); err != nil {
+
+	backupWriter := new(bytes.Buffer)
+
+	backupVersion, err := m.db.Backup(backupWriter, since)
+	w.Header().Set("X-Backup-Version", strconv.FormatUint(backupVersion, 10))
+	if err != nil {
 		httputil.HandleError(w, data.NewError("Cannot backup", err, http.StatusInternalServerError))
+		return
+	}
+
+	if _, err := io.Copy(w, backupWriter); err != nil {
+		httputil.HandleError(w, data.NewError("Cannot write backup", err, http.StatusInternalServerError))
 		return
 	}
 }
@@ -1512,4 +1525,14 @@ func (m *Rebac) Restore(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Database restored"))
+}
+
+// @Summary Get version
+// @Tags backup
+// @Success 200 {object} data.Response[uint64]
+// @Router /v1/version [GET]
+func (m *Rebac) Version(w http.ResponseWriter, r *http.Request) {
+	httputil.JSON(w, http.StatusOK, data.Response[uint64]{
+		Payload: m.db.Version(),
+	})
 }

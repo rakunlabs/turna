@@ -2243,6 +2243,22 @@
                     }
                 }
             }
+        },
+        "/v1/version": {
+            "get": {
+                "tags": [
+                    "backup"
+                ],
+                "summary": "Get version",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/data.Response-uint64"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -2563,6 +2579,20 @@
                 },
                 "payload": {
                     "$ref": "#/definitions/ldap.LdapUser"
+                }
+            }
+        },
+        "data.Response-uint64": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
+                "meta": {
+                    "$ref": "#/definitions/data.Meta"
+                },
+                "payload": {
+                    "type": "integer"
                 }
             }
         },

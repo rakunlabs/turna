@@ -283,8 +283,9 @@ type Database interface {
 	LMapRoleIDs() LMapRoleIDs
 	CheckCreateLMap(groups []LMapCheckCreate)
 
-	Backup(w io.Writer, since uint64) error
+	Backup(w io.Writer, since uint64) (uint64, error)
 	Restore(r io.Reader) error
+	Version() uint64
 }
 
 func CompareSlices(a, b []string) bool {

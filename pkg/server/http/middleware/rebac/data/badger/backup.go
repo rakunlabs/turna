@@ -5,20 +5,20 @@ import (
 	"log/slog"
 )
 
-var maxPendingWrites = 20
+var maxPendingWrites = 256
 
-func (b *Badger) Backup(w io.Writer, since uint64) error {
-	b.dbBackupLock.Lock()
-	defer b.dbBackupLock.Unlock()
+func (b *Badger) Backup(w io.Writer, since uint64) (uint64, error) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
 
-	timestamp, err := b.db.Badger().Backup(w, since)
+	b.db.Badger().MaxVersion()
+
+	backupVersion, err := b.db.Badger().Backup(w, since)
 	if err != nil {
-		return err
+		return backupVersion, err
 	}
 
-	slog.Info("backup created", slog.Uint64("backup_time", timestamp))
-
-	return nil
+	return backupVersion, nil
 }
 
 func (b *Badger) Restore(r io.Reader) error {
@@ -32,4 +32,11 @@ func (b *Badger) Restore(r io.Reader) error {
 	slog.Info("restored database")
 
 	return nil
+}
+
+func (b *Badger) Version() uint64 {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
+	return b.db.Badger().MaxVersion()
 }
