@@ -1,4 +1,4 @@
-package rebac
+package iam
 
 import (
 	"bytes"
@@ -19,15 +19,15 @@ import (
 	"github.com/spf13/cast"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
 
-// @Title ReBAC API
+// @Title IAM API
 // @BasePath /
-// @description Authorization server with Relationship Based Access Control (ReBAC) model.
+// @description Identity and Access Management API
 //
 //go:generate swag init -pd -d ./ -g api.go --ot json -o ./files
-func (m *Rebac) MuxSet(prefix string) *chi.Mux {
+func (m *Iam) MuxSet(prefix string) *chi.Mux {
 	mux := chi.NewMux()
 
 	prefix = strings.TrimRight(prefix, "/")
@@ -99,7 +99,7 @@ func getLimitOffset(v url.Values) (limit, offset int64) {
 	return
 }
 
-func (m *Rebac) UIInfo(w http.ResponseWriter, _ *http.Request) {
+func (m *Iam) UIInfo(w http.ResponseWriter, _ *http.Request) {
 	httputil.JSON(w, http.StatusOK, map[string]interface{}{
 		"prefix_path": m.PrefixPath,
 	})
@@ -125,7 +125,7 @@ func isServiceAccount(r *http.Request) bool {
 // @Failure 409 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/service-accounts [POST]
-func (m *Rebac) CreateServiceAccount(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) CreateServiceAccount(w http.ResponseWriter, r *http.Request) {
 	m.CreateUser(w, wrapServiceAccount(r))
 }
 
@@ -148,7 +148,7 @@ func (m *Rebac) CreateServiceAccount(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} data.Response[[]data.UserExtended]
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/service-accounts [GET]
-func (m *Rebac) GetServiceAccounts(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) GetServiceAccounts(w http.ResponseWriter, r *http.Request) {
 	m.GetUsers(w, wrapServiceAccount(r))
 }
 
@@ -166,7 +166,7 @@ func (m *Rebac) GetServiceAccounts(w http.ResponseWriter, r *http.Request) {
 // @Success 200
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/service-accounts/export [GET]
-func (m *Rebac) ExportServiceAccounts(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) ExportServiceAccounts(w http.ResponseWriter, r *http.Request) {
 	m.ExportUsers(w, wrapServiceAccount(r))
 }
 
@@ -181,7 +181,7 @@ func (m *Rebac) ExportServiceAccounts(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/service-accounts/{id} [GET]
-func (m *Rebac) GetServiceAccount(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) GetServiceAccount(w http.ResponseWriter, r *http.Request) {
 	m.GetUser(w, wrapServiceAccount(r))
 }
 
@@ -194,7 +194,7 @@ func (m *Rebac) GetServiceAccount(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/service-accounts/{id} [PATCH]
-func (m *Rebac) PatchServiceAccount(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) PatchServiceAccount(w http.ResponseWriter, r *http.Request) {
 	m.PatchUser(w, wrapServiceAccount(r))
 }
 
@@ -207,7 +207,7 @@ func (m *Rebac) PatchServiceAccount(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/service-accounts/{id} [PUT]
-func (m *Rebac) PutServiceAccount(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) PutServiceAccount(w http.ResponseWriter, r *http.Request) {
 	m.PutUser(w, wrapServiceAccount(r))
 }
 
@@ -219,7 +219,7 @@ func (m *Rebac) PutServiceAccount(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/service-accounts/{id} [DELETE]
-func (m *Rebac) DeleteServiceAccount(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) DeleteServiceAccount(w http.ResponseWriter, r *http.Request) {
 	m.DeleteUser(w, wrapServiceAccount(r))
 }
 
@@ -231,7 +231,7 @@ func (m *Rebac) DeleteServiceAccount(w http.ResponseWriter, r *http.Request) {
 // @Failure 409 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/users [POST]
-func (m *Rebac) CreateUser(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 	user := data.UserCreate{}
 	if err := httputil.Decode(r, &user); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
@@ -297,7 +297,7 @@ func (m *Rebac) CreateUser(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} data.Response[[]data.UserExtended]
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/users [GET]
-func (m *Rebac) GetUsers(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) GetUsers(w http.ResponseWriter, r *http.Request) {
 	req := data.GetUserRequest{
 		AddRoles:       true,
 		ServiceAccount: isServiceAccount(r),
@@ -349,7 +349,7 @@ func (m *Rebac) GetUsers(w http.ResponseWriter, r *http.Request) {
 // @Success 200
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/users/export [GET]
-func (m *Rebac) ExportUsers(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
 	req := data.GetUserRequest{
 		AddRoles:       true,
 		ServiceAccount: isServiceAccount(r),
@@ -423,7 +423,7 @@ func (m *Rebac) ExportUsers(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/users/{id} [GET]
-func (m *Rebac) GetUser(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) GetUser(w http.ResponseWriter, r *http.Request) {
 	req := data.GetUserRequest{
 		AddRoles:       true,
 		ServiceAccount: isServiceAccount(r),
@@ -467,7 +467,7 @@ func (m *Rebac) GetUser(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/users/{id} [DELETE]
-func (m *Rebac) DeleteUser(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -501,7 +501,7 @@ func (m *Rebac) DeleteUser(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/users/{id} [PATCH]
-func (m *Rebac) PatchUser(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) PatchUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -541,7 +541,7 @@ func (m *Rebac) PatchUser(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/users/{id} [PUT]
-func (m *Rebac) PutUser(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) PutUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -591,7 +591,7 @@ func (m *Rebac) PutUser(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} data.Response[[]data.RoleExtended]
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/roles [GET]
-func (m *Rebac) GetRoles(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) GetRoles(w http.ResponseWriter, r *http.Request) {
 	req := data.GetRoleRequest{
 		AddPermissions: true,
 		AddRoles:       true,
@@ -639,7 +639,7 @@ func (m *Rebac) GetRoles(w http.ResponseWriter, r *http.Request) {
 // @Success 200
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/roles/export [GET]
-func (m *Rebac) ExportRoles(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 	req := data.GetRoleRequest{
 		AddPermissions: true,
 		AddRoles:       true,
@@ -725,7 +725,7 @@ func (m *Rebac) ExportRoles(w http.ResponseWriter, r *http.Request) {
 // @Failure 409 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/roles [POST]
-func (m *Rebac) CreateRole(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) CreateRole(w http.ResponseWriter, r *http.Request) {
 	role := data.Role{}
 	if err := httputil.Decode(r, &role); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
@@ -764,7 +764,7 @@ func (m *Rebac) CreateRole(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/roles/{id} [GET]
-func (m *Rebac) GetRole(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) GetRole(w http.ResponseWriter, r *http.Request) {
 	req := data.GetRoleRequest{
 		AddPermissions: true,
 		AddRoles:       true,
@@ -804,7 +804,7 @@ func (m *Rebac) GetRole(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/roles/{id} [PATCH]
-func (m *Rebac) PatchRole(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) PatchRole(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -843,7 +843,7 @@ func (m *Rebac) PatchRole(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/roles/{id} [PUT]
-func (m *Rebac) PutRole(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) PutRole(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -879,7 +879,7 @@ func (m *Rebac) PutRole(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/roles/{id} [DELETE]
-func (m *Rebac) DeleteRole(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) DeleteRole(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -910,7 +910,7 @@ func (m *Rebac) DeleteRole(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} data.Response[[]data.Permission]
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/permissions [GET]
-func (m *Rebac) GetPermissions(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) GetPermissions(w http.ResponseWriter, r *http.Request) {
 	var req data.GetPermissionRequest
 
 	query := r.URL.Query()
@@ -938,7 +938,7 @@ func (m *Rebac) GetPermissions(w http.ResponseWriter, r *http.Request) {
 // @Success 200
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/permissions/export [GET]
-func (m *Rebac) ExportPermissions(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) ExportPermissions(w http.ResponseWriter, r *http.Request) {
 	var req data.GetPermissionRequest
 
 	query := r.URL.Query()
@@ -987,7 +987,7 @@ func (m *Rebac) ExportPermissions(w http.ResponseWriter, r *http.Request) {
 // @Failure 409 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/permissions [POST]
-func (m *Rebac) CreatePermission(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) CreatePermission(w http.ResponseWriter, r *http.Request) {
 	permission := data.Permission{}
 	if err := httputil.Decode(r, &permission); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
@@ -1023,7 +1023,7 @@ func (m *Rebac) CreatePermission(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/permissions/{id} [GET]
-func (m *Rebac) GetPermission(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) GetPermission(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -1055,7 +1055,7 @@ func (m *Rebac) GetPermission(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/permissions/{id} [PATCH]
-func (m *Rebac) PatchPermission(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) PatchPermission(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -1095,7 +1095,7 @@ func (m *Rebac) PatchPermission(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/permissions/{id} [PUT]
-func (m *Rebac) PutPermission(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) PutPermission(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -1131,7 +1131,7 @@ func (m *Rebac) PutPermission(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/permissions/{id} [DELETE]
-func (m *Rebac) DeletePermission(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) DeletePermission(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -1158,7 +1158,7 @@ func (m *Rebac) DeletePermission(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/check [POST]
-func (m *Rebac) PostCheck(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) PostCheck(w http.ResponseWriter, r *http.Request) {
 	body := data.CheckRequest{}
 	if err := httputil.Decode(r, &body); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
@@ -1182,7 +1182,7 @@ func (m *Rebac) PostCheck(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /check [POST]
-func (m *Rebac) PostCheckUser(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) PostCheckUser(w http.ResponseWriter, r *http.Request) {
 	user := r.Header.Get("X-User")
 	if user == "" {
 		httputil.HandleError(w, data.NewError("X-User header is required", nil, http.StatusBadRequest))
@@ -1216,7 +1216,7 @@ func (m *Rebac) PostCheckUser(w http.ResponseWriter, r *http.Request) {
 // @Failure 409 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/maps [POST]
-func (m *Rebac) LdapCreateGroupMaps(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) LdapCreateGroupMaps(w http.ResponseWriter, r *http.Request) {
 	lmap := data.LMap{}
 	if err := httputil.Decode(r, &lmap); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
@@ -1245,7 +1245,7 @@ func (m *Rebac) LdapCreateGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} data.Response[[]data.LMap]
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/maps [GET]
-func (m *Rebac) LdapGetGroupMaps(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) LdapGetGroupMaps(w http.ResponseWriter, r *http.Request) {
 	req := data.GetLMapRequest{}
 
 	query := r.URL.Query()
@@ -1270,7 +1270,7 @@ func (m *Rebac) LdapGetGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/maps/{name} [GET]
-func (m *Rebac) LdapGetGroupMap(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) LdapGetGroupMap(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if name == "" {
 		httputil.HandleError(w, data.NewError("name is required", nil, http.StatusBadRequest))
@@ -1300,7 +1300,7 @@ func (m *Rebac) LdapGetGroupMap(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/maps/{name} [PUT]
-func (m *Rebac) LdapPutGroupMaps(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) LdapPutGroupMaps(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if name == "" {
 		httputil.HandleError(w, data.NewError("name is required", nil, http.StatusBadRequest))
@@ -1336,7 +1336,7 @@ func (m *Rebac) LdapPutGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/maps/{name} [DELETE]
-func (m *Rebac) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if name == "" {
 		httputil.HandleError(w, data.NewError("name is required", nil, http.StatusBadRequest))
@@ -1365,7 +1365,7 @@ func (m *Rebac) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/info [GET]
-func (m *Rebac) Info(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) Info(w http.ResponseWriter, r *http.Request) {
 	alias := r.URL.Query().Get("alias")
 
 	if alias == "" {
@@ -1416,7 +1416,7 @@ func (m *Rebac) Info(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /info [GET]
-func (m *Rebac) InfoUser(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) InfoUser(w http.ResponseWriter, r *http.Request) {
 	xUser := r.Header.Get("X-User")
 
 	if xUser == "" {
@@ -1464,7 +1464,7 @@ func (m *Rebac) InfoUser(w http.ResponseWriter, r *http.Request) {
 // @Success 200
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/backup [GET]
-func (m *Rebac) Backup(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) Backup(w http.ResponseWriter, r *http.Request) {
 	var since uint64
 	sinceStr := r.URL.Query().Get("since")
 	if sinceStr != "" {
@@ -1501,7 +1501,7 @@ func (m *Rebac) Backup(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/restore [POST]
-func (m *Rebac) Restore(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) Restore(w http.ResponseWriter, r *http.Request) {
 	file, fileHeader, err := r.FormFile("file")
 	if err != nil {
 		httputil.HandleError(w, data.NewError("Cannot get file", err, http.StatusBadRequest))
@@ -1531,7 +1531,7 @@ func (m *Rebac) Restore(w http.ResponseWriter, r *http.Request) {
 // @Tags backup
 // @Success 200 {object} data.Response[uint64]
 // @Router /v1/version [GET]
-func (m *Rebac) Version(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) Version(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, data.Response[uint64]{
 		Payload: m.db.Version(),
 	})

@@ -1,4 +1,4 @@
-package rebaccheck
+package iamcheck
 
 import (
 	"bytes"
@@ -10,11 +10,11 @@ import (
 	"strings"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	"github.com/worldline-go/klient"
 )
 
-type RebacCheck struct {
+type IamCheck struct {
 	CheckAPI  string          `cfg:"check_api"`
 	Public    []data.Resource `cfg:"public"`
 	Responses []Response      `cfg:"responses"`
@@ -33,7 +33,7 @@ type Response struct {
 	Redirect string `cfg:"redirect"`
 }
 
-func (m *RebacCheck) Middleware() (func(http.Handler) http.Handler, error) {
+func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 	// set cehck client
 	client, err := klient.NewPlain(
 		klient.WithInsecureSkipVerify(m.InsecureSkipVerify),

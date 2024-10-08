@@ -19,13 +19,13 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/gzip"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/headers"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/hello"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iamcheck"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/info"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/inject"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/log"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/login"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/print"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebaccheck"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/redirectcontinue"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/redirection"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/regexpath"
@@ -112,8 +112,8 @@ type HTTPMiddleware struct {
 	RedirectionMiddleware      *redirection.Redirection              `cfg:"redirection"`
 	TryMiddleware              *try.Try                              `cfg:"try"`
 	SessionInfoMiddleware      *sessioninfo.Info                     `cfg:"session_info"`
-	RebacMiddleware            *rebac.Rebac                          `cfg:"rebac"`
-	RebacCheckMiddleware       *rebaccheck.RebacCheck                `cfg:"rebac_check"`
+	IamMiddleware              *iam.Iam                              `cfg:"iam"`
+	IamCheckMiddleware         *iamcheck.IamCheck                    `cfg:"iam_check"`
 	RoleCheckMiddleware        *rolecheck.RoleCheck                  `cfg:"role_check"`
 	RoleDataMiddleware         *roledata.RoleData                    `cfg:"role_data"`
 	TokenPassMiddleware        *tokenpass.TokenPass                  `cfg:"token_pass"`
@@ -199,11 +199,11 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 	case h.SessionInfoMiddleware != nil:
 		m, err := h.SessionInfoMiddleware.Middleware()
 		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
-	case h.RebacMiddleware != nil:
-		m, err := h.RebacMiddleware.Middleware(ctx)
+	case h.IamMiddleware != nil:
+		m, err := h.IamMiddleware.Middleware(ctx)
 		return []MiddlewareFunc{m}, err
-	case h.RebacCheckMiddleware != nil:
-		m, err := h.RebacCheckMiddleware.Middleware()
+	case h.IamCheckMiddleware != nil:
+		m, err := h.IamCheckMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
 	case h.RoleCheckMiddleware != nil:
 		m, err := h.RoleCheckMiddleware.Middleware()

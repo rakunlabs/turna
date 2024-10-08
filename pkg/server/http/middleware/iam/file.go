@@ -1,4 +1,4 @@
-package rebac
+package iam
 
 import (
 	"embed"
@@ -16,7 +16,7 @@ var (
 	uiFS embed.FS
 )
 
-func (m *Rebac) SwaggerMiddleware() (func(http.Handler) http.Handler, error) {
+func (m *Iam) SwaggerMiddleware() (func(http.Handler) http.Handler, error) {
 	f, err := fs.Sub(swaggerFS, "files")
 	if err != nil {
 		return nil, err
@@ -41,7 +41,7 @@ func (m *Rebac) SwaggerMiddleware() (func(http.Handler) http.Handler, error) {
 	return folderM.Middleware()
 }
 
-func (m *Rebac) UIMiddleware() (func(http.Handler) http.Handler, error) {
+func (m *Iam) UIMiddleware() (func(http.Handler) http.Handler, error) {
 	f, err := fs.Sub(uiFS, "_ui/dist")
 	if err != nil {
 		return nil, err

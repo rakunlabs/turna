@@ -1,4 +1,4 @@
-package rebac
+package iam
 
 import (
 	"errors"
@@ -8,8 +8,8 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/ldap"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/ldap"
 )
 
 type SyncRequest struct {
@@ -22,7 +22,7 @@ type SyncRequest struct {
 // @Success 200 {object} data.Response[[]ldap.LdapGroup]
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/groups [GET]
-func (m *Rebac) LdapGetGroups(w http.ResponseWriter, _ *http.Request) {
+func (m *Iam) LdapGetGroups(w http.ResponseWriter, _ *http.Request) {
 	conn, err := m.Ldap.ConnectWithCheck()
 	if err != nil {
 		httputil.HandleError(w, data.NewError("LDAP connection problem", err, http.StatusInternalServerError))
@@ -52,7 +52,7 @@ func (m *Rebac) LdapGetGroups(w http.ResponseWriter, _ *http.Request) {
 // @Failure 404 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/users/{uid} [GET]
-func (m *Rebac) LdapGetUsers(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) LdapGetUsers(w http.ResponseWriter, r *http.Request) {
 	conn, err := m.Ldap.ConnectWithCheck()
 	if err != nil {
 		httputil.HandleError(w, data.NewError("LDAP connection problem", err, http.StatusInternalServerError))
@@ -74,7 +74,7 @@ func (m *Rebac) LdapGetUsers(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, data.Response[ldap.LdapUser]{Payload: users[0]})
 }
 
-func (m *Rebac) LdapSync(force bool, uid string) error {
+func (m *Iam) LdapSync(force bool, uid string) error {
 	m.syncM.Lock()
 	defer m.syncM.Unlock()
 
@@ -222,7 +222,7 @@ func (m *Rebac) LdapSync(force bool, uid string) error {
 // @Success 200 {object} data.ResponseMessage
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/sync [POST]
-func (m *Rebac) LdapSyncGroups(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) LdapSyncGroups(w http.ResponseWriter, r *http.Request) {
 	var req SyncRequest
 	if err := httputil.Decode(r, &req); err != nil {
 		httputil.HandleError(w, data.NewError("failed decoding request", err, http.StatusBadRequest))
@@ -244,7 +244,7 @@ func (m *Rebac) LdapSyncGroups(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} data.ResponseMessage
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/sync/{uid} [POST]
-func (m *Rebac) LdapSyncGroupsUID(w http.ResponseWriter, r *http.Request) {
+func (m *Iam) LdapSyncGroupsUID(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 
 	if uid == "" {

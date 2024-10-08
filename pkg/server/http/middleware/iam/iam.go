@@ -1,4 +1,4 @@
-package rebac
+package iam
 
 import (
 	"context"
@@ -6,12 +6,12 @@ import (
 	"sync"
 
 	"github.com/rakunlabs/into"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data/badger"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/ldap"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data/badger"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/ldap"
 )
 
-type Rebac struct {
+type Iam struct {
 	PrefixPath string    `cfg:"prefix_path"`
 	Ldap       ldap.Ldap `cfg:"ldap"`
 	Database   Database  `cfg:"database"`
@@ -33,7 +33,7 @@ type Badger struct {
 	WriteAPI string `cfg:"write_api"`
 }
 
-func (m *Rebac) Middleware(ctx context.Context) (func(http.Handler) http.Handler, error) {
+func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, error) {
 	swaggerMiddleware, err := m.SwaggerMiddleware()
 	if err != nil {
 		return nil, err

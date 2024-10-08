@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data/badger"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data/badger"
 )
 
 func TestBadgerGetUsers(t *testing.T) {

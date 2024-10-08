@@ -7,7 +7,7 @@ import (
 	"slices"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	"github.com/timshannon/badgerhold/v4"
 )
 

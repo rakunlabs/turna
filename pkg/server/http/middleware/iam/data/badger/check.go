@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	"github.com/timshannon/badgerhold/v4"
 )
 

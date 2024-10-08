@@ -3,7 +3,7 @@ package badger
 import (
 	"testing"
 
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/rebac/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
 
 func TestBadgerCheck(t *testing.T) {
