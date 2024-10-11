@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -30,50 +31,51 @@ import (
 func (m *Iam) MuxSet(prefix string) *chi.Mux {
 	mux := chi.NewMux()
 
-	prefix = strings.TrimRight(prefix, "/")
-
 	mux.Get(prefix+"/v1/users", m.GetUsers)
-	mux.Post(prefix+"/v1/users", m.CreateUser)
+	mux.Post(prefix+"/v1/users", m.CreateUser) // trigger
 	mux.Get(prefix+"/v1/users/export", m.ExportUsers)
 	mux.Get(prefix+"/v1/users/{id}", m.GetUser)
-	mux.Patch(prefix+"/v1/users/{id}", m.PatchUser)
-	mux.Put(prefix+"/v1/users/{id}", m.PutUser)
-	mux.Delete(prefix+"/v1/users/{id}", m.DeleteUser)
+	mux.Patch(prefix+"/v1/users/{id}", m.PatchUser)   // trigger
+	mux.Put(prefix+"/v1/users/{id}", m.PutUser)       // trigger
+	mux.Delete(prefix+"/v1/users/{id}", m.DeleteUser) // trigger
 
 	mux.Get(prefix+"/v1/service-accounts", m.GetServiceAccounts)
-	mux.Post(prefix+"/v1/service-accounts", m.CreateServiceAccount)
+	mux.Post(prefix+"/v1/service-accounts", m.CreateServiceAccount) // trigger
 	mux.Get(prefix+"/v1/service-accounts/export", m.ExportServiceAccounts)
 	mux.Get(prefix+"/v1/service-accounts/{id}", m.GetServiceAccount)
-	mux.Patch(prefix+"/v1/service-accounts/{id}", m.PatchServiceAccount)
-	mux.Put(prefix+"/v1/service-accounts/{id}", m.PutServiceAccount)
-	mux.Delete(prefix+"/v1/service-accounts/{id}", m.DeleteServiceAccount)
+	mux.Patch(prefix+"/v1/service-accounts/{id}", m.PatchServiceAccount)   // trigger
+	mux.Put(prefix+"/v1/service-accounts/{id}", m.PutServiceAccount)       // trigger
+	mux.Delete(prefix+"/v1/service-accounts/{id}", m.DeleteServiceAccount) // trigger
 
 	mux.Get(prefix+"/v1/roles", m.GetRoles)
-	mux.Post(prefix+"/v1/roles", m.CreateRole)
+	mux.Post(prefix+"/v1/roles", m.CreateRole)              // trigger
+	mux.Put(prefix+"/v1/roles/relation", m.PutRoleRelation) // trigger
+	mux.Get(prefix+"/v1/roles/relation", m.GetRoleRelation)
 	mux.Get(prefix+"/v1/roles/export", m.ExportRoles)
 	mux.Get(prefix+"/v1/roles/{id}", m.GetRole)
-	mux.Patch(prefix+"/v1/roles/{id}", m.PatchRole)
-	mux.Put(prefix+"/v1/roles/{id}", m.PutRole)
-	mux.Delete(prefix+"/v1/roles/{id}", m.DeleteRole)
+	mux.Patch(prefix+"/v1/roles/{id}", m.PatchRole)   // trigger
+	mux.Put(prefix+"/v1/roles/{id}", m.PutRole)       // trigger
+	mux.Delete(prefix+"/v1/roles/{id}", m.DeleteRole) // trigger
 
 	mux.Get(prefix+"/v1/permissions", m.GetPermissions)
-	mux.Post(prefix+"/v1/permissions", m.CreatePermission)
+	mux.Post(prefix+"/v1/permissions", m.CreatePermission)          // trigger
+	mux.Post(prefix+"/v1/permissions/bulk", m.CreatePermissionBulk) // trigger
 	mux.Get(prefix+"/v1/permissions/export", m.ExportPermissions)
 	mux.Get(prefix+"/v1/permissions/{id}", m.GetPermission)
-	mux.Patch(prefix+"/v1/permissions/{id}", m.PatchPermission)
-	mux.Put(prefix+"/v1/permissions/{id}", m.PutPermission)
-	mux.Delete(prefix+"/v1/permissions/{id}", m.DeletePermission)
+	mux.Patch(prefix+"/v1/permissions/{id}", m.PatchPermission)   // trigger
+	mux.Put(prefix+"/v1/permissions/{id}", m.PutPermission)       // trigger
+	mux.Delete(prefix+"/v1/permissions/{id}", m.DeletePermission) // trigger
 
 	mux.Get(prefix+"/v1/ldap/users/{uid}", m.LdapGetUsers)
 	mux.Get(prefix+"/v1/ldap/groups", m.LdapGetGroups)
-	mux.Post(prefix+"/v1/ldap/sync", m.LdapSyncGroups)
-	mux.Post(prefix+"/v1/ldap/sync/{uid}", m.LdapSyncGroupsUID)
+	mux.Post(prefix+"/v1/ldap/sync", m.LdapSyncGroups)          // trigger
+	mux.Post(prefix+"/v1/ldap/sync/{uid}", m.LdapSyncGroupsUID) // trigger
 
 	mux.Get(prefix+"/v1/ldap/maps", m.LdapGetGroupMaps)
-	mux.Post(prefix+"/v1/ldap/maps", m.LdapCreateGroupMaps)
+	mux.Post(prefix+"/v1/ldap/maps", m.LdapCreateGroupMaps) // trigger
 	mux.Get(prefix+"/v1/ldap/maps/{name}", m.LdapGetGroupMap)
-	mux.Put(prefix+"/v1/ldap/maps/{name}", m.LdapPutGroupMaps)
-	mux.Delete(prefix+"/v1/ldap/maps/{name}", m.LdapDeleteGroupMaps)
+	mux.Put(prefix+"/v1/ldap/maps/{name}", m.LdapPutGroupMaps)       // trigger
+	mux.Delete(prefix+"/v1/ldap/maps/{name}", m.LdapDeleteGroupMaps) // trigger
 
 	mux.Post(prefix+"/v1/check", m.PostCheck)
 	mux.Get(prefix+"/v1/info", m.Info)
@@ -82,8 +84,10 @@ func (m *Iam) MuxSet(prefix string) *chi.Mux {
 	mux.Get(prefix+"/info", m.InfoUser)
 
 	mux.Get(prefix+"/v1/backup", m.Backup)
-	mux.Post(prefix+"/v1/restore", m.Restore)
+	mux.Post(prefix+"/v1/restore", m.Restore) // trigger
 	mux.Get(prefix+"/v1/version", m.Version)
+	mux.Post(prefix+"/v1/trigger", m.Trigger)
+	mux.Post(prefix+"/v1/sync", m.Sync)
 
 	mux.Get(prefix+"/ui/info", m.UIInfo)
 	mux.Handle(prefix+"/swagger/*", m.swaggerFS)
@@ -109,12 +113,10 @@ func wrapServiceAccount(r *http.Request) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), "service_account", true))
 }
 
-func isServiceAccount(r *http.Request) bool {
-	if v, _ := r.Context().Value("service_account").(bool); v {
-		return true
-	}
+func isServiceAccount(r *http.Request) *bool {
+	v, _ := r.Context().Value("service_account").(bool)
 
-	return false
+	return &v
 }
 
 // @Summary Create service account
@@ -142,7 +144,7 @@ func (m *Iam) CreateServiceAccount(w http.ResponseWriter, r *http.Request) {
 // @Param is_active query bool false "is_active"
 // @Param add_roles query bool false "add roles default(true)"
 // @Param add_permissions query bool false "add permissions"
-// @Param add_datas query bool false "add datas"
+// @Param add_data query bool false "add data"
 // @Param limit query int false "limit" default(20)
 // @Param offset query int false "offset"
 // @Success 200 {object} data.Response[[]data.UserExtended]
@@ -175,7 +177,7 @@ func (m *Iam) ExportServiceAccounts(w http.ResponseWriter, r *http.Request) {
 // @Param id path string true "service id"
 // @Param add_roles query bool false "add roles default(true)"
 // @Param add_permissions query bool false "add permissions"
-// @Param add_datas query bool false "add datas"
+// @Param add_data query bool false "add data"
 // @Success 200 {object} data.Response[data.UserExtended]
 // @Failure 400 {object} data.ResponseError
 // @Failure 404 {object} data.ResponseError
@@ -232,13 +234,17 @@ func (m *Iam) DeleteServiceAccount(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/users [POST]
 func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	user := data.UserCreate{}
 	if err := httputil.Decode(r, &user); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
-	user.ServiceAccount = isServiceAccount(r)
+	user.ServiceAccount = *isServiceAccount(r)
 	user.Disabled = !user.IsActive
 
 	if user.ServiceAccount {
@@ -262,6 +268,9 @@ func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleError(w, data.NewError("Cannot create user", err, http.StatusInternalServerError))
 		return
 	}
+
+	// trigger
+	m.sync.Trigger(m.ctxService)
 
 	text := "User created"
 	if user.ServiceAccount {
@@ -291,7 +300,7 @@ func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 // @Param is_active query bool false "is_active"
 // @Param add_roles query bool false "add roles default(true)"
 // @Param add_permissions query bool false "add permissions"
-// @Param add_datas query bool false "add datas"
+// @Param add_data query bool false "add data"
 // @Param limit query int false "limit" default(20)
 // @Param offset query int false "offset"
 // @Success 200 {object} data.Response[[]data.UserExtended]
@@ -316,13 +325,17 @@ func (m *Iam) GetUsers(w http.ResponseWriter, r *http.Request) {
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
 
-	req.Disabled, _ = strconv.ParseBool(query.Get("is_active"))
+	if v := query.Get("is_active"); v != "" {
+		vBool, _ := strconv.ParseBool(query.Get("is_active"))
+		vBool = !vBool
+		req.Disabled = &vBool
+	}
 
 	if addRoles, err := strconv.ParseBool(r.URL.Query().Get("add_roles")); err == nil {
 		req.AddRoles = addRoles
 	}
 	req.AddPermissions, _ = strconv.ParseBool(r.URL.Query().Get("add_permissions"))
-	req.AddDatas, _ = strconv.ParseBool(r.URL.Query().Get("add_datas"))
+	req.AddData, _ = strconv.ParseBool(r.URL.Query().Get("add_data"))
 
 	req.Limit, req.Offset = getLimitOffset(query)
 
@@ -368,7 +381,11 @@ func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
 
-	req.Disabled, _ = strconv.ParseBool(query.Get("is_active"))
+	if v := query.Get("is_active"); v != "" {
+		vBool, _ := strconv.ParseBool(query.Get("is_active"))
+		vBool = !vBool
+		req.Disabled = &vBool
+	}
 
 	users, err := m.db.GetUsers(req)
 	if err != nil {
@@ -379,7 +396,7 @@ func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
 	// download the result as CSV
 	headers := []string{"UID", "Name", "Email", "Roles", "Is Active"}
 
-	userDatas := make([]map[string]interface{}, 0, len(users.Payload))
+	userData := make([]map[string]interface{}, 0, len(users.Payload))
 	for _, user := range users.Payload {
 		if user.Details == nil {
 			user.Details = map[string]interface{}{}
@@ -390,7 +407,7 @@ func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
 			roles = append(roles, role.Name)
 		}
 
-		userDatas = append(userDatas, map[string]interface{}{
+		userData = append(userData, map[string]interface{}{
 			"UID":       user.Details["uid"],
 			"Name":      user.Details["name"],
 			"Email":     user.Details["email"],
@@ -400,13 +417,13 @@ func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fileName := time.Now().Format("20060102T1504") + ".csv"
-	if req.ServiceAccount {
+	if req.ServiceAccount != nil && *req.ServiceAccount {
 		fileName = "service_" + fileName
 	} else {
 		fileName = "user_" + fileName
 	}
 
-	if err := httputil.NewExport(httputil.ExportTypeCSV).ExportHTTP(w, headers, userDatas, fileName); err != nil {
+	if err := httputil.NewExport(httputil.ExportTypeCSV).ExportHTTP(w, headers, userData, fileName); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot export users", err, http.StatusInternalServerError))
 		return
 	}
@@ -417,7 +434,7 @@ func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
 // @Param id path string true "user id"
 // @Param add_roles query bool false "add roles default(true)"
 // @Param add_permissions query bool false "add permissions"
-// @Param add_datas query bool false "add datas"
+// @Param add_data query bool false "add data"
 // @Success 200 {object} data.Response[data.UserExtended]
 // @Failure 400 {object} data.ResponseError
 // @Failure 404 {object} data.ResponseError
@@ -441,7 +458,7 @@ func (m *Iam) GetUser(w http.ResponseWriter, r *http.Request) {
 		req.AddRoles = addRoles
 	}
 	req.AddPermissions, _ = strconv.ParseBool(r.URL.Query().Get("add_permissions"))
-	req.AddDatas, _ = strconv.ParseBool(r.URL.Query().Get("add_datas"))
+	req.AddData, _ = strconv.ParseBool(r.URL.Query().Get("add_data"))
 
 	user, err := m.db.GetUser(req)
 	if err != nil {
@@ -468,6 +485,10 @@ func (m *Iam) GetUser(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/users/{id} [DELETE]
 func (m *Iam) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -484,7 +505,9 @@ func (m *Iam) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if isServiceAccount(r) {
+	m.sync.Trigger(m.ctxService)
+
+	if *isServiceAccount(r) {
 		httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Service account deleted"))
 		return
 	}
@@ -502,6 +525,10 @@ func (m *Iam) DeleteUser(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/users/{id} [PATCH]
 func (m *Iam) PatchUser(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -524,7 +551,9 @@ func (m *Iam) PatchUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if isServiceAccount(r) {
+	m.sync.Trigger(m.ctxService)
+
+	if *isServiceAccount(r) {
 		httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Service account's data patched"))
 		return
 	}
@@ -542,6 +571,10 @@ func (m *Iam) PatchUser(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/users/{id} [PUT]
 func (m *Iam) PutUser(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -555,7 +588,7 @@ func (m *Iam) PutUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user.ID = id
-	user.ServiceAccount = isServiceAccount(r)
+	user.ServiceAccount = *isServiceAccount(r)
 
 	if err := m.db.PutUser(user); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
@@ -566,6 +599,8 @@ func (m *Iam) PutUser(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleError(w, data.NewError("Cannot put user", err, http.StatusInternalServerError))
 		return
 	}
+
+	m.sync.Trigger(m.ctxService)
 
 	if user.ServiceAccount {
 		httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Service account's data replaced"))
@@ -676,7 +711,7 @@ func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 	// download the result as CSV
 	headers := []string{"Name", "Permissions", "Roles", "Description", "Total Users"}
 
-	roleDatas := make([]map[string]interface{}, 0, len(roles.Payload))
+	roleData := make([]map[string]interface{}, 0, len(roles.Payload))
 	for _, role := range roles.Payload {
 		permissions := make([]string, 0, len(role.Permissions))
 		for _, permission := range role.Permissions {
@@ -700,7 +735,7 @@ func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		roleDatas = append(roleDatas, map[string]interface{}{
+		roleData = append(roleData, map[string]interface{}{
 			"Name":        role.Name,
 			"Permissions": string(permissionByte),
 			"Roles":       string(rolesByte),
@@ -711,7 +746,7 @@ func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 
 	fileName := "roles_" + time.Now().Format("20060102T1504") + ".csv"
 
-	if err := httputil.NewExport(httputil.ExportTypeCSV).ExportHTTP(w, headers, roleDatas, fileName); err != nil {
+	if err := httputil.NewExport(httputil.ExportTypeCSV).ExportHTTP(w, headers, roleData, fileName); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot export roles", err, http.StatusInternalServerError))
 		return
 	}
@@ -726,6 +761,10 @@ func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/roles [POST]
 func (m *Iam) CreateRole(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	role := data.Role{}
 	if err := httputil.Decode(r, &role); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
@@ -742,6 +781,8 @@ func (m *Iam) CreateRole(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleError(w, data.NewError("Cannot create role", err, http.StatusInternalServerError))
 		return
 	}
+
+	m.sync.Trigger(m.ctxService)
 
 	httputil.JSON(w, http.StatusOK, data.Response[data.ResponseCreate]{
 		Message: &data.Message{
@@ -795,6 +836,53 @@ func (m *Iam) GetRole(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// @Summary Set role relation
+// @Tags roles
+// @Param relation body map[string]data.RoleRelation true "RoleRelation"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} data.ResponseError
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/roles/relation [PUT]
+func (m *Iam) PutRoleRelation(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
+	relation := map[string]data.RoleRelation{}
+	if err := httputil.Decode(r, &relation); err != nil {
+		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		return
+	}
+
+	if err := m.db.PutRoleRelation(relation); err != nil {
+		httputil.HandleError(w, data.NewError("Cannot patch role", err, http.StatusInternalServerError))
+		return
+	}
+
+	m.sync.Trigger(m.ctxService)
+
+	httputil.JSON(w, http.StatusOK, data.ResponseMessage{
+		Message: &data.Message{
+			Text: "Roles relation updated",
+		},
+	})
+}
+
+// @Summary Get role relation (dump)
+// @Tags roles
+// @Success 200 {object} map[string]data.RoleRelation
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/roles/relation [GET]
+func (m *Iam) GetRoleRelation(w http.ResponseWriter, _ *http.Request) {
+	relation, err := m.db.GetRoleRelation()
+	if err != nil {
+		httputil.HandleError(w, data.NewError("Cannot get role relation", err, http.StatusInternalServerError))
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, relation)
+}
+
 // @Summary Patch role
 // @Tags roles
 // @Param id path string true "role ID"
@@ -805,6 +893,10 @@ func (m *Iam) GetRole(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/roles/{id} [PATCH]
 func (m *Iam) PatchRole(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -827,6 +919,8 @@ func (m *Iam) PatchRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	m.sync.Trigger(m.ctxService)
+
 	httputil.JSON(w, http.StatusOK, data.ResponseMessage{
 		Message: &data.Message{
 			Text: "Role's data patched",
@@ -844,6 +938,10 @@ func (m *Iam) PatchRole(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/roles/{id} [PUT]
 func (m *Iam) PutRole(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -868,6 +966,8 @@ func (m *Iam) PutRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	m.sync.Trigger(m.ctxService)
+
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Role's data replaced"))
 }
 
@@ -880,6 +980,10 @@ func (m *Iam) PutRole(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/roles/{id} [DELETE]
 func (m *Iam) DeleteRole(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -895,6 +999,8 @@ func (m *Iam) DeleteRole(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleError(w, data.NewError("Cannot delete role", err, http.StatusInternalServerError))
 		return
 	}
+
+	m.sync.Trigger(m.ctxService)
 
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Role deleted"))
 }
@@ -956,7 +1062,7 @@ func (m *Iam) ExportPermissions(w http.ResponseWriter, r *http.Request) {
 	// download the result as CSV
 	headers := []string{"Name", "Path", "Method"}
 
-	permissionDatas := make([]map[string]interface{}, 0, len(permissions.Payload))
+	permissionData := make([]map[string]interface{}, 0, len(permissions.Payload))
 	for _, permission := range permissions.Payload {
 		resourceByte, err := json.Marshal(permission.Resources)
 		if err != nil {
@@ -964,7 +1070,7 @@ func (m *Iam) ExportPermissions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		permissionDatas = append(permissionDatas, map[string]interface{}{
+		permissionData = append(permissionData, map[string]interface{}{
 			"Name":        permission.Name,
 			"Resources":   string(resourceByte),
 			"Description": permission.Description,
@@ -973,7 +1079,7 @@ func (m *Iam) ExportPermissions(w http.ResponseWriter, r *http.Request) {
 
 	fileName := "permissions_" + time.Now().Format("20060102T1504") + ".csv"
 
-	if err := httputil.NewExport(httputil.ExportTypeCSV).ExportHTTP(w, headers, permissionDatas, fileName); err != nil {
+	if err := httputil.NewExport(httputil.ExportTypeCSV).ExportHTTP(w, headers, permissionData, fileName); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot export permissions", err, http.StatusInternalServerError))
 		return
 	}
@@ -988,6 +1094,10 @@ func (m *Iam) ExportPermissions(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/permissions [POST]
 func (m *Iam) CreatePermission(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	permission := data.Permission{}
 	if err := httputil.Decode(r, &permission); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
@@ -1005,12 +1115,49 @@ func (m *Iam) CreatePermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	m.sync.Trigger(m.ctxService)
+
 	httputil.JSON(w, http.StatusOK, data.Response[data.ResponseCreate]{
 		Message: &data.Message{
 			Text: "Permission created",
 		},
 		Payload: data.ResponseCreate{
 			ID: id,
+		},
+	})
+}
+
+// @Summary Create permission bulk
+// @Tags permissions
+// @Param permission body []data.Permission true "Permission"
+// @Success 200 {object} data.Response[data.ResponseCreateBulk]
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/permissions/bulk [POST]
+func (m *Iam) CreatePermissionBulk(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
+	permissions := []data.Permission{}
+	if err := httputil.Decode(r, &permissions); err != nil {
+		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		return
+	}
+
+	ids, err := m.db.CreatePermissions(permissions)
+	if err != nil {
+		httputil.HandleError(w, data.NewError("Cannot create permission", err, http.StatusInternalServerError))
+		return
+	}
+
+	m.sync.Trigger(m.ctxService)
+
+	httputil.JSON(w, http.StatusOK, data.Response[data.ResponseCreateBulk]{
+		Message: &data.Message{
+			Text: "Permissions created",
+		},
+		Payload: data.ResponseCreateBulk{
+			IDs: ids,
 		},
 	})
 }
@@ -1056,6 +1203,10 @@ func (m *Iam) GetPermission(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/permissions/{id} [PATCH]
 func (m *Iam) PatchPermission(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -1083,6 +1234,8 @@ func (m *Iam) PatchPermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	m.sync.Trigger(m.ctxService)
+
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Permission's data patched"))
 }
 
@@ -1096,6 +1249,10 @@ func (m *Iam) PatchPermission(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/permissions/{id} [PUT]
 func (m *Iam) PutPermission(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -1120,6 +1277,8 @@ func (m *Iam) PutPermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	m.sync.Trigger(m.ctxService)
+
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Permission's data replaced"))
 }
 
@@ -1132,6 +1291,10 @@ func (m *Iam) PutPermission(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/permissions/{id} [DELETE]
 func (m *Iam) DeletePermission(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
@@ -1147,6 +1310,8 @@ func (m *Iam) DeletePermission(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleError(w, data.NewError("Cannot delete permission", err, http.StatusInternalServerError))
 		return
 	}
+
+	m.sync.Trigger(m.ctxService)
 
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Permission deleted"))
 }
@@ -1217,6 +1382,10 @@ func (m *Iam) PostCheckUser(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/maps [POST]
 func (m *Iam) LdapCreateGroupMaps(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	lmap := data.LMap{}
 	if err := httputil.Decode(r, &lmap); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
@@ -1232,6 +1401,8 @@ func (m *Iam) LdapCreateGroupMaps(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleError(w, data.NewError("Cannot create ldap map", err, http.StatusInternalServerError))
 		return
 	}
+
+	m.sync.Trigger(m.ctxService)
 
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Map created"))
 }
@@ -1301,6 +1472,10 @@ func (m *Iam) LdapGetGroupMap(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/maps/{name} [PUT]
 func (m *Iam) LdapPutGroupMaps(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	name := chi.URLParam(r, "name")
 	if name == "" {
 		httputil.HandleError(w, data.NewError("name is required", nil, http.StatusBadRequest))
@@ -1325,6 +1500,8 @@ func (m *Iam) LdapPutGroupMaps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	m.sync.Trigger(m.ctxService)
+
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Map replaced"))
 }
 
@@ -1337,6 +1514,10 @@ func (m *Iam) LdapPutGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/maps/{name} [DELETE]
 func (m *Iam) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	name := chi.URLParam(r, "name")
 	if name == "" {
 		httputil.HandleError(w, data.NewError("name is required", nil, http.StatusBadRequest))
@@ -1353,13 +1534,15 @@ func (m *Iam) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	m.sync.Trigger(m.ctxService)
+
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Map deleted"))
 }
 
 // @Summary Get current user's info
 // @Tags info
 // @Param alias query string true "User alias"
-// @Param datas query bool false "add role datas"
+// @Param data query bool false "add role data"
 // @Success 200 {object} data.Response[data.UserInfo]
 // @Failure 400 {object} data.ResponseError
 // @Failure 404 {object} data.ResponseError
@@ -1373,9 +1556,9 @@ func (m *Iam) Info(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	getData, _ := strconv.ParseBool(r.URL.Query().Get("datas"))
+	getData, _ := strconv.ParseBool(r.URL.Query().Get("data"))
 
-	user, err := m.db.GetUser(data.GetUserRequest{Alias: alias, AddRoles: true, AddPermissions: true, AddDatas: getData})
+	user, err := m.db.GetUser(data.GetUserRequest{Alias: alias, AddRoles: true, AddPermissions: true, AddData: getData, Sanitize: true})
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("User not found", err, http.StatusNotFound))
@@ -1400,7 +1583,7 @@ func (m *Iam) Info(w http.ResponseWriter, r *http.Request) {
 		Details:     user.Details,
 		Roles:       roles,
 		Permissions: permissions,
-		Datas:       user.Datas,
+		Data:        user.Data,
 		IsActive:    !user.Disabled,
 	}
 
@@ -1410,7 +1593,7 @@ func (m *Iam) Info(w http.ResponseWriter, r *http.Request) {
 // @Summary Get current user's info
 // @Tags public
 // @Param X-User header string false "User alias, X-User is authorized user auto adds"
-// @Param datas query bool false "add role datas"
+// @Param data query bool false "add role data"
 // @Success 200 {object} data.Response[data.UserInfo]
 // @Failure 400 {object} data.ResponseError
 // @Failure 404 {object} data.ResponseError
@@ -1424,12 +1607,12 @@ func (m *Iam) InfoUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	getData, _ := strconv.ParseBool(r.URL.Query().Get("datas"))
+	getData, _ := strconv.ParseBool(r.URL.Query().Get("data"))
 
-	user, err := m.db.GetUser(data.GetUserRequest{Alias: xUser, AddRoles: true, AddPermissions: true, AddDatas: getData})
+	user, err := m.db.GetUser(data.GetUserRequest{Alias: xUser, AddRoles: true, AddPermissions: true, AddData: getData, Sanitize: true})
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("User not found", err, http.StatusNotFound))
+			httputil.HandleError(w, data.NewError("User not found ["+xUser+"]", err, http.StatusNotFound))
 			return
 		}
 
@@ -1451,7 +1634,7 @@ func (m *Iam) InfoUser(w http.ResponseWriter, r *http.Request) {
 		Details:     user.Details,
 		Roles:       roles,
 		Permissions: permissions,
-		Datas:       user.Datas,
+		Data:        user.Data,
 		IsActive:    !user.Disabled,
 	}
 
@@ -1502,6 +1685,10 @@ func (m *Iam) Backup(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/restore [POST]
 func (m *Iam) Restore(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	file, fileHeader, err := r.FormFile("file")
 	if err != nil {
 		httputil.HandleError(w, data.NewError("Cannot get file", err, http.StatusBadRequest))
@@ -1524,15 +1711,70 @@ func (m *Iam) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	m.sync.Trigger(m.ctxService)
+
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Database restored"))
 }
 
 // @Summary Get version
 // @Tags backup
-// @Success 200 {object} data.Response[uint64]
+// @Success 200 {object} data.ResponseVersion
 // @Router /v1/version [GET]
 func (m *Iam) Version(w http.ResponseWriter, r *http.Request) {
-	httputil.JSON(w, http.StatusOK, data.Response[uint64]{
-		Payload: m.db.Version(),
+	httputil.JSON(w, http.StatusOK, data.ResponseVersion{
+		Version: m.db.Version(),
 	})
+}
+
+// @Summary Add trigger endpoint for change sync
+// @Tags backup
+// @Param trigger body Trigger true "Trigger API"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} data.ResponseError
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/trigger [POST]
+func (m *Iam) Trigger(w http.ResponseWriter, r *http.Request) {
+	trigger := Trigger{}
+	if err := httputil.Decode(r, &trigger); err != nil {
+		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		return
+	}
+
+	if trigger.Path == "" {
+		httputil.HandleError(w, data.NewError("Path is required", nil, http.StatusBadRequest))
+		return
+	}
+
+	if trigger.Host == "" {
+		// add ip address from request
+		host, _, _ := net.SplitHostPort(r.RemoteAddr)
+		trigger.Host = host
+	}
+
+	if trigger.Schema == "" {
+		trigger.Schema = "http"
+	}
+
+	if trigger.Port == "" {
+		trigger.Port = "8080"
+	}
+
+	m.sync.AddSync(trigger)
+
+	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Recorded trigger endpoint"))
+}
+
+// @Summary Sync with write API
+// @Tags backup
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} data.ResponseError
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/sync [POST]
+func (m *Iam) Sync(w http.ResponseWriter, _ *http.Request) {
+	if err := m.sync.Sync(m.ctxService); err != nil {
+		httputil.HandleError(w, data.NewError("Cannot sync", err, http.StatusInternalServerError))
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Synced"))
 }

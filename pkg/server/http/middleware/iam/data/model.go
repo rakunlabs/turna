@@ -13,16 +13,18 @@ var (
 
 // Permission is a struct that represents a permission table in the database.
 type Permission struct {
-	ID          string     `json:"id"          badgerhold:"unique"`
-	Name        string     `json:"name"        badgerhold:"index"`
-	Resources   []Resource `json:"resources"`
-	Description string     `json:"description"`
+	ID          string                 `json:"id"          badgerhold:"unique"`
+	Name        string                 `json:"name"        badgerhold:"index"`
+	Resources   []Resource             `json:"resources"`
+	Description string                 `json:"description"`
+	Data        map[string]interface{} `json:"data"`
 }
 
 type PermissionPatch struct {
-	Name        *string     `json:"name"`
-	Resources   *[]Resource `json:"resources"`
-	Description *string     `json:"description"`
+	Name        *string                `json:"name"`
+	Resources   *[]Resource            `json:"resources"`
+	Description *string                `json:"description"`
+	Data        map[string]interface{} `json:"data"`
 }
 
 type Resource struct {
@@ -46,6 +48,11 @@ type RolePatch struct {
 	RoleIDs       *[]string               `json:"role_ids"`
 	Data          *map[string]interface{} `json:"data"`
 	Description   *string                 `json:"description"`
+}
+
+type RoleRelation struct {
+	Roles       *[]string `json:"roles"`
+	Permissions *[]string `json:"permissions"`
 }
 
 type RoleExtended struct {
@@ -100,7 +107,7 @@ type UserExtended struct {
 	IsActive    bool          `json:"is_active"`
 	Roles       []IDName      `json:"roles,omitempty"`
 	Permissions []IDName      `json:"permissions,omitempty"`
-	Datas       []interface{} `json:"datas,omitempty"`
+	Data        []interface{} `json:"data,omitempty"`
 }
 
 type IDName struct {
@@ -112,7 +119,7 @@ type UserInfo struct {
 	Details     map[string]interface{} `json:"details"`
 	Roles       []string               `json:"roles,omitempty"`
 	Permissions []string               `json:"permissions,omitempty"`
-	Datas       []interface{}          `json:"datas,omitempty"`
+	Data        []interface{}          `json:"data,omitempty"`
 	IsActive    bool                   `json:"is_active"`
 }
 
@@ -136,6 +143,10 @@ type Response[T any] struct {
 	Message *Message `json:"message,omitempty"`
 	Meta    *Meta    `json:"meta,omitempty"`
 	Payload T        `json:"payload"`
+}
+
+type ResponseVersion struct {
+	Version uint64 `json:"version"`
 }
 
 type ResponseMessage struct {
@@ -165,6 +176,10 @@ type ResponseCreate struct {
 	ID string `json:"id"`
 }
 
+type ResponseCreateBulk struct {
+	IDs []string `json:"ids"`
+}
+
 // //////////////////////////////////////////////////////////////////////
 
 type GetUserRequest struct {
@@ -180,15 +195,17 @@ type GetUserRequest struct {
 	Path   string `json:"path"`
 	Method string `json:"method"`
 
-	ServiceAccount bool `json:"service_account"`
-	Disabled       bool `json:"disabled"`
+	ServiceAccount *bool `json:"service_account"`
+	Disabled       *bool `json:"disabled"`
 
 	Limit  int64 `json:"limit"`
 	Offset int64 `json:"offset"`
 
 	AddRoles       bool `json:"add_role"`
 	AddPermissions bool `json:"add_permissions"`
-	AddDatas       bool `json:"add_datas"`
+	AddData        bool `json:"add_data"`
+
+	Sanitize bool `json:"sanitize"`
 }
 
 type GetPermissionRequest struct {
@@ -261,6 +278,7 @@ type Database interface {
 	GetPermissions(req GetPermissionRequest) (*Response[[]Permission], error)
 	GetPermission(id string) (*Permission, error)
 	CreatePermission(permission Permission) (string, error)
+	CreatePermissions(permission []Permission) ([]string, error)
 	DeletePermission(id string) error
 	PutPermission(permission Permission) error
 	PatchPermission(id string, permission PermissionPatch) error
@@ -271,6 +289,8 @@ type Database interface {
 	PutRole(role Role) error
 	DeleteRole(id string) error
 	PatchRole(id string, role RolePatch) error
+	PutRoleRelation(relation map[string]RoleRelation) error
+	GetRoleRelation() (map[string]RoleRelation, error)
 
 	Check(req CheckRequest) (*CheckResponse, error)
 

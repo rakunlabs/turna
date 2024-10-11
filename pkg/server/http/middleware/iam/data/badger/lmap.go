@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/dgraph-io/badger/v4"
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
@@ -15,28 +16,36 @@ func (b *Badger) GetLMaps(req data.GetLMapRequest) (*data.Response[[]data.LMap],
 	defer b.dbBackupLock.RUnlock()
 
 	var lmaps []data.LMap
+	var count uint64
 
-	badgerHoldQuery := &badgerhold.Query{}
+	if err := b.db.Badger().View(func(txn *badger.Txn) error {
+		badgerHoldQuery := &badgerhold.Query{}
 
-	if req.Name != "" {
-		badgerHoldQuery = badgerhold.Where("Name").Eq(req.Name).Index("Name")
-	} else if len(req.RoleIDs) > 0 {
-		badgerHoldQuery = badgerhold.Where("RoleIDs").ContainsAny(toInterfaceSlice(req.RoleIDs)...)
-	}
+		if req.Name != "" {
+			badgerHoldQuery = badgerhold.Where("Name").Eq(req.Name).Index("Name")
+		} else if len(req.RoleIDs) > 0 {
+			badgerHoldQuery = badgerhold.Where("RoleIDs").ContainsAny(toInterfaceSlice(req.RoleIDs)...)
+		}
 
-	count, err := b.db.Count(data.LMap{}, badgerHoldQuery)
-	if err != nil {
-		return nil, err
-	}
+		var err error
+		count, err = b.db.TxCount(txn, data.LMap{}, badgerHoldQuery)
+		if err != nil {
+			return err
+		}
 
-	if req.Offset > 0 {
-		badgerHoldQuery = badgerHoldQuery.Skip(int(req.Offset))
-	}
-	if req.Limit > 0 {
-		badgerHoldQuery = badgerHoldQuery.Limit(int(req.Limit))
-	}
+		if req.Offset > 0 {
+			badgerHoldQuery = badgerHoldQuery.Skip(int(req.Offset))
+		}
+		if req.Limit > 0 {
+			badgerHoldQuery = badgerHoldQuery.Limit(int(req.Limit))
+		}
 
-	if err := b.db.Find(&lmaps, badgerHoldQuery); err != nil {
+		if err := b.db.TxFind(txn, &lmaps, badgerHoldQuery); err != nil {
+			return err
+		}
+
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 
@@ -83,41 +92,47 @@ func (b *Badger) CheckCreateLMap(lmapChecks []data.LMapCheckCreate) {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	for _, lmapCheck := range lmapChecks {
-		if err := b.db.Get(lmapCheck.Name, &data.LMap{}); err != nil {
-			if errors.Is(err, badgerhold.ErrNotFound) {
-				// create role
-				role := data.Role{
-					ID:          ulid.Make().String(),
-					Name:        lmapCheck.Name,
-					Description: lmapCheck.Description,
-				}
-
-				if err := b.db.Insert(role.ID, role); err != nil {
-					if errors.Is(err, badgerhold.ErrKeyExists) {
-						slog.Warn("role already exists", slog.String("name", role.Name), slog.String("error", err.Error()))
-					} else {
-						slog.Error("failed to create role", slog.String("error", err.Error()))
+	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
+		for _, lmapCheck := range lmapChecks {
+			if err := b.db.TxGet(txn, lmapCheck.Name, &data.LMap{}); err != nil {
+				if errors.Is(err, badgerhold.ErrNotFound) {
+					// create role
+					role := data.Role{
+						ID:          ulid.Make().String(),
+						Name:        lmapCheck.Name,
+						Description: lmapCheck.Description,
 					}
-				}
 
-				// create lmap
-				lmap := data.LMap{
-					Name:    lmapCheck.Name,
-					RoleIDs: []string{role.ID},
-				}
-
-				if err := b.db.Insert(lmap.Name, lmap); err != nil {
-					if errors.Is(err, badgerhold.ErrKeyExists) {
-						slog.Warn("lmap already exists", slog.String("name", lmap.Name), slog.String("error", err.Error()))
-					} else {
-						slog.Error("failed to create lmap", slog.String("error", err.Error()))
+					if err := b.db.TxInsert(txn, role.ID, role); err != nil {
+						if errors.Is(err, badgerhold.ErrKeyExists) {
+							slog.Warn("role already exists", slog.String("name", role.Name), slog.String("error", err.Error()))
+						} else {
+							slog.Error("failed to create role", slog.String("error", err.Error()))
+						}
 					}
+
+					// create lmap
+					lmap := data.LMap{
+						Name:    lmapCheck.Name,
+						RoleIDs: []string{role.ID},
+					}
+
+					if err := b.db.TxInsert(txn, lmap.Name, lmap); err != nil {
+						if errors.Is(err, badgerhold.ErrKeyExists) {
+							slog.Warn("lmap already exists", slog.String("name", lmap.Name), slog.String("error", err.Error()))
+						} else {
+							slog.Error("failed to create lmap", slog.String("error", err.Error()))
+						}
+					}
+				} else {
+					slog.Warn("failed to get lmap", slog.String("name", lmapCheck.Name), slog.String("error", err.Error()))
 				}
-			} else {
-				slog.Warn("failed to get lmap", slog.String("name", lmapCheck.Name), slog.String("error", err.Error()))
 			}
 		}
+
+		return nil
+	}); err != nil {
+		slog.Error("failed to create lmap", slog.String("error", err.Error()))
 	}
 }
 

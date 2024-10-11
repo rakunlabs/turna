@@ -44,6 +44,19 @@ func TestFileFilter_Start(t *testing.T) {
 				return !bytes.Contains(b, []byte("hellooo2"))
 			},
 		},
+		{
+			name: "stdout test with filter",
+			write: func(f *os.File) {
+				fmt.Fprintln(f, "hellooo")
+				fmt.Fprintln(f, "hellooo2")
+			},
+			res: [][]byte{
+				[]byte("hellooo2\n"),
+			},
+			filter: func(b []byte) bool {
+				return bytes.Contains(b, []byte("hellooo2"))
+			},
+		},
 	}
 
 	for _, tt := range tests {

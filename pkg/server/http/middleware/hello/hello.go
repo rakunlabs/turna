@@ -90,6 +90,9 @@ func (h *Hello) Middleware() (func(http.Handler) http.Handler, error) {
 					"query_params": r.URL.Query(),
 					"cookies":      r.Cookies(),
 					"path":         r.URL.Path,
+					"host":         r.Host,
+					"scheme":       r.URL.Scheme,
+					"remote_addr":  r.RemoteAddr,
 				}
 
 				var buf bytes.Buffer

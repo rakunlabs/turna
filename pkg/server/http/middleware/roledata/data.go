@@ -29,11 +29,11 @@ func (m *RoleData) Middleware() (echo.MiddlewareFunc, error) {
 
 			roles := claimValue.RoleSet
 
-			datas := []interface{}{}
+			values := []interface{}{}
 			for _, data := range m.Map {
 				for _, role := range data.Roles {
 					if _, ok := roles[role]; ok {
-						datas = append(datas, data.Data)
+						values = append(values, data.Data)
 
 						break
 					}
@@ -43,13 +43,13 @@ func (m *RoleData) Middleware() (echo.MiddlewareFunc, error) {
 			if m.Default != nil {
 				switch v := m.Default.(type) {
 				case []interface{}:
-					datas = append(datas, v...)
+					values = append(values, v...)
 				default:
-					datas = append(datas, v)
+					values = append(values, v)
 				}
 			}
 
-			return c.JSON(http.StatusOK, datas)
+			return c.JSON(http.StatusOK, values)
 		}
 	}, nil
 }

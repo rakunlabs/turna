@@ -1,0 +1,26 @@
+server:
+  entrypoints:
+    web:
+      address: ":8080"
+  http:
+    middlewares:
+      hello-1:
+        hello:
+          message: "Hello from 1"
+      hello-2:
+        hello:
+          message: "Hello from 2"
+      splitter:
+        splitter:
+          rules:
+            - rule: "Header(`X-Version`, `v2`)"
+              middlewares:
+                - hello-2
+            - rule: "true"
+              middlewares:
+                - hello-1
+    routers:
+      test:
+        path: /*
+        middlewares:
+          - splitter

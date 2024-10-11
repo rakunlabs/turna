@@ -141,7 +141,7 @@ func TestCommand_Run(t *testing.T) {
 					}
 
 					if !bytes.Equal(got, tt.wantStdout) {
-						t.Errorf("Command.Run() stdout = %s, want %s", got, tt.wantStdout)
+						t.Errorf("Command.Run() stdout = [%s], want [%s]", got, tt.wantStdout)
 					}
 				}
 
@@ -154,7 +154,7 @@ func TestCommand_Run(t *testing.T) {
 					}
 
 					if !bytes.Equal(got, tt.wantStderr) {
-						t.Errorf("Command.Run() stderr = %s, want %s", got, tt.wantStderr)
+						t.Errorf("Command.Run() stderr = [%s], want [%s]", got, tt.wantStderr)
 					}
 				}
 			}()

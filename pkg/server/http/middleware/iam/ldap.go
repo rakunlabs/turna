@@ -223,6 +223,10 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/sync [POST]
 func (m *Iam) LdapSyncGroups(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	var req SyncRequest
 	if err := httputil.Decode(r, &req); err != nil {
 		httputil.HandleError(w, data.NewError("failed decoding request", err, http.StatusBadRequest))
@@ -232,6 +236,8 @@ func (m *Iam) LdapSyncGroups(w http.ResponseWriter, r *http.Request) {
 	if err := m.LdapSync(req.Force, ""); err != nil {
 		httputil.HandleError(w, data.NewErrorAs(err))
 	}
+
+	m.sync.Trigger(m.ctxService)
 
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Users synced"))
 }
@@ -245,6 +251,10 @@ func (m *Iam) LdapSyncGroups(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/sync/{uid} [POST]
 func (m *Iam) LdapSyncGroupsUID(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	uid := chi.URLParam(r, "uid")
 
 	if uid == "" {
@@ -261,6 +271,8 @@ func (m *Iam) LdapSyncGroupsUID(w http.ResponseWriter, r *http.Request) {
 	if err := m.LdapSync(req.Force, uid); err != nil {
 		httputil.HandleError(w, data.NewErrorAs(err))
 	}
+
+	m.sync.Trigger(m.ctxService)
 
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("User synced"))
 }

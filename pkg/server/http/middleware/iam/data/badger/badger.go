@@ -18,10 +18,15 @@ type Badger struct {
 
 var _ data.Database = &Badger{}
 
-func New(path string) (*Badger, error) {
+func New(path string, memory bool) (*Badger, error) {
 	options := badgerhold.DefaultOptions
-	options.Dir = path
-	options.ValueDir = path
+	if memory {
+		options.InMemory = memory
+	} else {
+		options.Dir = path
+		options.ValueDir = path
+	}
+
 	options.IndexCacheSize = int64(DefaultCacheSize)
 	options.Logger = NewLogger()
 

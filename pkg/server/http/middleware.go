@@ -38,6 +38,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/sessioninfo"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/set"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/splitter"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/stripprefix"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/template"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/tokenpass"
@@ -121,6 +122,7 @@ type HTTPMiddleware struct {
 	ForwardMiddleware          *forward.Forward                      `cfg:"forward"`
 	GrpcUIMiddleware           *grpcui.GrpcUI                        `cfg:"grpcui"`
 	DNSPathMiddleware          *dnspath.DNSPath                      `cfg:"dns_path"`
+	SplitterMiddleware         *splitter.Splitter                    `cfg:"splitter"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
@@ -224,6 +226,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{h.GrpcUIMiddleware.Middleware()}, nil
 	case h.DNSPathMiddleware != nil:
 		m, err := h.DNSPathMiddleware.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.SplitterMiddleware != nil:
+		m, err := h.SplitterMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
 	}
 

@@ -7,9 +7,9 @@ import (
 )
 
 func TestGetRoles(t *testing.T) {
-	tempdir := t.TempDir()
+	// tempdir := t.TempDir()
 
-	db, err := New(tempdir)
+	db, err := New("", true)
 	if err != nil {
 		t.Fatalf("failed to create badger db: %v", err)
 	}

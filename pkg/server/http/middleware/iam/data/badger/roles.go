@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/dgraph-io/badger/v4"
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
@@ -15,83 +16,89 @@ func (b *Badger) GetRoles(req data.GetRoleRequest) (*data.Response[[]data.RoleEx
 	defer b.dbBackupLock.RUnlock()
 
 	var roles []data.Role
+	var count uint64
+	var extendRoles []data.RoleExtended
 
-	badgerHoldQuery := &badgerhold.Query{}
+	if err := b.db.Badger().View(func(txn *badger.Txn) error {
+		var err error
 
-	if req.ID != "" {
-		badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID).Index("ID")
-	} else {
-		var badgerHoldQueryInternal *badgerhold.Query
-		if req.Name != "" {
-			badgerHoldQueryInternal = badgerhold.Where("Name").MatchFunc(matchAll(req.Name))
-		}
+		badgerHoldQuery := &badgerhold.Query{}
 
-		permissionIDs := req.PermissionIDs
-		if req.Method != "" || req.Path != "" {
-			// get permissions ids based on path and method
-			newIDs, err := b.getPermissionIDs(req.Method, req.Path)
-			if err != nil {
-				return nil, err
+		if req.ID != "" {
+			badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID).Index("ID")
+		} else {
+			var badgerHoldQueryInternal *badgerhold.Query
+			if req.Name != "" {
+				badgerHoldQueryInternal = badgerhold.Where("Name").MatchFunc(matchAll(req.Name))
 			}
 
-			if len(newIDs) == 0 {
-				return &data.Response[[]data.RoleExtended]{
-					Meta: &data.Meta{
-						Offset: req.Offset,
-						Limit:  req.Limit,
-					},
-					Payload: []data.RoleExtended{},
-				}, nil
+			permissionIDs := req.PermissionIDs
+			if req.Method != "" || req.Path != "" {
+				// get permissions ids based on path and method
+				newIDs, err := b.getPermissionIDs(txn, req.Method, req.Path)
+				if err != nil {
+					return err
+				}
+
+				if len(newIDs) == 0 {
+					extendRoles = []data.RoleExtended{}
+
+					return nil
+				}
+
+				permissionIDs = append(permissionIDs, newIDs...)
 			}
 
-			permissionIDs = append(permissionIDs, newIDs...)
-		}
+			if len(permissionIDs) > 0 {
+				if badgerHoldQueryInternal != nil {
+					badgerHoldQueryInternal = badgerHoldQueryInternal.And("PermissionIDs").ContainsAny(toInterfaceSlice(permissionIDs)...)
+				} else {
+					badgerHoldQueryInternal = badgerhold.Where("PermissionIDs").ContainsAny(toInterfaceSlice(permissionIDs)...)
+				}
+			}
 
-		if len(permissionIDs) > 0 {
+			if len(req.RoleIDs) > 0 {
+				if badgerHoldQueryInternal != nil {
+					badgerHoldQueryInternal = badgerHoldQueryInternal.And("RoleIDs").ContainsAny(toInterfaceSlice(req.RoleIDs)...)
+				} else {
+					badgerHoldQueryInternal = badgerhold.Where("RoleIDs").ContainsAny(toInterfaceSlice(req.RoleIDs)...)
+				}
+			}
+
 			if badgerHoldQueryInternal != nil {
-				badgerHoldQueryInternal = badgerHoldQueryInternal.And("PermissionIDs").ContainsAny(toInterfaceSlice(permissionIDs)...)
-			} else {
-				badgerHoldQueryInternal = badgerhold.Where("PermissionIDs").ContainsAny(toInterfaceSlice(permissionIDs)...)
+				badgerHoldQuery = badgerHoldQueryInternal
 			}
 		}
 
-		if len(req.RoleIDs) > 0 {
-			if badgerHoldQueryInternal != nil {
-				badgerHoldQueryInternal = badgerHoldQueryInternal.And("RoleIDs").ContainsAny(toInterfaceSlice(req.RoleIDs)...)
-			} else {
-				badgerHoldQueryInternal = badgerhold.Where("RoleIDs").ContainsAny(toInterfaceSlice(req.RoleIDs)...)
-			}
-		}
-
-		if badgerHoldQueryInternal != nil {
-			badgerHoldQuery = badgerHoldQueryInternal
-		}
-	}
-
-	count, err := b.db.Count(data.Role{}, badgerHoldQuery)
-	if err != nil {
-		return nil, err
-	}
-
-	if req.Offset > 0 {
-		badgerHoldQuery = badgerHoldQuery.Skip(int(req.Offset))
-	}
-	if req.Limit > 0 {
-		badgerHoldQuery = badgerHoldQuery.Limit(int(req.Limit))
-	}
-
-	if err := b.db.Find(&roles, badgerHoldQuery); err != nil {
-		return nil, err
-	}
-
-	extendRoles := make([]data.RoleExtended, 0, len(roles))
-	for _, role := range roles {
-		extendRole, err := b.ExtendRole(req.AddRoles, req.AddPermissions, req.AddTotalUsers, &role)
+		count, err = b.db.TxCount(txn, data.Role{}, badgerHoldQuery)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		extendRoles = append(extendRoles, extendRole)
+		if req.Offset > 0 {
+			badgerHoldQuery = badgerHoldQuery.Skip(int(req.Offset))
+		}
+		if req.Limit > 0 {
+			badgerHoldQuery = badgerHoldQuery.Limit(int(req.Limit))
+		}
+
+		if err := b.db.TxFind(txn, &roles, badgerHoldQuery); err != nil {
+			return err
+		}
+
+		extendRoles = make([]data.RoleExtended, 0, len(roles))
+		for _, role := range roles {
+			extendRole, err := b.ExtendRole(txn, req.AddRoles, req.AddPermissions, req.AddTotalUsers, &role)
+			if err != nil {
+				return err
+			}
+
+			extendRoles = append(extendRoles, extendRole)
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	return &data.Response[[]data.RoleExtended]{
@@ -108,18 +115,27 @@ func (b *Badger) GetRole(req data.GetRoleRequest) (*data.RoleExtended, error) {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	var role data.Role
+	var roleExtended data.RoleExtended
 
-	if err := b.db.Get(req.ID, &role); err != nil {
-		if errors.Is(err, badgerhold.ErrNotFound) {
-			return nil, fmt.Errorf("role with id %s not found; %w", req.ID, data.ErrNotFound)
+	if err := b.db.Badger().View(func(txn *badger.Txn) error {
+		var err error
+		var role data.Role
+
+		if err := b.db.TxGet(txn, req.ID, &role); err != nil {
+			if errors.Is(err, badgerhold.ErrNotFound) {
+				return fmt.Errorf("role with id %s not found; %w", req.ID, data.ErrNotFound)
+			}
+
+			return err
 		}
 
-		return nil, err
-	}
+		roleExtended, err = b.ExtendRole(txn, req.AddRoles, req.AddPermissions, req.AddTotalUsers, &role)
+		if err != nil {
+			return err
+		}
 
-	roleExtended, err := b.ExtendRole(req.AddRoles, req.AddPermissions, req.AddTotalUsers, &role)
-	if err != nil {
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 
@@ -132,20 +148,27 @@ func (b *Badger) CreateRole(role data.Role) (string, error) {
 
 	role.ID = ulid.Make().String()
 
-	// check role with name already exists
-	if err := b.db.FindOne(&data.Role{}, badgerhold.Where("Name").Eq(role.Name).Index("Name")); err != nil {
-		if !errors.Is(err, badgerhold.ErrNotFound) {
-			return "", err
-		}
-	} else {
-		return "", fmt.Errorf("role with name %s already exists; %w", role.Name, data.ErrConflict)
-	}
-
-	if err := b.db.Insert(role.ID, role); err != nil {
-		if errors.Is(err, badgerhold.ErrKeyExists) {
-			return "", fmt.Errorf("roleID %s already exists; %w", role.ID, data.ErrConflict)
+	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
+		// check role with name already exists
+		if err := b.db.TxFindOne(txn, &data.Role{}, badgerhold.Where("Name").Eq(role.Name).Index("Name")); err != nil {
+			if !errors.Is(err, badgerhold.ErrNotFound) {
+				return err
+			}
+		} else {
+			return fmt.Errorf("role with name %s already exists; %w", role.Name, data.ErrConflict)
 		}
 
+		if err := b.db.TxInsert(txn, role.ID, role); err != nil {
+			if errors.Is(err, badgerhold.ErrKeyExists) {
+				return fmt.Errorf("roleID %s already exists; %w", role.ID, data.ErrConflict)
+			}
+
+			return err
+		}
+
+		return nil
+
+	}); err != nil {
 		return "", err
 	}
 
@@ -153,10 +176,10 @@ func (b *Badger) CreateRole(role data.Role) (string, error) {
 }
 
 func (b *Badger) PatchRole(id string, rolePatch data.RolePatch) error {
-	return b.editRole(id, func(foundRole *data.Role) error {
+	return b.editRole(id, func(txn *badger.Txn, foundRole *data.Role) error {
 		if rolePatch.Name != nil && *rolePatch.Name != "" && *rolePatch.Name != foundRole.Name {
 			// check role with name already exists
-			if err := b.db.FindOne(&data.Role{}, badgerhold.Where("Name").Eq(*rolePatch.Name).Index("Name")); err != nil {
+			if err := b.db.TxFindOne(txn, &data.Role{}, badgerhold.Where("Name").Eq(*rolePatch.Name).Index("Name")); err != nil {
 				if !errors.Is(err, badgerhold.ErrNotFound) {
 					return err
 				}
@@ -187,6 +210,108 @@ func (b *Badger) PatchRole(id string, rolePatch data.RolePatch) error {
 	})
 }
 
+func (b *Badger) PutRoleRelation(relation map[string]data.RoleRelation) error {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
+	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
+		for role, roleRelation := range relation {
+			// find that role's id if exists patch with rolerelation
+			var foundRole data.Role
+			if err := b.db.TxFindOne(txn, &foundRole, badgerhold.Where("Name").Eq(role).Index("Name")); err != nil {
+				if !errors.Is(err, badgerhold.ErrNotFound) {
+					return err
+				}
+
+				continue
+			}
+
+			// find id of roles and permissions
+			if roleRelation.Roles != nil {
+				roleIDs := make([]string, 0, len(*roleRelation.Roles))
+				if len(*roleRelation.Roles) > 0 {
+					if err := b.db.TxForEach(txn, badgerhold.Where("Name").In(toInterfaceSlice(*roleRelation.Roles)...), func(role *data.Role) error {
+						roleIDs = append(roleIDs, role.ID)
+						return nil
+					}); err != nil {
+						return fmt.Errorf("failed to get role IDs; %w", err)
+					}
+				}
+
+				foundRole.RoleIDs = roleIDs
+			}
+
+			if roleRelation.Permissions != nil {
+				permissionIDs := make([]string, 0, len(*roleRelation.Permissions))
+				if len(*roleRelation.Permissions) > 0 {
+					if err := b.db.TxForEach(txn, badgerhold.Where("Name").In(toInterfaceSlice(*roleRelation.Permissions)...), func(permission *data.Permission) error {
+						permissionIDs = append(permissionIDs, permission.ID)
+						return nil
+					}); err != nil {
+						return fmt.Errorf("failed to get permission IDs; %w", err)
+					}
+				}
+
+				foundRole.PermissionIDs = permissionIDs
+			}
+
+			if err := b.db.TxUpdate(txn, foundRole.ID, foundRole); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (b *Badger) GetRoleRelation() (map[string]data.RoleRelation, error) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
+	roleRelation := make(map[string]data.RoleRelation)
+
+	if err := b.db.Badger().View(func(txn *badger.Txn) error {
+		return b.db.TxForEach(txn, badgerhold.Where("ID").Ne(""), func(role *data.Role) error {
+			// get roles names
+			roleNames := make([]string, 0, len(role.RoleIDs))
+			if len(role.RoleIDs) > 0 {
+				if err := b.db.TxForEach(txn, badgerhold.Where("ID").In(toInterfaceSlice(role.RoleIDs)...), func(role *data.Role) error {
+					roleNames = append(roleNames, role.Name)
+					return nil
+				}); err != nil {
+					return fmt.Errorf("failed to get role names; %w", err)
+				}
+			}
+
+			// get permission names
+			permissionNames := make([]string, 0, len(role.PermissionIDs))
+			if len(role.PermissionIDs) > 0 {
+				if err := b.db.TxForEach(txn, badgerhold.Where("ID").In(toInterfaceSlice(role.PermissionIDs)...), func(permission *data.Permission) error {
+					permissionNames = append(permissionNames, permission.Name)
+					return nil
+				}); err != nil {
+					return fmt.Errorf("failed to get permission names; %w", err)
+				}
+			}
+
+			roleRelation[role.Name] = data.RoleRelation{
+				Roles:       &roleNames,
+				Permissions: &permissionNames,
+			}
+
+			return nil
+		})
+	}); err != nil {
+		return nil, err
+	}
+
+	return roleRelation, nil
+}
+
 func (b *Badger) PutRole(role data.Role) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
@@ -206,59 +331,61 @@ func (b *Badger) DeleteRole(id string) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	if err := b.db.Delete(id, data.Role{}); err != nil {
-		return err
-	}
-
-	// Delete the role from all roles
-	if err := b.db.ForEach(badgerhold.Where("RoleIDs").Contains(id), func(role *data.Role) error {
-		role.RoleIDs = slices.DeleteFunc(role.RoleIDs, func(cmp string) bool {
-			return cmp == id
-		})
-
-		if err := b.db.Update(role.ID, role); err != nil {
+	return b.db.Badger().Update(func(txn *badger.Txn) error {
+		if err := b.db.TxDelete(txn, id, data.Role{}); err != nil {
 			return err
 		}
 
-		return nil
-	}); err != nil {
-		return fmt.Errorf("failed to delete role from roles; %w", err)
-	}
+		// Delete the role from all roles
+		if err := b.db.TxForEach(txn, badgerhold.Where("RoleIDs").Contains(id), func(role *data.Role) error {
+			role.RoleIDs = slices.DeleteFunc(role.RoleIDs, func(cmp string) bool {
+				return cmp == id
+			})
 
-	// Delete the role from all users
-	if err := b.db.ForEach(badgerhold.Where("RoleIDs").Contains(id), func(user *data.User) error {
-		user.RoleIDs = slices.DeleteFunc(user.RoleIDs, func(cmp string) bool {
-			return cmp == id
-		})
+			if err := b.db.TxUpdate(txn, role.ID, role); err != nil {
+				return err
+			}
 
-		if err := b.db.Update(user.ID, user); err != nil {
-			return err
+			return nil
+		}); err != nil {
+			return fmt.Errorf("failed to delete role from roles; %w", err)
+		}
+
+		// Delete the role from all users
+		if err := b.db.TxForEach(txn, badgerhold.Where("RoleIDs").Contains(id), func(user *data.User) error {
+			user.RoleIDs = slices.DeleteFunc(user.RoleIDs, func(cmp string) bool {
+				return cmp == id
+			})
+
+			if err := b.db.TxUpdate(txn, user.ID, user); err != nil {
+				return err
+			}
+
+			return nil
+		}); err != nil {
+			return fmt.Errorf("failed to delete role from users; %w", err)
+		}
+
+		// Delete the role from all users with sync roles
+		if err := b.db.TxForEach(txn, badgerhold.Where("SyncRoleIDs").Contains(id), func(user *data.User) error {
+			user.SyncRoleIDs = slices.DeleteFunc(user.SyncRoleIDs, func(cmp string) bool {
+				return cmp == id
+			})
+
+			if err := b.db.TxUpdate(txn, user.ID, user); err != nil {
+				return err
+			}
+
+			return nil
+		}); err != nil {
+			return fmt.Errorf("failed to delete role from users with sync roles; %w", err)
 		}
 
 		return nil
-	}); err != nil {
-		return fmt.Errorf("failed to delete role from users; %w", err)
-	}
-
-	// Delete the role from all users with sync roles
-	if err := b.db.ForEach(badgerhold.Where("SyncRoleIDs").Contains(id), func(user *data.User) error {
-		user.SyncRoleIDs = slices.DeleteFunc(user.SyncRoleIDs, func(cmp string) bool {
-			return cmp == id
-		})
-
-		if err := b.db.Update(user.ID, user); err != nil {
-			return err
-		}
-
-		return nil
-	}); err != nil {
-		return fmt.Errorf("failed to delete role from users with sync roles; %w", err)
-	}
-
-	return nil
+	})
 }
 
-func (b *Badger) getVirtualRoleIDs(roleIDs []string) ([]string, error) {
+func (b *Badger) getVirtualRoleIDs(txn *badger.Txn, roleIDs []string) ([]string, error) {
 	mapRoleIDs := make(map[string]struct{}, len(roleIDs))
 	for _, roleID := range roleIDs {
 		mapRoleIDs[roleID] = struct{}{}
@@ -267,7 +394,7 @@ func (b *Badger) getVirtualRoleIDs(roleIDs []string) ([]string, error) {
 	for {
 		query := badgerhold.Where("ID").In(toInterfaceSlice(roleIDs)...)
 		roleIDs = nil
-		if err := b.db.ForEach(query, func(role *data.Role) error {
+		if err := b.db.TxForEach(txn, query, func(role *data.Role) error {
 			for _, roleID := range role.RoleIDs {
 				if _, ok := mapRoleIDs[roleID]; !ok {
 					mapRoleIDs[roleID] = struct{}{}
@@ -293,17 +420,17 @@ func (b *Badger) getVirtualRoleIDs(roleIDs []string) ([]string, error) {
 	return roleIDs, nil
 }
 
-func (b *Badger) getRoleIDs(method, path string) ([]string, error) {
+func (b *Badger) getRoleIDs(txn *badger.Txn, method, path string) ([]string, error) {
 	var roleIDs []string
 
-	permissionIDs, err := b.getPermissionIDs(method, path)
+	permissionIDs, err := b.getPermissionIDs(txn, method, path)
 	if err != nil {
 		return nil, err
 	}
 
 	query := badgerhold.Where("PermissionIDs").ContainsAny(toInterfaceSlice(permissionIDs)...)
 
-	if err := b.db.ForEach(query, func(role *data.Role) error {
+	if err := b.db.TxForEach(txn, query, func(role *data.Role) error {
 		roleIDs = append(roleIDs, role.ID)
 
 		return nil
@@ -314,31 +441,37 @@ func (b *Badger) getRoleIDs(method, path string) ([]string, error) {
 	return roleIDs, nil
 }
 
-func (b *Badger) editRole(id string, fn func(*data.Role) error) error {
+func (b *Badger) editRole(id string, fn func(*badger.Txn, *data.Role) error) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	var foundRole data.Role
-	if err := b.db.FindOne(&foundRole, badgerhold.Where("ID").Eq(id).Index("ID")); err != nil {
-		if errors.Is(err, badgerhold.ErrNotFound) {
-			return fmt.Errorf("role with id %s not found; %w", id, data.ErrNotFound)
+	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
+		var foundRole data.Role
+		if err := b.db.TxFindOne(txn, &foundRole, badgerhold.Where("ID").Eq(id).Index("ID")); err != nil {
+			if errors.Is(err, badgerhold.ErrNotFound) {
+				return fmt.Errorf("role with id %s not found; %w", id, data.ErrNotFound)
+			}
+
+			return err
 		}
 
-		return err
-	}
+		if err := fn(txn, &foundRole); err != nil {
+			return err
+		}
 
-	if err := fn(&foundRole); err != nil {
-		return err
-	}
+		if err := b.db.TxUpdate(txn, foundRole.ID, foundRole); err != nil {
+			return err
+		}
 
-	if err := b.db.Update(foundRole.ID, foundRole); err != nil {
+		return nil
+	}); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (b *Badger) ExtendRole(addRoles bool, addPermissions bool, addTotalUsers bool, role *data.Role) (data.RoleExtended, error) {
+func (b *Badger) ExtendRole(txn *badger.Txn, addRoles bool, addPermissions bool, addTotalUsers bool, role *data.Role) (data.RoleExtended, error) {
 	roleExtended := data.RoleExtended{
 		Role: role,
 	}
@@ -348,7 +481,7 @@ func (b *Badger) ExtendRole(addRoles bool, addPermissions bool, addTotalUsers bo
 	}
 
 	if addTotalUsers {
-		count, err := b.db.Count(data.User{}, badgerhold.Where("RoleIDs").Contains(role.ID).
+		count, err := b.db.TxCount(txn, data.User{}, badgerhold.Where("RoleIDs").Contains(role.ID).
 			Or(badgerhold.Where("SyncRoleIDs").Contains(role.ID)))
 		if err != nil {
 			return data.RoleExtended{}, err
@@ -360,7 +493,7 @@ func (b *Badger) ExtendRole(addRoles bool, addPermissions bool, addTotalUsers bo
 	// get roles
 	if addRoles {
 		var roles []data.IDName
-		if err := b.db.ForEach(badgerhold.Where("ID").In(toInterfaceSlice(role.RoleIDs)...), func(role *data.Role) error {
+		if err := b.db.TxForEach(txn, badgerhold.Where("ID").In(toInterfaceSlice(role.RoleIDs)...), func(role *data.Role) error {
 			roles = append(roles, data.IDName{
 				ID:   role.ID,
 				Name: role.Name,
@@ -377,7 +510,7 @@ func (b *Badger) ExtendRole(addRoles bool, addPermissions bool, addTotalUsers bo
 	// get permissions
 	if addPermissions {
 		var permissions []data.IDName
-		if err := b.db.ForEach(badgerhold.Where("ID").In(toInterfaceSlice(role.PermissionIDs)...), func(permission *data.Permission) error {
+		if err := b.db.TxForEach(txn, badgerhold.Where("ID").In(toInterfaceSlice(role.PermissionIDs)...), func(permission *data.Permission) error {
 			permissions = append(permissions, data.IDName{
 				ID:   permission.ID,
 				Name: permission.Name,

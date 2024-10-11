@@ -166,6 +166,8 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("doesn't given any command: %w", ErrRunInit)
 	}
 
+	defer c.wgProg.Wait()
+
 	ctx, ctxCancel := context.WithCancel(ctx)
 	defer ctxCancel()
 

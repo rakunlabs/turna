@@ -1,8 +1,8 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "Authorization server with Relationship Based Access Control (ReBAC) model.",
-        "title": "ReBAC API",
+        "description": "Identity and Access Management API",
+        "title": "IAM API",
         "contact": {}
     },
     "basePath": "/",
@@ -67,8 +67,8 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "add role datas",
-                        "name": "datas",
+                        "description": "add role data",
+                        "name": "data",
                         "in": "query"
                     }
                 ],
@@ -182,8 +182,8 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "add role datas",
-                        "name": "datas",
+                        "description": "add role data",
+                        "name": "data",
                         "in": "query"
                     }
                 ],
@@ -479,7 +479,7 @@
                         "name": "Body",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/rebac.SyncRequest"
+                            "$ref": "#/definitions/iam.SyncRequest"
                         }
                     }
                 ],
@@ -518,7 +518,7 @@
                         "name": "Body",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/rebac.SyncRequest"
+                            "$ref": "#/definitions/iam.SyncRequest"
                         }
                     }
                 ],
@@ -674,6 +674,42 @@
                         "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/permissions/bulk": {
+            "post": {
+                "tags": [
+                    "permissions"
+                ],
+                "summary": "Create permission bulk",
+                "parameters": [
+                    {
+                        "description": "Permission",
+                        "name": "permission",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/data.Permission"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/data.Response-data_ResponseCreateBulk"
                         }
                     },
                     "500": {
@@ -1161,6 +1197,71 @@
                 }
             }
         },
+        "/v1/roles/relation": {
+            "get": {
+                "tags": [
+                    "roles"
+                ],
+                "summary": "Get role relation (dump)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/data.RoleRelation"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "roles"
+                ],
+                "summary": "Set role relation",
+                "parameters": [
+                    {
+                        "description": "RoleRelation",
+                        "name": "relation",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/data.RoleRelation"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseMessage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/roles/{id}": {
             "get": {
                 "tags": [
@@ -1446,8 +1547,8 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "add datas",
-                        "name": "add_datas",
+                        "description": "add data",
+                        "name": "add_data",
                         "in": "query"
                     },
                     {
@@ -1631,8 +1732,8 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "add datas",
-                        "name": "add_datas",
+                        "description": "add data",
+                        "name": "add_data",
                         "in": "query"
                     }
                 ],
@@ -1805,6 +1906,73 @@
                 }
             }
         },
+        "/v1/sync": {
+            "post": {
+                "tags": [
+                    "backup"
+                ],
+                "summary": "Sync with write API",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseMessage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/trigger": {
+            "post": {
+                "tags": [
+                    "backup"
+                ],
+                "summary": "Add trigger endpoint for change sync",
+                "parameters": [
+                    {
+                        "description": "Trigger API",
+                        "name": "trigger",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/iam.Trigger"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseMessage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/users": {
             "get": {
                 "tags": [
@@ -1885,8 +2053,8 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "add datas",
-                        "name": "add_datas",
+                        "description": "add data",
+                        "name": "add_data",
                         "in": "query"
                     },
                     {
@@ -2070,8 +2238,8 @@
                     },
                     {
                         "type": "boolean",
-                        "description": "add datas",
-                        "name": "add_datas",
+                        "description": "add data",
+                        "name": "add_data",
                         "in": "query"
                     }
                 ],
@@ -2254,7 +2422,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/data.Response-uint64"
+                            "$ref": "#/definitions/data.ResponseVersion"
                         }
                     }
                 }
@@ -2351,6 +2519,10 @@
         "data.Permission": {
             "type": "object",
             "properties": {
+                "data": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
                 "description": {
                     "type": "string"
                 },
@@ -2371,6 +2543,10 @@
         "data.PermissionPatch": {
             "type": "object",
             "properties": {
+                "data": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
                 "description": {
                     "type": "string"
                 },
@@ -2526,6 +2702,20 @@
                 }
             }
         },
+        "data.Response-data_ResponseCreateBulk": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
+                "meta": {
+                    "$ref": "#/definitions/data.Meta"
+                },
+                "payload": {
+                    "$ref": "#/definitions/data.ResponseCreateBulk"
+                }
+            }
+        },
         "data.Response-data_RoleExtended": {
             "type": "object",
             "properties": {
@@ -2582,25 +2772,22 @@
                 }
             }
         },
-        "data.Response-uint64": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "$ref": "#/definitions/data.Message"
-                },
-                "meta": {
-                    "$ref": "#/definitions/data.Meta"
-                },
-                "payload": {
-                    "type": "integer"
-                }
-            }
-        },
         "data.ResponseCreate": {
             "type": "object",
             "properties": {
                 "id": {
                     "type": "string"
+                }
+            }
+        },
+        "data.ResponseCreateBulk": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -2617,6 +2804,14 @@
             "properties": {
                 "message": {
                     "$ref": "#/definitions/data.Message"
+                }
+            }
+        },
+        "data.ResponseVersion": {
+            "type": "object",
+            "properties": {
+                "version": {
+                    "type": "integer"
                 }
             }
         },
@@ -2722,6 +2917,23 @@
                 }
             }
         },
+        "data.RoleRelation": {
+            "type": "object",
+            "properties": {
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "roles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "data.User": {
             "type": "object",
             "properties": {
@@ -2800,7 +3012,7 @@
                         "type": "string"
                     }
                 },
-                "datas": {
+                "data": {
                     "type": "array",
                     "items": {}
                 },
@@ -2846,7 +3058,7 @@
         "data.UserInfo": {
             "type": "object",
             "properties": {
-                "datas": {
+                "data": {
                     "type": "array",
                     "items": {}
                 },
@@ -2901,6 +3113,34 @@
                 }
             }
         },
+        "iam.SyncRequest": {
+            "type": "object",
+            "properties": {
+                "force": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "iam.Trigger": {
+            "type": "object",
+            "properties": {
+                "host": {
+                    "description": "default is caller host",
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "port": {
+                    "description": "default is caller port",
+                    "type": "string"
+                },
+                "schema": {
+                    "description": "default is http",
+                    "type": "string"
+                }
+            }
+        },
         "ldap.LdapGroup": {
             "type": "object",
             "properties": {
@@ -2929,14 +3169,6 @@
                 },
                 "uid": {
                     "type": "string"
-                }
-            }
-        },
-        "rebac.SyncRequest": {
-            "type": "object",
-            "properties": {
-                "force": {
-                    "type": "boolean"
                 }
             }
         }

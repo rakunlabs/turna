@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/dgraph-io/badger/v4"
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
@@ -15,51 +16,60 @@ func (b *Badger) GetPermissions(req data.GetPermissionRequest) (*data.Response[[
 	defer b.dbBackupLock.RUnlock()
 
 	var permissions []data.Permission
+	var count uint64
 
-	badgerHoldQuery := &badgerhold.Query{}
+	if err := b.db.Badger().View(func(txn *badger.Txn) error {
+		var err error
 
-	if req.ID != "" {
-		badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID).Index("ID")
-	} else {
-		var badgerHoldQueryInternal *badgerhold.Query
-		if req.Name != "" {
-			badgerHoldQueryInternal = badgerhold.Where("Name").MatchFunc(matchAll(req.Name))
-		}
+		badgerHoldQuery := &badgerhold.Query{}
 
-		if req.Method != "" {
+		if req.ID != "" {
+			badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID).Index("ID")
+		} else {
+			var badgerHoldQueryInternal *badgerhold.Query
+			if req.Name != "" {
+				badgerHoldQueryInternal = badgerhold.Where("Name").MatchFunc(matchAll(req.Name))
+			}
+
+			if req.Method != "" {
+				if badgerHoldQueryInternal != nil {
+					badgerHoldQueryInternal = badgerHoldQueryInternal.And("Resources").MatchFunc(matchRequestMethod(req.Method))
+				} else {
+					badgerHoldQueryInternal = badgerhold.Where("Resources").MatchFunc(matchRequestMethod(req.Method))
+				}
+			}
+
+			if req.Path != "" {
+				if badgerHoldQueryInternal != nil {
+					badgerHoldQueryInternal = badgerHoldQueryInternal.And("Resources").MatchFunc(matchRequestPath(req.Path))
+				} else {
+					badgerHoldQueryInternal = badgerhold.Where("Resources").MatchFunc(matchRequestPath(req.Path))
+				}
+			}
+
 			if badgerHoldQueryInternal != nil {
-				badgerHoldQueryInternal = badgerHoldQueryInternal.And("Resources").MatchFunc(matchRequestMethod(req.Method))
-			} else {
-				badgerHoldQueryInternal = badgerhold.Where("Resources").MatchFunc(matchRequestMethod(req.Method))
+				badgerHoldQuery = badgerHoldQueryInternal
 			}
 		}
 
-		if req.Path != "" {
-			if badgerHoldQueryInternal != nil {
-				badgerHoldQueryInternal = badgerHoldQueryInternal.And("Resources").MatchFunc(matchRequestPath(req.Path))
-			} else {
-				badgerHoldQueryInternal = badgerhold.Where("Resources").MatchFunc(matchRequestPath(req.Path))
-			}
+		count, err = b.db.TxCount(txn, data.Permission{}, badgerHoldQuery)
+		if err != nil {
+			return err
 		}
 
-		if badgerHoldQueryInternal != nil {
-			badgerHoldQuery = badgerHoldQueryInternal
+		if req.Offset > 0 {
+			badgerHoldQuery = badgerHoldQuery.Skip(int(req.Offset))
 		}
-	}
+		if req.Limit > 0 {
+			badgerHoldQuery = badgerHoldQuery.Limit(int(req.Limit))
+		}
 
-	count, err := b.db.Count(data.Permission{}, badgerHoldQuery)
-	if err != nil {
-		return nil, err
-	}
+		if err := b.db.TxFind(txn, &permissions, badgerHoldQuery); err != nil {
+			return err
+		}
 
-	if req.Offset > 0 {
-		badgerHoldQuery = badgerHoldQuery.Skip(int(req.Offset))
-	}
-	if req.Limit > 0 {
-		badgerHoldQuery = badgerHoldQuery.Limit(int(req.Limit))
-	}
-
-	if err := b.db.Find(&permissions, badgerHoldQuery); err != nil {
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 
@@ -73,15 +83,15 @@ func (b *Badger) GetPermissions(req data.GetPermissionRequest) (*data.Response[[
 	}, nil
 }
 
-func (b *Badger) GetPermission(name string) (*data.Permission, error) {
+func (b *Badger) GetPermission(id string) (*data.Permission, error) {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
 	var permission data.Permission
 
-	if err := b.db.Get(name, &permission); err != nil {
+	if err := b.db.Get(id, &permission); err != nil {
 		if errors.Is(err, badgerhold.ErrNotFound) {
-			return nil, fmt.Errorf("permission with name %s not found; %w", name, data.ErrNotFound)
+			return nil, fmt.Errorf("permission with id %s not found; %w", id, data.ErrNotFound)
 		}
 
 		return nil, err
@@ -94,44 +104,94 @@ func (b *Badger) CreatePermission(permission data.Permission) (string, error) {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	// Check if permission with the same name exists
-	if err := b.db.FindOne(&data.Permission{}, badgerhold.Where("Name").Eq(permission.Name).Index("Name")); err != nil {
-		if !errors.Is(err, badgerhold.ErrNotFound) {
-			return "", err
+	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
+		// Check if permission with the same name exists
+		if err := b.db.TxFindOne(txn, &data.Permission{}, badgerhold.Where("Name").Eq(permission.Name).Index("Name")); err != nil {
+			if !errors.Is(err, badgerhold.ErrNotFound) {
+				return err
+			}
+		} else {
+			return fmt.Errorf("permission with name %s already exists; %w", permission.Name, data.ErrConflict)
 		}
-	} else {
-		return "", fmt.Errorf("permission with name %s already exists; %w", permission.Name, data.ErrConflict)
-	}
 
-	permission.ID = ulid.Make().String()
+		permission.ID = ulid.Make().String()
 
-	if err := b.db.Insert(permission.ID, permission); err != nil {
-		if errors.Is(err, badgerhold.ErrKeyExists) {
-			return "", fmt.Errorf("permission with ID %s already exists; %w", permission.ID, data.ErrConflict)
+		if err := b.db.TxInsert(txn, permission.ID, permission); err != nil {
+			if errors.Is(err, badgerhold.ErrKeyExists) {
+				return fmt.Errorf("permission with ID %s already exists; %w", permission.ID, data.ErrConflict)
+			}
 		}
+
+		return nil
+	}); err != nil {
+		return "", err
 	}
 
 	return permission.ID, nil
 }
 
-func (b *Badger) editPermission(id string, fn func(*data.Permission) error) error {
+func (b *Badger) CreatePermissions(permission []data.Permission) ([]string, error) {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	var foundPermission data.Permission
-	if err := b.db.FindOne(&foundPermission, badgerhold.Where("ID").Eq(id).Index("ID")); err != nil {
-		if errors.Is(err, badgerhold.ErrNotFound) {
-			return fmt.Errorf("permission with id %s not found; %w", id, data.ErrNotFound)
+	ids := make([]string, 0, len(permission))
+
+	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
+		for i := range permission {
+			// Check if permission with the same name exists
+			if err := b.db.TxFindOne(txn, &data.Permission{}, badgerhold.Where("Name").Eq(permission[i].Name).Index("Name")); err != nil {
+				if !errors.Is(err, badgerhold.ErrNotFound) {
+					return err
+				}
+			} else {
+				continue
+			}
+
+			permission[i].ID = ulid.Make().String()
+
+			if err := b.db.TxInsert(txn, permission[i].ID, permission[i]); err != nil {
+				if errors.Is(err, badgerhold.ErrKeyExists) {
+					continue
+				}
+
+				return err
+			}
+
+			ids = append(ids, permission[i].ID)
 		}
 
-		return err
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
-	if err := fn(&foundPermission); err != nil {
-		return err
-	}
+	return ids, nil
+}
 
-	if err := b.db.Update(foundPermission.ID, foundPermission); err != nil {
+func (b *Badger) editPermission(id string, fn func(*badger.Txn, *data.Permission) error) error {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
+	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
+		var foundPermission data.Permission
+		if err := b.db.TxFindOne(txn, &foundPermission, badgerhold.Where("ID").Eq(id).Index("ID")); err != nil {
+			if errors.Is(err, badgerhold.ErrNotFound) {
+				return fmt.Errorf("permission with id %s not found; %w", id, data.ErrNotFound)
+			}
+
+			return err
+		}
+
+		if err := fn(txn, &foundPermission); err != nil {
+			return err
+		}
+
+		if err := b.db.TxUpdate(txn, foundPermission.ID, foundPermission); err != nil {
+			return err
+		}
+
+		return nil
+	}); err != nil {
 		return err
 	}
 
@@ -139,10 +199,10 @@ func (b *Badger) editPermission(id string, fn func(*data.Permission) error) erro
 }
 
 func (b *Badger) PatchPermission(id string, patch data.PermissionPatch) error {
-	return b.editPermission(id, func(foundPermission *data.Permission) error {
+	return b.editPermission(id, func(txn *badger.Txn, foundPermission *data.Permission) error {
 		if patch.Name != nil && *patch.Name != "" && *patch.Name != foundPermission.Name {
 			// Check if permission with the same name exists
-			if err := b.db.FindOne(&data.Permission{}, badgerhold.Where("Name").Eq(patch.Name).Index("Name")); err != nil {
+			if err := b.db.TxFindOne(txn, &data.Permission{}, badgerhold.Where("Name").Eq(patch.Name).Index("Name")); err != nil {
 				if !errors.Is(err, badgerhold.ErrNotFound) {
 					return err
 				}
@@ -159,6 +219,10 @@ func (b *Badger) PatchPermission(id string, patch data.PermissionPatch) error {
 
 		if patch.Resources != nil {
 			foundPermission.Resources = *patch.Resources
+		}
+
+		if patch.Data != nil {
+			foundPermission.Data = patch.Data
 		}
 
 		return nil
@@ -180,29 +244,36 @@ func (b *Badger) DeletePermission(id string) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	if err := b.db.Delete(id, data.Permission{}); err != nil {
-		return err
-	}
-
-	// Delete the permission from all roles
-	if err := b.db.ForEach(badgerhold.Where("PermissionIDs").Contains(id), func(role *data.Role) error {
-		role.PermissionIDs = slices.DeleteFunc(role.PermissionIDs, func(cmp string) bool {
-			return cmp == id
-		})
-
-		if err := b.db.Update(role.ID, role); err != nil {
+	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
+		// Delete the permission
+		if err := b.db.TxDelete(txn, id, data.Permission{}); err != nil {
 			return err
+		}
+
+		// Delete the permission from all roles
+		if err := b.db.TxForEach(txn, badgerhold.Where("PermissionIDs").Contains(id), func(role *data.Role) error {
+			role.PermissionIDs = slices.DeleteFunc(role.PermissionIDs, func(cmp string) bool {
+				return cmp == id
+			})
+
+			if err := b.db.TxUpdate(txn, role.ID, role); err != nil {
+				return err
+			}
+
+			return nil
+		}); err != nil {
+			return fmt.Errorf("failed to delete permission from roles; %w", err)
 		}
 
 		return nil
 	}); err != nil {
-		return fmt.Errorf("failed to delete permission from roles; %w", err)
+		return err
 	}
 
 	return nil
 }
 
-func (b *Badger) getPermissionIDs(method, path string) ([]string, error) {
+func (b *Badger) getPermissionIDs(txn *badger.Txn, method, path string) ([]string, error) {
 	var permissionIDs []string
 
 	var query *badgerhold.Query
@@ -218,7 +289,7 @@ func (b *Badger) getPermissionIDs(method, path string) ([]string, error) {
 		}
 	}
 
-	if err := b.db.ForEach(query, func(perm *data.Permission) error {
+	if err := b.db.TxForEach(txn, query, func(perm *data.Permission) error {
 		permissionIDs = append(permissionIDs, perm.ID)
 
 		return nil

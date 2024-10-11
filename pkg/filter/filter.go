@@ -56,7 +56,6 @@ func (f *FileFilter) Start(ctx context.Context, wg *sync.WaitGroup) (*os.File, e
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-
 			<-ctx.Done()
 
 			f.w.Close()
@@ -65,8 +64,9 @@ func (f *FileFilter) Start(ctx context.Context, wg *sync.WaitGroup) (*os.File, e
 
 			// read remainings
 			<-ctxReadWait.Done()
+
 			for {
-				if err = f.read(buff); err != nil {
+				if err = f.read(buff, true); err != nil {
 					break
 				}
 			}
@@ -79,7 +79,11 @@ func (f *FileFilter) Start(ctx context.Context, wg *sync.WaitGroup) (*os.File, e
 		}()
 
 		for {
-			if err := f.read(buff); err != nil && !errors.Is(err, io.EOF) {
+			if err := f.read(buff, false); err != nil {
+				if errors.Is(err, io.EOF) {
+					break
+				}
+
 				if !errors.Is(err, os.ErrClosed) {
 					slog.Error("loop read failed", "err", err)
 				}
@@ -94,22 +98,30 @@ func (f *FileFilter) Start(ctx context.Context, wg *sync.WaitGroup) (*os.File, e
 	return f.w, nil
 }
 
-func (f *FileFilter) read(buff *bufio.Reader) error {
+func (f *FileFilter) read(buff *bufio.Reader, withErr bool) error {
 	readed, err := buff.ReadBytes('\n')
 	if err != nil {
-		return fmt.Errorf("failed read FileFilter: %w", err)
+		if !withErr {
+			return err
+		}
+
+		if !errors.Is(err, io.EOF) {
+			return fmt.Errorf("failed read FileFilter: %w", err)
+		}
+	}
+
+	if len(readed) == 0 {
+		return err
 	}
 
 	// filter function
-	if f.Filter != nil {
-		if !f.Filter(readed) {
-			return nil
-		}
+	if f.Filter != nil && !f.Filter(readed) {
+		return nil
 	}
 
 	if _, err := f.To.Write(readed); err != nil {
 		return fmt.Errorf("failed write FileFilter.To: %w", err)
 	}
 
-	return nil
+	return err
 }

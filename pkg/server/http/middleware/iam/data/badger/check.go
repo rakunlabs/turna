@@ -6,85 +6,98 @@ import (
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/dgraph-io/badger/v4"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	"github.com/timshannon/badgerhold/v4"
 )
 
-var ErrFuncExit = errors.New("function exit")
+var (
+	ErrFuncExit = errors.New("function exit")
+	ErrNotAllow = errors.New("not allowed")
+)
 
 func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	var user *data.User
+	access := false
 
-	var query *badgerhold.Query
-	if req.ID != "" {
-		query = badgerhold.Where("ID").Eq(req.ID).Index("ID")
-	} else if req.Alias != "" {
-		query = badgerhold.Where("Alias").Contains(req.Alias)
-		if userCached := b.GetCachedID(req.Alias); userCached != nil {
-			user = userCached
+	if err := b.db.Badger().View(func(txn *badger.Txn) error {
+		var user *data.User
+
+		var query *badgerhold.Query
+		if req.ID != "" {
+			query = badgerhold.Where("ID").Eq(req.ID).Index("ID")
+		} else if req.Alias != "" {
+			query = badgerhold.Where("Alias").Contains(req.Alias)
+			if userCached := b.getCachedID(txn, req.Alias); userCached != nil {
+				user = userCached
+			}
 		}
-	}
 
-	if user == nil {
-		var userFind data.User
+		if user == nil {
+			var userFind data.User
 
-		if err := b.db.FindOne(&userFind, query); err != nil {
-			if errors.Is(err, badgerhold.ErrNotFound) {
-				return &data.CheckResponse{
-					Allowed: false,
-				}, nil
+			if err := b.db.TxFindOne(txn, &userFind, query); err != nil {
+				if errors.Is(err, badgerhold.ErrNotFound) {
+					return ErrNotAllow
+				}
+
+				return err
 			}
 
-			return nil, err
+			user = &userFind
+
+			b.SetCachedID(user.Alias, user.ID)
 		}
 
-		user = &userFind
+		if user.Disabled {
+			return ErrNotAllow
+		}
 
-		b.SetCachedID(user.Alias, user.ID)
-	}
+		// get all roles of roles
+		roleIDs, err := b.getVirtualRoleIDs(txn, slices.Concat(user.RoleIDs, user.SyncRoleIDs))
+		if err != nil {
+			return err
+		}
 
-	if user.Disabled {
-		return &data.CheckResponse{
-			Allowed: false,
-		}, nil
-	}
+		// get permissions based on roles
+		var roles []data.Role
+		query = badgerhold.Where("ID").In(toInterfaceSlice(roleIDs)...)
+		if err := b.db.TxFind(txn, &roles, query); err != nil {
+			return err
+		}
 
-	// get all roles of roles
-	roleIDs, err := b.getVirtualRoleIDs(slices.Concat(user.RoleIDs, user.SyncRoleIDs))
-	if err != nil {
-		return nil, err
-	}
+		permissionIDs := make([]string, 0)
+		for _, role := range roles {
+			permissionIDs = append(permissionIDs, role.PermissionIDs...)
+		}
 
-	// get permissions based on roles
-	var roles []data.Role
-	query = badgerhold.Where("ID").In(toInterfaceSlice(roleIDs)...)
-	if err := b.db.Find(&roles, query); err != nil {
-		return nil, err
-	}
+		query = badgerhold.Where("ID").In(toInterfaceSlice(permissionIDs)...)
 
-	permissionIDs := make([]string, 0)
-	for _, role := range roles {
-		permissionIDs = append(permissionIDs, role.PermissionIDs...)
-	}
+		if err := b.db.TxForEach(txn, query, func(perm *data.Permission) error {
+			if CheckAccess(perm, req.Path, req.Method) {
+				access = true
 
-	query = badgerhold.Where("ID").In(toInterfaceSlice(permissionIDs)...)
+				return ErrFuncExit
+			}
 
-	access := false
-	if err := b.db.ForEach(query, func(perm *data.Permission) error {
-		if CheckAccess(perm, req.Path, req.Method) {
-			access = true
-
-			return ErrFuncExit
+			return nil
+		}); err != nil {
+			if !errors.Is(err, ErrFuncExit) {
+				return err
+			}
 		}
 
 		return nil
 	}); err != nil {
-		if !errors.Is(err, ErrFuncExit) {
-			return nil, err
+		if errors.Is(err, ErrNotAllow) {
+			return &data.CheckResponse{
+				Allowed: false,
+			}, nil
 		}
+
+		return nil, err
 	}
 
 	return &data.CheckResponse{

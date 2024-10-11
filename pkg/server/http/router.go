@@ -60,23 +60,11 @@ func (r *Router) Set(_ string, ruleRouter *RuleRouter) error {
 		}
 
 		for path := range mPath {
-			e.Handle(path, NewMiddlewareHandler(middlewares))
+			e.Handle(path, httputil.NewMiddlewareHandler(middlewares))
 		}
 	}
 
 	return nil
-}
-
-func NewMiddlewareHandler(handlers []func(next http.Handler) http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var handler http.Handler
-
-		for i := len(handlers) - 1; i >= 0; i-- {
-			handler = handlers[i](handler)
-		}
-
-		handler.ServeHTTP(w, r)
-	})
 }
 
 var ErrorMiddleware = func(next http.Handler) http.Handler {

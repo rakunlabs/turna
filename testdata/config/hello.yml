@@ -12,7 +12,13 @@ server:
     middlewares:
       hello:
         hello:
-          message: "Hello from TURNA\n"
+          message: |
+            Hello from TURNA
+            Remote address: {{ .remote_addr }}
+            Host address: {{ .host }}
+            Scheme: {{ .scheme }}
+            Path: {{ .path }}
+          template: true
       inject:
         inject:
           path_map: # map of content-type
