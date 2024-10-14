@@ -25,6 +25,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/inject"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/log"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/login"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/path"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/print"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/redirectcontinue"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/redirection"
@@ -123,6 +124,7 @@ type HTTPMiddleware struct {
 	GrpcUIMiddleware           *grpcui.GrpcUI                        `cfg:"grpcui"`
 	DNSPathMiddleware          *dnspath.DNSPath                      `cfg:"dns_path"`
 	SplitterMiddleware         *splitter.Splitter                    `cfg:"splitter"`
+	PathMiddleware             *path.Path                            `cfg:"path"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
@@ -230,6 +232,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 	case h.SplitterMiddleware != nil:
 		m, err := h.SplitterMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
+	case h.PathMiddleware != nil:
+		m := h.PathMiddleware.Middleware()
+		return []MiddlewareFunc{m}, nil
 	}
 
 	return nil, nil

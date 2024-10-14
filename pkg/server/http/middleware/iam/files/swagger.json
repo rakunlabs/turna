@@ -166,6 +166,28 @@
                 }
             }
         },
+        "/v1/dashboard": {
+            "get": {
+                "tags": [
+                    "dashboard"
+                ],
+                "summary": "Get dashboard info",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/data.Response-data_Dashboard"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/info": {
             "get": {
                 "tags": [
@@ -2466,6 +2488,29 @@
                 }
             }
         },
+        "data.Dashboard": {
+            "type": "object",
+            "properties": {
+                "roles": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/data.RoleExtended"
+                    }
+                },
+                "total_permissions": {
+                    "type": "integer"
+                },
+                "total_roles": {
+                    "type": "integer"
+                },
+                "total_service_accounts": {
+                    "type": "integer"
+                },
+                "total_users": {
+                    "type": "integer"
+                }
+            }
+        },
         "data.IDName": {
             "type": "object",
             "properties": {
@@ -2657,6 +2702,20 @@
                     "items": {
                         "$ref": "#/definitions/ldap.LdapGroup"
                     }
+                }
+            }
+        },
+        "data.Response-data_Dashboard": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
+                "meta": {
+                    "$ref": "#/definitions/data.Meta"
+                },
+                "payload": {
+                    "$ref": "#/definitions/data.Dashboard"
                 }
             }
         },

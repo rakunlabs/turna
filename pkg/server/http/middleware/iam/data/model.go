@@ -137,6 +137,15 @@ type LMapCheckCreate struct {
 	Description string `json:"description"`
 }
 
+type Dashboard struct {
+	Roles []RoleExtended `json:"roles"`
+
+	TotalRoles           uint64 `json:"total_roles"`
+	TotalPermissions     uint64 `json:"total_permissions"`
+	TotalUsers           uint64 `json:"total_users"`
+	TotalServiceAccounts uint64 `json:"total_service_accounts"`
+}
+
 // //////////////////////////////////////////////////////////////////////
 
 type Response[T any] struct {
@@ -291,6 +300,8 @@ type Database interface {
 	PatchRole(id string, role RolePatch) error
 	PutRoleRelation(relation map[string]RoleRelation) error
 	GetRoleRelation() (map[string]RoleRelation, error)
+
+	Dashboard() (*Dashboard, error)
 
 	Check(req CheckRequest) (*CheckResponse, error)
 

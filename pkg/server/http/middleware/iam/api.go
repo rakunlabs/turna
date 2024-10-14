@@ -77,6 +77,8 @@ func (m *Iam) MuxSet(prefix string) *chi.Mux {
 	mux.Put(prefix+"/v1/ldap/maps/{name}", m.LdapPutGroupMaps)       // trigger
 	mux.Delete(prefix+"/v1/ldap/maps/{name}", m.LdapDeleteGroupMaps) // trigger
 
+	mux.Get(prefix+"/v1/dashboard", m.Dashboard)
+
 	mux.Post(prefix+"/v1/check", m.PostCheck)
 	mux.Get(prefix+"/v1/info", m.Info)
 
@@ -1607,7 +1609,16 @@ func (m *Iam) InfoUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	getData, _ := strconv.ParseBool(r.URL.Query().Get("data"))
+	var getData bool
+	if v := r.Header.Get("X-Data"); v != "" {
+		vBool, _ := strconv.ParseBool(v)
+		getData = vBool
+	}
+
+	if v := r.URL.Query().Get("data"); v != "" {
+		vBool, _ := strconv.ParseBool(v)
+		getData = vBool
+	}
 
 	user, err := m.db.GetUser(data.GetUserRequest{Alias: xUser, AddRoles: true, AddPermissions: true, AddData: getData, Sanitize: true})
 	if err != nil {
@@ -1777,4 +1788,19 @@ func (m *Iam) Sync(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Synced"))
+}
+
+// @Summary Get dashboard info
+// @Tags dashboard
+// @Success 200 {object} data.Response[data.Dashboard]
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/dashboard [GET]
+func (m *Iam) Dashboard(w http.ResponseWriter, _ *http.Request) {
+	dashboard, err := m.db.Dashboard()
+	if err != nil {
+		httputil.HandleError(w, data.NewError("Cannot get dashboard", err, http.StatusInternalServerError))
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, data.Response[*data.Dashboard]{Payload: dashboard})
 }
