@@ -85,6 +85,7 @@ type User struct {
 	Details        map[string]interface{} `json:"details"`
 	Disabled       bool                   `json:"-"`
 	ServiceAccount bool                   `json:"service_account"`
+	Local          bool                   `json:"local"`
 }
 
 type UserCreate struct {

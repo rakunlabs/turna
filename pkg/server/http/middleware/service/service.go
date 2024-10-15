@@ -91,6 +91,13 @@ func (m *Service) Middleware() ([]func(http.Handler) http.Handler, error) {
 
 	cfg.Transport = client.HTTP.Transport
 
+	cfg.ModifyResponse = func(r *http.Response) error {
+		// check duplicate headers
+		r.Header = http.Header{}
+
+		return nil
+	}
+
 	checkHost := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !m.PassHostHeader {

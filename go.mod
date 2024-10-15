@@ -37,6 +37,7 @@ require (
 	github.com/worldline-go/klient v0.8.4
 	github.com/worldline-go/logz v0.5.1
 	github.com/worldline-go/struct2 v1.3.0
+	golang.org/x/crypto v0.27.0
 	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e
 	google.golang.org/grpc v1.66.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -117,7 +118,6 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
-	golang.org/x/crypto v0.27.0 // indirect
 	golang.org/x/net v0.28.0 // indirect
 	golang.org/x/oauth2 v0.21.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect

@@ -2,6 +2,7 @@ package iam
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -43,6 +44,10 @@ type Badger struct {
 	SyncSchema string `cfg:"sync_schema"`
 	// SyncHost is the host of the sync service, default is the caller host
 	SyncHost string `cfg:"sync_host"`
+	// SyncHostFromInterface is for network interface to get the host, default is false
+	SyncHostFromInterface bool `cfg:"sync_host_from_interface"`
+	// SyncHostFromInterfaceIPPrefix is the prefix of the interface IP
+	SyncHostFromInterfaceIPPrefix string `cfg:"sync_host_from_interface_ip_prefix"`
 	// SyncPort is the port of the sync service, default is 8080
 	SyncPort string `cfg:"sync_port"`
 }
@@ -73,6 +78,25 @@ func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, 
 	into.ShutdownAdd(db.Close, "iam db")
 
 	m.db = db
+
+	if m.Database.Badger.SyncHostFromInterface {
+		addr, err := net.InterfaceAddrs()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, a := range addr {
+			if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+				if ipnet.IP.To4() != nil {
+					ipAddr := ipnet.IP.String()
+					if strings.HasPrefix(ipAddr, m.Database.Badger.SyncHostFromInterfaceIPPrefix) {
+						m.Database.Badger.SyncHost = ipnet.IP.String()
+						break
+					}
+				}
+			}
+		}
+	}
 
 	m.sync, err = NewSync(SyncConfig{
 		WriteAPI:   m.Database.Badger.WriteAPI,

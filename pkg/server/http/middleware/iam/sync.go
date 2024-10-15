@@ -22,11 +22,11 @@ import (
 )
 
 var (
-	DefaultTriggerTTL            = 12 * time.Second
-	DefaultTriggerRequestTimeout = 2 * time.Second
+	DefaultIntervalWriteAPI = 10 * time.Second
+	DefaultTriggerTTL       = 30 * time.Second
 
-	DefaultIntervalWriteAPI = 5 * time.Second
-	DefaultSyncTimeout      = 5 * time.Second
+	DefaultTriggerRequestTimeout = 2 * time.Second
+	DefaultSyncTimeout           = 5 * time.Second
 
 	DefaultSyncInterval = 10 * time.Minute
 )

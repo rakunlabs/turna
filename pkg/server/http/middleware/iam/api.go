@@ -250,8 +250,19 @@ func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 	user.Disabled = !user.IsActive
 
 	if user.ServiceAccount {
-		if user.Details == nil || user.Details["name"] == "" || user.Details["secret"] == "" {
+		if user.Details == nil || cast.ToString(user.Details["name"]) == "" || cast.ToString(user.Details["secret"]) == "" {
 			httputil.HandleError(w, data.NewError("name and secret are required", nil, http.StatusBadRequest))
+			return
+		}
+
+		if !slices.Contains(user.Alias, cast.ToString(user.Details["name"])) {
+			user.Alias = append(user.Alias, cast.ToString(user.Details["name"]))
+		}
+	}
+
+	if user.Local {
+		if user.Details == nil || cast.ToString(user.Details["name"]) == "" || cast.ToString(user.Details["password"]) == "" {
+			httputil.HandleError(w, data.NewError("name and password is required", nil, http.StatusBadRequest))
 			return
 		}
 

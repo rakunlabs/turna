@@ -8,7 +8,9 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/oklog/ulid/v2"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/access"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/spf13/cast"
 	"github.com/timshannon/badgerhold/v4"
 )
 
@@ -286,6 +288,17 @@ func (b *Badger) CreateUser(user data.User) (string, error) {
 			return fmt.Errorf("user with alias %v already exists; %w", user.Alias, data.ErrConflict)
 		}
 
+		if user.Details != nil {
+			if v := cast.ToString(user.Details["password"]); v != "" {
+				hashPassword, err := access.ToBcrypt([]byte(v))
+				if err != nil {
+					slog.Error("Cannot hash password", slog.String("error", err.Error()))
+				}
+
+				user.Details["password"] = hashPassword
+			}
+		}
+
 		if err := b.db.TxInsert(txn, user.ID, user); err != nil {
 			return err
 		}
@@ -337,6 +350,15 @@ func (b *Badger) PatchUser(id string, userPatch data.UserPatch) error {
 		}
 
 		if userPatch.Details != nil {
+			if v := cast.ToString((*userPatch.Details)["password"]); v != "" {
+				hashPassword, err := access.ToBcrypt([]byte(v))
+				if err != nil {
+					slog.Error("Cannot hash password", slog.String("error", err.Error()))
+				}
+
+				(*userPatch.Details)["password"] = hashPassword
+			}
+
 			foundUser.Details = *userPatch.Details
 		}
 
@@ -362,6 +384,17 @@ func (b *Badger) PutUser(user data.User) error {
 			}
 
 			return err
+		}
+
+		if user.Details != nil {
+			if v := cast.ToString(user.Details["password"]); v != "" {
+				hashPassword, err := access.ToBcrypt([]byte(v))
+				if err != nil {
+					slog.Error("Cannot hash password", slog.String("error", err.Error()))
+				}
+
+				user.Details["password"] = hashPassword
+			}
 		}
 
 		if err := b.db.TxUpdate(txn, foundUser.ID, user); err != nil {
