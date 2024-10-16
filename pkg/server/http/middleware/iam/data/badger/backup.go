@@ -13,6 +13,7 @@ func (b *Badger) Backup(w io.Writer, since uint64) (uint64, error) {
 
 	b.db.Badger().MaxVersion()
 
+	slog.Info("backup database", slog.Uint64("since", since))
 	backupVersion, err := b.db.Badger().Backup(w, since)
 	if err != nil {
 		return backupVersion, err

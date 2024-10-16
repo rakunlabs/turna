@@ -18,7 +18,7 @@ type Badger struct {
 
 var _ data.Database = &Badger{}
 
-func New(path string, memory bool) (*Badger, error) {
+func New(path string, memory bool, flatten bool) (*Badger, error) {
 	options := badgerhold.DefaultOptions
 	if memory {
 		options.InMemory = memory
@@ -33,6 +33,10 @@ func New(path string, memory bool) (*Badger, error) {
 	db, err := badgerhold.Open(options)
 	if err != nil {
 		return nil, err
+	}
+
+	if flatten {
+		db.Badger().Flatten(20)
 	}
 
 	return &Badger{db: db}, nil

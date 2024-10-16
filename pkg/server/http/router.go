@@ -8,8 +8,8 @@ import (
 	"runtime/debug"
 
 	"github.com/labstack/echo/v4"
-	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/requestid"
 	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
 	"github.com/rakunlabs/turna/pkg/server/registry"
 )
@@ -22,6 +22,13 @@ type Router struct {
 	Middlewares []string  `cfg:"middlewares"`
 	TLS         *struct{} `cfg:"tls"`
 	EntryPoints []string  `cfg:"entrypoints"`
+
+	PreMiddlewares PreMiddlewares `cfg:"pre_middlewares"`
+}
+
+type PreMiddlewares struct {
+	RequestID  *bool `cfg:"request_id"`  // default is true
+	ServerInfo *bool `cfg:"server_info"` // default is true
 }
 
 func (r *Router) Set(_ string, ruleRouter *RuleRouter) error {
@@ -41,7 +48,14 @@ func (r *Router) Set(_ string, ruleRouter *RuleRouter) error {
 		}
 
 		middlewares := make([]func(http.Handler) http.Handler, 0, len(r.Middlewares)+4)
-		middlewares = append(middlewares, RecoverMiddleware, RequestIDMiddleware, PreMiddleware)
+		middlewares = append(middlewares, RecoverMiddleware, PreMiddleware)
+
+		if r.PreMiddlewares.RequestID == nil || *r.PreMiddlewares.RequestID {
+			middlewares = append(middlewares, requestid.RequestID{}.Middleware())
+		}
+		if r.PreMiddlewares.ServerInfo == nil || *r.PreMiddlewares.ServerInfo {
+			middlewares = append(middlewares, ServerInfoMiddleware)
+		}
 
 		for _, middlewareName := range r.Middlewares {
 			middlewareFromGlobal, err := registry.GlobalReg.GetHttpMiddleware(middlewareName)
@@ -105,20 +119,6 @@ var RecoverMiddleware = func(next http.Handler) http.Handler {
 	})
 }
 
-var RequestIDMiddleware = func(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestID := r.Header.Get("X-Request-Id")
-		if requestID == "" {
-			requestID = ulid.Make().String()
-		}
-
-		r.Header.Set("X-Request-Id", requestID)
-		w.Header().Set("X-Request-Id", requestID)
-
-		next.ServeHTTP(w, r)
-	})
-}
-
 var PostMiddleware = func(_ http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -126,10 +126,16 @@ var PostMiddleware = func(_ http.Handler) http.Handler {
 	})
 }
 
-var PreMiddleware = func(next http.Handler) http.Handler {
+var ServerInfoMiddleware = func(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Server", ServerInfo)
 
+		next.ServeHTTP(w, r)
+	})
+}
+
+var PreMiddleware = func(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// set turna value
 		turna := &tcontext.Turna{
 			Vars: make(map[string]interface{}),

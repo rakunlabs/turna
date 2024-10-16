@@ -25,7 +25,7 @@ var (
 	DefaultIntervalWriteAPI = 10 * time.Second
 	DefaultTriggerTTL       = 30 * time.Second
 
-	DefaultTriggerRequestTimeout = 2 * time.Second
+	DefaultTriggerRequestTimeout = 3 * time.Second
 	DefaultSyncTimeout           = 5 * time.Second
 
 	DefaultSyncInterval = 10 * time.Minute

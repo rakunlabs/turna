@@ -37,8 +37,10 @@ type Badger struct {
 	// WriteAPI to sync data from write enabled service
 	// this makes read-only service
 	WriteAPI string `cfg:"write_api"`
-	// memory to hold data in memory
+	// Memory to hold data in memory
 	Memory bool `cfg:"memory"`
+	// Flatten to flatten the data when start, default is true
+	Flatten *bool `cfg:"flatten"`
 
 	// SyncSchema is the schema of the sync service, default is http
 	SyncSchema string `cfg:"sync_schema"`
@@ -70,7 +72,12 @@ func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, 
 	mux := m.MuxSet(m.PrefixPath)
 
 	// new database
-	db, err := badger.New(m.Database.Badger.Path, m.Database.Badger.Memory)
+	flatten := true
+	if m.Database.Badger.Flatten != nil {
+		flatten = *m.Database.Badger.Flatten
+	}
+
+	db, err := badger.New(m.Database.Badger.Path, m.Database.Badger.Memory, flatten)
 	if err != nil {
 		return nil, err
 	}

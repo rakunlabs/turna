@@ -12,7 +12,7 @@ import (
 func TestBadgerGetUsers(t *testing.T) {
 	// tempdir := t.TempDir()
 
-	db, err := badger.New("", true)
+	db, err := badger.New("", true, false)
 	// db, err := badger.New(tempdir, true)
 	if err != nil {
 		t.Fatalf("failed to create badger db: %v", err)
@@ -80,7 +80,7 @@ func TestBadgerGetUsers(t *testing.T) {
 func TestBadgerCreateUser(t *testing.T) {
 	// tempdir := t.TempDir()
 
-	db, err := badger.New("", true)
+	db, err := badger.New("", true, false)
 	if err != nil {
 		t.Fatalf("failed to create badger db: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestBadgerCreateUser(t *testing.T) {
 func TestBadgerPutUser(t *testing.T) {
 	// tempdir := t.TempDir()
 
-	db, err := badger.New("", true)
+	db, err := badger.New("", true, false)
 	if err != nil {
 		t.Fatalf("failed to create badger db: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestBadgerPutUser(t *testing.T) {
 func TestBadgerPatchUser(t *testing.T) {
 	// tempdir := t.TempDir()
 
-	db, err := badger.New("", true)
+	db, err := badger.New("", true, false)
 	if err != nil {
 		t.Fatalf("failed to create badger db: %v", err)
 	}

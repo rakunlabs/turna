@@ -31,6 +31,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/redirection"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/regexpath"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/request"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/requestid"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/role"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/rolecheck"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/roledata"
@@ -125,6 +126,7 @@ type HTTPMiddleware struct {
 	DNSPathMiddleware          *dnspath.DNSPath                      `cfg:"dns_path"`
 	SplitterMiddleware         *splitter.Splitter                    `cfg:"splitter"`
 	PathMiddleware             *path.Path                            `cfg:"path"`
+	RequestIDMiddleware        *requestid.RequestID                  `cfg:"request_id"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
@@ -234,6 +236,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	case h.PathMiddleware != nil:
 		m := h.PathMiddleware.Middleware()
+		return []MiddlewareFunc{m}, nil
+	case h.RequestIDMiddleware != nil:
+		m := h.RequestIDMiddleware.Middleware()
 		return []MiddlewareFunc{m}, nil
 	}
 
