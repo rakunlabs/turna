@@ -455,6 +455,8 @@ func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addDa
 	var permissions []data.IDName
 	var rolePermissionData []interface{}
 
+	permissionIDs := make(map[string]struct{}, 100)
+
 	// get roles permissions
 	if err := b.db.TxForEach(txn, badgerhold.Where("ID").In(toInterfaceSlice(roleIDs)...), func(role *data.Role) error {
 		roles = append(roles, data.IDName{
@@ -471,6 +473,10 @@ func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addDa
 		if addRolePermissions || addData {
 			// get permissions
 			for _, permissionID := range role.PermissionIDs {
+				if _, ok := permissionIDs[permissionID]; ok {
+					continue
+				}
+
 				var permission data.Permission
 				if err := b.db.TxGet(txn, permissionID, &permission); err != nil {
 					return err
@@ -488,6 +494,8 @@ func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addDa
 						rolePermissionData = append(rolePermissionData, permission.Data)
 					}
 				}
+
+				permissionIDs[permissionID] = struct{}{}
 			}
 		}
 

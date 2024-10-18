@@ -8,7 +8,10 @@ import (
 	badgerhold "github.com/timshannon/badgerhold/v4"
 )
 
-var DefaultCacheSize = 100 << 20 // 100 MB
+var (
+	DefaultCacheSize int64 = 100 << 20 // 100 MB
+	DefaultLogSize   int64 = 200 << 20 // 200 MB
+)
 
 type Badger struct {
 	db *badgerhold.Store
@@ -27,8 +30,9 @@ func New(path string, memory bool, flatten bool) (*Badger, error) {
 		options.ValueDir = path
 	}
 
-	options.IndexCacheSize = int64(DefaultCacheSize)
+	options.IndexCacheSize = DefaultCacheSize
 	options.Logger = NewLogger()
+	options.ValueLogFileSize = DefaultLogSize
 
 	db, err := badgerhold.Open(options)
 	if err != nil {

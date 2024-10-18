@@ -42,6 +42,9 @@ type Badger struct {
 	// Flatten to flatten the data when start, default is true
 	Flatten *bool `cfg:"flatten"`
 
+	// TriggerBackground for sync process in background
+	TriggerBackground bool `cfg:"trigger_background"`
+
 	// SyncSchema is the schema of the sync service, default is http
 	SyncSchema string `cfg:"sync_schema"`
 	// SyncHost is the host of the sync service, default is the caller host
@@ -106,9 +109,10 @@ func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, 
 	}
 
 	m.sync, err = NewSync(SyncConfig{
-		WriteAPI:   m.Database.Badger.WriteAPI,
-		PrefixPath: m.PrefixPath,
-		DB:         db,
+		WriteAPI:          m.Database.Badger.WriteAPI,
+		PrefixPath:        m.PrefixPath,
+		DB:                db,
+		TriggerBackground: m.Database.Badger.TriggerBackground,
 
 		SyncSchema: m.Database.Badger.SyncSchema,
 		SyncHost:   m.Database.Badger.SyncHost,
@@ -120,7 +124,7 @@ func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, 
 
 	m.sync.SyncTTL(ctx)
 	// first sync
-	if err := m.sync.Sync(ctx); err != nil {
+	if err := m.sync.Sync(ctx, 0); err != nil {
 		return nil, err
 	}
 

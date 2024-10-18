@@ -1,11 +1,9 @@
 package iam
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -1684,19 +1682,13 @@ func (m *Iam) Backup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", "attachment; filename=rebac_"+time.Now().Format("2006-01-02_15-04-05")+".db")
 
-	backupWriter := new(bytes.Buffer)
-
-	backupVersion, err := m.db.Backup(backupWriter, since)
-	w.Header().Set("X-Backup-Version", strconv.FormatUint(backupVersion, 10))
+	backupVersion, err := m.db.Backup(w, since)
 	if err != nil {
 		httputil.HandleError(w, data.NewError("Cannot backup", err, http.StatusInternalServerError))
 		return
 	}
 
-	if _, err := io.Copy(w, backupWriter); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot write backup", err, http.StatusInternalServerError))
-		return
-	}
+	slog.Info("database backup", slog.Uint64("since", since), slog.Uint64("version", backupVersion))
 }
 
 // @Summary Restore Database
@@ -1781,19 +1773,31 @@ func (m *Iam) Trigger(w http.ResponseWriter, r *http.Request) {
 		trigger.Port = "8080"
 	}
 
-	m.sync.AddSync(trigger)
+	m.sync.AddSync(m.ctxService, trigger)
 
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Recorded trigger endpoint"))
 }
 
 // @Summary Sync with write API
 // @Tags backup
+// @Param X-Sync-Version header string false "Sync version"
 // @Success 200 {object} data.ResponseMessage
 // @Failure 400 {object} data.ResponseError
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/sync [POST]
-func (m *Iam) Sync(w http.ResponseWriter, _ *http.Request) {
-	if err := m.sync.Sync(m.ctxService); err != nil {
+func (m *Iam) Sync(w http.ResponseWriter, r *http.Request) {
+	var versionNumber uint64
+	version := r.Header.Get("X-Sync-Version")
+	if version != "" {
+		var err error
+		versionNumber, err = strconv.ParseUint(version, 10, 64)
+		if err != nil {
+			httputil.HandleError(w, data.NewError("Cannot parse version", err, http.StatusBadRequest))
+			return
+		}
+	}
+
+	if err := m.sync.Sync(m.ctxService, versionNumber); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot sync", err, http.StatusInternalServerError))
 		return
 	}

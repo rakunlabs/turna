@@ -23,10 +23,10 @@ import (
 
 var (
 	DefaultIntervalWriteAPI = 10 * time.Second
-	DefaultTriggerTTL       = 30 * time.Second
+	DefaultTriggerTTL       = 60 * time.Second
 
-	DefaultTriggerRequestTimeout = 3 * time.Second
-	DefaultSyncTimeout           = 5 * time.Second
+	DefaultTriggerRequestTimeout = 10 * time.Second
+	DefaultSyncTimeout           = 10 * time.Minute
 
 	DefaultSyncInterval = 10 * time.Minute
 )
@@ -54,9 +54,10 @@ type SyncDB interface {
 }
 
 type SyncConfig struct {
-	WriteAPI   string
-	PrefixPath string
-	DB         SyncDB
+	WriteAPI          string
+	PrefixPath        string
+	DB                SyncDB
+	TriggerBackground bool
 
 	SyncSchema string
 	SyncHost   string
@@ -64,12 +65,17 @@ type SyncConfig struct {
 }
 
 type Sync struct {
-	db          SyncDB
-	syncAPI     *SyncAPI
-	triggerAPIs map[string]time.Time
+	db                SyncDB
+	syncAPI           *SyncAPI
+	triggerAPIs       map[string]TriggerData
+	triggerBackground bool
 
 	m      sync.Mutex
 	client *klient.Client
+}
+
+type TriggerData struct {
+	Time time.Time
 }
 
 func NewSync(cfg SyncConfig) (*Sync, error) {
@@ -111,10 +117,11 @@ func NewSync(cfg SyncConfig) (*Sync, error) {
 	}
 
 	return &Sync{
-		db:          cfg.DB,
-		syncAPI:     syncAPI,
-		triggerAPIs: make(map[string]time.Time),
-		client:      client,
+		db:                cfg.DB,
+		syncAPI:           syncAPI,
+		triggerAPIs:       make(map[string]TriggerData),
+		triggerBackground: cfg.TriggerBackground,
+		client:            client,
 	}, nil
 }
 
@@ -132,7 +139,7 @@ func (s *Sync) SyncStart(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-time.After(DefaultSyncInterval):
-				if err := s.Sync(ctx); err != nil {
+				if err := s.Sync(ctx, 0); err != nil {
 					slog.Error("failed to sync", slog.String("error", err.Error()))
 				}
 			}
@@ -140,7 +147,7 @@ func (s *Sync) SyncStart(ctx context.Context) {
 	}()
 }
 
-func (s *Sync) Sync(ctx context.Context) error {
+func (s *Sync) Sync(ctx context.Context, targetVersion uint64) error {
 	if s.syncAPI == nil {
 		return nil
 	}
@@ -148,17 +155,20 @@ func (s *Sync) Sync(ctx context.Context) error {
 	s.m.Lock()
 	defer s.m.Unlock()
 
-	if err := s.sync(ctx); err != nil {
+	if err := s.sync(ctx, targetVersion); err != nil {
 		return fmt.Errorf("failed to sync: %w", err)
 	}
 
 	return nil
 }
 
-func (s *Sync) sync(ctx context.Context) error {
-	targetVersion, err := s.getVersion(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get version: %w", err)
+func (s *Sync) sync(ctx context.Context, targetVersion uint64) error {
+	if targetVersion == 0 {
+		var err error
+		targetVersion, err = s.getVersion(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get version: %w", err)
+		}
 	}
 
 	// check current version
@@ -177,29 +187,24 @@ func (s *Sync) sync(ctx context.Context) error {
 	query.Add("since", strconv.FormatUint(currentVersion, 10))
 	req.URL.RawQuery = query.Encode()
 
-	backup := bytes.NewBuffer(nil)
-	written := int64(0)
-
 	if err := s.client.Do(req, func(r *http.Response) error {
 		if err := klient.UnexpectedResponse(r); err != nil {
 			return err
 		}
 
-		var err error
-		written, err = io.Copy(backup, r.Body)
-		return err
+		if r.Body == nil {
+			return nil
+		}
+
+		if err := s.db.Restore(r.Body); err != nil {
+			return fmt.Errorf("failed to restore: %w", err)
+		}
+
+		slog.Info("updated database", slog.Uint64("version", targetVersion), slog.Uint64("current", currentVersion))
+
+		return nil
 	}); err != nil {
 		return fmt.Errorf("failed to get backup: %w", err)
-	}
-
-	if written == 0 {
-		return nil
-	}
-
-	slog.Info("update database", slog.Uint64("version", targetVersion), slog.Uint64("current", currentVersion))
-
-	if err := s.db.Restore(backup); err != nil {
-		return fmt.Errorf("failed to restore: %w", err)
 	}
 
 	return nil
@@ -283,7 +288,7 @@ func (s *Sync) Redirect(w http.ResponseWriter, r *http.Request) bool {
 // ////////////////////////////////////////////////////////////////////////////
 // for WRITE service
 
-func (s *Sync) AddSync(trigger Trigger) {
+func (s *Sync) AddSync(ctx context.Context, trigger Trigger) {
 	if s.syncAPI != nil {
 		return
 	}
@@ -298,11 +303,23 @@ func (s *Sync) AddSync(trigger Trigger) {
 
 	path := request.String()
 
+	triggerPath := false
+
 	if _, ok := s.triggerAPIs[path]; !ok {
 		slog.Info("add sync", slog.String("path", path))
+		// trigger sync
+		triggerPath = true
 	}
 
-	s.triggerAPIs[path] = time.Now()
+	s.triggerAPIs[path] = TriggerData{
+		Time: time.Now(),
+	}
+
+	if triggerPath {
+		go func() {
+			s.call(ctx, path, strconv.FormatUint(s.db.Version(), 10))
+		}()
+	}
 }
 
 func (s *Sync) Trigger(ctx context.Context) {
@@ -310,31 +327,43 @@ func (s *Sync) Trigger(ctx context.Context) {
 		return
 	}
 
-	go func() {
-		s.m.Lock()
-		defer s.m.Unlock()
+	if s.triggerBackground {
+		go func() {
+			s.trigger(ctx)
+		}()
 
-		deleteList := make([]string, 0, len(s.triggerAPIs))
+		return
+	}
 
-		for path, ttl := range s.triggerAPIs {
-			if time.Since(ttl) > DefaultTriggerTTL {
-				deleteList = append(deleteList, path)
-
-				continue
-			}
-
-			s.call(ctx, path)
-		}
-
-		for _, path := range deleteList {
-			delete(s.triggerAPIs, path)
-			slog.Info("delete sync", slog.String("path", path))
-		}
-	}()
+	s.trigger(ctx)
 }
 
-func (s *Sync) call(ctx context.Context, path string) {
-	ctx, ctxCancel := context.WithTimeout(ctx, DefaultTriggerRequestTimeout)
+func (s *Sync) trigger(ctx context.Context) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	version := strconv.FormatUint(s.db.Version(), 10)
+
+	deleteList := make([]string, 0, len(s.triggerAPIs))
+
+	for path, data := range s.triggerAPIs {
+		if time.Since(data.Time) > DefaultTriggerTTL {
+			deleteList = append(deleteList, path)
+
+			continue
+		}
+
+		s.call(ctx, path, version)
+	}
+
+	for _, path := range deleteList {
+		delete(s.triggerAPIs, path)
+		slog.Info("delete sync", slog.String("path", path))
+	}
+}
+
+func (s *Sync) call(ctx context.Context, path string, version string) {
+	ctx, ctxCancel := context.WithTimeout(ctx, DefaultSyncTimeout)
 	defer ctxCancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, path, nil)
@@ -342,6 +371,8 @@ func (s *Sync) call(ctx context.Context, path string) {
 		slog.Error("failed to create request", slog.String("path", path), slog.String("error", err.Error()))
 		return
 	}
+
+	req.Header.Set("X-Sync-Version", version)
 
 	if err := s.client.Do(req, klient.UnexpectedResponse); err != nil {
 		slog.Error("failed to trigger sync", slog.String("path", path), slog.String("error", err.Error()))
