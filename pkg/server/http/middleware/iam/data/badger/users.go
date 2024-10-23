@@ -27,15 +27,42 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserEx
 
 		badgerHoldQuery := &badgerhold.Query{}
 
+		if req.ServiceAccount != nil {
+			if badgerHoldQuery.IsEmpty() {
+				badgerHoldQuery = badgerhold.Where("ServiceAccount").Eq(*req.ServiceAccount)
+			} else {
+				badgerHoldQuery = badgerHoldQuery.And("ServiceAccount").Eq(*req.ServiceAccount)
+			}
+		}
+
+		if req.Disabled != nil {
+			if badgerHoldQuery.IsEmpty() {
+				badgerHoldQuery = badgerhold.Where("Disabled").Eq(*req.Disabled)
+			} else {
+				badgerHoldQuery = badgerHoldQuery.And("Disabled").Eq(*req.Disabled)
+			}
+		}
+
 		switch {
 		case req.ID != "":
-			badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID).Index("ID")
+			if badgerHoldQuery.IsEmpty() {
+				badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID).Index("ID")
+			} else {
+				badgerHoldQuery = badgerHoldQuery.And("ID").Eq(req.ID).Index("ID")
+			}
 		case req.Alias != "":
-			badgerHoldQuery = badgerhold.Where("Alias").Contains(req.Alias)
+			if badgerHoldQuery.IsEmpty() {
+				badgerHoldQuery = badgerhold.Where("Alias").Contains(req.Alias)
+			} else {
+				badgerHoldQuery = badgerHoldQuery.And("Alias").Contains(req.Alias)
+			}
 		default:
-			var badgerHoldQueryInternal *badgerhold.Query
 			if req.Name != "" {
-				badgerHoldQueryInternal = badgerhold.Where("Details").MatchFunc(matchAllField("name", req.Name))
+				if badgerHoldQuery.IsEmpty() {
+					badgerHoldQuery = badgerhold.Where("Details").MatchFunc(matchAllField("name", req.Name))
+				} else {
+					badgerHoldQuery = badgerHoldQuery.And("Details").MatchFunc(matchAllField("name", req.Name))
+				}
 			}
 
 			if req.Method != "" || req.Path != "" {
@@ -54,18 +81,18 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserEx
 			}
 
 			if req.Email != "" {
-				if badgerHoldQueryInternal != nil {
-					badgerHoldQueryInternal = badgerHoldQueryInternal.And("Details").MatchFunc(matchAllField("email", req.Email))
+				if badgerHoldQuery.IsEmpty() {
+					badgerHoldQuery = badgerhold.Where("Details").MatchFunc(matchAllField("email", req.Email))
 				} else {
-					badgerHoldQueryInternal = badgerhold.Where("Details").MatchFunc(matchAllField("email", req.Email))
+					badgerHoldQuery = badgerHoldQuery.And("Details").MatchFunc(matchAllField("email", req.Email))
 				}
 			}
 
 			if req.UID != "" {
-				if badgerHoldQueryInternal != nil {
-					badgerHoldQueryInternal = badgerHoldQueryInternal.And("Details").MatchFunc(matchAllField("uid", req.UID))
+				if badgerHoldQuery.IsEmpty() {
+					badgerHoldQuery = badgerhold.Where("Details").MatchFunc(matchAllField("uid", req.UID))
 				} else {
-					badgerHoldQueryInternal = badgerhold.Where("Details").MatchFunc(matchAllField("uid", req.UID))
+					badgerHoldQuery = badgerHoldQuery.And("Details").MatchFunc(matchAllField("uid", req.UID))
 				}
 			}
 
@@ -76,34 +103,12 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserEx
 					return err
 				}
 
-				if badgerHoldQueryInternal != nil {
-					badgerHoldQueryInternal = badgerHoldQueryInternal.And("RoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...).
-						Or(badgerHoldQueryInternal.And("SyncRoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...))
+				if badgerHoldQuery.IsEmpty() {
+					badgerHoldQuery = badgerhold.Where("MixRoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...)
 				} else {
-					badgerHoldQueryInternal = badgerhold.Where("RoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...).
-						Or(badgerhold.Where("SyncRoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...))
+					badgerHoldQuery = badgerHoldQuery.And("MixRoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...)
 				}
 			}
-
-			if badgerHoldQueryInternal != nil {
-				badgerHoldQuery = badgerHoldQueryInternal
-			}
-		}
-
-		if badgerHoldQuery.IsEmpty() {
-			if req.ServiceAccount != nil {
-				badgerHoldQuery = badgerhold.Where("ServiceAccount").Eq(*req.ServiceAccount)
-			} else {
-				badgerHoldQuery = badgerhold.Where("ID").Ne("").Index("ID")
-			}
-		} else {
-			if req.ServiceAccount != nil {
-				badgerHoldQuery = badgerHoldQuery.And("ServiceAccount").Eq(*req.ServiceAccount)
-			}
-		}
-
-		if req.Disabled != nil {
-			badgerHoldQuery = badgerHoldQuery.And("Disabled").Eq(*req.Disabled)
 		}
 
 		count, err = b.db.TxCount(txn, data.User{}, badgerHoldQuery)
@@ -219,46 +224,41 @@ func (b *Badger) TxSetCachedID(txn *badger.Txn, aliasName []string, userID strin
 	return nil
 }
 
-func (b *Badger) GetUser(req data.GetUserRequest) (*data.UserExtended, error) {
-	b.dbBackupLock.RLock()
-	defer b.dbBackupLock.RUnlock()
-
+func (b *Badger) TxGetUser(txn *badger.Txn, req data.GetUserRequest) (*data.UserExtended, error) {
 	var extendedUser data.UserExtended
 
-	if err := b.db.Badger().View(func(txn *badger.Txn) error {
-		var err error
-		var user data.User
+	var err error
+	var user data.User
 
-		badgerHoldQuery := &badgerhold.Query{}
+	badgerHoldQuery := &badgerhold.Query{}
 
-		if req.ID != "" {
-			badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID).Index("ID")
-		} else if req.Alias != "" {
-			badgerHoldQuery = badgerhold.Where("Alias").Contains(req.Alias)
-		}
+	if req.ID != "" {
+		badgerHoldQuery = badgerhold.Where("ID").Eq(req.ID).Index("ID")
+	} else if req.Alias != "" {
+		badgerHoldQuery = badgerhold.Where("Alias").Contains(req.Alias)
+	}
 
-		if req.ServiceAccount != nil {
+	if req.ServiceAccount != nil {
+		if badgerHoldQuery.IsEmpty() {
+			badgerHoldQuery = badgerhold.Where("ServiceAccount").Eq(*req.ServiceAccount)
+		} else {
 			badgerHoldQuery = badgerHoldQuery.And("ServiceAccount").Eq(*req.ServiceAccount)
 		}
+	}
 
-		if err := b.db.TxFindOne(txn, &user, badgerHoldQuery); err != nil {
-			if errors.Is(err, badgerhold.ErrNotFound) {
-				return fmt.Errorf("user with id %s not found; %w", req.ID, data.ErrNotFound)
-			}
-
-			return err
+	if err := b.db.TxFindOne(txn, &user, badgerHoldQuery); err != nil {
+		if errors.Is(err, badgerhold.ErrNotFound) {
+			return nil, fmt.Errorf("user with id %s not found; %w", req.ID, data.ErrNotFound)
 		}
 
-		extendedUser, err = b.extendUser(txn, req.AddRoles, req.AddPermissions, req.AddData, &user)
-		if err != nil {
-			return err
-		}
-		extendedUser.IsActive = !user.Disabled
-
-		return nil
-	}); err != nil {
 		return nil, err
 	}
+
+	extendedUser, err = b.extendUser(txn, req.AddRoles, req.AddPermissions, req.AddData, &user)
+	if err != nil {
+		return nil, err
+	}
+	extendedUser.IsActive = !user.Disabled
 
 	if req.Sanitize {
 		for _, v := range []string{"password", "secret"} {
@@ -269,50 +269,79 @@ func (b *Badger) GetUser(req data.GetUserRequest) (*data.UserExtended, error) {
 	return &extendedUser, nil
 }
 
+func (b *Badger) GetUser(req data.GetUserRequest) (*data.UserExtended, error) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
+	var extendedUser *data.UserExtended
+
+	if err := b.db.Badger().View(func(txn *badger.Txn) error {
+		var err error
+		extendedUser, err = b.TxGetUser(txn, req)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+
+	return extendedUser, nil
+}
+
+func (b *Badger) TxCreateUser(txn *badger.Txn, user data.User) (string, error) {
+	var foundUser data.User
+
+	user.ID = ulid.Make().String()
+
+	if err := b.db.TxFindOne(txn, &foundUser, badgerhold.Where("Alias").ContainsAny(toInterfaceSlice(user.Alias)...)); err != nil {
+		if !errors.Is(err, badgerhold.ErrNotFound) {
+			return "", err
+		}
+	}
+
+	if foundUser.ID != "" {
+		return "", fmt.Errorf("user with alias %v already exists; %w", user.Alias, data.ErrConflict)
+	}
+
+	if user.Details != nil {
+		if v := cast.ToString(user.Details["password"]); v != "" {
+			hashPassword, err := access.ToBcrypt([]byte(v))
+			if err != nil {
+				slog.Error("Cannot hash password", slog.String("error", err.Error()))
+			}
+
+			user.Details["password"] = hashPassword
+		}
+	}
+
+	user.RoleIDs = slicesUnique(user.RoleIDs)
+	user.SyncRoleIDs = slicesUnique(user.SyncRoleIDs)
+	user.MixRoleIDs = slicesUnique(user.RoleIDs, user.SyncRoleIDs)
+
+	if err := b.db.TxInsert(txn, user.ID, user); err != nil {
+		return "", err
+	}
+
+	if err := b.TxSetCachedID(txn, user.Alias, user.ID); err != nil {
+		slog.Error("failed to set alias cache", slog.String("error", err.Error()))
+	}
+
+	return user.ID, nil
+}
+
 func (b *Badger) CreateUser(user data.User) (string, error) {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	user.ID = ulid.Make().String()
-
-	var foundUser data.User
+	var id string
 
 	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
-		if err := b.db.TxFindOne(txn, &foundUser, badgerhold.Where("Alias").ContainsAny(toInterfaceSlice(user.Alias)...)); err != nil {
-			if !errors.Is(err, badgerhold.ErrNotFound) {
-				return err
-			}
-		}
-
-		if foundUser.ID != "" {
-			return fmt.Errorf("user with alias %v already exists; %w", user.Alias, data.ErrConflict)
-		}
-
-		if user.Details != nil {
-			if v := cast.ToString(user.Details["password"]); v != "" {
-				hashPassword, err := access.ToBcrypt([]byte(v))
-				if err != nil {
-					slog.Error("Cannot hash password", slog.String("error", err.Error()))
-				}
-
-				user.Details["password"] = hashPassword
-			}
-		}
-
-		if err := b.db.TxInsert(txn, user.ID, user); err != nil {
-			return err
-		}
-
-		if err := b.TxSetCachedID(txn, user.Alias, user.ID); err != nil {
-			slog.Error("failed to set alias cache", slog.String("error", err.Error()))
-		}
-
-		return nil
+		var err error
+		id, err = b.TxCreateUser(txn, user)
+		return err
 	}); err != nil {
-		return "", err
+		return id, err
 	}
 
-	return user.ID, nil
+	return id, nil
 }
 
 func (b *Badger) editUser(id string, fn func(*badger.Txn, *data.User)) error {
@@ -345,10 +374,6 @@ func (b *Badger) PatchUser(id string, userPatch data.UserPatch) error {
 			foundUser.Alias = *userPatch.Alias
 		}
 
-		if userPatch.RoleIDs != nil {
-			foundUser.RoleIDs = *userPatch.RoleIDs
-		}
-
 		if userPatch.Details != nil {
 			if v := cast.ToString((*userPatch.Details)["password"]); v != "" {
 				hashPassword, err := access.ToBcrypt([]byte(v))
@@ -362,9 +387,15 @@ func (b *Badger) PatchUser(id string, userPatch data.UserPatch) error {
 			foundUser.Details = *userPatch.Details
 		}
 
-		if userPatch.SyncRoleIDs != nil {
-			foundUser.SyncRoleIDs = *userPatch.SyncRoleIDs
+		if userPatch.RoleIDs != nil {
+			foundUser.RoleIDs = slicesUnique(*userPatch.RoleIDs)
 		}
+
+		if userPatch.SyncRoleIDs != nil {
+			foundUser.SyncRoleIDs = slicesUnique(*userPatch.SyncRoleIDs)
+		}
+
+		foundUser.MixRoleIDs = slicesUnique(foundUser.RoleIDs, foundUser.SyncRoleIDs)
 
 		if userPatch.IsActive != nil {
 			foundUser.Disabled = !*userPatch.IsActive
@@ -372,36 +403,44 @@ func (b *Badger) PatchUser(id string, userPatch data.UserPatch) error {
 	})
 }
 
+func (b *Badger) TxPutUser(txn *badger.Txn, user data.User) error {
+	var foundUser data.User
+	if err := b.db.TxFindOne(txn, &foundUser, badgerhold.Where("ID").Eq(user.ID)); err != nil {
+		if errors.Is(err, badgerhold.ErrNotFound) {
+			return fmt.Errorf("user with id %s not found; %w", user.ID, data.ErrNotFound)
+		}
+
+		return err
+	}
+
+	if user.Details != nil {
+		if v := cast.ToString(user.Details["password"]); v != "" {
+			hashPassword, err := access.ToBcrypt([]byte(v))
+			if err != nil {
+				slog.Error("Cannot hash password", slog.String("error", err.Error()))
+			}
+
+			user.Details["password"] = hashPassword
+		}
+	}
+
+	user.RoleIDs = slicesUnique(user.RoleIDs)
+	user.SyncRoleIDs = slicesUnique(user.SyncRoleIDs)
+	user.MixRoleIDs = slicesUnique(user.RoleIDs, user.SyncRoleIDs)
+
+	if err := b.db.TxUpdate(txn, foundUser.ID, user); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (b *Badger) PutUser(user data.User) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
 	return b.db.Badger().Update(func(txn *badger.Txn) error {
-		var foundUser data.User
-		if err := b.db.TxFindOne(txn, &foundUser, badgerhold.Where("ID").Eq(user.ID)); err != nil {
-			if errors.Is(err, badgerhold.ErrNotFound) {
-				return fmt.Errorf("user with id %s not found; %w", user.ID, data.ErrNotFound)
-			}
-
-			return err
-		}
-
-		if user.Details != nil {
-			if v := cast.ToString(user.Details["password"]); v != "" {
-				hashPassword, err := access.ToBcrypt([]byte(v))
-				if err != nil {
-					slog.Error("Cannot hash password", slog.String("error", err.Error()))
-				}
-
-				user.Details["password"] = hashPassword
-			}
-		}
-
-		if err := b.db.TxUpdate(txn, foundUser.ID, user); err != nil {
-			return err
-		}
-
-		return nil
+		return b.TxPutUser(txn, user)
 	})
 }
 
@@ -446,7 +485,7 @@ func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addDa
 	}
 
 	// get users roleIDs
-	roleIDs, err := b.getVirtualRoleIDs(txn, slices.Concat(user.RoleIDs, user.SyncRoleIDs))
+	roleIDs, err := b.getVirtualRoleIDs(txn, user.MixRoleIDs)
 	if err != nil {
 		return data.UserExtended{}, err
 	}

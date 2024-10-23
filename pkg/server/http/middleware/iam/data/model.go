@@ -2,7 +2,6 @@ package data
 
 import (
 	"errors"
-	"io"
 )
 
 var (
@@ -82,6 +81,7 @@ type User struct {
 	Alias          []string               `json:"alias"`
 	RoleIDs        []string               `json:"role_ids"`
 	SyncRoleIDs    []string               `json:"sync_role_ids"`
+	MixRoleIDs     []string               `json:"-"`
 	Details        map[string]interface{} `json:"details"`
 	Disabled       bool                   `json:"-"`
 	ServiceAccount bool                   `json:"service_account"`
@@ -271,53 +271,6 @@ type CheckRequestUser struct {
 
 type CheckResponse struct {
 	Allowed bool `json:"allowed"`
-}
-
-type LMapRoleIDs interface {
-	Get(names []string) ([]string, error)
-}
-
-type Database interface {
-	GetUsers(req GetUserRequest) (*Response[[]UserExtended], error)
-	GetUser(req GetUserRequest) (*UserExtended, error)
-	CreateUser(user User) (string, error)
-	DeleteUser(id string) error
-	PutUser(user User) error
-	PatchUser(id string, user UserPatch) error
-
-	GetPermissions(req GetPermissionRequest) (*Response[[]Permission], error)
-	GetPermission(id string) (*Permission, error)
-	CreatePermission(permission Permission) (string, error)
-	CreatePermissions(permission []Permission) ([]string, error)
-	DeletePermission(id string) error
-	PutPermission(permission Permission) error
-	PatchPermission(id string, permission PermissionPatch) error
-
-	GetRoles(req GetRoleRequest) (*Response[[]RoleExtended], error)
-	GetRole(req GetRoleRequest) (*RoleExtended, error)
-	CreateRole(role Role) (string, error)
-	PutRole(role Role) error
-	DeleteRole(id string) error
-	PatchRole(id string, role RolePatch) error
-	PutRoleRelation(relation map[string]RoleRelation) error
-	GetRoleRelation() (map[string]RoleRelation, error)
-
-	Dashboard() (*Dashboard, error)
-
-	Check(req CheckRequest) (*CheckResponse, error)
-
-	GetLMaps(req GetLMapRequest) (*Response[[]LMap], error)
-	GetLMap(name string) (*LMap, error)
-	CreateLMap(lmap LMap) error
-	PutLMap(lmap LMap) error
-	DeleteLMap(name string) error
-
-	LMapRoleIDs() LMapRoleIDs
-	CheckCreateLMap(groups []LMapCheckCreate)
-
-	Backup(w io.Writer, since uint64) (uint64, error)
-	Restore(r io.Reader) error
-	Version() uint64
 }
 
 func CompareSlices(a, b []string) bool {

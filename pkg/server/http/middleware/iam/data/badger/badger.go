@@ -4,13 +4,14 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/dgraph-io/badger/v4"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
 )
 
 var (
 	DefaultCacheSize int64 = 100 << 20 // 100 MB
-	DefaultLogSize   int64 = 200 << 20 // 200 MB
+	DefaultLogSize   int64 = 100 << 20 // 100 MB
 )
 
 type Badger struct {
@@ -18,8 +19,6 @@ type Badger struct {
 
 	dbBackupLock sync.RWMutex
 }
-
-var _ data.Database = &Badger{}
 
 func New(path string, memory bool, flatten bool) (*Badger, error) {
 	options := badgerhold.DefaultOptions
@@ -127,4 +126,27 @@ func matchRequestPath(value string) badgerhold.MatchFunc {
 
 		return false, nil
 	}
+}
+
+func slicesUnique(ss ...[]string) []string {
+	seen := make(map[string]struct{})
+	for _, v := range ss {
+		for _, vv := range v {
+			seen[vv] = struct{}{}
+		}
+	}
+
+	result := make([]string, 0, len(seen))
+	for k := range seen {
+		result = append(result, k)
+	}
+
+	return result
+}
+
+func (b *Badger) Update(fn func(txn *badger.Txn) error) error {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
+	return b.db.Badger().Update(fn)
 }

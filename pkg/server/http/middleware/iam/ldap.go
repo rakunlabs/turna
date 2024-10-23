@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/dgraph-io/badger/v4"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
@@ -113,106 +114,105 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 		}
 	}
 
-	// create role (group) if not exists
-	m.db.CheckCreateLMap(lmapGroups)
-
-	roleIDsCache := m.db.LMapRoleIDs()
-
 	// add that users into the database
-	for user, groupNames := range users {
-		// check if user exists in the database
-		userDB, err := m.db.GetUser(data.GetUserRequest{Alias: user})
-		switch {
-		case err == nil:
-			if !data.CompareSlices(userDB.SyncRoleIDs, groupNames) {
-				roleIDs, err := roleIDsCache.Get(groupNames)
+	return m.db.Update(func(txn *badger.Txn) error {
+		// create role (group) if not exists
+		if err := m.db.TxCheckCreateLMap(txn, lmapGroups); err != nil {
+			return data.NewError("failed creating roles", err, http.StatusInternalServerError)
+		}
+
+		roleIDsCache := m.db.LMapRoleIDs()
+
+		for user, groupNames := range users {
+			// check if user exists in the database
+			userDB, err := m.db.TxGetUser(txn, data.GetUserRequest{Alias: user})
+			switch {
+			case err == nil:
+				roleIDs, err := roleIDsCache.TxGet(txn, groupNames)
 				if err != nil {
 					return data.NewError("failed getting role IDs", err, http.StatusInternalServerError)
 				}
 
-				// patch user in the database
-				userDB.User.SyncRoleIDs = roleIDs
-				if err := m.db.PutUser(*userDB.User); err != nil {
-					return data.NewError("failed updating user", err, http.StatusInternalServerError)
-				}
-			}
-
-			// ldap user gets one by one so we can skip the rest if not forced
-			if !force {
-				continue
-			}
-
-			// user exists, update it with fetch
-			userLdap, err := m.Ldap.Users(conn, []string{user})
-			if err != nil {
-				return data.NewError("failed getting user", err, http.StatusInternalServerError)
-			}
-
-			if len(userLdap) == 0 {
-				continue
-			}
-
-			roleIDs, err := roleIDsCache.Get(groupNames)
-			if err != nil {
-				return data.NewError("failed getting role IDs", err, http.StatusInternalServerError)
-			}
-
-			for _, u := range userLdap {
-				if userDB.User.Details == nil {
-					userDB.User.Details = make(map[string]interface{})
+				if !data.CompareSlices(userDB.SyncRoleIDs, roleIDs) {
+					// patch user in the database
+					userDB.User.SyncRoleIDs = roleIDs
+					if err := m.db.TxPutUser(txn, *userDB.User); err != nil {
+						return data.NewError("failed updating user", err, http.StatusInternalServerError)
+					}
 				}
 
-				userDB.User.Alias = []string{u.Email, u.UID}
-				userDB.User.Details["email"] = u.Email
-				userDB.User.Details["uid"] = u.UID
-				userDB.User.Details["name"] = u.Name
-
-				userDB.User.SyncRoleIDs = roleIDs
-
-				// update user in the database
-				if err := m.db.PutUser(*userDB.User); err != nil {
-					return data.NewError("failed updating user", err, http.StatusInternalServerError)
+				// ldap user gets one by one so we can skip the rest if not forced
+				if !force {
+					continue
 				}
-			}
-		case errors.Is(err, data.ErrNotFound):
-			// user not found, add it with fetch
-			userLdap, err := m.Ldap.Users(conn, []string{user})
-			if err != nil {
-				return data.NewError("failed getting user", err, http.StatusInternalServerError)
-			}
 
-			if len(userLdap) == 0 {
-				continue
-			}
-
-			roleIDs, err := roleIDsCache.Get(groupNames)
-			if err != nil {
-				return data.NewError("failed getting role IDs", err, http.StatusInternalServerError)
-			}
-
-			for _, u := range userLdap {
-				// add user to the database
-				id, err := m.db.CreateUser(data.User{
-					RoleIDs: roleIDs,
-					Alias:   []string{u.Email, u.UID},
-					Details: map[string]interface{}{
-						"email": u.Email,
-						"uid":   u.UID,
-						"name":  u.Name,
-					},
-				})
+				// user exists, update it with fetch
+				userLdap, err := m.Ldap.Users(conn, []string{user})
 				if err != nil {
-					return data.NewError("failed creating user", err, http.StatusInternalServerError)
+					return data.NewError("failed getting user", err, http.StatusInternalServerError)
 				}
 
-				slog.Info("user created", slog.String("id", id), slog.String("email", u.Email))
-			}
-		default:
-			return data.NewError("failed getting user", err, http.StatusInternalServerError)
-		}
-	}
+				if len(userLdap) == 0 {
+					continue
+				}
 
-	return nil
+				for _, u := range userLdap {
+					if userDB.User.Details == nil {
+						userDB.User.Details = make(map[string]interface{})
+					}
+
+					userDB.User.Alias = []string{u.Email, u.UID}
+					userDB.User.Details["email"] = u.Email
+					userDB.User.Details["uid"] = u.UID
+					userDB.User.Details["name"] = u.Name
+
+					userDB.User.SyncRoleIDs = roleIDs
+
+					// update user in the database
+					if err := m.db.TxPutUser(txn, *userDB.User); err != nil {
+						return data.NewError("failed updating user", err, http.StatusInternalServerError)
+					}
+				}
+			case errors.Is(err, data.ErrNotFound):
+				// user not found, add it with fetch
+				userLdap, err := m.Ldap.Users(conn, []string{user})
+				if err != nil {
+					return data.NewError("failed getting user", err, http.StatusInternalServerError)
+				}
+
+				if len(userLdap) == 0 {
+					continue
+				}
+
+				roleIDs, err := roleIDsCache.TxGet(txn, groupNames)
+				if err != nil {
+					return data.NewError("failed getting role IDs", err, http.StatusInternalServerError)
+				}
+
+				for _, u := range userLdap {
+					// add user to the database
+					id, err := m.db.TxCreateUser(txn, data.User{
+						SyncRoleIDs: roleIDs,
+						Alias:       []string{u.Email, u.UID},
+						Details: map[string]interface{}{
+							"email": u.Email,
+							"uid":   u.UID,
+							"name":  u.Name,
+						},
+					})
+					if err != nil {
+						return data.NewError("failed creating user", err, http.StatusInternalServerError)
+					}
+
+					slog.Info("user created", slog.String("id", id), slog.String("email", u.Email))
+				}
+			default:
+				return data.NewError("failed getting user", err, http.StatusInternalServerError)
+			}
+		}
+
+		return nil
+	})
 }
 
 // LdapSyncGroups syncs users on LDAP groups with mapped groups in the database.

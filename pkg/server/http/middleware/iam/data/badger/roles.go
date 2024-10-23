@@ -352,10 +352,16 @@ func (b *Badger) DeleteRole(id string) error {
 		}
 
 		// Delete the role from all users
-		if err := b.db.TxForEach(txn, badgerhold.Where("RoleIDs").Contains(id), func(user *data.User) error {
+		if err := b.db.TxForEach(txn, badgerhold.Where("MixRoleIDs").Contains(id), func(user *data.User) error {
 			user.RoleIDs = slices.DeleteFunc(user.RoleIDs, func(cmp string) bool {
 				return cmp == id
 			})
+
+			user.SyncRoleIDs = slices.DeleteFunc(user.SyncRoleIDs, func(cmp string) bool {
+				return cmp == id
+			})
+
+			user.MixRoleIDs = slicesUnique(user.RoleIDs, user.SyncRoleIDs)
 
 			if err := b.db.TxUpdate(txn, user.ID, user); err != nil {
 				return err
@@ -364,21 +370,6 @@ func (b *Badger) DeleteRole(id string) error {
 			return nil
 		}); err != nil {
 			return fmt.Errorf("failed to delete role from users; %w", err)
-		}
-
-		// Delete the role from all users with sync roles
-		if err := b.db.TxForEach(txn, badgerhold.Where("SyncRoleIDs").Contains(id), func(user *data.User) error {
-			user.SyncRoleIDs = slices.DeleteFunc(user.SyncRoleIDs, func(cmp string) bool {
-				return cmp == id
-			})
-
-			if err := b.db.TxUpdate(txn, user.ID, user); err != nil {
-				return err
-			}
-
-			return nil
-		}); err != nil {
-			return fmt.Errorf("failed to delete role from users with sync roles; %w", err)
 		}
 
 		return nil

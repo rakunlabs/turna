@@ -88,52 +88,45 @@ func (b *Badger) CreateLMap(lmap data.LMap) error {
 	return nil
 }
 
-func (b *Badger) CheckCreateLMap(lmapChecks []data.LMapCheckCreate) {
-	b.dbBackupLock.RLock()
-	defer b.dbBackupLock.RUnlock()
-
-	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
-		for _, lmapCheck := range lmapChecks {
-			if err := b.db.TxGet(txn, lmapCheck.Name, &data.LMap{}); err != nil {
-				if errors.Is(err, badgerhold.ErrNotFound) {
-					// create role
-					role := data.Role{
-						ID:          ulid.Make().String(),
-						Name:        lmapCheck.Name,
-						Description: lmapCheck.Description,
-					}
-
-					if err := b.db.TxInsert(txn, role.ID, role); err != nil {
-						if errors.Is(err, badgerhold.ErrKeyExists) {
-							slog.Warn("role already exists", slog.String("name", role.Name), slog.String("error", err.Error()))
-						} else {
-							slog.Error("failed to create role", slog.String("error", err.Error()))
-						}
-					}
-
-					// create lmap
-					lmap := data.LMap{
-						Name:    lmapCheck.Name,
-						RoleIDs: []string{role.ID},
-					}
-
-					if err := b.db.TxInsert(txn, lmap.Name, lmap); err != nil {
-						if errors.Is(err, badgerhold.ErrKeyExists) {
-							slog.Warn("lmap already exists", slog.String("name", lmap.Name), slog.String("error", err.Error()))
-						} else {
-							slog.Error("failed to create lmap", slog.String("error", err.Error()))
-						}
-					}
-				} else {
-					slog.Warn("failed to get lmap", slog.String("name", lmapCheck.Name), slog.String("error", err.Error()))
+func (b *Badger) TxCheckCreateLMap(txn *badger.Txn, lmapChecks []data.LMapCheckCreate) error {
+	for _, lmapCheck := range lmapChecks {
+		if err := b.db.TxGet(txn, lmapCheck.Name, &data.LMap{}); err != nil {
+			if errors.Is(err, badgerhold.ErrNotFound) {
+				// create role
+				role := data.Role{
+					ID:          ulid.Make().String(),
+					Name:        lmapCheck.Name,
+					Description: lmapCheck.Description,
 				}
+
+				if err := b.db.TxInsert(txn, role.ID, role); err != nil {
+					if errors.Is(err, badgerhold.ErrKeyExists) {
+						slog.Warn("role already exists", slog.String("name", role.Name), slog.String("error", err.Error()))
+					} else {
+						return fmt.Errorf("failed to create role; %w", err)
+					}
+				}
+
+				// create lmap
+				lmap := data.LMap{
+					Name:    lmapCheck.Name,
+					RoleIDs: []string{role.ID},
+				}
+
+				if err := b.db.TxInsert(txn, lmap.Name, lmap); err != nil {
+					if errors.Is(err, badgerhold.ErrKeyExists) {
+						slog.Warn("lmap already exists", slog.String("name", lmap.Name), slog.String("error", err.Error()))
+					} else {
+						fmt.Errorf("failed to create lmap; %w", err)
+					}
+				}
+			} else {
+				return fmt.Errorf("failed to get lmap, %s; %w", lmapCheck.Name, err)
 			}
 		}
-
-		return nil
-	}); err != nil {
-		slog.Error("failed to create lmap", slog.String("error", err.Error()))
 	}
+
+	return nil
 }
 
 func (b *Badger) PutLMap(lmap data.LMap) error {
@@ -166,7 +159,7 @@ func (b *Badger) DeleteLMap(name string) error {
 	return nil
 }
 
-func (b *Badger) LMapRoleIDs() data.LMapRoleIDs {
+func (b *Badger) LMapRoleIDs() *LMapCacheRoleIDs {
 	return NewLMapCacheRoleIDs(b)
 }
 
@@ -183,10 +176,7 @@ func NewLMapCacheRoleIDs(b *Badger) *LMapCacheRoleIDs {
 	}
 }
 
-func (l *LMapCacheRoleIDs) Get(names []string) ([]string, error) {
-	l.b.dbBackupLock.RLock()
-	defer l.b.dbBackupLock.RUnlock()
-
+func (l *LMapCacheRoleIDs) TxGet(txn *badger.Txn, names []string) ([]string, error) {
 	mapRoleIDs := make(map[string]struct{})
 	for _, name := range names {
 		if roleIDs, ok := l.cache[name]; ok {
@@ -198,7 +188,7 @@ func (l *LMapCacheRoleIDs) Get(names []string) ([]string, error) {
 		}
 
 		var lmap data.LMap
-		if err := l.b.db.Get(name, &lmap); err != nil {
+		if err := l.b.db.TxGet(txn, name, &lmap); err != nil {
 			if errors.Is(err, badgerhold.ErrNotFound) {
 				slog.Warn("lmap not found", slog.String("name", name))
 

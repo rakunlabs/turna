@@ -2,13 +2,13 @@ package iam
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 
 	"github.com/rakunlabs/into"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data/badger"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/ldap"
 )
@@ -18,7 +18,7 @@ type Iam struct {
 	Ldap       ldap.Ldap `cfg:"ldap"`
 	Database   Database  `cfg:"database"`
 
-	db        data.Database    `cfg:"-"`
+	db        *badger.Badger   `cfg:"-"`
 	swaggerFS http.HandlerFunc `cfg:"-"`
 	uiFS      http.HandlerFunc `cfg:"-"`
 
@@ -29,10 +29,6 @@ type Iam struct {
 }
 
 type Database struct {
-	Badger Badger `cfg:"badger"`
-}
-
-type Badger struct {
 	Path string `cfg:"path"`
 	// WriteAPI to sync data from write enabled service
 	// this makes read-only service
@@ -76,11 +72,15 @@ func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, 
 
 	// new database
 	flatten := true
-	if m.Database.Badger.Flatten != nil {
-		flatten = *m.Database.Badger.Flatten
+	if m.Database.Flatten != nil {
+		flatten = *m.Database.Flatten
 	}
 
-	db, err := badger.New(m.Database.Badger.Path, m.Database.Badger.Memory, flatten)
+	if m.Database.Path == "" && !m.Database.Memory {
+		return nil, fmt.Errorf("database path or memory is required")
+	}
+
+	db, err := badger.New(m.Database.Path, m.Database.Memory, flatten)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, 
 
 	m.db = db
 
-	if m.Database.Badger.SyncHostFromInterface {
+	if m.Database.SyncHostFromInterface {
 		addr, err := net.InterfaceAddrs()
 		if err != nil {
 			return nil, err
@@ -99,8 +99,8 @@ func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, 
 			if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
 				if ipnet.IP.To4() != nil {
 					ipAddr := ipnet.IP.String()
-					if strings.HasPrefix(ipAddr, m.Database.Badger.SyncHostFromInterfaceIPPrefix) {
-						m.Database.Badger.SyncHost = ipnet.IP.String()
+					if strings.HasPrefix(ipAddr, m.Database.SyncHostFromInterfaceIPPrefix) {
+						m.Database.SyncHost = ipnet.IP.String()
 						break
 					}
 				}
@@ -109,14 +109,14 @@ func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, 
 	}
 
 	m.sync, err = NewSync(SyncConfig{
-		WriteAPI:          m.Database.Badger.WriteAPI,
+		WriteAPI:          m.Database.WriteAPI,
 		PrefixPath:        m.PrefixPath,
 		DB:                db,
-		TriggerBackground: m.Database.Badger.TriggerBackground,
+		TriggerBackground: m.Database.TriggerBackground,
 
-		SyncSchema: m.Database.Badger.SyncSchema,
-		SyncHost:   m.Database.Badger.SyncHost,
-		SyncPort:   m.Database.Badger.SyncPort,
+		SyncSchema: m.Database.SyncSchema,
+		SyncHost:   m.Database.SyncHost,
+		SyncPort:   m.Database.SyncPort,
 	})
 	if err != nil {
 		return nil, err
@@ -130,7 +130,7 @@ func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, 
 
 	m.sync.SyncStart(ctx)
 
-	if m.Ldap.Addr != "" && m.Database.Badger.WriteAPI == "" {
+	if m.Ldap.Addr != "" && m.Database.WriteAPI == "" {
 		if !m.Ldap.DisableFirstConnect {
 			if _, err := m.Ldap.ConnectWithCheck(); err != nil {
 				return nil, err
