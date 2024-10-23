@@ -18,6 +18,7 @@ var ErrRunInit = fmt.Errorf("run init error")
 type Command struct {
 	proc         *os.Process
 	wgProg       sync.WaitGroup
+	wgRun        sync.WaitGroup
 	Name         string
 	Path         string
 	Env          []string
@@ -61,7 +62,7 @@ func (c *Command) DependecyTrigger(ctx context.Context, name string) error {
 	return c.Run(ctx)
 }
 
-func (c *Command) start(ctx context.Context, wg *sync.WaitGroup) (*os.Process, error) {
+func (c *Command) start(ctx context.Context) (*os.Process, error) {
 	var err error
 
 	// command with new path
@@ -108,7 +109,7 @@ func (c *Command) start(ctx context.Context, wg *sync.WaitGroup) (*os.Process, e
 		// filter for stdout
 		filteredStdout := filter.FileFilter{To: stdout, Filter: c.Filter}
 
-		stdout, err = filteredStdout.Start(ctx, wg)
+		stdout, err = filteredStdout.Start(ctx, &c.wgProg)
 		if err != nil {
 			return nil, fmt.Errorf("cannot start filtered stdout: %w", err)
 		}
@@ -116,7 +117,7 @@ func (c *Command) start(ctx context.Context, wg *sync.WaitGroup) (*os.Process, e
 		// filter for stderr
 		filteredStderr := filter.FileFilter{To: stderr, Filter: c.Filter}
 
-		stderr, err = filteredStderr.Start(ctx, wg)
+		stderr, err = filteredStderr.Start(ctx, &c.wgProg)
 		if err != nil {
 			return nil, fmt.Errorf("cannot start filtered stderr: %w", err)
 		}
@@ -146,9 +147,9 @@ func (c *Command) start(ctx context.Context, wg *sync.WaitGroup) (*os.Process, e
 	}
 
 	// listen ctx cancel
-	wg.Add(1)
+	c.wgProg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer c.wgProg.Done()
 
 		<-ctx.Done()
 		c.Kill()
@@ -166,7 +167,12 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("doesn't given any command: %w", ErrRunInit)
 	}
 
+	// for waiting all goroutines
 	defer c.wgProg.Wait()
+
+	// for waiting kill event to understand run is finished
+	c.wgRun.Add(1)
+	defer c.wgRun.Done()
 
 	ctx, ctxCancel := context.WithCancel(ctx)
 	defer ctxCancel()
@@ -175,14 +181,11 @@ func (c *Command) Run(ctx context.Context) error {
 
 	slog.Info(fmt.Sprintf("starting [%s] command", c.Name))
 	c.killLock.Lock()
-	c.proc, err = c.start(ctx, &c.wgProg)
+	c.proc, err = c.start(ctx)
 	c.killLock.Unlock()
 	if err != nil {
 		return err
 	}
-
-	c.wgProg.Add(1)
-	defer c.wgProg.Done()
 
 	defer func() {
 		c.killLock.Lock()
@@ -234,7 +237,7 @@ func (c *Command) Kill() {
 			slog.Error(fmt.Sprintf("failed to kill process [%s] [%d]", c.Name, v.Pid), "err", err)
 		}
 
-		c.wgProg.Wait()
+		c.wgRun.Wait()
 
 		return
 	}
