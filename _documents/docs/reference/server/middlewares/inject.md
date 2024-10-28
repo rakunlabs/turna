@@ -7,7 +7,7 @@ middlewares:
   test:
     inject:
       path_map:
-        "/test": # checking with filepath.Match
+        "/test": # checking with doublestar.Match
           - regex: "" # old is ignored if regex is set
             old: ""
             new: ""

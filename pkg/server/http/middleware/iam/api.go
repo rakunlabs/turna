@@ -624,6 +624,7 @@ func (m *Iam) PutUser(w http.ResponseWriter, r *http.Request) {
 // @Summary Get roles
 // @Tags roles
 // @Param name query string false "role name"
+// @Param description query string false "role description"
 // @Param id query string false "role id"
 // @Param permission_ids query []string false "role permission ids" collectionFormat(multi)
 // @Param role_ids query []string false "role ids" collectionFormat(multi)
@@ -651,6 +652,7 @@ func (m *Iam) GetRoles(w http.ResponseWriter, r *http.Request) {
 	req.RoleIDs = httputil.CommaQueryParam(query["role_ids"])
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
+	req.Description = query.Get("description")
 	req.Limit, req.Offset = getLimitOffset(query)
 
 	if addPermissions, err := strconv.ParseBool(r.URL.Query().Get("add_permissions")); err == nil {
@@ -677,6 +679,7 @@ func (m *Iam) GetRoles(w http.ResponseWriter, r *http.Request) {
 // @Summary Export roles
 // @Tags roles
 // @Param name query string false "role name"
+// @Param description query string false "role description"
 // @Param id query string false "role id"
 // @Param permission_ids query []string false "role permission ids" collectionFormat(multi)
 // @Param role_ids query []string false "role ids" collectionFormat(multi)
@@ -699,6 +702,7 @@ func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 	req.RoleIDs = httputil.CommaQueryParam(query["role_ids"])
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
+	req.Description = query.Get("description")
 	req.Limit, req.Offset = getLimitOffset(query)
 
 	if addPermissions, err := strconv.ParseBool(r.URL.Query().Get("add_permissions")); err == nil {
@@ -1020,6 +1024,7 @@ func (m *Iam) DeleteRole(w http.ResponseWriter, r *http.Request) {
 // @Tags permissions
 // @Param id query string false "permission id"
 // @Param name query string false "permission name"
+// @Param description query string false "permission description"
 // @Param path query string false "request path"
 // @Param method query string false "request method"
 // @Param limit query int false "limit" default(20)
@@ -1035,6 +1040,18 @@ func (m *Iam) GetPermissions(w http.ResponseWriter, r *http.Request) {
 	req.Name = query.Get("name")
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
+	req.Description = query.Get("description")
+
+	for k, v := range query {
+		if strings.HasPrefix(k, "data.") {
+			if req.Data == nil {
+				req.Data = map[string]string{}
+			}
+
+			req.Data[strings.TrimPrefix(k, "data.")] = v[0]
+		}
+	}
+
 	req.Limit, req.Offset = getLimitOffset(query)
 
 	permissions, err := m.db.GetPermissions(req)
@@ -1050,6 +1067,7 @@ func (m *Iam) GetPermissions(w http.ResponseWriter, r *http.Request) {
 // @Tags permissions
 // @Param id query string false "permission id"
 // @Param name query string false "permission name"
+// @Param description query string false "permission description"
 // @Param path query string false "request path"
 // @Param method query string false "request method"
 // @Success 200
@@ -1063,6 +1081,7 @@ func (m *Iam) ExportPermissions(w http.ResponseWriter, r *http.Request) {
 	req.Name = query.Get("name")
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
+	req.Description = query.Get("description")
 
 	permissions, err := m.db.GetPermissions(req)
 	if err != nil {
@@ -1071,7 +1090,7 @@ func (m *Iam) ExportPermissions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// download the result as CSV
-	headers := []string{"Name", "Path", "Method"}
+	headers := []string{"Name", "Description", "Resources"}
 
 	permissionData := make([]map[string]interface{}, 0, len(permissions.Payload))
 	for _, permission := range permissions.Payload {

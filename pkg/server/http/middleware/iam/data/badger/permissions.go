@@ -47,6 +47,22 @@ func (b *Badger) GetPermissions(req data.GetPermissionRequest) (*data.Response[[
 				}
 			}
 
+			if req.Description != "" {
+				if badgerHoldQueryInternal != nil {
+					badgerHoldQueryInternal = badgerHoldQueryInternal.And("Description").MatchFunc(matchAll(req.Description))
+				} else {
+					badgerHoldQueryInternal = badgerhold.Where("Description").MatchFunc(matchAll(req.Description))
+				}
+			}
+
+			if len(req.Data) > 0 {
+				if badgerHoldQueryInternal != nil {
+					badgerHoldQueryInternal = badgerHoldQueryInternal.And("Data").MatchFunc(matchData(req.Data))
+				} else {
+					badgerHoldQueryInternal = badgerhold.Where("Data").MatchFunc(matchData(req.Data))
+				}
+			}
+
 			if badgerHoldQueryInternal != nil {
 				badgerHoldQuery = badgerHoldQueryInternal
 			}
@@ -106,12 +122,13 @@ func (b *Badger) CreatePermission(permission data.Permission) (string, error) {
 
 	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
 		// Check if permission with the same name exists
-		if err := b.db.TxFindOne(txn, &data.Permission{}, badgerhold.Where("Name").Eq(permission.Name).Index("Name")); err != nil {
+		ff := &data.Permission{}
+		if err := b.db.TxFindOne(txn, ff, badgerhold.Where("Name").Eq(permission.Name).Index("Name")); err != nil {
 			if !errors.Is(err, badgerhold.ErrNotFound) {
 				return err
 			}
 		} else {
-			return fmt.Errorf("permission with name %s already exists; %w", permission.Name, data.ErrConflict)
+			return fmt.Errorf("permission with name %s already exists %s; %w", permission.Name, ff.ID, data.ErrConflict)
 		}
 
 		permission.ID = ulid.Make().String()
@@ -202,12 +219,13 @@ func (b *Badger) PatchPermission(id string, patch data.PermissionPatch) error {
 	return b.editPermission(id, func(txn *badger.Txn, foundPermission *data.Permission) error {
 		if patch.Name != nil && *patch.Name != "" && *patch.Name != foundPermission.Name {
 			// Check if permission with the same name exists
-			if err := b.db.TxFindOne(txn, &data.Permission{}, badgerhold.Where("Name").Eq(patch.Name).Index("Name")); err != nil {
+			ff := &data.Permission{}
+			if err := b.db.TxFindOne(txn, ff, badgerhold.Where("Name").Eq(patch.Name).Index("Name")); err != nil {
 				if !errors.Is(err, badgerhold.ErrNotFound) {
 					return err
 				}
 			} else {
-				return fmt.Errorf("permission with name %s already exists; %w", *patch.Name, data.ErrConflict)
+				return fmt.Errorf("permission with name %s already exists with %s; %w", *patch.Name, ff.ID, data.ErrConflict)
 			}
 
 			foundPermission.Name = *patch.Name

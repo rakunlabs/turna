@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/labstack/echo/v4"
 	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/server/model"
@@ -188,7 +188,7 @@ func (s *Inject) Middleware() ([]echo.MiddlewareFunc, error) {
 
 			urlPath := c.Request().URL.Path
 			for pathValue := range s.PathMap {
-				if ok, _ := filepath.Match(pathValue, urlPath); ok {
+				if ok, _ := doublestar.Match(pathValue, urlPath); ok {
 					for _, injectContent := range s.PathMap[pathValue] {
 						if injectContent.valueBytes != nil {
 							for _, valueOldNew := range injectContent.valueBytes {

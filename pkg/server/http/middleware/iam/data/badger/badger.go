@@ -6,6 +6,7 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/spf13/cast"
 	badgerhold "github.com/timshannon/badgerhold/v4"
 )
 
@@ -96,10 +97,6 @@ func matchRequestMethod(value string) badgerhold.MatchFunc {
 	return func(ra *badgerhold.RecordAccess) (bool, error) {
 		record, _ := ra.Field().([]data.Resource)
 
-		if record == nil {
-			return false, nil
-		}
-
 		for _, r := range record {
 			if checkMethod(r.Methods, value) {
 				return true, nil
@@ -114,13 +111,25 @@ func matchRequestPath(value string) badgerhold.MatchFunc {
 	return func(ra *badgerhold.RecordAccess) (bool, error) {
 		record, _ := ra.Field().([]data.Resource)
 
-		if record == nil {
-			return false, nil
-		}
-
 		for _, r := range record {
 			if checkPath(r.Path, value) {
 				return true, nil
+			}
+		}
+
+		return false, nil
+	}
+}
+
+func matchData(value map[string]string) badgerhold.MatchFunc {
+	return func(ra *badgerhold.RecordAccess) (bool, error) {
+		record, _ := ra.Field().(map[string]any)
+
+		for k, v := range value {
+			if vv, ok := record[k]; ok {
+				if strings.Contains(strings.ToLower(cast.ToString(vv)), strings.ToLower(v)) {
+					return true, nil
+				}
 			}
 		}
 

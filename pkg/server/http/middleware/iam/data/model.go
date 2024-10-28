@@ -222,11 +222,14 @@ type GetPermissionRequest struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 
-	Path   string `json:"path"`
-	Method string `json:"method"`
+	Path        string `json:"path"`
+	Method      string `json:"method"`
+	Description string `json:"description"`
 
 	Limit  int64 `json:"limit"`
 	Offset int64 `json:"offset"`
+
+	Data map[string]string `json:"data"`
 }
 
 type GetRoleRequest struct {
@@ -236,8 +239,9 @@ type GetRoleRequest struct {
 	PermissionIDs []string `json:"permission_ids"`
 	RoleIDs       []string `json:"role_ids"`
 
-	Path   string `json:"path"`
-	Method string `json:"method"`
+	Path        string `json:"path"`
+	Method      string `json:"method"`
+	Description string `json:"description"`
 
 	Limit  int64 `json:"limit"`
 	Offset int64 `json:"offset"`

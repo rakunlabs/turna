@@ -624,6 +624,12 @@
                     },
                     {
                         "type": "string",
+                        "description": "permission description",
+                        "name": "description",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "request path",
                         "name": "path",
                         "in": "query"
@@ -760,6 +766,12 @@
                         "type": "string",
                         "description": "permission name",
                         "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "permission description",
+                        "name": "description",
                         "in": "query"
                     },
                     {
@@ -1024,6 +1036,12 @@
                     },
                     {
                         "type": "string",
+                        "description": "role description",
+                        "name": "description",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "role id",
                         "name": "id",
                         "in": "query"
@@ -1165,6 +1183,12 @@
                         "type": "string",
                         "description": "role name",
                         "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "role description",
+                        "name": "description",
                         "in": "query"
                     },
                     {
@@ -1934,6 +1958,14 @@
                     "backup"
                 ],
                 "summary": "Sync with write API",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Sync version",
+                        "name": "X-Sync-Version",
+                        "in": "header"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
