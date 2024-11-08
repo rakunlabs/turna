@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"context"
 	"testing"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
@@ -19,7 +20,9 @@ func TestGetRoles(t *testing.T) {
 		Name: "test",
 	}
 
-	if _, err := db.CreateRole(role); err != nil {
+	ctx := data.WithContextUserName(context.Background(), "testing")
+
+	if _, err := db.CreateRole(ctx, role); err != nil {
 		t.Fatalf("failed to create role: %v", err)
 	}
 
@@ -27,7 +30,7 @@ func TestGetRoles(t *testing.T) {
 		Name: "role2",
 	}
 
-	if _, err := db.CreateRole(role2); err != nil {
+	if _, err := db.CreateRole(ctx, role2); err != nil {
 		t.Fatalf("failed to create role: %v", err)
 	}
 

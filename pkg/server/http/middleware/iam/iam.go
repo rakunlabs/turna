@@ -3,12 +3,14 @@ package iam
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 
 	"github.com/rakunlabs/into"
+	"github.com/rakunlabs/logi"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data/badger"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/ldap"
 )
@@ -122,6 +124,9 @@ func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, 
 		return nil, err
 	}
 
+	ctx = logi.WithContext(ctx, slog.With(slog.String("middleware", "iam")))
+	m.ctxService = ctx
+
 	m.sync.SyncTTL(ctx)
 	// first sync
 	if err := m.sync.Sync(ctx, 0); err != nil {
@@ -144,8 +149,6 @@ func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, 
 
 		go m.Ldap.StartSync(ctx, m.LdapSync)
 	}
-
-	m.ctxService = ctx
 
 	return func(next http.Handler) http.Handler {
 		mux.NotFound(next.ServeHTTP)

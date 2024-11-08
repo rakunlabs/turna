@@ -361,8 +361,8 @@ github.com/prometheus/procfs v0.0.2/go.mod h1:TjEm7ze935MbeOT/UhFTIMYKhuLP4wbCsT
 github.com/prometheus/procfs v0.0.8/go.mod h1:7Qr8sr6344vo1JqZ6HhLceV9o3AJ1Ff+GxbHq6oeK9A=
 github.com/rakunlabs/into v0.3.3 h1:m/86MDaRB+A7FxBHrfhBeFPyU8fN35v/ED0h3tb+JY8=
 github.com/rakunlabs/into v0.3.3/go.mod h1:1S4+Os/Zz2cHuLCyOhrBaQP/h3OC5+vTEWkXbN9xOOc=
-github.com/rakunlabs/logi v0.3.3 h1:8uSmch05+yULJiDWQzaKmFy6qd/iWTUtSB50+8TkkFU=
-github.com/rakunlabs/logi v0.3.3/go.mod h1:kGFfpXq6EmJ2UcC74lzTwcIqAeJY7rBFQj4p3KFkkl8=
+github.com/rakunlabs/logi v0.4.0 h1:nixvF6RyXl4V9IRte72XVQ76/5ehPS+WDQmFTm4fExM=
+github.com/rakunlabs/logi v0.4.0/go.mod h1:kGFfpXq6EmJ2UcC74lzTwcIqAeJY7rBFQj4p3KFkkl8=
 github.com/rbcervilla/redisstore/v9 v9.0.0 h1:wOPbBaydbdxzi1gTafDftCI/Z7vnsXw0QDPCuhiMG0g=
 github.com/rbcervilla/redisstore/v9 v9.0.0/go.mod h1:q/acLpoKkTZzIsBYt0R4THDnf8W/BH6GjQYvxDSSfdI=
 github.com/redis/go-redis/v9 v9.6.1 h1:HHDteefn6ZkTtY5fGUE8tj8uy85AHk6zP7CpzIAM0y4=

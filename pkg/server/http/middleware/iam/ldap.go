@@ -2,12 +2,12 @@ package iam
 
 import (
 	"errors"
-	"log/slog"
 	"net/http"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/go-chi/chi/v5"
 
+	"github.com/rakunlabs/logi"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/ldap"
@@ -79,8 +79,10 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 	m.syncM.Lock()
 	defer m.syncM.Unlock()
 
-	slog.Info("syncing ldap starting")
-	defer slog.Info("syncing ldap done")
+	logi.Ctx(m.ctxService).Info("syncing ldap starting")
+	defer logi.Ctx(m.ctxService).Info("syncing ldap done")
+
+	ctx := data.WithContextUserName(m.ctxService, "LDAP")
 
 	conn, err := m.Ldap.ConnectWithCheck()
 	if err != nil {
@@ -117,7 +119,7 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 	// add that users into the database
 	return m.db.Update(func(txn *badger.Txn) error {
 		// create role (group) if not exists
-		if err := m.db.TxCheckCreateLMap(txn, lmapGroups); err != nil {
+		if err := m.db.TxCheckCreateLMap(ctx, txn, lmapGroups); err != nil {
 			return data.NewError("failed creating roles", err, http.StatusInternalServerError)
 		}
 
@@ -136,7 +138,7 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 				if !data.CompareSlices(userDB.SyncRoleIDs, roleIDs) {
 					// patch user in the database
 					userDB.User.SyncRoleIDs = roleIDs
-					if err := m.db.TxPutUser(txn, *userDB.User); err != nil {
+					if err := m.db.TxPutUser(ctx, txn, *userDB.User); err != nil {
 						return data.NewError("failed updating user", err, http.StatusInternalServerError)
 					}
 				}
@@ -169,7 +171,7 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 					userDB.User.SyncRoleIDs = roleIDs
 
 					// update user in the database
-					if err := m.db.TxPutUser(txn, *userDB.User); err != nil {
+					if err := m.db.TxPutUser(ctx, txn, *userDB.User); err != nil {
 						return data.NewError("failed updating user", err, http.StatusInternalServerError)
 					}
 				}
@@ -191,7 +193,7 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 
 				for _, u := range userLdap {
 					// add user to the database
-					id, err := m.db.TxCreateUser(txn, data.User{
+					_, err := m.db.TxCreateUser(ctx, txn, data.User{
 						SyncRoleIDs: roleIDs,
 						Alias:       []string{u.Email, u.UID},
 						Details: map[string]interface{}{
@@ -203,8 +205,6 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 					if err != nil {
 						return data.NewError("failed creating user", err, http.StatusInternalServerError)
 					}
-
-					slog.Info("user created", slog.String("id", id), slog.String("email", u.Email))
 				}
 			default:
 				return data.NewError("failed getting user", err, http.StatusInternalServerError)

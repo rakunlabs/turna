@@ -1,12 +1,16 @@
 package badger
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
+	"time"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/oklog/ulid/v2"
+	"github.com/rakunlabs/logi"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
 )
@@ -41,9 +45,9 @@ func (b *Badger) GetRoles(req data.GetRoleRequest) (*data.Response[[]data.RoleEx
 			}
 
 			permissionIDs := req.PermissionIDs
-			if req.Method != "" || req.Path != "" {
+			if req.Method != "" || req.Path != "" || len(req.Permissions) > 0 {
 				// get permissions ids based on path and method
-				newIDs, err := b.getPermissionIDs(txn, req.Method, req.Path)
+				newIDs, err := b.getPermissionIDs(txn, req.Method, req.Path, req.Permissions)
 				if err != nil {
 					return err
 				}
@@ -150,11 +154,15 @@ func (b *Badger) GetRole(req data.GetRoleRequest) (*data.RoleExtended, error) {
 	return &roleExtended, nil
 }
 
-func (b *Badger) CreateRole(role data.Role) (string, error) {
+func (b *Badger) CreateRole(ctx context.Context, role data.Role) (string, error) {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
 	role.ID = ulid.Make().String()
+
+	role.CreatedAt = time.Now().Format(time.RFC3339)
+	role.UpdatedAt = role.CreatedAt
+	role.UpdatedBy = data.CtxUserName(ctx)
 
 	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
 		// check role with name already exists
@@ -175,16 +183,17 @@ func (b *Badger) CreateRole(role data.Role) (string, error) {
 		}
 
 		return nil
-
 	}); err != nil {
 		return "", err
 	}
 
+	logi.Ctx(ctx).Info("created role", slog.String("name", role.Name), slog.String("id", role.ID), slog.String("by", role.UpdatedBy))
+
 	return role.ID, nil
 }
 
-func (b *Badger) PatchRole(id string, rolePatch data.RolePatch) error {
-	return b.editRole(id, func(txn *badger.Txn, foundRole *data.Role) error {
+func (b *Badger) PatchRole(ctx context.Context, id string, rolePatch data.RolePatch) error {
+	return b.editRole(ctx, id, func(txn *badger.Txn, foundRole *data.Role) error {
 		if rolePatch.Name != nil && *rolePatch.Name != "" && *rolePatch.Name != foundRole.Name {
 			// check role with name already exists
 			if err := b.db.TxFindOne(txn, &data.Role{}, badgerhold.Where("Name").Eq(*rolePatch.Name).Index("Name")); err != nil {
@@ -218,7 +227,7 @@ func (b *Badger) PatchRole(id string, rolePatch data.RolePatch) error {
 	})
 }
 
-func (b *Badger) PutRoleRelation(relation map[string]data.RoleRelation) error {
+func (b *Badger) PutRoleRelation(ctx context.Context, relation map[string]data.RoleRelation) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
@@ -262,6 +271,13 @@ func (b *Badger) PutRoleRelation(relation map[string]data.RoleRelation) error {
 
 				foundRole.PermissionIDs = permissionIDs
 			}
+
+			userName := data.CtxUserName(ctx)
+
+			foundRole.UpdatedAt = time.Now().Format(time.RFC3339)
+			foundRole.UpdatedBy = userName
+
+			logi.Ctx(ctx).Info("role replaced", slog.String("name", foundRole.Name), slog.String("id", foundRole.ID), slog.String("by", foundRole.UpdatedAt))
 
 			if err := b.db.TxUpdate(txn, foundRole.ID, foundRole); err != nil {
 				return err
@@ -320,26 +336,45 @@ func (b *Badger) GetRoleRelation() (map[string]data.RoleRelation, error) {
 	return roleRelation, nil
 }
 
-func (b *Badger) PutRole(role data.Role) error {
+func (b *Badger) PutRole(ctx context.Context, role data.Role) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	if err := b.db.Update(role.ID, role); err != nil {
-		if errors.Is(err, badgerhold.ErrNotFound) {
-			return fmt.Errorf("role with id %s not found; %w", role.ID, data.ErrNotFound)
+	role.UpdatedAt = time.Now().Format(time.RFC3339)
+	role.UpdatedBy = data.CtxUserName(ctx)
+
+	// found role with id and replace
+	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
+		var foundRole data.Role
+		if err := b.db.TxFindOne(txn, &foundRole, badgerhold.Where("ID").Eq(role.ID).Index("ID")); err != nil {
+			if errors.Is(err, badgerhold.ErrNotFound) {
+				return fmt.Errorf("role with id %s not found; %w", role.ID, data.ErrNotFound)
+			}
+
+			return err
 		}
 
+		role.CreatedAt = foundRole.CreatedAt
+
+		if err := b.db.TxUpdate(txn, role.ID, role); err != nil {
+			return err
+		}
+
+		return nil
+	}); err != nil {
 		return err
 	}
+
+	logi.Ctx(ctx).Info("role replaced", slog.String("id", role.ID), slog.String("name", role.Name), slog.String("by", role.UpdatedBy))
 
 	return nil
 }
 
-func (b *Badger) DeleteRole(id string) error {
+func (b *Badger) DeleteRole(ctx context.Context, id string) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	return b.db.Badger().Update(func(txn *badger.Txn) error {
+	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
 		if err := b.db.TxDelete(txn, id, data.Role{}); err != nil {
 			return err
 		}
@@ -381,7 +416,13 @@ func (b *Badger) DeleteRole(id string) error {
 		}
 
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	logi.Ctx(ctx).Info("role deleted", slog.String("id", id), slog.String("by", data.CtxUserName(ctx)))
+
+	return nil
 }
 
 func (b *Badger) getVirtualRoleIDs(txn *badger.Txn, roleIDs []string) ([]string, error) {
@@ -419,10 +460,10 @@ func (b *Badger) getVirtualRoleIDs(txn *badger.Txn, roleIDs []string) ([]string,
 	return roleIDs, nil
 }
 
-func (b *Badger) getRoleIDs(txn *badger.Txn, method, path string) ([]string, error) {
+func (b *Badger) getRoleIDs(txn *badger.Txn, method, path string, names []string) ([]string, error) {
 	var roleIDs []string
 
-	permissionIDs, err := b.getPermissionIDs(txn, method, path)
+	permissionIDs, err := b.getPermissionIDs(txn, method, path, names)
 	if err != nil {
 		return nil, err
 	}
@@ -440,11 +481,11 @@ func (b *Badger) getRoleIDs(txn *badger.Txn, method, path string) ([]string, err
 	return roleIDs, nil
 }
 
-func (b *Badger) editRole(id string, fn func(*badger.Txn, *data.Role) error) error {
+func (b *Badger) editRole(ctx context.Context, id string, fn func(*badger.Txn, *data.Role) error) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
+	return b.db.Badger().Update(func(txn *badger.Txn) error {
 		var foundRole data.Role
 		if err := b.db.TxFindOne(txn, &foundRole, badgerhold.Where("ID").Eq(id).Index("ID")); err != nil {
 			if errors.Is(err, badgerhold.ErrNotFound) {
@@ -458,16 +499,17 @@ func (b *Badger) editRole(id string, fn func(*badger.Txn, *data.Role) error) err
 			return err
 		}
 
+		foundRole.UpdatedAt = time.Now().Format(time.RFC3339)
+		foundRole.UpdatedBy = data.CtxUserName(ctx)
+
 		if err := b.db.TxUpdate(txn, foundRole.ID, foundRole); err != nil {
 			return err
 		}
 
-		return nil
-	}); err != nil {
-		return err
-	}
+		logi.Ctx(ctx).Info("role updated", slog.String("id", foundRole.ID), slog.String("name", foundRole.Name), slog.String("by", foundRole.UpdatedBy))
 
-	return nil
+		return nil
+	})
 }
 
 func (b *Badger) ExtendRole(txn *badger.Txn, addRoles bool, addPermissions bool, addTotalUsers bool, role *data.Role) (data.RoleExtended, error) {

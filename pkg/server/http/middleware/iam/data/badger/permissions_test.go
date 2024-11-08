@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"context"
 	"testing"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
@@ -19,7 +20,9 @@ func TestBadgerGetPermissions(t *testing.T) {
 		Name: "test",
 	}
 
-	if id, err := db.CreatePermission(permission); err != nil {
+	ctx := data.WithContextUserName(context.Background(), "testing")
+
+	if id, err := db.CreatePermission(ctx, permission); err != nil {
 		t.Fatalf("failed to create permission: %v", err)
 	} else {
 		permission.ID = id
@@ -29,7 +32,7 @@ func TestBadgerGetPermissions(t *testing.T) {
 		Name: "test2",
 	}
 
-	if _, err := db.CreatePermission(permission2); err != nil {
+	if _, err := db.CreatePermission(ctx, permission2); err != nil {
 		t.Fatalf("failed to create permission: %v", err)
 	}
 
@@ -80,7 +83,9 @@ func TestBadgerCreatePermission(t *testing.T) {
 		Name: "test",
 	}
 
-	if id, err := db.CreatePermission(permission); err != nil {
+	ctx := data.WithContextUserName(context.Background(), "testing")
+
+	if id, err := db.CreatePermission(ctx, permission); err != nil {
 		t.Fatalf("failed to create permission: %v", err)
 	} else {
 		permission.ID = id

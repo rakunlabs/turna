@@ -63,12 +63,23 @@ func toInterfaceSlice(slice []string) []any {
 	return interfaceSlice
 }
 
-func matchAll(value string) badgerhold.MatchFunc {
+func toInterfaceSliceMap(slice map[string]struct{}) []any {
+	interfaceSlice := make([]any, 0, len(slice))
+	for k := range slice {
+		interfaceSlice = append(interfaceSlice, k)
+	}
+
+	return interfaceSlice
+}
+
+func matchAll(values ...string) badgerhold.MatchFunc {
 	return func(ra *badgerhold.RecordAccess) (bool, error) {
 		record, _ := ra.Field().(string)
 
-		if strings.Contains(strings.ToLower(record), strings.ToLower(value)) {
-			return true, nil
+		for _, v := range values {
+			if strings.Contains(strings.ToLower(record), strings.ToLower(v)) {
+				return true, nil
+			}
 		}
 
 		return false, nil

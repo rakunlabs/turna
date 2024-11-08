@@ -1,6 +1,7 @@
 package badger_test
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"testing"
@@ -23,7 +24,9 @@ func TestBadgerGetUsers(t *testing.T) {
 		Alias: []string{"test"},
 	}
 
-	if _, err := db.CreateUser(user); err != nil {
+	ctx := data.WithContextUserName(context.Background(), "testing")
+
+	if _, err := db.CreateUser(ctx, user); err != nil {
 		t.Fatalf("failed to create user: %v", err)
 	}
 
@@ -31,7 +34,7 @@ func TestBadgerGetUsers(t *testing.T) {
 		Alias: []string{"test2"},
 	}
 
-	if _, err := db.CreateUser(user2); err != nil {
+	if _, err := db.CreateUser(ctx, user2); err != nil {
 		t.Fatalf("failed to create user: %v", err)
 	}
 
@@ -90,7 +93,9 @@ func TestBadgerCreateUser(t *testing.T) {
 		Alias: []string{"test", "test2"},
 	}
 
-	if _, err := db.CreateUser(user); err != nil {
+	ctx := data.WithContextUserName(context.Background(), "testing")
+
+	if _, err := db.CreateUser(ctx, user); err != nil {
 		t.Fatalf("failed to create user: %v", err)
 	}
 
@@ -98,7 +103,7 @@ func TestBadgerCreateUser(t *testing.T) {
 		Alias: []string{"test2", "test3"},
 	}
 
-	_, err = db.CreateUser(user)
+	_, err = db.CreateUser(ctx, user)
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -114,7 +119,7 @@ func TestBadgerCreateUser(t *testing.T) {
 		t.Fatalf("failed to get users: %v", err)
 	}
 
-	err = db.DeleteUser(res.Payload[0].ID)
+	err = db.DeleteUser(ctx, res.Payload[0].ID)
 	if err != nil {
 		t.Fatalf("failed to delete user: %v", err)
 	}
@@ -133,7 +138,9 @@ func TestBadgerPutUser(t *testing.T) {
 		Alias: []string{"test"},
 	}
 
-	if _, err := db.CreateUser(user); err != nil {
+	ctx := data.WithContextUserName(context.Background(), "testing")
+
+	if _, err := db.CreateUser(ctx, user); err != nil {
 		t.Fatalf("failed to create user: %v", err)
 	}
 
@@ -149,7 +156,7 @@ func TestBadgerPutUser(t *testing.T) {
 	user.Alias = []string{"test2"}
 	user.ID = res.Payload[0].ID
 
-	if err := db.PutUser(user); err != nil {
+	if err := db.PutUser(ctx, user); err != nil {
 		t.Fatalf("failed to update user: %v", err)
 	}
 
@@ -185,7 +192,9 @@ func TestBadgerPatchUser(t *testing.T) {
 		RoleIDs: []string{"role-1"},
 	}
 
-	if _, err := db.CreateUser(user); err != nil {
+	ctx := data.WithContextUserName(context.Background(), "testing")
+
+	if _, err := db.CreateUser(ctx, user); err != nil {
 		t.Fatalf("failed to create user: %v", err)
 	}
 
@@ -203,7 +212,7 @@ func TestBadgerPatchUser(t *testing.T) {
 		RoleIDs: &[]string{},
 	}
 
-	if err := db.PatchUser(res.Payload[0].ID, userPath); err != nil {
+	if err := db.PatchUser(ctx, res.Payload[0].ID, userPath); err != nil {
 		t.Fatalf("failed to update user: %v", err)
 	}
 

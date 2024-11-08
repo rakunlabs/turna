@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/spf13/cast"
 
+	"github.com/rakunlabs/logi"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
@@ -59,10 +60,18 @@ func (m *Iam) MuxSet(prefix string) *chi.Mux {
 	mux.Post(prefix+"/v1/permissions", m.CreatePermission)          // trigger
 	mux.Post(prefix+"/v1/permissions/bulk", m.CreatePermissionBulk) // trigger
 	mux.Get(prefix+"/v1/permissions/export", m.ExportPermissions)
+	mux.Post(prefix+"/v1/permissions/keep", m.KeepPermissionBulk) // trigger
 	mux.Get(prefix+"/v1/permissions/{id}", m.GetPermission)
 	mux.Patch(prefix+"/v1/permissions/{id}", m.PatchPermission)   // trigger
 	mux.Put(prefix+"/v1/permissions/{id}", m.PutPermission)       // trigger
 	mux.Delete(prefix+"/v1/permissions/{id}", m.DeletePermission) // trigger
+
+	// mux.Get(prefix+"/v1/tokens", m.GetTokens)
+	// mux.Post(prefix+"/v1/tokens", m.CreateToken) // trigger
+	// mux.Get(prefix+"/v1/tokens/{id}", m.GetToken)
+	// mux.Patch(prefix+"/v1/tokens/{id}", m.PatchToken)   // trigger
+	// mux.Put(prefix+"/v1/tokens/{id}", m.PutToken)       // trigger
+	// mux.Delete(prefix+"/v1/tokens/{id}", m.DeleteToken) // trigger
 
 	mux.Get(prefix+"/v1/ldap/users/{uid}", m.LdapGetUsers)
 	mux.Get(prefix+"/v1/ldap/groups", m.LdapGetGroups)
@@ -96,6 +105,15 @@ func (m *Iam) MuxSet(prefix string) *chi.Mux {
 	return mux
 }
 
+func getUserName(r *http.Request) string {
+	v := r.Header.Get("X-User")
+	if v == "" {
+		v = "unknown"
+	}
+
+	return v
+}
+
 func getLimitOffset(v url.Values) (limit, offset int64) {
 	limit, _ = strconv.ParseInt(v.Get("limit"), 10, 64)
 	offset, _ = strconv.ParseInt(v.Get("offset"), 10, 64)
@@ -113,8 +131,14 @@ func wrapServiceAccount(r *http.Request) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), "service_account", true))
 }
 
-func isServiceAccount(r *http.Request) *bool {
+func isServiceAccount(r *http.Request) bool {
 	v, _ := r.Context().Value("service_account").(bool)
+
+	return v
+}
+
+func isServiceAccountPtr(r *http.Request) *bool {
+	v := isServiceAccount(r)
 
 	return &v
 }
@@ -141,6 +165,7 @@ func (m *Iam) CreateServiceAccount(w http.ResponseWriter, r *http.Request) {
 // @Param email query string false "details->email"
 // @Param path query string false "request path"
 // @Param method query string false "request method"
+// @Param permission query []string false "permission" collectionFormat(multi)
 // @Param is_active query bool false "is_active"
 // @Param add_roles query bool false "add roles default(true)"
 // @Param add_permissions query bool false "add permissions"
@@ -244,7 +269,7 @@ func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user.ServiceAccount = *isServiceAccount(r)
+	user.ServiceAccount = isServiceAccount(r)
 	user.Disabled = !user.IsActive
 
 	if user.ServiceAccount {
@@ -269,7 +294,9 @@ func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	id, err := m.db.CreateUser(user.User)
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	id, err := m.db.CreateUser(ctx, user.User)
 	if err != nil {
 		if errors.Is(err, data.ErrConflict) {
 			httputil.HandleError(w, data.NewError("User already exists", err, http.StatusConflict))
@@ -308,6 +335,7 @@ func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 // @Param email query string false "details->email"
 // @Param path query string false "request path"
 // @Param method query string false "request method"
+// @Param permission query []string false "permission" collectionFormat(multi)
 // @Param is_active query bool false "is_active"
 // @Param add_roles query bool false "add roles default(true)"
 // @Param add_permissions query bool false "add permissions"
@@ -320,7 +348,7 @@ func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 func (m *Iam) GetUsers(w http.ResponseWriter, r *http.Request) {
 	req := data.GetUserRequest{
 		AddRoles:       true,
-		ServiceAccount: isServiceAccount(r),
+		ServiceAccount: isServiceAccountPtr(r),
 	}
 
 	query := r.URL.Query()
@@ -335,6 +363,7 @@ func (m *Iam) GetUsers(w http.ResponseWriter, r *http.Request) {
 
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
+	req.Permissions = httputil.CommaQueryParam(query["permission"])
 
 	if v := query.Get("is_active"); v != "" {
 		vBool, _ := strconv.ParseBool(query.Get("is_active"))
@@ -376,7 +405,7 @@ func (m *Iam) GetUsers(w http.ResponseWriter, r *http.Request) {
 func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
 	req := data.GetUserRequest{
 		AddRoles:       true,
-		ServiceAccount: isServiceAccount(r),
+		ServiceAccount: isServiceAccountPtr(r),
 	}
 
 	query := r.URL.Query()
@@ -454,7 +483,7 @@ func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
 func (m *Iam) GetUser(w http.ResponseWriter, r *http.Request) {
 	req := data.GetUserRequest{
 		AddRoles:       true,
-		ServiceAccount: isServiceAccount(r),
+		ServiceAccount: isServiceAccountPtr(r),
 	}
 
 	id := chi.URLParam(r, "id")
@@ -506,7 +535,9 @@ func (m *Iam) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := m.db.DeleteUser(id); err != nil {
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	if err := m.db.DeleteUser(ctx, id); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("User not found", err, http.StatusNotFound))
 			return
@@ -518,7 +549,7 @@ func (m *Iam) DeleteUser(w http.ResponseWriter, r *http.Request) {
 
 	m.sync.Trigger(m.ctxService)
 
-	if *isServiceAccount(r) {
+	if isServiceAccount(r) {
 		httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Service account deleted"))
 		return
 	}
@@ -552,7 +583,9 @@ func (m *Iam) PatchUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := m.db.PatchUser(id, userPatch); err != nil {
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	if err := m.db.PatchUser(ctx, id, userPatch); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("User not found", err, http.StatusNotFound))
 			return
@@ -564,7 +597,7 @@ func (m *Iam) PatchUser(w http.ResponseWriter, r *http.Request) {
 
 	m.sync.Trigger(m.ctxService)
 
-	if *isServiceAccount(r) {
+	if isServiceAccount(r) {
 		httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Service account's data patched"))
 		return
 	}
@@ -599,9 +632,11 @@ func (m *Iam) PutUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user.ID = id
-	user.ServiceAccount = *isServiceAccount(r)
+	user.ServiceAccount = isServiceAccount(r)
 
-	if err := m.db.PutUser(user); err != nil {
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	if err := m.db.PutUser(ctx, user); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("User not found", err, http.StatusNotFound))
 			return
@@ -630,6 +665,7 @@ func (m *Iam) PutUser(w http.ResponseWriter, r *http.Request) {
 // @Param role_ids query []string false "role ids" collectionFormat(multi)
 // @Param method query string false "request method"
 // @Param path query string false "request path"
+// @Param permission query []string false "permission" collectionFormat(multi)
 // @Param add_permissions query bool false "add permissions default(true)"
 // @Param add_roles query bool false "add roles default(true)"
 // @Param add_total_users query bool false "add total users default(true)"
@@ -650,6 +686,7 @@ func (m *Iam) GetRoles(w http.ResponseWriter, r *http.Request) {
 	req.Name = query.Get("name")
 	req.PermissionIDs = httputil.CommaQueryParam(query["permission_ids"])
 	req.RoleIDs = httputil.CommaQueryParam(query["role_ids"])
+	req.Permissions = httputil.CommaQueryParam(query["permission"])
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
 	req.Description = query.Get("description")
@@ -786,7 +823,14 @@ func (m *Iam) CreateRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := m.db.CreateRole(role)
+	if role.Name == "" {
+		httputil.HandleError(w, data.NewError("name is required", nil, http.StatusBadRequest))
+		return
+	}
+
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	id, err := m.db.CreateRole(ctx, role)
 	if err != nil {
 		if errors.Is(err, data.ErrConflict) {
 			httputil.HandleError(w, data.NewError("Role already exists", err, http.StatusConflict))
@@ -869,7 +913,9 @@ func (m *Iam) PutRoleRelation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := m.db.PutRoleRelation(relation); err != nil {
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	if err := m.db.PutRoleRelation(ctx, relation); err != nil {
 		httputil.HandleError(w, data.NewError("Cannot patch role", err, http.StatusInternalServerError))
 		return
 	}
@@ -924,7 +970,9 @@ func (m *Iam) PatchRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := m.db.PatchRole(id, rolePatch); err != nil {
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	if err := m.db.PatchRole(ctx, id, rolePatch); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("Role not found", err, http.StatusNotFound))
 			return
@@ -969,9 +1017,16 @@ func (m *Iam) PutRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if role.Name == "" {
+		httputil.HandleError(w, data.NewError("name is required", nil, http.StatusBadRequest))
+		return
+	}
+
 	role.ID = id
 
-	if err := m.db.PutRole(role); err != nil {
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	if err := m.db.PutRole(ctx, role); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("Role not found", err, http.StatusNotFound))
 			return
@@ -1005,7 +1060,9 @@ func (m *Iam) DeleteRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := m.db.DeleteRole(id); err != nil {
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	if err := m.db.DeleteRole(ctx, id); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("Role not found", err, http.StatusNotFound))
 			return
@@ -1134,7 +1191,9 @@ func (m *Iam) CreatePermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := m.db.CreatePermission(permission)
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	id, err := m.db.CreatePermission(ctx, permission)
 	if err != nil {
 		if errors.Is(err, data.ErrConflict) {
 			httputil.HandleError(w, data.NewError("Permission already exists", err, http.StatusConflict))
@@ -1174,7 +1233,9 @@ func (m *Iam) CreatePermissionBulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ids, err := m.db.CreatePermissions(permissions)
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	ids, err := m.db.CreatePermissions(ctx, permissions)
 	if err != nil {
 		httputil.HandleError(w, data.NewError("Cannot create permission", err, http.StatusInternalServerError))
 		return
@@ -1249,7 +1310,9 @@ func (m *Iam) PatchPermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := m.db.PatchPermission(id, permission); err != nil {
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	if err := m.db.PatchPermission(ctx, id, permission); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("Permission not found", err, http.StatusNotFound))
 			return
@@ -1297,7 +1360,9 @@ func (m *Iam) PutPermission(w http.ResponseWriter, r *http.Request) {
 
 	permission.ID = id
 
-	if err := m.db.PutPermission(permission); err != nil {
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	if err := m.db.PutPermission(ctx, permission); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("Permission not found", err, http.StatusNotFound))
 			return
@@ -1331,7 +1396,9 @@ func (m *Iam) DeletePermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := m.db.DeletePermission(id); err != nil {
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	if err := m.db.DeletePermission(ctx, id); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("Permission not found", err, http.StatusNotFound))
 			return
@@ -1342,6 +1409,48 @@ func (m *Iam) DeletePermission(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m.sync.Trigger(m.ctxService)
+
+	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Permission deleted"))
+}
+
+// @Summary Delete permission bulk
+// @Tags permissions
+// @Param permission body []data.Permission true "Permission"
+// @Success 200 {object} data.Response[[]data.IDName]
+// @Failure 500 {object} data.ResponseError
+// @Router /v1/permissions/keep [POST]
+func (m *Iam) KeepPermissionBulk(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
+	permissions := []data.NameRequest{}
+	if err := httputil.Decode(r, &permissions); err != nil {
+		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		return
+	}
+
+	permissionsMap := make(map[string]struct{}, len(permissions))
+	for _, p := range permissions {
+		permissionsMap[p.Name] = struct{}{}
+	}
+
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	idName, err := m.db.KeepPermissions(ctx, permissionsMap)
+	if err != nil {
+		httputil.HandleError(w, data.NewError("Cannot delete permission", err, http.StatusInternalServerError))
+		return
+	}
+
+	m.sync.Trigger(m.ctxService)
+
+	httputil.JSON(w, http.StatusOK, data.Response[[]data.IDName]{
+		Message: &data.Message{
+			Text: "Permissions deleted",
+		},
+		Payload: idName,
+	})
 
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Permission deleted"))
 }
@@ -1422,7 +1531,14 @@ func (m *Iam) LdapCreateGroupMaps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := m.db.CreateLMap(lmap); err != nil {
+	if lmap.Name == "" {
+		httputil.HandleError(w, data.NewError("name is required", nil, http.StatusBadRequest))
+		return
+	}
+
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	if err := m.db.CreateLMap(ctx, lmap); err != nil {
 		if errors.Is(err, data.ErrConflict) {
 			httputil.HandleError(w, data.NewError("Map already exists", err, http.StatusConflict))
 			return
@@ -1520,7 +1636,9 @@ func (m *Iam) LdapPutGroupMaps(w http.ResponseWriter, r *http.Request) {
 
 	lmap.Name = name
 
-	if err := m.db.PutLMap(lmap); err != nil {
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	if err := m.db.PutLMap(ctx, lmap); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("Map not found", err, http.StatusNotFound))
 			return
@@ -1554,7 +1672,9 @@ func (m *Iam) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := m.db.DeleteLMap(name); err != nil {
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	if err := m.db.DeleteLMap(ctx, name); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("Map not found", err, http.StatusNotFound))
 			return
@@ -1734,9 +1854,10 @@ func (m *Iam) Restore(w http.ResponseWriter, r *http.Request) {
 
 	defer file.Close()
 
-	slog.Info("restoring database",
+	logi.Ctx(m.ctxService).Info("restoring database",
 		slog.String("file_name", fileHeader.Filename),
 		slog.String("file_size", humanize.Bytes(uint64(fileHeader.Size))),
+		slog.String("by", getUserName(r)),
 	)
 
 	if err := m.db.Restore(file); err != nil {

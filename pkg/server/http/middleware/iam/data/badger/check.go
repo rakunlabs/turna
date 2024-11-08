@@ -68,12 +68,17 @@ func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 			return err
 		}
 
-		permissionIDs := make([]string, 0)
+		permissionMapIDs := make(map[string]struct{})
+		for _, permID := range user.PermissionIDs {
+			permissionMapIDs[permID] = struct{}{}
+		}
 		for _, role := range roles {
-			permissionIDs = append(permissionIDs, role.PermissionIDs...)
+			for _, permID := range role.PermissionIDs {
+				permissionMapIDs[permID] = struct{}{}
+			}
 		}
 
-		query = badgerhold.Where("ID").In(toInterfaceSlice(permissionIDs)...)
+		query = badgerhold.Where("ID").In(toInterfaceSliceMap(permissionMapIDs)...)
 
 		if err := b.db.TxForEach(txn, query, func(perm *data.Permission) error {
 			if CheckAccess(perm, req.Path, req.Method) {

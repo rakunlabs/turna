@@ -20,7 +20,7 @@ require (
 	github.com/labstack/echo/v4 v4.12.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/rakunlabs/into v0.3.3
-	github.com/rakunlabs/logi v0.3.3
+	github.com/rakunlabs/logi v0.4.0
 	github.com/rbcervilla/redisstore/v9 v9.0.0
 	github.com/redis/go-redis/v9 v9.6.1
 	github.com/rs/zerolog v1.33.0

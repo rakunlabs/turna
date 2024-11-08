@@ -800,6 +800,42 @@
                 }
             }
         },
+        "/v1/permissions/keep": {
+            "post": {
+                "tags": [
+                    "permissions"
+                ],
+                "summary": "Delete permission bulk",
+                "parameters": [
+                    {
+                        "description": "Permission",
+                        "name": "permission",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/data.Permission"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/data.Response-array_data_IDName"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/data.ResponseError"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/permissions/{id}": {
             "get": {
                 "tags": [
@@ -1076,6 +1112,16 @@
                         "type": "string",
                         "description": "request path",
                         "name": "path",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "permission",
+                        "name": "permission",
                         "in": "query"
                     },
                     {
@@ -1570,6 +1616,16 @@
                         "type": "string",
                         "description": "request method",
                         "name": "method",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "permission",
+                        "name": "permission",
                         "in": "query"
                     },
                     {
@@ -2087,6 +2143,16 @@
                         "in": "query"
                     },
                     {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "permission",
+                        "name": "permission",
+                        "in": "query"
+                    },
+                    {
                         "type": "boolean",
                         "description": "is_active",
                         "name": "is_active",
@@ -2557,6 +2623,9 @@
         "data.LMap": {
             "type": "object",
             "properties": {
+                "created_at": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -2565,6 +2634,12 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
                 }
             }
         },
@@ -2596,6 +2671,9 @@
         "data.Permission": {
             "type": "object",
             "properties": {
+                "created_at": {
+                    "type": "string"
+                },
                 "data": {
                     "type": "object",
                     "additionalProperties": true
@@ -2614,6 +2692,12 @@
                     "items": {
                         "$ref": "#/definitions/data.Resource"
                     }
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
                 }
             }
         },
@@ -2649,6 +2733,23 @@
                 },
                 "path": {
                     "type": "string"
+                }
+            }
+        },
+        "data.Response-array_data_IDName": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "$ref": "#/definitions/data.Message"
+                },
+                "meta": {
+                    "$ref": "#/definitions/data.Meta"
+                },
+                "payload": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/data.IDName"
+                    }
                 }
             }
         },
@@ -2909,6 +3010,9 @@
         "data.Role": {
             "type": "object",
             "properties": {
+                "created_at": {
+                    "type": "string"
+                },
                 "data": {
                     "type": "object",
                     "additionalProperties": true
@@ -2933,12 +3037,21 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
                 }
             }
         },
         "data.RoleExtended": {
             "type": "object",
             "properties": {
+                "created_at": {
+                    "type": "string"
+                },
                 "data": {
                     "type": "object",
                     "additionalProperties": true
@@ -2978,6 +3091,12 @@
                 },
                 "total_users": {
                     "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
                 }
             }
         },
@@ -3034,6 +3153,9 @@
                         "type": "string"
                     }
                 },
+                "created_at": {
+                    "type": "string"
+                },
                 "details": {
                     "type": "object",
                     "additionalProperties": true
@@ -3043,6 +3165,12 @@
                 },
                 "local": {
                     "type": "boolean"
+                },
+                "permission_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "role_ids": {
                     "type": "array",
@@ -3058,6 +3186,12 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
                 }
             }
         },
@@ -3069,6 +3203,9 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "created_at": {
+                    "type": "string"
                 },
                 "details": {
                     "type": "object",
@@ -3083,6 +3220,12 @@
                 "local": {
                     "type": "boolean"
                 },
+                "permission_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "role_ids": {
                     "type": "array",
                     "items": {
@@ -3097,6 +3240,12 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
                 }
             }
         },
@@ -3108,6 +3257,9 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "created_at": {
+                    "type": "string"
                 },
                 "data": {
                     "type": "array",
@@ -3125,6 +3277,12 @@
                 },
                 "local": {
                     "type": "boolean"
+                },
+                "permission_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "permissions": {
                     "type": "array",
@@ -3152,6 +3310,12 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
                 }
             }
         },
@@ -3198,6 +3362,12 @@
                 },
                 "is_active": {
                     "type": "boolean"
+                },
+                "permission_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "role_ids": {
                     "type": "array",

@@ -1,13 +1,17 @@
 package badger
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
+	"time"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/oklog/ulid/v2"
+	"github.com/rakunlabs/logi"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/access"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	"github.com/spf13/cast"
@@ -65,9 +69,9 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserEx
 				}
 			}
 
-			if req.Method != "" || req.Path != "" {
+			if req.Method != "" || req.Path != "" || len(req.Permissions) > 0 {
 				// get role ids based on path and method
-				roleIDs, err := b.getRoleIDs(txn, req.Method, req.Path)
+				roleIDs, err := b.getRoleIDs(txn, req.Method, req.Path, req.Permissions)
 				if err != nil {
 					return err
 				}
@@ -286,7 +290,7 @@ func (b *Badger) GetUser(req data.GetUserRequest) (*data.UserExtended, error) {
 	return extendedUser, nil
 }
 
-func (b *Badger) TxCreateUser(txn *badger.Txn, user data.User) (string, error) {
+func (b *Badger) TxCreateUser(ctx context.Context, txn *badger.Txn, user data.User) (string, error) {
 	var foundUser data.User
 
 	user.ID = ulid.Make().String()
@@ -316,6 +320,10 @@ func (b *Badger) TxCreateUser(txn *badger.Txn, user data.User) (string, error) {
 	user.SyncRoleIDs = slicesUnique(user.SyncRoleIDs)
 	user.MixRoleIDs = slicesUnique(user.RoleIDs, user.SyncRoleIDs)
 
+	user.CreatedAt = time.Now().Format(time.RFC3339)
+	user.UpdatedAt = user.CreatedAt
+	user.UpdatedBy = data.CtxUserName(ctx)
+
 	if err := b.db.TxInsert(txn, user.ID, user); err != nil {
 		return "", err
 	}
@@ -324,10 +332,17 @@ func (b *Badger) TxCreateUser(txn *badger.Txn, user data.User) (string, error) {
 		slog.Error("failed to set alias cache", slog.String("error", err.Error()))
 	}
 
+	msg := "user created"
+	if user.ServiceAccount {
+		msg = "service account created"
+	}
+
+	logi.Ctx(ctx).Info(msg, slog.String("id", user.ID), slog.String("alias", strings.Join(user.Alias, ",")), slog.String("by", user.UpdatedBy))
+
 	return user.ID, nil
 }
 
-func (b *Badger) CreateUser(user data.User) (string, error) {
+func (b *Badger) CreateUser(ctx context.Context, user data.User) (string, error) {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
@@ -335,7 +350,7 @@ func (b *Badger) CreateUser(user data.User) (string, error) {
 
 	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
 		var err error
-		id, err = b.TxCreateUser(txn, user)
+		id, err = b.TxCreateUser(ctx, txn, user)
 		return err
 	}); err != nil {
 		return id, err
@@ -344,7 +359,7 @@ func (b *Badger) CreateUser(user data.User) (string, error) {
 	return id, nil
 }
 
-func (b *Badger) editUser(id string, fn func(*badger.Txn, *data.User)) error {
+func (b *Badger) editUser(ctx context.Context, id string, fn func(*badger.Txn, *data.User)) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
@@ -360,16 +375,28 @@ func (b *Badger) editUser(id string, fn func(*badger.Txn, *data.User)) error {
 
 		fn(txn, &foundUser)
 
+		userName := data.CtxUserName(ctx)
+
+		foundUser.UpdatedAt = time.Now().Format(time.RFC3339)
+		foundUser.UpdatedBy = userName
+
 		if err := b.db.TxUpdate(txn, foundUser.ID, foundUser); err != nil {
 			return err
 		}
+
+		msg := "user updated"
+		if foundUser.ServiceAccount {
+			msg = "service account updated"
+		}
+
+		logi.Ctx(ctx).Info(msg, slog.String("id", id), slog.String("alias", strings.Join(foundUser.Alias, ",")), slog.String("by", userName))
 
 		return nil
 	})
 }
 
-func (b *Badger) PatchUser(id string, userPatch data.UserPatch) error {
-	return b.editUser(id, func(_ *badger.Txn, foundUser *data.User) {
+func (b *Badger) PatchUser(ctx context.Context, id string, userPatch data.UserPatch) error {
+	return b.editUser(ctx, id, func(_ *badger.Txn, foundUser *data.User) {
 		if userPatch.Alias != nil {
 			foundUser.Alias = *userPatch.Alias
 		}
@@ -385,6 +412,10 @@ func (b *Badger) PatchUser(id string, userPatch data.UserPatch) error {
 			}
 
 			foundUser.Details = *userPatch.Details
+		}
+
+		if userPatch.PermissionIDs != nil {
+			foundUser.PermissionIDs = slicesUnique(*userPatch.PermissionIDs)
 		}
 
 		if userPatch.RoleIDs != nil {
@@ -403,7 +434,7 @@ func (b *Badger) PatchUser(id string, userPatch data.UserPatch) error {
 	})
 }
 
-func (b *Badger) TxPutUser(txn *badger.Txn, user data.User) error {
+func (b *Badger) TxPutUser(ctx context.Context, txn *badger.Txn, user data.User) error {
 	var foundUser data.User
 	if err := b.db.TxFindOne(txn, &foundUser, badgerhold.Where("ID").Eq(user.ID)); err != nil {
 		if errors.Is(err, badgerhold.ErrNotFound) {
@@ -427,28 +458,38 @@ func (b *Badger) TxPutUser(txn *badger.Txn, user data.User) error {
 	user.RoleIDs = slicesUnique(user.RoleIDs)
 	user.SyncRoleIDs = slicesUnique(user.SyncRoleIDs)
 	user.MixRoleIDs = slicesUnique(user.RoleIDs, user.SyncRoleIDs)
+	user.UpdatedAt = time.Now().Format(time.RFC3339)
+	user.CreatedAt = foundUser.CreatedAt
+	user.UpdatedBy = data.CtxUserName(ctx)
 
 	if err := b.db.TxUpdate(txn, foundUser.ID, user); err != nil {
 		return err
 	}
 
+	msg := "user replaced"
+	if user.ServiceAccount {
+		msg = "service account replaced"
+	}
+
+	logi.Ctx(ctx).Info(msg, slog.String("id", user.ID), slog.String("alias", strings.Join(user.Alias, ",")), slog.String("by", user.UpdatedBy))
+
 	return nil
 }
 
-func (b *Badger) PutUser(user data.User) error {
+func (b *Badger) PutUser(ctx context.Context, user data.User) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
 	return b.db.Badger().Update(func(txn *badger.Txn) error {
-		return b.TxPutUser(txn, user)
+		return b.TxPutUser(ctx, txn, user)
 	})
 }
 
-func (b *Badger) DeleteUser(id string) error {
+func (b *Badger) DeleteUser(ctx context.Context, id string) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	return b.db.Badger().Update(func(txn *badger.Txn) error {
+	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
 		if err := b.db.TxDelete(txn, id, data.User{}); err != nil {
 			if errors.Is(err, badgerhold.ErrNotFound) {
 				return fmt.Errorf("user with id %s not found; %w", id, data.ErrNotFound)
@@ -472,7 +513,13 @@ func (b *Badger) DeleteUser(id string) error {
 		}
 
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	logi.Ctx(ctx).Info("deleted user", slog.String("id", id), slog.String("by", data.CtxUserName(ctx)))
+
+	return nil
 }
 
 func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addData bool, user *data.User) (data.UserExtended, error) {

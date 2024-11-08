@@ -17,6 +17,10 @@ type Permission struct {
 	Resources   []Resource             `json:"resources"`
 	Description string                 `json:"description"`
 	Data        map[string]interface{} `json:"data"`
+
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+	UpdatedBy string `json:"updated_by"`
 }
 
 type PermissionPatch struct {
@@ -39,6 +43,10 @@ type Role struct {
 	RoleIDs       []string               `json:"role_ids"`
 	Data          map[string]interface{} `json:"data"`
 	Description   string                 `json:"description"`
+
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+	UpdatedBy string `json:"updated_by"`
 }
 
 type RolePatch struct {
@@ -86,6 +94,11 @@ type User struct {
 	Disabled       bool                   `json:"-"`
 	ServiceAccount bool                   `json:"service_account"`
 	Local          bool                   `json:"local"`
+	PermissionIDs  []string               `json:"permission_ids"`
+
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+	UpdatedBy string `json:"updated_by"`
 }
 
 type UserCreate struct {
@@ -95,11 +108,12 @@ type UserCreate struct {
 }
 
 type UserPatch struct {
-	Alias       *[]string               `json:"alias"`
-	RoleIDs     *[]string               `json:"role_ids"`
-	SyncRoleIDs *[]string               `json:"sync_role_ids"`
-	Details     *map[string]interface{} `json:"details"`
-	IsActive    *bool                   `json:"is_active"`
+	Alias         *[]string               `json:"alias"`
+	RoleIDs       *[]string               `json:"role_ids"`
+	SyncRoleIDs   *[]string               `json:"sync_role_ids"`
+	PermissionIDs *[]string               `json:"permission_ids"`
+	Details       *map[string]interface{} `json:"details"`
+	IsActive      *bool                   `json:"is_active"`
 }
 
 type UserExtended struct {
@@ -124,9 +138,25 @@ type UserInfo struct {
 	IsActive    bool                   `json:"is_active"`
 }
 
+type Token struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Token       string `json:"token"`
+	Description string `json:"description"`
+	ExpiresAt   string `json:"expires_at"`
+
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+	UpdatedBy string `json:"updated_by"`
+}
+
 type LMap struct {
 	Name    string   `json:"name"     badgerhold:"unique"`
 	RoleIDs []string `json:"role_ids"`
+
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+	UpdatedBy string `json:"updated_by"`
 }
 
 type LMapPatch struct {
@@ -202,8 +232,9 @@ type GetUserRequest struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
 
-	Path   string `json:"path"`
-	Method string `json:"method"`
+	Path        string   `json:"path"`
+	Method      string   `json:"method"`
+	Permissions []string `json:"permissions"`
 
 	ServiceAccount *bool `json:"service_account"`
 	Disabled       *bool `json:"disabled"`
@@ -239,9 +270,10 @@ type GetRoleRequest struct {
 	PermissionIDs []string `json:"permission_ids"`
 	RoleIDs       []string `json:"role_ids"`
 
-	Path        string `json:"path"`
-	Method      string `json:"method"`
-	Description string `json:"description"`
+	Path        string   `json:"path"`
+	Method      string   `json:"method"`
+	Description string   `json:"description"`
+	Permissions []string `json:"permissions"`
 
 	Limit  int64 `json:"limit"`
 	Offset int64 `json:"offset"`
@@ -275,6 +307,10 @@ type CheckRequestUser struct {
 
 type CheckResponse struct {
 	Allowed bool `json:"allowed"`
+}
+
+type NameRequest struct {
+	Name string `json:"name"`
 }
 
 func CompareSlices(a, b []string) bool {

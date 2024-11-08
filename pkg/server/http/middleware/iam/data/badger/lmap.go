@@ -1,12 +1,15 @@
 package badger
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/oklog/ulid/v2"
+	"github.com/rakunlabs/logi"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
 )
@@ -75,9 +78,13 @@ func (b *Badger) GetLMap(name string) (*data.LMap, error) {
 	return &lmap, nil
 }
 
-func (b *Badger) CreateLMap(lmap data.LMap) error {
+func (b *Badger) CreateLMap(ctx context.Context, lmap data.LMap) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
+
+	lmap.CreatedAt = time.Now().Format(time.RFC3339)
+	lmap.UpdatedAt = lmap.CreatedAt
+	lmap.UpdatedBy = data.CtxUserName(ctx)
 
 	if err := b.db.Insert(lmap.Name, lmap); err != nil {
 		if errors.Is(err, badgerhold.ErrKeyExists) {
@@ -85,10 +92,15 @@ func (b *Badger) CreateLMap(lmap data.LMap) error {
 		}
 	}
 
+	logi.Ctx(ctx).Info("lmap created", slog.String("name", lmap.Name), slog.String("by", data.CtxUserName(ctx)))
+
 	return nil
 }
 
-func (b *Badger) TxCheckCreateLMap(txn *badger.Txn, lmapChecks []data.LMapCheckCreate) error {
+func (b *Badger) TxCheckCreateLMap(ctx context.Context, txn *badger.Txn, lmapChecks []data.LMapCheckCreate) error {
+	createdAt := time.Now().Format(time.RFC3339)
+	userName := data.CtxUserName(ctx)
+
 	for _, lmapCheck := range lmapChecks {
 		if err := b.db.TxGet(txn, lmapCheck.Name, &data.LMap{}); err != nil {
 			if errors.Is(err, badgerhold.ErrNotFound) {
@@ -97,6 +109,9 @@ func (b *Badger) TxCheckCreateLMap(txn *badger.Txn, lmapChecks []data.LMapCheckC
 					ID:          ulid.Make().String(),
 					Name:        lmapCheck.Name,
 					Description: lmapCheck.Description,
+					CreatedAt:   createdAt,
+					UpdatedAt:   createdAt,
+					UpdatedBy:   userName,
 				}
 
 				if err := b.db.TxInsert(txn, role.ID, role); err != nil {
@@ -107,18 +122,25 @@ func (b *Badger) TxCheckCreateLMap(txn *badger.Txn, lmapChecks []data.LMapCheckC
 					}
 				}
 
+				logi.Ctx(ctx).Info("role created", slog.String("name", role.Name), slog.String("by", userName))
+
 				// create lmap
 				lmap := data.LMap{
-					Name:    lmapCheck.Name,
-					RoleIDs: []string{role.ID},
+					Name:      lmapCheck.Name,
+					RoleIDs:   []string{role.ID},
+					CreatedAt: createdAt,
+					UpdatedAt: createdAt,
+					UpdatedBy: userName,
 				}
 
 				if err := b.db.TxInsert(txn, lmap.Name, lmap); err != nil {
 					if errors.Is(err, badgerhold.ErrKeyExists) {
 						slog.Warn("lmap already exists", slog.String("name", lmap.Name), slog.String("error", err.Error()))
 					} else {
-						fmt.Errorf("failed to create lmap; %w", err)
+						return fmt.Errorf("failed to create lmap; %w", err)
 					}
+				} else {
+					logi.Ctx(ctx).Info("lmap created", slog.String("name", lmap.Name), slog.String("by", userName))
 				}
 			} else {
 				return fmt.Errorf("failed to get lmap, %s; %w", lmapCheck.Name, err)
@@ -129,22 +151,39 @@ func (b *Badger) TxCheckCreateLMap(txn *badger.Txn, lmapChecks []data.LMapCheckC
 	return nil
 }
 
-func (b *Badger) PutLMap(lmap data.LMap) error {
+func (b *Badger) PutLMap(ctx context.Context, lmap data.LMap) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	if err := b.db.Update(lmap.Name, lmap); err != nil {
-		if errors.Is(err, badgerhold.ErrNotFound) {
-			return fmt.Errorf("lmap with name %s not found; %w", lmap.Name, data.ErrNotFound)
+	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
+		var lmapOld data.LMap
+		if err := b.db.TxGet(txn, lmap.Name, &lmapOld); err != nil {
+			if errors.Is(err, badgerhold.ErrNotFound) {
+				return fmt.Errorf("lmap with name %s not found; %w", lmap.Name, data.ErrNotFound)
+			}
+
+			return err
 		}
 
+		lmap.CreatedAt = lmapOld.CreatedAt
+		lmap.UpdatedAt = time.Now().Format(time.RFC3339)
+		lmap.UpdatedBy = data.CtxUserName(ctx)
+
+		if err := b.db.TxUpdate(txn, lmap.Name, lmap); err != nil {
+			return err
+		}
+
+		return nil
+	}); err != nil {
 		return err
 	}
+
+	logi.Ctx(ctx).Info("lmap replaced", slog.String("name", lmap.Name), slog.String("by", data.CtxUserName(ctx)))
 
 	return nil
 }
 
-func (b *Badger) DeleteLMap(name string) error {
+func (b *Badger) DeleteLMap(ctx context.Context, name string) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
@@ -155,6 +194,8 @@ func (b *Badger) DeleteLMap(name string) error {
 
 		return err
 	}
+
+	logi.Ctx(ctx).Info("lmap deleted", slog.String("name", name), slog.String("by", data.CtxUserName(ctx)))
 
 	return nil
 }

@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"context"
 	"testing"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
@@ -67,9 +68,11 @@ func TestBadgerCheck(t *testing.T) {
 		},
 	}
 
+	ctx := data.WithContextUserName(context.Background(), "testing")
+
 	for _, tc := range testCases {
 		for i := range tc.permissions {
-			id, err := db.CreatePermission(tc.permissions[i])
+			id, err := db.CreatePermission(ctx, tc.permissions[i])
 			if err != nil {
 				t.Fatalf("failed to create permission: %v", err)
 			}
@@ -90,7 +93,7 @@ func TestBadgerCheck(t *testing.T) {
 
 			tc.roles[i].PermissionIDs = permissions
 
-			id, err := db.CreateRole(tc.roles[i])
+			id, err := db.CreateRole(ctx, tc.roles[i])
 			if err != nil {
 				t.Fatalf("failed to create role: %v", err)
 			}
@@ -111,7 +114,7 @@ func TestBadgerCheck(t *testing.T) {
 
 			tc.users[i].RoleIDs = roles
 
-			id, err := db.CreateUser(tc.users[i])
+			id, err := db.CreateUser(ctx, tc.users[i])
 			if err != nil {
 				t.Fatalf("failed to create user: %v", err)
 			}

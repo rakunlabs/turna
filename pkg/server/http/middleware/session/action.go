@@ -8,7 +8,6 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
-	"github.com/worldline-go/auth"
 	"github.com/worldline-go/auth/claims"
 	"github.com/worldline-go/auth/providers"
 	"github.com/worldline-go/auth/request"
@@ -218,7 +217,7 @@ func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 
 		// check if token is expired
 		if !m.Action.Token.DisableRefresh {
-			v, err := auth.IsRefreshNeed(token.AccessToken)
+			v, err := IsRefreshNeed(token.AccessToken)
 			if err != nil {
 				c.Logger().Errorf("cannot check if token is expired: %v", err)
 				return m.RedirectToLogin(c, m.store, true, true)
@@ -384,7 +383,7 @@ func (m *Session) IsLogged(c echo.Context) (bool, error) {
 
 	// check if token is expired
 	if !m.Action.Token.DisableRefresh {
-		v, err := auth.IsRefreshNeed(token.AccessToken)
+		v, err := IsRefreshNeed(token.AccessToken)
 		if err != nil {
 			c.Logger().Errorf("cannot check if token is expired: %v", err)
 			return false, err
