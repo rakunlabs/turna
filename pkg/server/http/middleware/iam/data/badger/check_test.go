@@ -10,7 +10,7 @@ import (
 func TestBadgerCheck(t *testing.T) {
 	// tempdir := t.TempDir()
 
-	db, err := New("", true, false)
+	db, err := New("", "", true, false)
 	// db, err := New(tempdir, false)
 	if err != nil {
 		t.Fatalf("failed to create badger db: %v", err)

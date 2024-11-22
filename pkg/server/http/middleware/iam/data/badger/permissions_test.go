@@ -10,7 +10,7 @@ import (
 func TestBadgerGetPermissions(t *testing.T) {
 	// tempdir := t.TempDir()
 
-	db, err := New("", true, false)
+	db, err := New("", "", true, false)
 	if err != nil {
 		t.Fatalf("failed to create badger db: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestBadgerGetPermissions(t *testing.T) {
 func TestBadgerCreatePermission(t *testing.T) {
 	// tempdir := t.TempDir()
 
-	db, err := New("", true, false)
+	db, err := New("", "", true, false)
 	if err != nil {
 		t.Fatalf("failed to create badger db: %v", err)
 	}

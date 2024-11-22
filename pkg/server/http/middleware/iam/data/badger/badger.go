@@ -21,7 +21,7 @@ type Badger struct {
 	dbBackupLock sync.RWMutex
 }
 
-func New(path string, memory bool, flatten bool) (*Badger, error) {
+func New(path, backupPath string, memory, flatten bool) (*Badger, error) {
 	options := badgerhold.DefaultOptions
 	if memory {
 		options.InMemory = memory
@@ -34,7 +34,7 @@ func New(path string, memory bool, flatten bool) (*Badger, error) {
 	options.Logger = NewLogger()
 	options.ValueLogFileSize = DefaultLogSize
 
-	db, err := badgerhold.Open(options)
+	db, err := OpenAndRestore(backupPath, options)
 	if err != nil {
 		return nil, err
 	}

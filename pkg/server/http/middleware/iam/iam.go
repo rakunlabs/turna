@@ -35,6 +35,8 @@ type Database struct {
 	// WriteAPI to sync data from write enabled service
 	// this makes read-only service
 	WriteAPI string `cfg:"write_api"`
+	// BackupPath database from backup when start
+	BackupPath string `cfg:"backup_path"`
 	// Memory to hold data in memory
 	Memory bool `cfg:"memory"`
 	// Flatten to flatten the data when start, default is true
@@ -82,7 +84,7 @@ func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, 
 		return nil, fmt.Errorf("database path or memory is required")
 	}
 
-	db, err := badger.New(m.Database.Path, m.Database.Memory, flatten)
+	db, err := badger.New(m.Database.Path, m.Database.BackupPath, m.Database.Memory, flatten)
 	if err != nil {
 		return nil, err
 	}

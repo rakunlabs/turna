@@ -1819,7 +1819,7 @@ func (m *Iam) Backup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", "attachment; filename=rebac_"+time.Now().Format("2006-01-02_15-04-05")+".db")
+	w.Header().Set("Content-Disposition", "attachment; filename=iam_"+time.Now().Format("2006-01-02_15-04-05")+".db")
 
 	backupVersion, err := m.db.Backup(w, since)
 	if err != nil {
