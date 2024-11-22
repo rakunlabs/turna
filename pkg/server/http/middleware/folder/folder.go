@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/labstack/echo/v4"
 	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 )
@@ -355,13 +354,13 @@ func toHTTPError(err error) error {
 func (f *Folder) fsFile(w http.ResponseWriter, r *http.Request, file string) error {
 	hFile, err := f.fs.Open(file)
 	if err != nil {
-		return echo.ErrNotFound
+		return httputil.NewError("", err, http.StatusNotFound)
 	}
 	defer hFile.Close()
 
 	fi, err := hFile.Stat()
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		return err
 	}
 
 	f.ServeContent(w, r, fi.Name(), fi.ModTime(), hFile)
