@@ -6,18 +6,22 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strings"
 	"time"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/things-go/go-socks5"
 )
 
 type DNSResolver struct {
-	r *net.Resolver
+	r     *net.Resolver
+	ipMap map[string]string
 }
 
-func NewDNSResolver(dns string) *DNSResolver {
-	return &DNSResolver{
-		r: &net.Resolver{
+func NewDNSResolver(dns string, m map[string]string) *DNSResolver {
+	var r *net.Resolver
+	if dns != "" {
+		r = &net.Resolver{
 			PreferGo: true,
 			Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
 				dial := net.Dialer{
@@ -26,12 +30,46 @@ func NewDNSResolver(dns string) *DNSResolver {
 
 				return dial.DialContext(ctx, network, dns)
 			},
-		},
+		}
+	}
+
+	return &DNSResolver{
+		r:     r,
+		ipMap: m,
 	}
 }
 
 // Resolve implement interface NameResolver
 func (d *DNSResolver) Resolve(ctx context.Context, name string) (context.Context, net.IP, error) {
+	if len(d.ipMap) > 0 {
+		if strings.Index(name, ":") != -1 {
+			v, _, err := net.SplitHostPort(name)
+			if err != nil {
+				return ctx, nil, err
+			}
+
+			name = v
+		}
+
+		// check with match
+		for domain, ip := range d.ipMap {
+			if ok, _ := doublestar.Match(domain, name); ok {
+				slog.Debug(fmt.Sprintf("resolve %s to %s", name, ip))
+
+				return ctx, net.ParseIP(ip), nil
+			}
+		}
+	}
+
+	if d.r == nil {
+		addr, err := net.ResolveIPAddr("ip", name)
+		if err != nil {
+			return ctx, nil, err
+		}
+
+		return ctx, addr.IP, nil
+	}
+
 	ips, err := d.r.LookupIP(ctx, "ip", name)
 	if err != nil {
 		return ctx, nil, err
@@ -48,6 +86,8 @@ type Socks5 struct {
 	StaticCredentials   map[string]string `cfg:"static_credentials"`
 	NoAuthAuthenticator bool              `cfg:"no_auth_authenticator"`
 	DNS                 string            `cfg:"dns"`
+	// IPMap like {"*.google.com": "10.0.10.1"}
+	IPMap map[string]string `cfg:"ip_map"`
 }
 
 func (m *Socks5) Middleware(ctx context.Context, name string) (func(lconn *net.TCPConn) error, error) {
@@ -67,10 +107,8 @@ func (m *Socks5) Middleware(ctx context.Context, name string) (func(lconn *net.T
 		opts = append(opts, socks5.WithAuthMethods(authenticators))
 	}
 
-	if m.DNS != "" {
-		dnsResolver := NewDNSResolver(m.DNS)
-		opts = append(opts, socks5.WithResolver(dnsResolver))
-	}
+	dnsResolver := NewDNSResolver(m.DNS, m.IPMap)
+	opts = append(opts, socks5.WithResolver(dnsResolver))
 
 	server := socks5.NewServer(opts...)
 
