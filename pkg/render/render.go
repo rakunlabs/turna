@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/rs/zerolog/log"
-	"github.com/rytsh/mugo/pkg/fstore"
-	"github.com/rytsh/mugo/pkg/templatex"
+	"github.com/rytsh/mugo/fstore"
+	"github.com/rytsh/mugo/templatex"
 	"github.com/spf13/cast"
 	"github.com/worldline-go/logz"
 )

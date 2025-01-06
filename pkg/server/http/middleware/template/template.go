@@ -10,8 +10,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rs/zerolog/log"
-	"github.com/rytsh/mugo/pkg/fstore"
-	"github.com/rytsh/mugo/pkg/templatex"
+	"github.com/rytsh/mugo/fstore"
+	"github.com/rytsh/mugo/templatex"
 	"github.com/worldline-go/logz"
 )
 
