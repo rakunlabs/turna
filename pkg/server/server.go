@@ -7,9 +7,9 @@ import (
 	"net"
 	"sync"
 
-	"github.com/rakunlabs/turna/pkg/server/http"
-	"github.com/rakunlabs/turna/pkg/server/registry"
-	"github.com/rakunlabs/turna/pkg/server/tcp"
+	"github.com/worldline-go/turna/pkg/server/http"
+	"github.com/worldline-go/turna/pkg/server/registry"
+	"github.com/worldline-go/turna/pkg/server/tcp"
 )
 
 type Server struct {

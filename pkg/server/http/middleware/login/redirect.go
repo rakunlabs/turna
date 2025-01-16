@@ -7,7 +7,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/session"
 )
 
 type Redirect struct {

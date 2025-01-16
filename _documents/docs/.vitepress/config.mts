@@ -99,7 +99,7 @@ export default defineConfig({
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/rakunlabs/turna' }
+      { icon: 'github', link: 'https://github.com/worldline-go/turna' }
     ]
   }
 })

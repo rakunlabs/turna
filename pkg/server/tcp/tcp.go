@@ -9,7 +9,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/rakunlabs/turna/pkg/server/registry"
+	"github.com/worldline-go/turna/pkg/server/registry"
 )
 
 type TCP struct {

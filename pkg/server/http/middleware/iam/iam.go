@@ -11,8 +11,8 @@ import (
 
 	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/logi"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data/badger"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/ldap"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data/badger"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/ldap"
 )
 
 type Iam struct {

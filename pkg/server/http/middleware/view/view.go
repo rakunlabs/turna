@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/folder"
 	"github.com/worldline-go/klient"
 )
 

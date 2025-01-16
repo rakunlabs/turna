@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"path"
 
-	httputil2 "github.com/rakunlabs/turna/pkg/server/http/httputil"
+	httputil2 "github.com/worldline-go/turna/pkg/server/http/httputil"
 )
 
 type PageUI struct {

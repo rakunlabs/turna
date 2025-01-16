@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-ldap/ldap/v3"
 	"github.com/rakunlabs/into"
-	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
 )
 
 var DefaultLdapSyncDuration = 10 * time.Minute

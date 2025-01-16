@@ -6,12 +6,12 @@ Turna is a side application can load configuration from various sources, reverse
 
 ## Binary
 
-Download the binary from the [releases page](https://github.com/rakunlabs/turna/releases/latest).
+Download the binary from the [releases page](https://github.com/worldline-go/turna/releases/latest).
 
 ### Linux
 
 ```sh
-curl -fSL https://github.com/rakunlabs/turna/releases/latest/download/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
+curl -fSL https://github.com/worldline-go/turna/releases/latest/download/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
 ```
 
 ## Homebrew

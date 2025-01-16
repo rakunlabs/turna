@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rakunlabs/turna/pkg/filter"
+	"github.com/worldline-go/turna/pkg/filter"
 )
 
 var ErrRunInit = fmt.Errorf("run init error")

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/fullstorydev/grpcui/standalone"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/stripprefix"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/stripprefix"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

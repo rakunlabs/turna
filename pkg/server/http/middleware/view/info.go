@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/rakunlabs/turna/pkg/server/model"
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
+	"github.com/worldline-go/turna/pkg/server/model"
 	"gopkg.in/yaml.v3"
 )
 

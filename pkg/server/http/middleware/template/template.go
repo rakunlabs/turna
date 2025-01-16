@@ -8,7 +8,7 @@ import (
 	"strconv"
 
 	"github.com/labstack/echo/v4"
-	"github.com/rakunlabs/turna/pkg/render"
+	"github.com/worldline-go/turna/pkg/render"
 	"github.com/rs/zerolog/log"
 	"github.com/rytsh/mugo/fstore"
 	"github.com/rytsh/mugo/templatex"

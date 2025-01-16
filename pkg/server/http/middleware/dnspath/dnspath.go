@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	httputil2 "github.com/rakunlabs/turna/pkg/server/http/httputil"
+	httputil2 "github.com/worldline-go/turna/pkg/server/http/httputil"
 	"github.com/worldline-go/klient"
 )
 

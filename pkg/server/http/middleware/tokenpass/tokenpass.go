@@ -19,7 +19,7 @@ import (
 	"github.com/worldline-go/logz"
 	"gopkg.in/yaml.v3"
 
-	"github.com/rakunlabs/turna/pkg/server/model"
+	"github.com/worldline-go/turna/pkg/server/model"
 )
 
 type TokenPass struct {

@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	httputil2 "github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
+	httputil2 "github.com/worldline-go/turna/pkg/server/http/httputil"
+	"github.com/worldline-go/turna/pkg/server/http/tcontext"
 )
 
 // ///////////////////////////////

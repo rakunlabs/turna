@@ -2,7 +2,7 @@ package badger
 
 import (
 	"github.com/dgraph-io/badger/v4"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
 )
 

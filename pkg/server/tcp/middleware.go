@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/rakunlabs/turna/pkg/server/registry"
-	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/ipallowlist"
-	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/redirect"
-	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/socks5"
+	"github.com/worldline-go/turna/pkg/server/registry"
+	"github.com/worldline-go/turna/pkg/server/tcp/middleware/ipallowlist"
+	"github.com/worldline-go/turna/pkg/server/tcp/middleware/redirect"
+	"github.com/worldline-go/turna/pkg/server/tcp/middleware/socks5"
 )
 
 type TCPMiddleware struct {

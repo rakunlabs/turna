@@ -15,11 +15,11 @@ release:
     Get the latest release with brew or binary:
 
     ```sh
-    # curl -fSL https://github.com/rakunlabs/turna/releases/latest/download/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
-    curl -fSL https://github.com/rakunlabs/turna/releases/download/{{ .Tag }}/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
+    # curl -fSL https://github.com/worldline-go/turna/releases/latest/download/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
+    curl -fSL https://github.com/worldline-go/turna/releases/download/{{ .Tag }}/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
     ```
   footer: |
-    **Full Changelog**: https://github.com/rakunlabs/turna/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **Full Changelog**: https://github.com/worldline-go/turna/compare/{{ .PreviousTag }}...{{ .Tag }}
 before:
   hooks:
     # You may remove this if you don't use go modules.
@@ -86,7 +86,7 @@ changelog:
 
 brews:
 - name: turna
-  homepage: https://github.com/rakunlabs/turna
+  homepage: https://github.com/worldline-go/turna
   description: "swiss knife for services"
   repository:
     owner: brew-tools
@@ -96,14 +96,14 @@ brews:
 
 dockers:
 - image_templates:
-  - 'ghcr.io/rakunlabs/turna:{{ .Tag }}'
-  - 'ghcr.io/rakunlabs/turna:{{ .Tag }}-alpine'
-  - 'ghcr.io/rakunlabs/turna:{{ .Tag }}-alpine3.20.3'
-  - 'ghcr.io/rakunlabs/turna:latest'
+  - 'ghcr.io/worldline-go/turna:{{ .Tag }}'
+  - 'ghcr.io/worldline-go/turna:{{ .Tag }}-alpine'
+  - 'ghcr.io/worldline-go/turna:{{ .Tag }}-alpine3.20.3'
+  - 'ghcr.io/worldline-go/turna:latest'
   dockerfile: ci/alpine.Dockerfile
   build_flag_templates:
   - "--pull"
-  - "--label=io.artifacthub.package.readme-url=https://raw.githubusercontent.com/rakunlabs/turna/main/README.md"
+  - "--label=io.artifacthub.package.readme-url=https://raw.githubusercontent.com/worldline-go/turna/main/README.md"
   - "--label=io.artifacthub.package.maintainers=[{\"name\":\"Eray Ates\",\"email\":\"eates23@gmail.com\"}]"
   - "--label=io.artifacthub.package.license=MIT"
   - "--label=org.opencontainers.image.description=swiss knife for services"

@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/rakunlabs/turna/pkg/server/model"
+	"github.com/worldline-go/turna/pkg/server/model"
 	"github.com/worldline-go/auth/claims"
 )
 
