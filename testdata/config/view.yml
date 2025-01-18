@@ -7,6 +7,11 @@ server:
       info:
         hello:
           message: |
+            page:
+              - name: Hello Page
+                url: http://localhost:8081/wkafka/
+                path: "hello/"
+                path_extra: ui/
             grpc:
               - name: "greet"
                 addr: "dns:///localhost:8080"
@@ -26,6 +31,32 @@ server:
                 disable_authorize_button: false
               - name: test3
                 link: https://petstore.swagger.io/v2/swagger.json
+            groups:
+              - name: "group-1"
+                services:
+                  - name: "service-1"
+                    swagger:
+                    - link: https://petstore.swagger.io/v2/swagger.json
+                      base_path_prefix: /api
+                      disable_authorize_button: true
+                    grpc:
+                    - name: "greet"
+                      addr: "dns:///localhost:8080"
+                    iframe:
+                    - name: Map
+                      path: street
+                      url: https://www.openstreetmap.org/export/embed.html?bbox=-0.004017949104309083%2C51.47612752641776%2C0.00030577182769775396%2C51.478569861898606&layer=mapnik
+                    page:
+                    - name: Hello Page
+                      url: http://localhost:8081/wkafka/
+                      path: "hello/"
+                      path_extra: ui/
+                      # host: true
+                      # header:
+                      #   response:
+                      #     set_header:
+                      #       X-Test-Header: "test"
+                      #       Content-Type: "text/html"
       view:
         view:
           prefix_path: /view/

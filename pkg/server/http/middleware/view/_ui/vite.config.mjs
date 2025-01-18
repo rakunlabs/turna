@@ -4,7 +4,7 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { createHtmlPlugin } from "vite-plugin-html";
 
 let redirectConfig = {
-  target: "http://localhost:8080/",
+  target: "http://localhost:8082/",
   changeOrigin: true,
   secure: true,
   ws: true,
@@ -30,9 +30,9 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      "/view/ui-info": redirectConfig,
       "/view/page": redirectConfig,
       "/view/grpc": redirectConfig,
-      "/view/info": redirectConfig
     },
     port: process.env.PORT ?? 3000,
   },

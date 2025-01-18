@@ -3,7 +3,11 @@
 
   let iframeElement: HTMLIFrameElement;
 
+  let msg = "Loading...";
+
   const modifyIframeContent = () => {
+    msg = "";
+
     if (!iframeElement) return;
 
     const contentDocument: Document | undefined =
@@ -17,10 +21,16 @@
   };
 </script>
 
+<div class={!!msg ? "" : "hidden"}>
+  <p class={`block py-1 px-2 text-white bg-blue-500`}>
+    {msg}
+  </p>
+</div>
+
 <iframe
   bind:this={iframeElement}
   class="w-full h-full"
-  src="./grpc/{params?.name}/"
-  title={params?.name}
+  src="./grpc/{params?.wild}/"
+  title={params?.wild}
   on:load={modifyIframeContent}
 />

@@ -5,13 +5,19 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"net/http/httputil"
 	"path"
 	"regexp"
 	"sync"
 	"time"
 
-	"github.com/worldline-go/turna/pkg/server/http/middleware/folder"
+	"github.com/worldline-go/cache"
+	"github.com/worldline-go/cache/store/memory"
+
 	"github.com/worldline-go/klient"
+	"github.com/worldline-go/turna/pkg/loader/decoder"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/folder"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/grpcui"
 )
 
 var DefaultInfoDelay = 4 * time.Second
@@ -23,13 +29,20 @@ type View struct {
 	InfoURLType        string `cfg:"info_url_type"`
 	InsecureSkipVerify bool   `cfg:"insecure_skip_verify"`
 
-	infoURLMutex sync.Mutex
+	infoURLMutex sync.RWMutex
 	infoURLTime  time.Time
-	infoTmpBody  []byte
+	infoTmp      *Info
 
 	client *klient.Client `cfg:"-"`
 	grpcUI GrpcUI         `cfg:"-"`
 	pageUI PageUI         `cfg:"-"`
+
+	decoder *decoder.Decoder `cfg:"-"`
+}
+
+type cacheKey struct {
+	Name string
+	Addr string
 }
 
 //go:embed _ui/dist/*
@@ -64,7 +77,30 @@ func (m *View) SetView() (func(http.Handler) http.Handler, error) {
 	return folderM.Middleware()
 }
 
-func (m *View) Middleware(_ context.Context, _ string) (func(http.Handler) http.Handler, error) {
+func (m *View) Middleware(ctx context.Context, _ string) (func(http.Handler) http.Handler, error) {
+	m.decoder = decoder.NewDecoder()
+
+	if m.InfoURLType == "" {
+		m.InfoURLType = "yaml"
+	}
+
+	// set caches
+	cacheGrpcUI, err := cache.New[cacheKey, *grpcui.GrpcUI](ctx,
+		memory.Store,
+		cache.WithMaxItems(200),
+		cache.WithTTL(30*time.Minute),
+	)
+
+	m.grpcUI.grpcUIMiddlewares = cacheGrpcUI
+
+	cachePage, err := cache.New[cacheKey, *httputil.ReverseProxy](ctx,
+		memory.Store,
+		cache.WithMaxItems(200),
+		cache.WithTTL(30*time.Minute),
+	)
+
+	m.pageUI.Handlers = cachePage
+
 	setView, err := m.SetView()
 	if err != nil {
 		return nil, err
@@ -86,12 +122,8 @@ func (m *View) Middleware(_ context.Context, _ string) (func(http.Handler) http.
 		m.client = client
 	}
 
-	if err := m.SetPageUI(m.Info.Page); err != nil {
-		return nil, err
-	}
-
-	regexPathGrpc := regexp.MustCompile(`/grpc/([^/]+)/?.*`)
-	regexPathPage := regexp.MustCompile(`/page/([^/]+)/?.*`)
+	regexPathGrpc := regexp.MustCompile(`/grpc/(.*)`)
+	regexPathPage := regexp.MustCompile(`/page/(.*)`)
 
 	return func(_ http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -116,4 +148,12 @@ func (m *View) Middleware(_ context.Context, _ string) (func(http.Handler) http.
 			embedUI.ServeHTTP(w, r)
 		})
 	}, nil
+}
+
+func getIndex(v []string, i int) string {
+	if len(v) > i {
+		return v[i]
+	}
+
+	return ""
 }

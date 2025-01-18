@@ -19,6 +19,7 @@ require (
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/labstack/echo/v4 v4.13.3
 	github.com/oklog/ulid/v2 v2.1.0
+	github.com/rakunlabs/chu v0.1.2
 	github.com/rakunlabs/into v0.4.0
 	github.com/rakunlabs/logi v0.4.0
 	github.com/rbcervilla/redisstore/v9 v9.0.0
@@ -33,6 +34,7 @@ require (
 	github.com/timshannon/badgerhold/v4 v4.0.3
 	github.com/twmb/tlscfg v1.2.1
 	github.com/worldline-go/auth v0.7.7
+	github.com/worldline-go/cache v0.2.2
 	github.com/worldline-go/igconfig v0.3.0
 	github.com/worldline-go/klient v0.9.3
 	github.com/worldline-go/logz v0.5.1
@@ -47,12 +49,14 @@ require (
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
 	github.com/BurntSushi/toml v1.4.0 // indirect
+	github.com/DmitriyVTitov/size v1.5.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.3.0 // indirect
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
+	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bufbuild/protocompile v0.10.0 // indirect
-	github.com/cenkalti/backoff/v3 v3.0.0 // indirect
+	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cli/safeexec v1.0.1 // indirect
 	github.com/cncf/xds/go v0.0.0-20240905190251-b4127c9b8d78 // indirect
@@ -69,7 +73,7 @@ require (
 	github.com/gomarkdown/markdown v0.0.0-20240730141124-034f12af3bf6 // indirect
 	github.com/google/flatbuffers v24.3.25+incompatible // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hashicorp/consul/api v1.28.2 // indirect
+	github.com/hashicorp/consul/api v1.30.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
@@ -83,7 +87,7 @@ require (
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hashicorp/serf v0.10.1 // indirect
-	github.com/hashicorp/vault/api v1.14.0 // indirect
+	github.com/hashicorp/vault/api v1.15.0 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jaswdr/faker v1.19.1 // indirect
@@ -98,9 +102,13 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
+	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
-	github.com/rogpeppe/go-internal v1.10.0 // indirect
+	github.com/prometheus/client_golang v1.20.5 // indirect
+	github.com/prometheus/client_model v0.6.1 // indirect
+	github.com/prometheus/common v0.55.0 // indirect
+	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
 	github.com/rytsh/liz/consul v0.1.0 // indirect
 	github.com/rytsh/liz/file v0.1.4 // indirect
@@ -108,6 +116,8 @@ require (
 	github.com/rytsh/liz/shutdown v0.1.0 // indirect
 	github.com/rytsh/liz/templatex v0.1.0 // indirect
 	github.com/rytsh/liz/vault v0.1.0 // indirect
+	github.com/samber/go-singleflightx v0.3.1 // indirect
+	github.com/samber/hot v0.5.2 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/tdewolff/minify/v2 v2.20.37 // indirect

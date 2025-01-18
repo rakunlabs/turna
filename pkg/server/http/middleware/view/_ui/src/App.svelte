@@ -16,10 +16,10 @@
   let mounted = false;
 
   const routes = new Map<string | RegExp, ComponentType>();
-  routes.set("/swagger/:service", Swagger);
-  routes.set("/grpc/:name", Grpc);
-  routes.set("/page/:name", Page);
-  routes.set("/iframe/:name", Iframe);
+  routes.set("/swagger/*", Swagger);
+  routes.set("/grpc/*", Grpc);
+  routes.set("/page/*", Page);
+  routes.set("/iframe/*", Iframe);
   routes.set("*", Main);
 
   onMount(async () => {

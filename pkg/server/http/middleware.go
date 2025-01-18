@@ -6,6 +6,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/worldline-go/turna/pkg/server/http/httputil/utilecho"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/addprefix"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/auth"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/basicauth"
@@ -47,44 +48,10 @@ import (
 	"github.com/worldline-go/turna/pkg/server/http/middleware/try"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/view"
 
-	"github.com/worldline-go/turna/pkg/server/http/tcontext"
 	"github.com/worldline-go/turna/pkg/server/registry"
 )
 
 type MiddlewareFunc = func(http.Handler) http.Handler
-
-func adaptEchoMiddleware(mw echo.MiddlewareFunc) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Convert http.Handler to echo.HandlerFunc
-			handler := func(c echo.Context) error {
-				next.ServeHTTP(c.Response(), c.Request())
-
-				return nil
-			}
-
-			// Use echo's MiddlewareFunc
-			echoHandler := mw(handler)
-
-			// Create an echo.Context from http.Request
-			c := tcontext.GetEchoContext(r, w)
-
-			// Execute echo's handler
-			if err := echoHandler(c); err != nil {
-				c.Error(err)
-			}
-		})
-	}
-}
-
-func adaptEchoMiddlewares(mws []echo.MiddlewareFunc) []func(http.Handler) http.Handler {
-	adapted := make([]func(http.Handler) http.Handler, 0, len(mws))
-	for _, mw := range mws {
-		adapted = append(adapted, adaptEchoMiddleware(mw))
-	}
-
-	return adapted
-}
 
 type HTTPMiddleware struct {
 	AddPrefixMiddleware        *addprefix.AddPrefix                  `cfg:"add_prefix"`
@@ -135,26 +102,26 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{h.AddPrefixMiddleware.Middleware()}, nil
 	case h.AuthMiddleware != nil:
 		m, err := h.AuthMiddleware.Middleware(ctx, name)
-		return adaptEchoMiddlewares(m), err
+		return utilecho.AdaptEchoMiddlewares(m), err
 	case h.InjectMiddleware != nil:
 		m, err := h.InjectMiddleware.Middleware()
-		return adaptEchoMiddlewares(m), err
+		return utilecho.AdaptEchoMiddlewares(m), err
 	case h.HelloMiddleware != nil:
 		m, err := h.HelloMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
 	case h.TemplateMiddleware != nil:
 		m, err := h.TemplateMiddleware.Middleware()
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.InfoMiddleware != nil:
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.InfoMiddleware.Middleware()}), nil
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{h.InfoMiddleware.Middleware()}), nil
 	case h.SetMiddleware != nil:
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.SetMiddleware.Middleware()}), nil
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{h.SetMiddleware.Middleware()}), nil
 	case h.StripPrefixMiddleware != nil:
 		return []MiddlewareFunc{h.StripPrefixMiddleware.Middleware()}, nil
 	case h.RoleMiddleware != nil:
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.RoleMiddleware.Middleware()}), nil
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{h.RoleMiddleware.Middleware()}), nil
 	case h.ScopeMiddleware != nil:
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.ScopeMiddleware.Middleware()}), nil
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{h.ScopeMiddleware.Middleware()}), nil
 	case h.ServiceMiddleware != nil:
 		m, err := h.ServiceMiddleware.Middleware()
 		return m, err
@@ -163,21 +130,21 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	case h.BasicAuthMiddleware != nil:
 		m, err := h.BasicAuthMiddleware.Middleware(name)
-		return adaptEchoMiddlewares(m), err
+		return utilecho.AdaptEchoMiddlewares(m), err
 	case h.CorsMiddleware != nil:
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.CorsMiddleware.Middleware()}), nil
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{h.CorsMiddleware.Middleware()}), nil
 	case h.HeadersMiddleware != nil:
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.HeadersMiddleware.Middleware()}), nil
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{h.HeadersMiddleware.Middleware()}), nil
 	case h.BlockMiddleware != nil:
 		m, err := h.BlockMiddleware.Middleware()
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.RegexPathMiddleware != nil:
 		m, err := h.RegexPathMiddleware.Middleware()
-		return adaptEchoMiddlewares(m), err
+		return utilecho.AdaptEchoMiddlewares(m), err
 	case h.GzipMiddleware != nil:
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.GzipMiddleware.Middleware()}), nil
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{h.GzipMiddleware.Middleware()}), nil
 	case h.DecompressMiddleware != nil:
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{h.DecompressMiddleware.Middleware()}), nil
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{h.DecompressMiddleware.Middleware()}), nil
 	case h.LogMiddleware != nil:
 		m, err := h.LogMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
@@ -186,25 +153,25 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	case h.LoginMiddleware != nil:
 		m, err := h.LoginMiddleware.Middleware(ctx, name)
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.SessionMiddleware != nil:
 		m, err := h.SessionMiddleware.Middleware(ctx, name)
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.ViewMiddleware != nil:
 		m, err := h.ViewMiddleware.Middleware(ctx, name)
 		return []MiddlewareFunc{m}, err
 	case h.RequestMiddleware != nil:
 		m, err := h.RequestMiddleware.Middleware()
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.RedirectionMiddleware != nil:
 		m, err := h.RedirectionMiddleware.Middleware()
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.TryMiddleware != nil:
 		m, err := h.TryMiddleware.Middleware()
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.SessionInfoMiddleware != nil:
 		m, err := h.SessionInfoMiddleware.Middleware()
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.IamMiddleware != nil:
 		m, err := h.IamMiddleware.Middleware(ctx)
 		return []MiddlewareFunc{m}, err
@@ -213,16 +180,16 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	case h.RoleCheckMiddleware != nil:
 		m, err := h.RoleCheckMiddleware.Middleware()
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.RoleDataMiddleware != nil:
 		m, err := h.RoleDataMiddleware.Middleware()
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.TokenPassMiddleware != nil:
 		m, err := h.TokenPassMiddleware.Middleware()
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.RedirectContinueMiddleware != nil:
 		m, err := h.RedirectContinueMiddleware.Middleware()
-		return adaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
+		return utilecho.AdaptEchoMiddlewares([]echo.MiddlewareFunc{m}), err
 	case h.ForwardMiddleware != nil:
 		m, err := h.ForwardMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err

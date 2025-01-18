@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/labstack/echo/v4"
 	httputil2 "github.com/worldline-go/turna/pkg/server/http/httputil"
 	"github.com/worldline-go/turna/pkg/server/http/tcontext"
 )
@@ -196,14 +195,14 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 			// Basically it's not good practice to unconditionally pass incoming x-real-ip header to upstream.
 			// However, for backward compatibility, legacy behavior is preserved unless you configure Echo#IPExtractor.
 			// if r.Header.Get(echo.HeaderXRealIP) == "" || c.Echo().IPExtractor != nil {
-			if r.Header.Get(echo.HeaderXRealIP) == "" {
-				r.Header.Set(echo.HeaderXRealIP, httputil2.RealIP(r))
+			if r.Header.Get(httputil2.HeaderXRealIP) == "" {
+				r.Header.Set(httputil2.HeaderXRealIP, httputil2.RealIP(r))
 			}
-			if r.Header.Get(echo.HeaderXForwardedProto) == "" {
-				r.Header.Set(echo.HeaderXForwardedProto, httputil2.Scheme(r))
+			if r.Header.Get(httputil2.HeaderXForwardedProto) == "" {
+				r.Header.Set(httputil2.HeaderXForwardedProto, httputil2.Scheme(r))
 			}
-			if httputil2.IsWebSocket(r) && r.Header.Get(echo.HeaderXForwardedFor) == "" { // For HTTP, it is automatically set by Go HTTP reverse proxy.
-				r.Header.Set(echo.HeaderXForwardedFor, httputil2.RealIP(r))
+			if httputil2.IsWebSocket(r) && r.Header.Get(httputil2.HeaderXForwardedFor) == "" { // For HTTP, it is automatically set by Go HTTP reverse proxy.
+				r.Header.Set(httputil2.HeaderXForwardedFor, httputil2.RealIP(r))
 			}
 
 			retries := config.RetryCount
@@ -239,7 +238,7 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 				switch {
 				case httputil2.IsWebSocket(r):
 					proxyRaw(tgt, &errHolder).ServeHTTP(w, r)
-				case r.Header.Get(echo.HeaderAccept) == "text/event-stream":
+				case r.Header.Get(httputil2.HeaderAccept) == "text/event-stream":
 				default:
 					proxyHTTP(tgt, &errHolder, config).ServeHTTP(w, r)
 				}

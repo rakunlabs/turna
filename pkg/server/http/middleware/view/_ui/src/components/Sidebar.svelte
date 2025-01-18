@@ -1,6 +1,8 @@
 <script lang="ts">
   import active from "svelte-spa-router/active";
   import { storeInfo } from "@/store/store";
+  import Link from "./Link.svelte";
+  import Group from "./Group.svelte";
 </script>
 
 <div class="sidebar-bg border-r border-black">
@@ -12,120 +14,65 @@
         use:active={{
           path: `/`,
           className: "bg-black text-white",
-          inactiveClassName: "bg-white text-black",
+          inactiveClassName: "bg-gray-100 text-black",
         }}
       >
         <span class="block px-2 py-1">View</span>
       </a>
     </div>
-    {#if $storeInfo.iframe?.length > 0}
+    {#if ($storeInfo.iframe || []).length > 0}
       <div>
         <span
           class="block h-8 leading-8 bg-yellow-100 border-b border-black px-2 w-full text-left"
         >
           Iframes
         </span>
-        {#each $storeInfo.iframe as iframe}
-          <a
-            href={`#/iframe/${iframe.path}`}
-            class="block border-b border-black h-8 leading-8"
-            use:active={{
-              path: `/iframe/${encodeURIComponent(iframe.path)}`,
-              className: "sb-link-active",
-              inactiveClassName: "sb-link-inactive hover:bg-gray-100",
-            }}
-            title={iframe.path}
-          >
-            <span
-              class="block px-1 border-l-4 border-gray-400 whitespace-nowrap overflow-hidden overflow-ellipsis"
-            >
-              {iframe.name}
-            </span>
-          </a>
+        {#each $storeInfo.iframe || [] as iframe}
+          <Link path={iframe.path} name={iframe.name} type="iframe" />
         {/each}
       </div>
     {/if}
-    {#if $storeInfo.page?.length > 0}
+    {#if ($storeInfo.page || []).length > 0}
       <div>
         <span
           class="block h-8 leading-8 bg-yellow-100 border-b border-black px-2 w-full text-left"
         >
           Pages
         </span>
-        {#each $storeInfo.page as page}
-          <a
-            href={`#/page/${page.path}`}
-            class="block border-b border-black h-8 leading-8"
-            use:active={{
-              path: `/page/${encodeURIComponent(page.path)}`,
-              className: "sb-link-active",
-              inactiveClassName: "sb-link-inactive hover:bg-gray-100",
-            }}
-            title={page.path}
-          >
-            <span
-              class="block px-1 border-l-4 border-gray-400 whitespace-nowrap overflow-hidden overflow-ellipsis"
-            >
-              {page.name}
-            </span>
-          </a>
+        {#each $storeInfo.page || [] as page}
+          <Link
+            path={page.path + (page.path_extra ?? "")}
+            name={page.name}
+            type="page"
+          />
         {/each}
       </div>
     {/if}
-    {#if $storeInfo.grpc?.length > 0}
+    {#if ($storeInfo.grpc || []).length > 0}
       <div>
         <span
           class="block h-8 leading-8 bg-yellow-100 border-b border-black px-2 w-full text-left"
         >
           gRPC APIs
         </span>
-        {#each $storeInfo.grpc as grpc}
-          <a
-            href={`#/grpc/${grpc.name}`}
-            class="block border-b border-black h-8 leading-8"
-            use:active={{
-              path: `/grpc/${encodeURIComponent(grpc.name)}`,
-              className: "sb-link-active",
-              inactiveClassName: "sb-link-inactive hover:bg-gray-100",
-            }}
-            title={grpc.name}
-          >
-            <span
-              class="block px-1 border-l-4 border-gray-400 whitespace-nowrap overflow-hidden overflow-ellipsis"
-            >
-              {grpc.name}
-            </span>
-          </a>
+        {#each $storeInfo.grpc || [] as grpc}
+          <Link path={grpc.name} name={grpc.name} type="grpc" />
         {/each}
       </div>
     {/if}
-    {#if $storeInfo.swagger?.length > 0}
+    {#if ($storeInfo.swagger || []).length > 0}
       <div>
         <span
           class="block h-8 leading-8 bg-yellow-100 border-b border-black px-2 w-full text-left"
         >
           Swagger APIs
         </span>
-        {#each $storeInfo.swagger as swagger}
-          <a
-            href={`#/swagger/${swagger.name}`}
-            class="block border-b border-black h-8 leading-8"
-            use:active={{
-              path: `/swagger/${encodeURIComponent(swagger.name)}`,
-              className: "sb-link-active",
-              inactiveClassName: "sb-link-inactive hover:bg-gray-100",
-            }}
-            title={swagger.name}
-          >
-            <span
-              class="block px-1 border-l-4 border-gray-400 whitespace-nowrap overflow-hidden overflow-ellipsis"
-            >
-              {swagger.name}
-            </span>
-          </a>
+        {#each $storeInfo.swagger || [] as swagger}
+          <Link path={swagger.name} name={swagger.name} type="swagger" />
         {/each}
       </div>
     {/if}
+    <Group groups={$storeInfo.groups} />
   </div>
 </div>
 

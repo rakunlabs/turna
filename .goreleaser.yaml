@@ -98,7 +98,7 @@ dockers:
 - image_templates:
   - 'ghcr.io/worldline-go/turna:{{ .Tag }}'
   - 'ghcr.io/worldline-go/turna:{{ .Tag }}-alpine'
-  - 'ghcr.io/worldline-go/turna:{{ .Tag }}-alpine3.20.3'
+  - 'ghcr.io/worldline-go/turna:{{ .Tag }}-alpine3.21.2'
   - 'ghcr.io/worldline-go/turna:latest'
   dockerfile: ci/alpine.Dockerfile
   build_flag_templates:
@@ -112,4 +112,4 @@ dockers:
   - "--label=org.opencontainers.image.revision={{.FullCommit}}"
   - "--label=org.opencontainers.image.version={{.Version}}"
   - "--label=org.opencontainers.image.source={{.GitURL}}"
-  - "--build-arg=ALPINE=alpine:3.20.3"
+  - "--build-arg=ALPINE=alpine:3.21.2"
