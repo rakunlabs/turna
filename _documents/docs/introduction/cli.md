@@ -2,9 +2,17 @@
 
 Turna need a configuration file to run, if not give any configuration it just don't do anything.
 
-```
+```sh
+________________
+▒▒▒▒▒▒    ▒▒▒▒▒▒ ████    ████  ██████████  ████████████  ████████████
+▒▒▒▒▒▒    ▒▒▒▒▒▒ ████    ████  ██████████  ████████████  ████████████
+▒▒            ▒▒ ████    ████  ████        ████    ████  ████    ████
+▒▒            ▒▒ ████    ████  ████        ████    ████  ████    ████
+▒▒▒▒▒▒    ▒▒▒▒▒▒ ████████████  ████        ████    ████  ████████████
+▒▒▒▒▒▒____▒▒▒▒▒▒ ████████████  ████        ████    ████  ████    ████
+
 turna extends functionality of services
-version:[0.3.9] commit:[43ac6a0] buildDate:[2023-07-03T08:02:57Z]
+version:[v0.0.0] commit:[?] buildDate:[]
 
 Usage:
   turna [flags]

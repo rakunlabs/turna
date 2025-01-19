@@ -6,7 +6,7 @@ Turna can has server option, this option can be used for reverse proxy or load b
 
 Highly inspired from [traefik](https://doc.traefik.io/traefik/) with small differences.
 
-Turna has `entrypoints`, `http` section. Under _http_ section, there are `middlewares`, `routers` and `tls`.
+Turna has `entrypoints`, `http` and `tcp` section. Under _http_ section, there are `middlewares`, `routers` and `tls`.
 
 ```yaml
 server:
@@ -14,6 +14,8 @@ server:
   entrypoints:
     web:
       address: ":8080"
+    docker:
+      address: ":2375"
   http:
     middlewares: {}
     routers:
@@ -25,6 +27,23 @@ server:
         middlewares:
           - test
           - service
+  tcp:
+    middlewares:
+      ip:
+        ip_allow_list:
+          source_range:
+            - 127.0.0.1/32
+      redirect:
+        redirect:
+          address: "/var/run/docker.sock"
+          network: "unix"
+    routers:
+      mytcprouter:
+        entrypoints:
+          - docker
+        middlewares:
+          - ip
+          - redirect
 ```
 
 ### EntryPoints

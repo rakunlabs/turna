@@ -97,5 +97,5 @@ Using `github.com/hashicorp/vault/api`
 
 ## File
 
-Giving a file configuration, config file can be __[toml, yaml, yml, json]__ in the same directory with binary.  
+Giving a file configuration, config file can be __[toml, yaml, yml, json]__ in the same directory with binary (`turna.yaml`) or your `APP_NAME` env value so if it is `test` than files checking `test.[...]`.  
 `CONFIG_FILE` environment variable also can be used to set config file name. Codec understand the file type from the extension.
