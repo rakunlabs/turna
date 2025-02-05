@@ -11,8 +11,8 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/logi"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 )
 
 func (b *Badger) GetRoles(req data.GetRoleRequest) (*data.Response[[]data.RoleExtended], error) {
@@ -99,8 +99,8 @@ func (b *Badger) GetRoles(req data.GetRoleRequest) (*data.Response[[]data.RoleEx
 		}
 
 		extendRoles = make([]data.RoleExtended, 0, len(roles))
-		for _, role := range roles {
-			extendRole, err := b.ExtendRole(txn, req.AddRoles, req.AddPermissions, req.AddTotalUsers, &role)
+		for i := range roles {
+			extendRole, err := b.ExtendRole(txn, req.AddRoles, req.AddPermissions, req.AddTotalUsers, &roles[i])
 			if err != nil {
 				return err
 			}

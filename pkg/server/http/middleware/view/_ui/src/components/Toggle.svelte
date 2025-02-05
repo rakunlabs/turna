@@ -17,11 +17,14 @@
 </script>
 
 <button
-  class={`${className} block h-8 leading-8 border-b border-black px-2 w-full text-left whitespace-nowrap overflow-hidden overflow-ellipsis`}
+  title={name}
+  class={`${className} flex justify-between h-8 leading-8 border-b border-black pl-2 pr-1 w-full text-left`}
   on:click={() => (toggle = !toggle)}
 >
-  {name}
-  <span class="float-right">
+  <span class="whitespace-nowrap overflow-hidden overflow-ellipsis">
+    {name}
+  </span>
+  <span class="">
     <i
       class={`!text-2xl lni lni-chevron-down transform transition-all ${toggle ? "" : "-rotate-90"}`}
     />

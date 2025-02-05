@@ -11,15 +11,15 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/logi"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 )
 
-func (b *Badger) GetPermissions(req data.GetPermissionRequest) (*data.Response[[]data.Permission], error) {
+func (b *Badger) GetPermissions(req data.GetPermissionRequest) (*data.Response[[]data.PermissionExtended], error) {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
-	var permissions []data.Permission
+	var extendPermissions []data.PermissionExtended
 	var count uint64
 
 	if err := b.db.Badger().View(func(txn *badger.Txn) error {
@@ -84,7 +84,55 @@ func (b *Badger) GetPermissions(req data.GetPermissionRequest) (*data.Response[[
 			badgerHoldQuery = badgerHoldQuery.Limit(int(req.Limit))
 		}
 
+		var permissions []data.Permission
 		if err := b.db.TxFind(txn, &permissions, badgerHoldQuery); err != nil {
+			return err
+		}
+
+		extendPermissions = make([]data.PermissionExtended, 0, len(permissions))
+		for i := range permissions {
+			extendPermission, err := b.ExtendPermissions(txn, req.AddRoles, &permissions[i])
+			if err != nil {
+				return err
+			}
+
+			extendPermissions = append(extendPermissions, extendPermission)
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return &data.Response[[]data.PermissionExtended]{
+		Meta: &data.Meta{
+			Offset:         req.Offset,
+			Limit:          req.Limit,
+			TotalItemCount: count,
+		},
+		Payload: extendPermissions,
+	}, nil
+}
+
+func (b *Badger) GetPermission(req data.GetPermissionRequest) (*data.PermissionExtended, error) {
+	b.dbBackupLock.RLock()
+	defer b.dbBackupLock.RUnlock()
+
+	var extendPermission data.PermissionExtended
+
+	if err := b.db.Badger().View(func(txn *badger.Txn) error {
+		var permission data.Permission
+		if err := b.db.TxGet(txn, req.ID, &permission); err != nil {
+			if errors.Is(err, badgerhold.ErrNotFound) {
+				return fmt.Errorf("permission with id %s not found; %w", req.ID, data.ErrNotFound)
+			}
+
+			return err
+		}
+
+		var err error
+		extendPermission, err = b.ExtendPermissions(txn, req.AddRoles, &permission)
+		if err != nil {
 			return err
 		}
 
@@ -93,31 +141,7 @@ func (b *Badger) GetPermissions(req data.GetPermissionRequest) (*data.Response[[
 		return nil, err
 	}
 
-	return &data.Response[[]data.Permission]{
-		Meta: &data.Meta{
-			Offset:         req.Offset,
-			Limit:          req.Limit,
-			TotalItemCount: count,
-		},
-		Payload: permissions,
-	}, nil
-}
-
-func (b *Badger) GetPermission(id string) (*data.Permission, error) {
-	b.dbBackupLock.RLock()
-	defer b.dbBackupLock.RUnlock()
-
-	var permission data.Permission
-
-	if err := b.db.Get(id, &permission); err != nil {
-		if errors.Is(err, badgerhold.ErrNotFound) {
-			return nil, fmt.Errorf("permission with id %s not found; %w", id, data.ErrNotFound)
-		}
-
-		return nil, err
-	}
-
-	return &permission, nil
+	return &extendPermission, nil
 }
 
 func (b *Badger) CreatePermission(ctx context.Context, permission data.Permission) (string, error) {
@@ -411,4 +435,33 @@ func (b *Badger) getPermissionIDs(txn *badger.Txn, method, path string, names []
 	}
 
 	return permissionIDs, nil
+}
+
+func (b *Badger) ExtendPermissions(txn *badger.Txn, addRoles bool, permission *data.Permission) (data.PermissionExtended, error) {
+	permissionExtended := data.PermissionExtended{
+		Permission: permission,
+	}
+
+	if !addRoles {
+		return permissionExtended, nil
+	}
+
+	// get roles
+	if addRoles {
+		var roles []data.IDName
+		if err := b.db.TxForEach(txn, badgerhold.Where("PermissionIDs").ContainsAny(permission.ID), func(role *data.Role) error {
+			roles = append(roles, data.IDName{
+				ID:   role.ID,
+				Name: role.Name,
+			})
+
+			return nil
+		}); err != nil {
+			return data.PermissionExtended{}, err
+		}
+
+		permissionExtended.Roles = roles
+	}
+
+	return permissionExtended, nil
 }

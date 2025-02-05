@@ -7,8 +7,8 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/dgraph-io/badger/v4"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 	"github.com/timshannon/badgerhold/v4"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 )
 
 var (
@@ -72,8 +72,8 @@ func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 		for _, permID := range user.PermissionIDs {
 			permissionMapIDs[permID] = struct{}{}
 		}
-		for _, role := range roles {
-			for _, permID := range role.PermissionIDs {
+		for i := range roles {
+			for _, permID := range roles[i].PermissionIDs {
 				permissionMapIDs[permID] = struct{}{}
 			}
 		}
@@ -81,7 +81,7 @@ func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 		query = badgerhold.Where("ID").In(toInterfaceSliceMap(permissionMapIDs)...)
 
 		if err := b.db.TxForEach(txn, query, func(perm *data.Permission) error {
-			if CheckAccess(perm, req.Path, req.Method) {
+			if b.CheckAccess(perm, req.Host, req.Path, req.Method) {
 				access = true
 
 				return ErrFuncExit
@@ -110,13 +110,32 @@ func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 	}, nil
 }
 
-func CheckAccess(perm *data.Permission, pathRequest, method string) bool {
+func (b *Badger) CheckAccess(perm *data.Permission, host, pathRequest, method string) bool {
 	for _, req := range perm.Resources {
+		hosts := req.Hosts
+		if len(hosts) == 0 && b.check.DefaultHost != "" {
+			hosts = []string{b.check.DefaultHost}
+		}
+
+		if !checkHost(hosts, host) {
+			continue
+		}
+
 		if !checkMethod(req.Methods, method) {
 			continue
 		}
 
 		if checkPath(req.Path, pathRequest) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func checkHost(hosts []string, host string) bool {
+	for _, pattern := range hosts {
+		if v, _ := doublestar.Match(pattern, host); v {
 			return true
 		}
 	}

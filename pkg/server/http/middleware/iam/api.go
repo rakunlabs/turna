@@ -371,11 +371,11 @@ func (m *Iam) GetUsers(w http.ResponseWriter, r *http.Request) {
 		req.Disabled = &vBool
 	}
 
-	if addRoles, err := strconv.ParseBool(r.URL.Query().Get("add_roles")); err == nil {
+	if addRoles, err := strconv.ParseBool(query.Get("add_roles")); err == nil {
 		req.AddRoles = addRoles
 	}
-	req.AddPermissions, _ = strconv.ParseBool(r.URL.Query().Get("add_permissions"))
-	req.AddData, _ = strconv.ParseBool(r.URL.Query().Get("add_data"))
+	req.AddPermissions, _ = strconv.ParseBool(query.Get("add_permissions"))
+	req.AddData, _ = strconv.ParseBool(query.Get("add_data"))
 
 	req.Limit, req.Offset = getLimitOffset(query)
 
@@ -494,11 +494,12 @@ func (m *Iam) GetUser(w http.ResponseWriter, r *http.Request) {
 
 	req.ID = id
 
-	if addRoles, err := strconv.ParseBool(r.URL.Query().Get("add_roles")); err == nil {
+	query := r.URL.Query()
+	if addRoles, err := strconv.ParseBool(query.Get("add_roles")); err == nil {
 		req.AddRoles = addRoles
 	}
-	req.AddPermissions, _ = strconv.ParseBool(r.URL.Query().Get("add_permissions"))
-	req.AddData, _ = strconv.ParseBool(r.URL.Query().Get("add_data"))
+	req.AddPermissions, _ = strconv.ParseBool(query.Get("add_permissions"))
+	req.AddData, _ = strconv.ParseBool(query.Get("add_data"))
 
 	user, err := m.db.GetUser(req)
 	if err != nil {
@@ -692,15 +693,15 @@ func (m *Iam) GetRoles(w http.ResponseWriter, r *http.Request) {
 	req.Description = query.Get("description")
 	req.Limit, req.Offset = getLimitOffset(query)
 
-	if addPermissions, err := strconv.ParseBool(r.URL.Query().Get("add_permissions")); err == nil {
+	if addPermissions, err := strconv.ParseBool(query.Get("add_permissions")); err == nil {
 		req.AddPermissions = addPermissions
 	}
 
-	if addRoles, err := strconv.ParseBool(r.URL.Query().Get("add_roles")); err == nil {
+	if addRoles, err := strconv.ParseBool(query.Get("add_roles")); err == nil {
 		req.AddRoles = addRoles
 	}
 
-	if addTotalUsers, err := strconv.ParseBool(r.URL.Query().Get("add_total_users")); err == nil {
+	if addTotalUsers, err := strconv.ParseBool(query.Get("add_total_users")); err == nil {
 		req.AddTotalUsers = addTotalUsers
 	}
 
@@ -742,15 +743,15 @@ func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 	req.Description = query.Get("description")
 	req.Limit, req.Offset = getLimitOffset(query)
 
-	if addPermissions, err := strconv.ParseBool(r.URL.Query().Get("add_permissions")); err == nil {
+	if addPermissions, err := strconv.ParseBool(query.Get("add_permissions")); err == nil {
 		req.AddPermissions = addPermissions
 	}
 
-	if addRoles, err := strconv.ParseBool(r.URL.Query().Get("add_roles")); err == nil {
+	if addRoles, err := strconv.ParseBool(query.Get("add_roles")); err == nil {
 		req.AddRoles = addRoles
 	}
 
-	if addTotalUsers, err := strconv.ParseBool(r.URL.Query().Get("add_total_users")); err == nil {
+	if addTotalUsers, err := strconv.ParseBool(query.Get("add_total_users")); err == nil {
 		req.AddTotalUsers = addTotalUsers
 	}
 
@@ -1084,13 +1085,16 @@ func (m *Iam) DeleteRole(w http.ResponseWriter, r *http.Request) {
 // @Param description query string false "permission description"
 // @Param path query string false "request path"
 // @Param method query string false "request method"
+// @Param add_roles query bool false "add roles default(true)"
 // @Param limit query int false "limit" default(20)
 // @Param offset query int false "offset"
 // @Success 200 {object} data.Response[[]data.Permission]
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/permissions [GET]
 func (m *Iam) GetPermissions(w http.ResponseWriter, r *http.Request) {
-	var req data.GetPermissionRequest
+	req := data.GetPermissionRequest{
+		AddRoles: true,
+	}
 
 	query := r.URL.Query()
 	req.ID = query.Get("id")
@@ -1098,6 +1102,10 @@ func (m *Iam) GetPermissions(w http.ResponseWriter, r *http.Request) {
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
 	req.Description = query.Get("description")
+
+	if addRoles, err := strconv.ParseBool(query.Get("add_roles")); err == nil {
+		req.AddRoles = addRoles
+	}
 
 	for k, v := range query {
 		if strings.HasPrefix(k, "data.") {
@@ -1256,6 +1264,7 @@ func (m *Iam) CreatePermissionBulk(w http.ResponseWriter, r *http.Request) {
 // @Summary Get permission
 // @Tags permissions
 // @Param id path string true "permission name"
+// @Param add_roles query bool false "add roles default(true)"
 // @Success 200 {object} data.Response[data.Permission]
 // @Failure 400 {object} data.ResponseError
 // @Failure 404 {object} data.ResponseError
@@ -1268,7 +1277,15 @@ func (m *Iam) GetPermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	permission, err := m.db.GetPermission(id)
+	var req data.GetPermissionRequest
+	req.ID = id
+
+	query := r.URL.Query()
+	if addRoles, err := strconv.ParseBool(query.Get("add_roles")); err == nil {
+		req.AddRoles = addRoles
+	}
+
+	permission, err := m.db.GetPermission(req)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, data.NewError("Permission not found", err, http.StatusNotFound))
@@ -1279,7 +1296,7 @@ func (m *Iam) GetPermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, data.Response[*data.Permission]{
+	httputil.JSON(w, http.StatusOK, data.Response[*data.PermissionExtended]{
 		Payload: permission,
 	})
 }
@@ -1503,6 +1520,7 @@ func (m *Iam) PostCheckUser(w http.ResponseWriter, r *http.Request) {
 		Alias:  user,
 		Path:   body.Path,
 		Method: body.Method,
+		Host:   body.Host,
 	})
 	if err != nil {
 		httputil.HandleError(w, data.NewError("Cannot check", err, http.StatusInternalServerError))
@@ -1699,14 +1717,15 @@ func (m *Iam) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/info [GET]
 func (m *Iam) Info(w http.ResponseWriter, r *http.Request) {
-	alias := r.URL.Query().Get("alias")
+	query := r.URL.Query()
+	alias := query.Get("alias")
 
 	if alias == "" {
 		httputil.HandleError(w, data.NewError("Alias is required", nil, http.StatusBadRequest))
 		return
 	}
 
-	getData, _ := strconv.ParseBool(r.URL.Query().Get("data"))
+	getData, _ := strconv.ParseBool(query.Get("data"))
 
 	user, err := m.db.GetUser(data.GetUserRequest{Alias: alias, AddRoles: true, AddPermissions: true, AddData: getData, Sanitize: true})
 	if err != nil {

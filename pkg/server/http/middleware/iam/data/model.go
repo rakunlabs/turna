@@ -23,6 +23,12 @@ type Permission struct {
 	UpdatedBy string `json:"updated_by"`
 }
 
+type PermissionExtended struct {
+	*Permission
+
+	Roles []IDName `json:"roles,omitempty"`
+}
+
 type PermissionPatch struct {
 	Name        *string                `json:"name"`
 	Resources   *[]Resource            `json:"resources"`
@@ -31,6 +37,7 @@ type PermissionPatch struct {
 }
 
 type Resource struct {
+	Hosts   []string `json:"hosts"`
 	Path    string   `json:"path"`
 	Methods []string `json:"methods"`
 }
@@ -261,6 +268,8 @@ type GetPermissionRequest struct {
 	Offset int64 `json:"offset"`
 
 	Data map[string]string `json:"data"`
+
+	AddRoles bool `json:"add_roles"`
 }
 
 type GetRoleRequest struct {
@@ -296,11 +305,13 @@ type CheckRequest struct {
 	ID    string `json:"id"`
 	Alias string `json:"alias"`
 
+	Host   string `json:"host"`
 	Path   string `json:"path"`
 	Method string `json:"method"`
 }
 
 type CheckRequestUser struct {
+	Host   string `json:"host"`
 	Path   string `json:"path"`
 	Method string `json:"method"`
 }
@@ -330,4 +341,9 @@ func CompareSlices(a, b []string) bool {
 	}
 
 	return true
+}
+
+type CheckConfig struct {
+	// DefaultHost for checkHost function. If resource hosts is empty, it will use this host.
+	DefaultHost string `cfg:"default_host"`
 }

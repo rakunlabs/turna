@@ -12,10 +12,10 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/logi"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/access"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 	"github.com/spf13/cast"
 	"github.com/timshannon/badgerhold/v4"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/access"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 )
 
 func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserExtended], error) {

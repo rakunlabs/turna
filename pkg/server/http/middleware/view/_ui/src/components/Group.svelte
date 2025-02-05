@@ -1,7 +1,6 @@
 <script lang="ts">
-  import active from "svelte-spa-router/active";
   import { location } from "svelte-spa-router";
-  import { storeInfo, type Group } from "@/store/store";
+  import { type Group } from "@/store/store";
   import Link from "./Link.svelte";
   import Toggle from "./Toggle.svelte";
 
@@ -17,12 +16,12 @@
           {#each group.services || [] as service}
             <Toggle
               name={service.name}
-              class="bg-yellow-50"
+              class="bg-white hover:bg-gray-100"
               toggleCheck={() => {
                 for (let base of ["/swagger", "/grpc", "/page", "/iframe"]) {
                   if (
                     $location.startsWith(
-                      base + path + "/" + group.name + "/" + service.name,
+                      base + path + "/" + group.name + "/" + service.name
                     )
                   ) {
                     return true;

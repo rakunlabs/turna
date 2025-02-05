@@ -5,9 +5,9 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 	"github.com/spf13/cast"
 	badgerhold "github.com/timshannon/badgerhold/v4"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 )
 
 var (
@@ -16,12 +16,13 @@ var (
 )
 
 type Badger struct {
-	db *badgerhold.Store
+	check data.CheckConfig
+	db    *badgerhold.Store
 
 	dbBackupLock sync.RWMutex
 }
 
-func New(path, backupPath string, memory, flatten bool) (*Badger, error) {
+func New(path, backupPath string, memory, flatten bool, check data.CheckConfig) (*Badger, error) {
 	options := badgerhold.DefaultOptions
 	if memory {
 		options.InMemory = memory
@@ -43,7 +44,10 @@ func New(path, backupPath string, memory, flatten bool) (*Badger, error) {
 		db.Badger().Flatten(20)
 	}
 
-	return &Badger{db: db}, nil
+	return &Badger{
+		check: check,
+		db:    db,
+	}, nil
 }
 
 func (b *Badger) Close() error {

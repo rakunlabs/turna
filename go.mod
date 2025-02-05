@@ -26,7 +26,7 @@ require (
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/rs/zerolog v1.33.0
 	github.com/rytsh/liz/loader v0.2.5
-	github.com/rytsh/mugo v0.8.0
+	github.com/rytsh/mugo v0.8.2
 	github.com/spf13/cast v1.7.1
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
@@ -36,10 +36,10 @@ require (
 	github.com/worldline-go/auth v0.7.7
 	github.com/worldline-go/cache v0.2.2
 	github.com/worldline-go/igconfig v0.3.0
-	github.com/worldline-go/klient v0.9.3
+	github.com/worldline-go/klient v0.9.7
 	github.com/worldline-go/logz v0.5.1
 	github.com/worldline-go/struct2 v1.3.1
-	golang.org/x/crypto v0.31.0
+	golang.org/x/crypto v0.32.0
 	golang.org/x/exp v0.0.0-20250103183323-7d7fa50e5329
 	google.golang.org/grpc v1.69.2
 	gopkg.in/yaml.v3 v3.0.1
@@ -70,7 +70,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.0.1 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
-	github.com/gomarkdown/markdown v0.0.0-20240730141124-034f12af3bf6 // indirect
+	github.com/gomarkdown/markdown v0.0.0-20241205020045-f7e15b2f3e62 // indirect
 	github.com/google/flatbuffers v24.3.25+incompatible // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/consul/api v1.30.0 // indirect
@@ -119,19 +119,19 @@ require (
 	github.com/samber/go-singleflightx v0.3.1 // indirect
 	github.com/samber/hot v0.5.2 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
-	github.com/spf13/afero v1.11.0 // indirect
-	github.com/tdewolff/minify/v2 v2.20.37 // indirect
-	github.com/tdewolff/parse/v2 v2.7.15 // indirect
+	github.com/spf13/afero v1.12.0 // indirect
+	github.com/tdewolff/minify/v2 v2.21.3 // indirect
+	github.com/tdewolff/parse/v2 v2.7.19 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/net v0.33.0 // indirect
-	golang.org/x/oauth2 v0.23.0 // indirect
+	golang.org/x/oauth2 v0.25.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	golang.org/x/time v0.8.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53 // indirect
-	google.golang.org/protobuf v1.35.1 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20241223144023-3abc09e42ca8 // indirect
+	google.golang.org/protobuf v1.36.1 // indirect
 )

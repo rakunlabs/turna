@@ -14,7 +14,7 @@
         use:active={{
           path: `/`,
           className: "bg-black text-white",
-          inactiveClassName: "bg-gray-100 text-black",
+          inactiveClassName: "bg-white text-black hover:bg-gray-100",
         }}
       >
         <span class="block px-2 py-1">View</span>

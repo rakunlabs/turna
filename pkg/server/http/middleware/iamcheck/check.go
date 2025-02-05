@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/worldline-go/klient"
 	"github.com/worldline-go/turna/pkg/server/http/httputil"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
-	"github.com/worldline-go/klient"
 )
 
 type IamCheck struct {
@@ -48,12 +48,28 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// check if the path is public
 			for _, resource := range m.Public {
-				if v, _ := doublestar.Match(resource.Path, r.URL.Path); v {
-					if len(resource.Methods) == 0 || slices.ContainsFunc(resource.Methods, func(cmp string) bool {
-						return strings.EqualFold(cmp, r.Method)
-					}) {
-						next.ServeHTTP(w, r)
-						return
+				// check hosts
+				matchedHost := false
+				if len(resource.Hosts) == 0 {
+					matchedHost = true
+				} else {
+					for _, host := range resource.Hosts {
+						if v, _ := doublestar.Match(host, r.Host); v {
+							matchedHost = true
+							break
+						}
+					}
+				}
+
+				if matchedHost {
+					// check path
+					if v, _ := doublestar.Match(resource.Path, r.URL.Path); v {
+						if len(resource.Methods) == 0 || slices.ContainsFunc(resource.Methods, func(cmp string) bool {
+							return strings.EqualFold(cmp, r.Method)
+						}) {
+							next.ServeHTTP(w, r)
+							return
+						}
 					}
 				}
 			}
@@ -70,6 +86,7 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 				Alias:  xUser,
 				Path:   r.URL.Path,
 				Method: r.Method,
+				Host:   r.Host,
 			}
 
 			jsonBody, err := json.Marshal(body)

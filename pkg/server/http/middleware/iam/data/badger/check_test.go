@@ -10,7 +10,7 @@ import (
 func TestBadgerCheck(t *testing.T) {
 	// tempdir := t.TempDir()
 
-	db, err := New("", "", true, false)
+	db, err := New("", "", true, false, data.CheckConfig{})
 	// db, err := New(tempdir, false)
 	if err != nil {
 		t.Fatalf("failed to create badger db: %v", err)
@@ -24,6 +24,7 @@ func TestBadgerCheck(t *testing.T) {
 
 	testCases := []struct {
 		name        string
+		checkConfig data.CheckConfig
 		permissions []data.Permission
 		roles       []data.Role
 		users       []data.User
@@ -31,6 +32,9 @@ func TestBadgerCheck(t *testing.T) {
 	}{
 		{
 			name: "test",
+			checkConfig: data.CheckConfig{
+				DefaultHost: "*.example.com",
+			},
 			permissions: []data.Permission{
 				{
 					Name: "perm",
@@ -38,6 +42,7 @@ func TestBadgerCheck(t *testing.T) {
 						{
 							Methods: []string{"*"},
 							Path:    "/test/**",
+							// Hosts:   []string{"*.example.com"},
 						},
 					},
 				},
@@ -61,6 +66,7 @@ func TestBadgerCheck(t *testing.T) {
 						Alias:  "my-user",
 						Path:   "/test/example/1234",
 						Method: "POST",
+						Host:   "test.example.com",
 					},
 					expected: true,
 				},
@@ -123,6 +129,7 @@ func TestBadgerCheck(t *testing.T) {
 		}
 
 		for _, check := range tc.check {
+			db.check = tc.checkConfig
 			access, err := db.Check(check.checkRequest)
 			if err != nil {
 				t.Fatalf("failed to check access: %v", err)

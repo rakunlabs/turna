@@ -2,8 +2,8 @@ package badger
 
 import (
 	"github.com/dgraph-io/badger/v4"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 	badgerhold "github.com/timshannon/badgerhold/v4"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 )
 
 func (b *Badger) Dashboard() (*data.Dashboard, error) {

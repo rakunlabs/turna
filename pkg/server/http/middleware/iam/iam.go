@@ -11,6 +11,7 @@ import (
 
 	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/logi"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data/badger"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/ldap"
 )
@@ -19,6 +20,8 @@ type Iam struct {
 	PrefixPath string    `cfg:"prefix_path"`
 	Ldap       ldap.Ldap `cfg:"ldap"`
 	Database   Database  `cfg:"database"`
+
+	Check data.CheckConfig `cfg:"check"`
 
 	db        *badger.Badger   `cfg:"-"`
 	swaggerFS http.HandlerFunc `cfg:"-"`
@@ -84,7 +87,7 @@ func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, 
 		return nil, fmt.Errorf("database path or memory is required")
 	}
 
-	db, err := badger.New(m.Database.Path, m.Database.BackupPath, m.Database.Memory, flatten)
+	db, err := badger.New(m.Database.Path, m.Database.BackupPath, m.Database.Memory, flatten, m.Check)
 	if err != nil {
 		return nil, err
 	}
