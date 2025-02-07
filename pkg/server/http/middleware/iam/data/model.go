@@ -344,6 +344,8 @@ func CompareSlices(a, b []string) bool {
 }
 
 type CheckConfig struct {
-	// DefaultHost for checkHost function. If resource hosts is empty, it will use this host.
-	DefaultHost string `cfg:"default_host"`
+	// DefaultHosts for checkHost function. If resource hosts is empty, it will use this host.
+	DefaultHosts []string `cfg:"default_hosts"`
+	// NoHostCheck disable host checking on permission hosts.
+	NoHostCheck bool `cfg:"no_host_check"`
 }

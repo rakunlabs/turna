@@ -33,7 +33,7 @@ func TestBadgerCheck(t *testing.T) {
 		{
 			name: "test",
 			checkConfig: data.CheckConfig{
-				DefaultHost: "*.example.com",
+				DefaultHosts: []string{"*.example.com"},
 			},
 			permissions: []data.Permission{
 				{

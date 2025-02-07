@@ -112,13 +112,15 @@ func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 
 func (b *Badger) CheckAccess(perm *data.Permission, host, pathRequest, method string) bool {
 	for _, req := range perm.Resources {
-		hosts := req.Hosts
-		if len(hosts) == 0 && b.check.DefaultHost != "" {
-			hosts = []string{b.check.DefaultHost}
-		}
+		if !b.check.NoHostCheck {
+			hosts := req.Hosts
+			if len(hosts) == 0 && len(b.check.DefaultHosts) > 0 {
+				hosts = b.check.DefaultHosts
+			}
 
-		if !checkHost(hosts, host) {
-			continue
+			if !checkHost(hosts, host) {
+				continue
+			}
 		}
 
 		if !checkMethod(req.Methods, method) {

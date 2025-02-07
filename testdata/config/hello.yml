@@ -22,10 +22,11 @@ server:
       inject:
         inject:
           path_map: # map of content-type
-            "/*":
+            "/**":
               # - old: TURNA
               #   new: "XXX"
               - value: values
+                delay: 500ms
     routers:
       project:
         path: /*

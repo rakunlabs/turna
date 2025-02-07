@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/labstack/echo/v4"
@@ -38,6 +39,8 @@ type InjectContent struct {
 	// Value from load name, key value and type is map[string]interface{}
 	Value      string `cfg:"value"`
 	valueBytes []oldNew
+
+	Delay time.Duration `cfg:"delay"`
 }
 
 type oldNew struct {
@@ -156,6 +159,10 @@ func (s *Inject) Middleware() ([]echo.MiddlewareFunc, error) {
 			contentType := c.Response().Header().Get(echo.HeaderContentType)
 			contentTypeCheck := strings.Split(contentType, ";")[0]
 			for _, injectContent := range s.ContentMap[contentTypeCheck] {
+				if injectContent.Delay > 0 {
+					time.Sleep(injectContent.Delay)
+				}
+
 				if injectContent.valueBytes != nil {
 					for _, valueOldNew := range injectContent.valueBytes {
 						bodyBytes = bytes.ReplaceAll(bodyBytes, valueOldNew.Old, valueOldNew.New)
@@ -190,6 +197,10 @@ func (s *Inject) Middleware() ([]echo.MiddlewareFunc, error) {
 			for pathValue := range s.PathMap {
 				if ok, _ := doublestar.Match(pathValue, urlPath); ok {
 					for _, injectContent := range s.PathMap[pathValue] {
+						if injectContent.Delay > 0 {
+							time.Sleep(injectContent.Delay)
+						}
+
 						if injectContent.valueBytes != nil {
 							for _, valueOldNew := range injectContent.valueBytes {
 								bodyBytes = bytes.ReplaceAll(bodyBytes, valueOldNew.Old, valueOldNew.New)

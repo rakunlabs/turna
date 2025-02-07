@@ -1277,7 +1277,9 @@ func (m *Iam) GetPermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req data.GetPermissionRequest
+	req := data.GetPermissionRequest{
+		AddRoles: true,
+	}
 	req.ID = id
 
 	query := r.URL.Query()

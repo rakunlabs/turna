@@ -9,9 +9,10 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/worldline-go/klient"
+
 	"github.com/worldline-go/turna/pkg/server/http/middleware/session"
 	"github.com/worldline-go/turna/pkg/server/model"
-	"github.com/worldline-go/klient"
 )
 
 // Login middleware gives a login page.
