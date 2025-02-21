@@ -3,9 +3,10 @@ package roledata
 import (
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/claims"
+	"github.com/worldline-go/turna/pkg/server/http/tcontext"
 	"github.com/worldline-go/turna/pkg/server/model"
-	"github.com/worldline-go/auth/claims"
 )
 
 type RoleData struct {
@@ -18,13 +19,15 @@ type Data struct {
 	Data  interface{} `cfg:"data"`
 }
 
-func (m *RoleData) Middleware() (echo.MiddlewareFunc, error) {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+func (m *RoleData) Middleware() (func(http.Handler) http.Handler, error) {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// get user roles from context
-			claimValue, ok := c.Get("claims").(*claims.Custom)
+			claimValue, ok := tcontext.Get(r, "claims").(*claims.Custom)
 			if !ok {
-				return c.JSON(http.StatusUnauthorized, model.MetaData{Message: "claims not found"})
+				httputil.JSON(w, http.StatusUnauthorized, model.MetaData{Message: "claims not found"})
+
+				return
 			}
 
 			roles := claimValue.RoleSet
@@ -49,7 +52,7 @@ func (m *RoleData) Middleware() (echo.MiddlewareFunc, error) {
 				}
 			}
 
-			return c.JSON(http.StatusOK, values)
-		}
+			httputil.JSON(w, http.StatusOK, values)
+		})
 	}, nil
 }

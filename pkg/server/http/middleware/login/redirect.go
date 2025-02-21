@@ -7,7 +7,10 @@ import (
 	"path"
 	"strings"
 
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/claims"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/session"
+	"github.com/worldline-go/turna/pkg/server/model"
 )
 
 type Redirect struct {
@@ -87,4 +90,84 @@ func (m *Login) AuthCodeURL(r *http.Request, state, providerName string, oauth2 
 	redirect := urlParsed.String()
 
 	return redirect, nil
+}
+
+func (m *Login) IsValidRedirectURI(redirectURI string) bool {
+	checked := false
+	if redirectURI == "" {
+		return checked
+	}
+
+	if len(m.RedirectWhiteList) > 0 {
+		for _, v := range m.RedirectWhiteList {
+			if strings.HasPrefix(redirectURI, v) {
+				checked = true
+
+				break
+			}
+		}
+	} else {
+		checked = true
+	}
+
+	return checked
+}
+
+func (m *Login) IsForRedirection(r *http.Request) bool {
+	if responseType := r.URL.Query().Get("response_type"); responseType == "code" {
+		return m.IsValidRedirectURI(r.URL.Query().Get("redirect_uri"))
+	}
+
+	return false
+}
+
+func (m *Login) AuthCodeReturn(w http.ResponseWriter, r *http.Request, customClaim *claims.Custom) {
+	query := r.URL.Query()
+	state := query.Get("state")
+
+	redirectURI := query.Get("redirect_uri")
+
+	// check redirect uri whitelist
+	if !m.IsValidRedirectURI(redirectURI) {
+		httputil.JSON(w, http.StatusForbidden, model.MetaData{Message: "redirect_uri is not allowed"})
+
+		return
+	}
+
+	// get new code
+	alias, _ := customClaim.Map["preferred_username"].(string)
+	if alias == "" {
+		alias, _ = customClaim.Map["email"].(string)
+	}
+
+	if alias == "" {
+		httputil.JSON(w, http.StatusForbidden, model.MetaData{Message: "alias is empty"})
+
+		return
+	}
+
+	code, err := m.store.CodeGen(r.Context(), alias)
+	if err != nil {
+		httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: "failed to generate code"})
+
+		return
+	}
+
+	// redirect to the redirect uri
+	urlParsed, err := url.Parse(redirectURI)
+	if err != nil {
+		httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: "failed to parse redirect uri"})
+
+		return
+	}
+
+	q := url.Values{}
+	q.Set("code", code)
+	if state != "" {
+		q.Set("state", state)
+	}
+
+	urlParsed.RawQuery = q.Encode()
+
+	httputil.Redirect(w, http.StatusTemporaryRedirect, urlParsed.String())
 }

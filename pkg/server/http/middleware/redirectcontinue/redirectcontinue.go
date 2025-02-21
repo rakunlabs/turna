@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"regexp"
 
-	"github.com/labstack/echo/v4"
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
 )
 
 type RedirectionContinue struct {
@@ -22,7 +22,7 @@ type Redirect struct {
 	rgx *regexp.Regexp
 }
 
-func (m *RedirectionContinue) Middleware() (echo.MiddlewareFunc, error) {
+func (m *RedirectionContinue) Middleware() (func(http.Handler) http.Handler, error) {
 	if len(m.Redirects) == 0 {
 		return nil, fmt.Errorf("redirects is empty")
 	}
@@ -45,13 +45,12 @@ func (m *RedirectionContinue) Middleware() (echo.MiddlewareFunc, error) {
 		statusCode = http.StatusPermanentRedirect
 	}
 
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var u url.URL
-			request := c.Request()
-			u.Path = request.URL.Path
-			u.RawQuery = request.URL.RawQuery
-			u.RawFragment = request.URL.RawFragment
+			u.Path = r.URL.Path
+			u.RawQuery = r.URL.RawQuery
+			u.RawFragment = r.URL.RawFragment
 
 			oldPath := u.String()
 
@@ -59,11 +58,13 @@ func (m *RedirectionContinue) Middleware() (echo.MiddlewareFunc, error) {
 				newPath := r.rgx.ReplaceAllString(oldPath, r.Replacement)
 
 				if oldPath != newPath {
-					return c.Redirect(statusCode, newPath)
+					httputil.Redirect(w, statusCode, newPath)
+
+					return
 				}
 			}
 
-			return next(c)
-		}
+			next.ServeHTTP(w, r)
+		})
 	}, nil
 }

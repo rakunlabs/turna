@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"path"
@@ -87,16 +88,20 @@ func (m *View) Middleware(ctx context.Context, _ string) (func(http.Handler) htt
 	// set caches
 	cacheGrpcUI, err := cache.New[cacheKey, *grpcui.GrpcUI](ctx,
 		memory.Store,
-		cache.WithMaxItems(200),
-		cache.WithTTL(30*time.Minute),
+		cache.WithStoreConfig(memory.Config{
+			TTL:      30 * time.Minute,
+			MaxItems: 200,
+		}),
 	)
 
 	m.grpcUI.grpcUIMiddlewares = cacheGrpcUI
 
 	cachePage, err := cache.New[cacheKey, *httputil.ReverseProxy](ctx,
 		memory.Store,
-		cache.WithMaxItems(200),
-		cache.WithTTL(30*time.Minute),
+		cache.WithStoreConfig(memory.Config{
+			TTL:      30 * time.Minute,
+			MaxItems: 200,
+		}),
 	)
 
 	m.pageUI.Handlers = cachePage
@@ -114,6 +119,7 @@ func (m *View) Middleware(ctx context.Context, _ string) (func(http.Handler) htt
 			klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
 			klient.WithDisableRetry(true),
 			klient.WithDisableEnvValues(true),
+			klient.WithLogger(slog.Default()),
 		)
 		if err != nil {
 			return nil, err

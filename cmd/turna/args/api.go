@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -45,6 +46,7 @@ func runAPI(ctx context.Context) error {
 		klient.WithInsecureSkipVerify(apiCmdFlags.skipVerify),
 		klient.WithDisableRetry(true),
 		klient.WithDisableBaseURLCheck(true),
+		klient.WithLogger(slog.Default()),
 	)
 	if err != nil {
 		return err

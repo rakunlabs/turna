@@ -327,6 +327,10 @@ func (b *Badger) PatchPermission(ctx context.Context, id string, patch data.Perm
 			foundPermission.Data = patch.Data
 		}
 
+		if patch.Scope != nil {
+			foundPermission.Scope = patch.Scope
+		}
+
 		return nil
 	})
 }

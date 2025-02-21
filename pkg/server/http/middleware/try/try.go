@@ -3,12 +3,11 @@ package try
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/labstack/echo/v4"
 )
 
 type Try struct {
@@ -53,58 +52,51 @@ func IsInStatusCode(code int, list []string) bool {
 	return false
 }
 
-func (m *Try) Middleware() (echo.MiddlewareFunc, error) {
+func (m *Try) Middleware() (func(http.Handler) http.Handler, error) {
 	statusCodes := strings.Fields(strings.ReplaceAll(m.StatusCodes, ",", " "))
 	rgx, err := regexp.Compile(m.Regex)
 	if err != nil {
 		return nil, fmt.Errorf("regexPath invalid regex: %s", err)
 	}
 
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			rec := &customResponseRecorder2{
-				ResponseWriter: c.Response().Writer,
+				ResponseWriter: w,
 				body:           new(bytes.Buffer),
 				header:         make(http.Header),
 			}
-			c.Response().Writer = rec
 
-			if err := next(c); err != nil {
-				return err
-			}
+			next.ServeHTTP(rec, r)
 
-			oldPath := c.Request().URL.Path
+			oldPath := r.URL.Path
 			newPath := rgx.ReplaceAllString(oldPath, m.Replacement)
 
-			if oldPath == newPath || !IsInStatusCode(c.Response().Status, statusCodes) {
+			if oldPath == newPath || !IsInStatusCode(rec.status, statusCodes) {
 				if rec.status != 0 {
 					rec.ResponseWriter.WriteHeader(rec.status)
 				}
 
-				_, err := rec.ResponseWriter.Write(rec.body.Bytes())
-				return err
+				_, _ = rec.ResponseWriter.Write(rec.body.Bytes())
+
+				return
 			}
 
 			// cleanup response
 			rec.body = new(bytes.Buffer)
-			c.Response().Committed = false
-			c.Request().URL.Path = newPath
+			r.URL.Path = newPath
 
-			c.Logger().Debug("try middleware got "+strconv.Itoa(c.Response().Status)+" on "+oldPath+" going ", c.Request().URL.Path)
+			slog.Debug("try middleware", "status", rec.status, "old_path", oldPath, "new_path", r.URL.Path)
 
 			rec.header = make(http.Header)
-			if err := next(c); err != nil {
-				return err
-			}
+			next.ServeHTTP(rec, r)
 
 			if rec.status != 0 {
 				rec.ResponseWriter.WriteHeader(rec.status)
 			}
 
-			_, err := rec.ResponseWriter.Write(rec.body.Bytes())
-
-			return err
-		}
+			_, _ = rec.ResponseWriter.Write(rec.body.Bytes())
+		})
 	}, nil
 }
 

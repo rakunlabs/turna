@@ -2,9 +2,8 @@ package regexpath
 
 import (
 	"fmt"
+	"net/http"
 	"regexp"
-
-	"github.com/labstack/echo/v4"
 )
 
 type RegexPath struct {
@@ -12,17 +11,17 @@ type RegexPath struct {
 	Replacement string `cfg:"replacement"`
 }
 
-func (m *RegexPath) Middleware() ([]echo.MiddlewareFunc, error) {
+func (m *RegexPath) Middleware() (func(http.Handler) http.Handler, error) {
 	rgx, err := regexp.Compile(m.Regex)
 	if err != nil {
 		return nil, fmt.Errorf("regexPath invalid regex: %s", err)
 	}
 
-	return []echo.MiddlewareFunc{func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			c.Request().URL.Path = rgx.ReplaceAllString(c.Request().URL.Path, m.Replacement)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = rgx.ReplaceAllString(r.URL.Path, m.Replacement)
 
-			return next(c)
-		}
-	}}, nil
+			next.ServeHTTP(w, r)
+		})
+	}, nil
 }

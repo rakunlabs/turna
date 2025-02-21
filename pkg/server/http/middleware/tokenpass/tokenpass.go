@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/rytsh/mugo/fstore"
 	"github.com/rytsh/mugo/templatex"
@@ -19,6 +18,7 @@ import (
 	"github.com/worldline-go/logz"
 	"gopkg.in/yaml.v3"
 
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
 	"github.com/worldline-go/turna/pkg/server/model"
 )
 
@@ -49,7 +49,7 @@ type TokenPass struct {
 	tpl *templatex.Template
 }
 
-func (m *TokenPass) data(c echo.Context, body []byte) (map[string]interface{}, error) {
+func (m *TokenPass) data(r *http.Request, body []byte) (map[string]interface{}, error) {
 	var bodyMap interface{}
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &bodyMap); err != nil {
@@ -62,11 +62,11 @@ func (m *TokenPass) data(c echo.Context, body []byte) (map[string]interface{}, e
 	return map[string]interface{}{
 		"body":         bodyMap,
 		"body_raw":     body,
-		"method":       c.Request().Method,
-		"headers":      c.Request().Header,
-		"query_params": c.QueryParams(),
-		"cookies":      c.Cookies(),
-		"path":         c.Request().URL.Path,
+		"method":       r.Method,
+		"headers":      r.Header,
+		"query_params": r.URL.Query(),
+		"cookies":      r.Cookies(),
+		"path":         r.URL.Path,
 		"values":       m.AdditionalValues,
 	}, nil
 }
@@ -84,7 +84,7 @@ func (m *TokenPass) render(data map[string]interface{}, content string) ([]byte,
 	return buf.Bytes(), nil
 }
 
-func (m *TokenPass) Middleware() (echo.MiddlewareFunc, error) {
+func (m *TokenPass) Middleware() (func(http.Handler) http.Handler, error) {
 	defaultExpDuration, err := time.ParseDuration(m.DefaultExpDuration)
 	if err != nil {
 		return nil, err
@@ -106,6 +106,7 @@ func (m *TokenPass) Middleware() (echo.MiddlewareFunc, error) {
 		klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
 		klient.WithDisableRetry(!m.EnableRetry),
 		klient.WithDisableEnvValues(true),
+		klient.WithLogger(slog.Default()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create klient client: %w", err)
@@ -117,22 +118,28 @@ func (m *TokenPass) Middleware() (echo.MiddlewareFunc, error) {
 		m.Method = strings.ToUpper(m.Method)
 	}
 
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// render Payload
-			body, err := io.ReadAll(c.Request().Body)
+			body, err := io.ReadAll(r.Body)
 			if err != nil {
-				return c.JSON(http.StatusBadRequest, model.MetaData{Message: err.Error()})
+				httputil.JSON(w, http.StatusBadRequest, model.MetaData{Message: err.Error()})
+
+				return
 			}
 
-			data, err := m.data(c, body)
+			data, err := m.data(r, body)
 			if err != nil {
-				return c.JSON(http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+				httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+
+				return
 			}
 
 			payload, err := m.render(data, m.Payload)
 			if err != nil {
-				return c.JSON(http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+				httputil.JSON(w, http.StatusBadRequest, model.MetaData{Message: err.Error()})
+
+				return
 			}
 
 			if m.DebugPayload {
@@ -141,7 +148,9 @@ func (m *TokenPass) Middleware() (echo.MiddlewareFunc, error) {
 
 			claims := jwt.MapClaims{}
 			if err := yaml.Unmarshal(payload, &claims); err != nil {
-				return c.JSON(http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+				httputil.JSON(w, http.StatusBadRequest, model.MetaData{Message: err.Error()})
+
+				return
 			}
 
 			if _, ok := claims["exp"]; !ok && defaultExpDuration > 0 {
@@ -151,7 +160,9 @@ func (m *TokenPass) Middleware() (echo.MiddlewareFunc, error) {
 			token := jwt.NewWithClaims(jwtMethod, claims)
 			tokenString, err := token.SignedString([]byte(m.SecretKey))
 			if err != nil {
-				return c.JSON(http.StatusInternalServerError, model.MetaData{Message: fmt.Sprintf("secretKey %s", err.Error())})
+				httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: fmt.Sprintf("secretKey %s", err.Error())})
+
+				return
 			}
 
 			if m.DebugToken {
@@ -162,11 +173,15 @@ func (m *TokenPass) Middleware() (echo.MiddlewareFunc, error) {
 
 			redirectURL, err := m.render(data, m.RedirectURL)
 			if err != nil {
-				return c.JSON(http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+				httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+
+				return
 			}
 
 			if m.RedirectWithCode {
-				return c.Redirect(http.StatusTemporaryRedirect, string(redirectURL))
+				httputil.Redirect(w, http.StatusTemporaryRedirect, string(redirectURL))
+
+				return
 			}
 
 			// //////////////////////////
@@ -178,16 +193,20 @@ func (m *TokenPass) Middleware() (echo.MiddlewareFunc, error) {
 				} else {
 					bodyRendered, err := m.render(data, m.BodyTemplate)
 					if err != nil {
-						return c.JSON(http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+						httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+
+						return
 					}
 
 					requestBody = bytes.NewReader(bodyRendered)
 				}
 			}
 
-			request, err := http.NewRequestWithContext(c.Request().Context(), m.Method, string(redirectURL), requestBody)
+			request, err := http.NewRequestWithContext(r.Context(), m.Method, string(redirectURL), requestBody)
 			if err != nil {
-				return c.JSON(http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+				httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+
+				return
 			}
 
 			for k, v := range m.Headers {
@@ -209,19 +228,18 @@ func (m *TokenPass) Middleware() (echo.MiddlewareFunc, error) {
 
 				return nil
 			}); err != nil {
-				return c.JSON(http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+				httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+
+				return
 			}
 
-			respose := c.Response()
-			header := respose.Header()
+			header := w.Header()
 			for k, v := range retHeaders {
 				header[k] = v
 			}
 
-			respose.WriteHeader(retStatus)
-			_, err = respose.Write(retBody)
-
-			return err
-		}
+			w.WriteHeader(retStatus)
+			w.Write(retBody)
+		})
 	}, nil
 }

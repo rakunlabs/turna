@@ -60,7 +60,11 @@ type Database struct {
 	SyncPort string `cfg:"sync_port"`
 }
 
-func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, error) {
+func (m *Iam) DB() *badger.Badger {
+	return m.db
+}
+
+func (m *Iam) Middleware(ctx context.Context, name string) (func(http.Handler) http.Handler, error) {
 	swaggerMiddleware, err := m.SwaggerMiddleware()
 	if err != nil {
 		return nil, err
@@ -154,6 +158,8 @@ func (m *Iam) Middleware(ctx context.Context) (func(http.Handler) http.Handler, 
 
 		go m.Ldap.StartSync(ctx, m.LdapSync)
 	}
+
+	GlobalRegistry.Set(name, m)
 
 	return func(next http.Handler) http.Handler {
 		mux.NotFound(next.ServeHTTP)

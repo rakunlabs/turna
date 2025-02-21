@@ -168,6 +168,11 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 		}
 	}
 
+	// init middlewares
+	if err := registry.GlobalReg.RunHTTPInitFuncs(); err != nil {
+		return err
+	}
+
 	for name, router := range h.Routers {
 		if err := router.Set(name, ruleRouter); err != nil {
 			return err

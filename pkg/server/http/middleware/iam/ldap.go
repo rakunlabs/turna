@@ -17,6 +17,15 @@ type SyncRequest struct {
 	Force bool `json:"force"`
 }
 
+func (m *Iam) LdapCheckPassword(username, password string) (bool, error) {
+	v, err := m.Ldap.CheckPassword(username, password)
+	if err != nil {
+		return false, err
+	}
+
+	return v, nil
+}
+
 // LdapGetGroups returns groups info from LDAP.
 // @Summary Get LDAP groups
 // @Tags ldap

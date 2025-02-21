@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-
-	"github.com/labstack/echo/v4"
 )
 
 const (
@@ -82,14 +80,14 @@ func (m *Session) Init(ctx context.Context, name string) error {
 	return nil
 }
 
-func (m *Session) Middleware(ctx context.Context, name string) (echo.MiddlewareFunc, error) {
+func (m *Session) Middleware(ctx context.Context, name string) (func(http.Handler) http.Handler, error) {
 	if err := m.Init(ctx, name); err != nil {
 		return nil, err
 	}
 
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			return m.Do(next, c)
-		}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			m.Do(next, w, r)
+		})
 	}, nil
 }

@@ -23,14 +23,16 @@ type Ldap struct {
 	Addr                string   `cfg:"addr"`
 	Bind                LdapBind `cfg:"bind"`
 
-	Group      Group  `cfg:"group"`
-	UserBaseDN string `cfg:"user_base_dn"`
+	Group      []Group `cfg:"group"`
+	UserBaseDN string  `cfg:"user_base_dn"`
 
 	SyncDuration time.Duration `cfg:"sync_duration"`
 	DisableSync  bool          `cfg:"disable_sync"`
 
-	conn *ldap.Conn
-	m    sync.Mutex
+	conn     *ldap.Conn
+	connUser *ldap.Conn
+	mUser    sync.Mutex
+	m        sync.Mutex
 }
 
 type LdapBind struct {
@@ -43,10 +45,9 @@ type Simple struct {
 }
 
 type Group struct {
-	Interval   time.Duration `cfg:"interval"`
-	BaseDN     string        `cfg:"base_dn"`
-	Filter     string        `cfg:"filter"`
-	Attributes []string      `cfg:"attributes"`
+	BaseDN     string   `cfg:"base_dn"`
+	Filter     string   `cfg:"filter"`
+	Attributes []string `cfg:"attributes"`
 }
 
 type LdapUser struct {
@@ -82,7 +83,7 @@ func ldapUIDFilter(uids []string) string {
 func (l *Ldap) Connect() (*ldap.Conn, error) {
 	conn, err := ldap.DialURL(l.Addr)
 	if err != nil {
-		return nil, fmt.Errorf("failed connecting to LDAP server: %v", err)
+		return nil, fmt.Errorf("failed connecting to LDAP server: %w", err)
 	}
 
 	into.ShutdownAdd(conn.Close, "ldap")
@@ -90,7 +91,7 @@ func (l *Ldap) Connect() (*ldap.Conn, error) {
 	req := ldap.NewSimpleBindRequest(l.Bind.Simple.Username, l.Bind.Simple.Password, nil)
 	_, err = conn.SimpleBind(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed binding to LDAP server: %v", err)
+		return nil, fmt.Errorf("failed binding to LDAP server: %w", err)
 	}
 
 	slog.Info("LDAP connection established")
@@ -115,14 +116,29 @@ func (l *Ldap) ConnectWithCheck() (*ldap.Conn, error) {
 }
 
 func (l *Ldap) Groups(conn *ldap.Conn) ([]LdapGroup, error) {
+	groups := make([]LdapGroup, 0)
+
+	for _, groupCfg := range l.Group {
+		groupsGet, err := l.groups(conn, groupCfg)
+		if err != nil {
+			return nil, err
+		}
+
+		groups = append(groups, groupsGet...)
+	}
+
+	return groups, nil
+}
+
+func (l *Ldap) groups(conn *ldap.Conn, groupCfg Group) ([]LdapGroup, error) {
 	result, err := conn.Search(&ldap.SearchRequest{
-		BaseDN:     l.Group.BaseDN,
+		BaseDN:     groupCfg.BaseDN,
 		Scope:      ldap.ScopeWholeSubtree,
-		Filter:     l.Group.Filter,
-		Attributes: l.Group.Attributes,
+		Filter:     groupCfg.Filter,
+		Attributes: groupCfg.Attributes,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed searching LDAP server: %v", err)
+		return nil, fmt.Errorf("failed searching LDAP server: %w", err)
 	}
 
 	groups := make([]LdapGroup, 0, len(result.Entries))
@@ -141,8 +157,10 @@ func (l *Ldap) Groups(conn *ldap.Conn) ([]LdapGroup, error) {
 			_ = slices.ContainsFunc(strings.Split(attr, ","), func(v string) bool {
 				if strings.Contains(v, "uid=") {
 					uid = strings.TrimPrefix(v, "uid=")
+
 					return true
 				}
+
 				return false
 			})
 

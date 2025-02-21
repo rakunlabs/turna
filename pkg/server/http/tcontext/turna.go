@@ -1,10 +1,9 @@
 package tcontext
 
 import (
+	"context"
 	"net/http"
 	"sync"
-
-	"github.com/labstack/echo/v4"
 )
 
 type contextKey string
@@ -14,10 +13,21 @@ const (
 )
 
 type Turna struct {
-	EchoContext echo.Context
-	Vars        map[string]interface{}
+	Vars map[string]interface{}
 
 	m sync.Mutex
+}
+
+func New(w http.ResponseWriter, r *http.Request) (*Turna, *http.Request) {
+	// set turna value
+	turna := &Turna{
+		Vars: make(map[string]interface{}),
+	}
+
+	ctx := context.WithValue(r.Context(), TurnaKey, turna)
+	r = r.WithContext(ctx)
+
+	return turna, r
 }
 
 func (t *Turna) Set(key string, value interface{}) {
@@ -34,6 +44,12 @@ func (t *Turna) Get(key string) (interface{}, bool) {
 	value, ok := t.Vars[key]
 
 	return value, ok
+}
+
+func (t *Turna) GetInterface(key string) interface{} {
+	value, _ := t.Get(key)
+
+	return value
 }
 
 func GetTurna(r *http.Request) (*Turna, bool) {
@@ -60,16 +76,4 @@ func Get(r *http.Request, key string) interface{} {
 	v, _ := turna.Get(key)
 
 	return v
-}
-
-func GetEchoContext(r *http.Request, w http.ResponseWriter) echo.Context {
-	var c echo.Context
-	turna, _ := r.Context().Value(TurnaKey).(*Turna)
-	if turna == nil {
-		c = echo.New().NewContext(r, w)
-	} else {
-		c = turna.EchoContext
-	}
-
-	return c
 }

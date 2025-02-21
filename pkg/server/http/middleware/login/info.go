@@ -5,9 +5,7 @@ import (
 	"path"
 	"sort"
 
-	"github.com/labstack/echo/v4"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/session"
-	"github.com/worldline-go/turna/pkg/server/model"
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
 )
 
 type Info struct {
@@ -17,6 +15,7 @@ type Info struct {
 type InfoUIResponse struct {
 	Title    string       `json:"title"`
 	Provider InfoProvider `json:"provider"`
+	Error    string       `json:"error,omitempty"`
 }
 
 type InfoProvider struct {
@@ -38,34 +37,33 @@ func (i Info) value() Info {
 	return i
 }
 
-func (m *Login) InformationUI(c echo.Context) error {
+func (m *Login) InformationUI(w http.ResponseWriter, r *http.Request) {
 	info := m.Info.value()
 
 	response := InfoUIResponse{
 		Title: info.Title,
 	}
 
-	sessionM := session.GlobalRegistry.Get(m.SessionMiddleware)
-	if sessionM == nil {
-		return c.JSON(http.StatusInternalServerError, model.MetaData{Message: "session middleware not found"})
-	}
+	for providerName := range m.session.Provider {
+		if m.session.Provider[providerName].Hide {
+			continue
+		}
 
-	for providerName := range sessionM.Provider {
-		oauth2 := sessionM.Provider[providerName].Oauth2
+		oauth2 := m.session.Provider[providerName].Oauth2
 		if oauth2 == nil {
 			continue
 		}
 
 		name := providerName
-		if sessionM.Provider[providerName].Name != "" {
-			name = sessionM.Provider[providerName].Name
+		if m.session.Provider[providerName].Name != "" {
+			name = m.session.Provider[providerName].Name
 		}
 
-		if sessionM.Provider[providerName].PasswordFlow {
+		if m.session.Provider[providerName].PasswordFlow {
 			response.Provider.Password = append(response.Provider.Password, Link{
 				Name:     name,
 				URL:      m.Path.BaseURL + path.Join(m.pathFixed.Token, providerName),
-				Priority: sessionM.Provider[providerName].Priority,
+				Priority: m.session.Provider[providerName].Priority,
 			})
 
 			continue
@@ -74,7 +72,7 @@ func (m *Login) InformationUI(c echo.Context) error {
 		response.Provider.Code = append(response.Provider.Code, Link{
 			Name:     name,
 			URL:      m.Path.BaseURL + path.Join(m.pathFixed.Code, providerName),
-			Priority: sessionM.Provider[providerName].Priority,
+			Priority: m.session.Provider[providerName].Priority,
 		})
 	}
 
@@ -87,5 +85,5 @@ func (m *Login) InformationUI(c echo.Context) error {
 		return response.Provider.Password[i].Priority < response.Provider.Password[j].Priority
 	})
 
-	return c.JSON(http.StatusOK, response)
+	httputil.JSON(w, http.StatusOK, response)
 }

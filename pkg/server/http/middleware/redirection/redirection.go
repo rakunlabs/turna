@@ -3,7 +3,7 @@ package redirection
 import (
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
 )
 
 type Redirection struct {
@@ -11,7 +11,7 @@ type Redirection struct {
 	Permanent bool   `cfg:"permanent"`
 }
 
-func (m *Redirection) Middleware() (echo.MiddlewareFunc, error) {
+func (m *Redirection) Middleware() func(http.Handler) http.Handler {
 	statusCode := http.StatusTemporaryRedirect
 	if m.URL == "" {
 		m.URL = "/"
@@ -20,9 +20,9 @@ func (m *Redirection) Middleware() (echo.MiddlewareFunc, error) {
 		statusCode = http.StatusPermanentRedirect
 	}
 
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			return c.Redirect(statusCode, m.URL)
-		}
-	}, nil
+	return func(_ http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			httputil.Redirect(w, statusCode, m.URL)
+		})
+	}
 }

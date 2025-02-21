@@ -19,6 +19,7 @@ var GlobalReg = Registry{
 	httpMiddleware: make(map[string][]func(http.Handler) http.Handler),
 	tcpMiddleware:  make(map[string][]func(lconn *net.TCPConn) error),
 	shutdownFuncs:  make(map[string]func()),
+	httpInitFuncs:  make(map[string]func() error),
 }
 
 type Registry struct {
@@ -27,7 +28,18 @@ type Registry struct {
 	httpMiddleware map[string][]func(http.Handler) http.Handler
 	tcpMiddleware  map[string][]func(lconn *net.TCPConn) error
 	shutdownFuncs  map[string]func()
+	httpInitFuncs  map[string]func() error
 	mutex          sync.RWMutex
+}
+
+func (r *Registry) RunHTTPInitFuncs() error {
+	for name, f := range r.httpInitFuncs {
+		if err := f(); err != nil {
+			return fmt.Errorf("http init func %s error: %w", name, err)
+		}
+	}
+
+	return nil
 }
 
 func (r *Registry) AddShutdownFunc(name string, f func()) {
@@ -79,6 +91,13 @@ func (r *Registry) AddHttpMiddleware(name string, m []func(http.Handler) http.Ha
 	defer r.mutex.Unlock()
 
 	r.httpMiddleware[name] = m
+}
+
+func (r *Registry) AddInitFunc(name string, f func() error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	r.httpInitFuncs[name] = f
 }
 
 func (r *Registry) GetHttpMiddleware(name string) ([]func(http.Handler) http.Handler, error) {

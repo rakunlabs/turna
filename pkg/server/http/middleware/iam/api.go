@@ -340,6 +340,7 @@ func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 // @Param add_roles query bool false "add roles default(true)"
 // @Param add_permissions query bool false "add permissions"
 // @Param add_data query bool false "add data"
+// @Param add_scope_roles query bool false "add scope roles"
 // @Param limit query int false "limit" default(20)
 // @Param offset query int false "offset"
 // @Success 200 {object} data.Response[[]data.UserExtended]
@@ -376,6 +377,7 @@ func (m *Iam) GetUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	req.AddPermissions, _ = strconv.ParseBool(query.Get("add_permissions"))
 	req.AddData, _ = strconv.ParseBool(query.Get("add_data"))
+	req.AddScopeRoles, _ = strconv.ParseBool(query.Get("add_scope_roles"))
 
 	req.Limit, req.Offset = getLimitOffset(query)
 

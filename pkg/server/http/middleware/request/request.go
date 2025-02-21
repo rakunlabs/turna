@@ -3,13 +3,14 @@ package request
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
 
-	"github.com/labstack/echo/v4"
-	"github.com/worldline-go/turna/pkg/server/model"
 	"github.com/worldline-go/klient"
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
+	"github.com/worldline-go/turna/pkg/server/model"
 )
 
 type Request struct {
@@ -25,12 +26,13 @@ type Request struct {
 	client *klient.Client
 }
 
-func (m *Request) Middleware() (echo.MiddlewareFunc, error) {
+func (m *Request) Middleware() (func(http.Handler) http.Handler, error) {
 	client, err := klient.New(
 		klient.WithDisableBaseURLCheck(true),
 		klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
 		klient.WithDisableRetry(!m.EnableRetry),
 		klient.WithDisableEnvValues(true),
+		klient.WithLogger(slog.Default()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create klient client: %w", err)
@@ -46,16 +48,18 @@ func (m *Request) Middleware() (echo.MiddlewareFunc, error) {
 		}
 	}
 
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			url := m.URL
 			if rgx != nil {
-				url = rgx.ReplaceAllString(c.Request().URL.Path, m.URL)
+				url = rgx.ReplaceAllString(r.URL.Path, m.URL)
 			}
 
-			request, err := http.NewRequestWithContext(c.Request().Context(), m.Method, url, strings.NewReader(m.Body))
+			request, err := http.NewRequestWithContext(r.Context(), m.Method, url, strings.NewReader(m.Body))
 			if err != nil {
-				return c.JSON(http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+				httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+
+				return
 			}
 
 			for k, v := range m.Headers {
@@ -77,19 +81,18 @@ func (m *Request) Middleware() (echo.MiddlewareFunc, error) {
 
 				return nil
 			}); err != nil {
-				return c.JSON(http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+				httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+
+				return
 			}
 
-			respose := c.Response()
-			header := respose.Header()
+			header := w.Header()
 			for k, v := range retHeaders {
 				header[k] = v
 			}
 
-			respose.WriteHeader(retStatus)
-			_, err = respose.Write(retBody)
-
-			return err
-		}
+			w.WriteHeader(retStatus)
+			w.Write(retBody)
+		})
 	}, nil
 }

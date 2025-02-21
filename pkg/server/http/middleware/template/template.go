@@ -7,12 +7,12 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/labstack/echo/v4"
-	"github.com/worldline-go/turna/pkg/render"
 	"github.com/rs/zerolog/log"
 	"github.com/rytsh/mugo/fstore"
 	"github.com/rytsh/mugo/templatex"
 	"github.com/worldline-go/logz"
+	"github.com/worldline-go/turna/pkg/render"
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
 )
 
 type Template struct {
@@ -41,7 +41,7 @@ type Template struct {
 	value map[string]interface{}
 }
 
-func (s *Template) render(c echo.Context, body []byte) ([]byte, error) {
+func (s *Template) render(r *http.Request, body []byte) ([]byte, error) {
 	var bodyPass interface{}
 	if !s.RawBody {
 		if err := json.Unmarshal(body, &bodyPass); err != nil {
@@ -55,11 +55,11 @@ func (s *Template) render(c echo.Context, body []byte) ([]byte, error) {
 	data := map[string]interface{}{
 		"body":         bodyPass,
 		"body_raw":     body,
-		"method":       c.Request().Method,
-		"headers":      c.Request().Header,
-		"query_params": c.QueryParams(),
-		"cookies":      c.Cookies(),
-		"path":         c.Request().URL.Path,
+		"method":       r.Method,
+		"headers":      r.Header,
+		"query_params": r.URL.Query(),
+		"cookies":      r.Cookies(),
+		"path":         r.URL.Path,
 		"value":        s.value,
 		"additional":   s.Additional,
 	}
@@ -76,7 +76,7 @@ func (s *Template) render(c echo.Context, body []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (s *Template) Middleware() (echo.MiddlewareFunc, error) {
+func (s *Template) Middleware() (func(http.Handler) http.Handler, error) {
 	if s.Delims != nil {
 		if len(s.Delims) != 2 {
 			return nil, fmt.Errorf("delims must be a pair of strings")
@@ -103,17 +103,14 @@ func (s *Template) Middleware() (echo.MiddlewareFunc, error) {
 		s.tpl.SetDelims(s.Delims[0], s.Delims[1])
 	}
 
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			rec := &customResponseRecorder{
-				ResponseWriter: c.Response().Writer,
+				ResponseWriter: w,
 				body:           new(bytes.Buffer),
 			}
-			c.Response().Writer = rec
 
-			if err := next(c); err != nil {
-				return err
-			}
+			next.ServeHTTP(rec, r)
 
 			bodyBytes := rec.body.Bytes()
 
@@ -123,7 +120,7 @@ func (s *Template) Middleware() (echo.MiddlewareFunc, error) {
 			doTemplate := false
 			if len(s.ApplyStatusCodes) > 0 {
 				for _, statusCode := range s.ApplyStatusCodes {
-					if c.Response().Status == statusCode {
+					if rec.status == statusCode {
 						doTemplate = true
 
 						break
@@ -135,7 +132,7 @@ func (s *Template) Middleware() (echo.MiddlewareFunc, error) {
 
 			if doTemplate {
 				var err error
-				bodyBytes, err = s.render(c, bodyBytes)
+				bodyBytes, err = s.render(r, bodyBytes)
 				if err != nil {
 					bodyBytes = []byte(err.Error())
 					statusCodeRet = http.StatusInternalServerError
@@ -143,15 +140,14 @@ func (s *Template) Middleware() (echo.MiddlewareFunc, error) {
 			}
 
 			// return part
-
-			c.Response().Committed = false
-			c.Response().Header().Set(echo.HeaderContentLength, strconv.Itoa(len(bodyBytes)))
+			header := rec.ResponseWriter.Header()
+			header.Set(httputil.HeaderContentLength, strconv.Itoa(len(bodyBytes)))
 
 			switch {
 			case doTemplate:
 				// add headers
 				for k, v := range s.Headers {
-					c.Response().Header().Set(k, v)
+					header.Set(k, v)
 				}
 
 				if statusCodeRet != 0 {
@@ -164,9 +160,7 @@ func (s *Template) Middleware() (echo.MiddlewareFunc, error) {
 			}
 
 			_, _ = rec.ResponseWriter.Write(bodyBytes)
-
-			return nil
-		}
+		})
 	}, nil
 }
 

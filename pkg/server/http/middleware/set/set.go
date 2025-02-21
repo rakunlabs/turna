@@ -1,7 +1,9 @@
 package set
 
 import (
-	"github.com/labstack/echo/v4"
+	"net/http"
+
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
 	"github.com/worldline-go/turna/pkg/server/http/tcontext"
 )
 
@@ -13,26 +15,25 @@ type Set struct {
 	Map    map[string]interface{} `cfg:"map"`
 }
 
-func (s *Set) Middleware() echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			turna, _ := c.Get("turna").(*tcontext.Turna)
+func (s *Set) Middleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			turna, ok := tcontext.GetTurna(r)
+			if !ok {
+				httputil.HandleError(w, httputil.NewError("turna not found", nil, http.StatusInternalServerError))
+
+				return
+			}
 
 			for _, v := range s.Values {
-				c.Set(v, true)
-				if turna != nil {
-					turna.Set(v, true)
-				}
+				turna.Set(v, true)
 			}
 
 			for k, v := range s.Map {
-				c.Set(k, v)
-				if turna != nil {
-					turna.Set(k, v)
-				}
+				turna.Set(k, v)
 			}
 
-			return next(c)
-		}
+			next.ServeHTTP(w, r)
+		})
 	}
 }

@@ -35,6 +35,15 @@ func JSONBlob(w http.ResponseWriter, code int, data []byte) error {
 	return err
 }
 
+func HTML(w http.ResponseWriter, code int, html string) error {
+	writeContentType(w, MIMETextHTMLCharsetUTF8)
+	w.WriteHeader(code)
+
+	_, err := w.Write([]byte(html))
+
+	return err
+}
+
 func NoContent(w http.ResponseWriter, code int) error {
 	w.WriteHeader(code)
 

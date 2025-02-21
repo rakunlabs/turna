@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
-	"github.com/worldline-go/auth/claims"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/claims"
+	"github.com/worldline-go/turna/pkg/server/http/tcontext"
 )
 
 func TestRoleCheck_Middleware(t *testing.T) {
@@ -27,7 +27,6 @@ func TestRoleCheck_Middleware(t *testing.T) {
 		name    string
 		fields  fields
 		Cases   []casex
-		want    echo.MiddlewareFunc
 		wantErr bool
 	}{
 		{
@@ -250,28 +249,23 @@ func TestRoleCheck_Middleware(t *testing.T) {
 				return
 			}
 
-			e := echo.New()
-
 			for i := range tt.Cases {
-				req := httptest.NewRequest(tt.Cases[i].method, tt.Cases[i].path, nil)
 				rec := httptest.NewRecorder()
-				c := e.NewContext(req, rec)
+				turna, req := tcontext.New(rec, httptest.NewRequest(tt.Cases[i].method, tt.Cases[i].path, nil))
 
 				roles := make(map[string]struct{}, len(tt.Cases[i].roles))
 				for _, role := range tt.Cases[i].roles {
 					roles[role] = struct{}{}
 				}
 
-				c.Set("claims", &claims.Custom{
+				turna.Set("claims", &claims.Custom{
 					RoleSet: roles,
 				})
 
 				var allowed bool
-				got(func(c echo.Context) error {
+				got(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					allowed = true
-
-					return nil
-				})(c)
+				})).ServeHTTP(rec, req)
 
 				if allowed != tt.Cases[i].isAllowed {
 					t.Errorf("RoleCheck.Middleware() = %v, want %v", allowed, tt.Cases[i].isAllowed)

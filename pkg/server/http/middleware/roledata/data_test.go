@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/labstack/echo/v4"
-	"github.com/worldline-go/auth/claims"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/claims"
+	"github.com/worldline-go/turna/pkg/server/http/tcontext"
 )
 
 func TestRoleData_Middleware(t *testing.T) {
@@ -16,10 +16,9 @@ func TestRoleData_Middleware(t *testing.T) {
 		Default interface{}
 	}
 	tests := []struct {
-		name    string
-		fields  fields
-		want    string
-		wantErr bool
+		name   string
+		fields fields
+		want   string
 	}{
 		{
 			name: "one",
@@ -53,12 +52,10 @@ func TestRoleData_Middleware(t *testing.T) {
 				Default: tt.fields.Default,
 			}
 
-			e := echo.New()
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			rec := httptest.NewRecorder()
-			c := e.NewContext(req, rec)
+			turna, req := tcontext.New(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 
-			c.Set("claims", &claims.Custom{
+			turna.Set("claims", &claims.Custom{
 				RoleSet: map[string]struct{}{
 					"admin": {},
 				},
@@ -66,11 +63,7 @@ func TestRoleData_Middleware(t *testing.T) {
 
 			middleware, _ := m.Middleware()
 			middlewareInner := middleware(nil)
-			err := middlewareInner(c)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("RoleData.Middleware() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			middlewareInner.ServeHTTP(rec, req)
 
 			if strings.TrimSpace(rec.Body.String()) != tt.want {
 				t.Errorf("RoleData.Middleware() = %q, want %q", rec.Body.String(), tt.want)

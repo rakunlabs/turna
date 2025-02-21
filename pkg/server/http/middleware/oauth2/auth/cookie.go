@@ -1,11 +1,11 @@
-package login
+package auth
 
 import (
 	"net/http"
 )
 
 type Cookie struct {
-	// CookieName is the name of the cookie. Default is "auth_" + ClientID.
+	// CookieName is the name of the cookie.
 	CookieName string `cfg:"cookie_name"`
 	// MaxAge the number of seconds until the cookie expires.
 	MaxAge int `cfg:"max_age"`

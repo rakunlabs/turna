@@ -5,26 +5,22 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/labstack/echo/v4"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/session"
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
 	"github.com/worldline-go/turna/pkg/server/model"
 	"golang.org/x/exp/slog"
 )
 
-func (m *Login) Logout(c echo.Context) error {
-	sessionM := session.GlobalRegistry.Get(m.SessionMiddleware)
-	if sessionM == nil {
-		return c.JSON(http.StatusInternalServerError, model.MetaData{Message: "session middleware not found"})
-	}
-
-	token, oauth2, err := sessionM.GetToken(c)
+func (m *Login) Logout(w http.ResponseWriter, r *http.Request) {
+	token, oauth2, err := m.session.GetToken(r)
 	if err == nil && oauth2.LogoutURL != "" {
 		if token.IDToken == "" {
 			slog.Error("id_token is empty")
 		} else {
 			logoutURL, err := url.Parse(oauth2.LogoutURL)
 			if err != nil {
-				return c.JSON(http.StatusInternalServerError, model.MetaData{Message: "failed to parse logout URL"})
+				httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: "failed to parse logout URL"})
+
+				return
 			}
 
 			q := logoutURL.Query()
@@ -49,5 +45,5 @@ func (m *Login) Logout(c echo.Context) error {
 		}
 	}
 
-	return sessionM.RedirectToLogin(c, sessionM.GetStore(), false, true)
+	m.session.RedirectToLogin(w, r, false, true)
 }

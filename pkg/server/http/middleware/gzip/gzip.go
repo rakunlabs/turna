@@ -1,12 +1,20 @@
 package gzip
 
 import (
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"net/http"
+
+	"github.com/go-chi/chi/v5/middleware"
 )
 
-type Gzip struct{}
+type Gzip struct {
+	Level int `cfg:"level"`
+}
 
-func (m *Gzip) Middleware() echo.MiddlewareFunc {
-	return middleware.Gzip()
+func (m *Gzip) Middleware() func(http.Handler) http.Handler {
+	level := m.Level
+	if level == 0 {
+		level = 5
+	}
+
+	return middleware.Compress(level)
 }

@@ -2,7 +2,7 @@
   import axios from "axios";
   import { formToObject } from "./helper/form";
   import { login } from "./helper/login";
-  import { getRedirectPath } from "./helper/query";
+  import { getRedirectPath, isResponseTypeCode } from "./helper/query";
   import { onMount } from "svelte";
   import Cookies from "js-cookie";
   import type { AuthInfo, Provider } from "./helper/info";
@@ -10,6 +10,7 @@
   let error = "";
   let working = false;
   let mounted = false;
+  let togglePassword = false;
 
   let authInfo: AuthInfo = {
     title: "Login",
@@ -17,6 +18,16 @@
       password: [],
       code: [],
     } as Provider,
+  };
+
+  const togglepasswordFunc = () => {
+    togglePassword = !togglePassword;
+    const password = document.getElementById("password") as HTMLInputElement;
+    if (togglePassword) {
+      password.type = "text";
+    } else {
+      password.type = "password";
+    }
   };
 
   let providerSelected = "";
@@ -43,7 +54,15 @@
       await login(url, data);
 
       // redirect to home
-      window.location.assign(getRedirectPath());
+      if (!isResponseTypeCode()) {
+        window.location.assign(getRedirectPath());
+
+        return;
+      }
+
+      window.location.replace(window.location.href);
+
+      return;
     } catch (reason: unknown) {
       if (axios.isAxiosError(reason)) {
         if (reason?.response?.status === 401) {
@@ -90,8 +109,14 @@
         // read cookie of auth_verify
         const v = Cookies.get("auth_verify");
         if (v == "true") {
-          // redirect to home
-          window.location.assign(getRedirectPath());
+          if (!isResponseTypeCode()) {
+            // redirect to home
+            window.location.assign(getRedirectPath());
+
+            return;
+          }
+
+          window.location.replace(window.location.href);
         }
       }
     }, 500);
@@ -99,29 +124,43 @@
 
   onMount(async () => {
     await info();
+
+    // if query has title
+    const title = new URLSearchParams(window.location.search).get("title");
+    if (title) {
+      authInfo.title = title;
+    }
+
+    // change header title
+    document.title = authInfo.title;
+
+    if (!!authInfo.error) {
+      error = authInfo.error;
+    }
+
     mounted = true;
   });
 </script>
 
-<div
-  class="w-full min-h-screen bg-gray-50 flex flex-col items-center pt-6 sm:pt-0 bg-image"
->
-  <div class="w-full sm:max-w-md p-5 mx-auto">
-    <div class="border p-4 bg-yellow-50 relative">
+<div class="w-full min-h-screen bg-gray-50 flex flex-col items-center sm:pt-6">
+  <div class="w-full sm:max-w-md sm:p-5 mx-auto">
+    <div class="border p-4 bg-white relative sm:rounded-md">
       <h2 class="mb-2 text-xl font-bold [line-height:1.2]">
         <span class={mounted ? "" : "invisible"}>{authInfo.title}</span>
       </h2>
       <hr class="mb-2" />
       {#if authInfo.provider.password?.length}
-        <div class="float-right">
-          <select bind:value={providerSelected} class="px-2">
-            {#each authInfo.provider.password as provider}
-              <option value={provider.name}>
-                {provider.name}
-              </option>
-            {/each}
-          </select>
-        </div>
+        {#if authInfo.provider.password?.length > 1}
+          <div class="float-right">
+            <select bind:value={providerSelected} class="px-2">
+              {#each authInfo.provider.password as provider}
+                <option value={provider.name}>
+                  {provider.name}
+                </option>
+              {/each}
+            </select>
+          </div>
+        {/if}
 
         <form on:submit|preventDefault|stopPropagation={signin}>
           <div class="mb-4">
@@ -130,32 +169,82 @@
               id="username"
               type="text"
               name="username"
-              class="py-2 px-3 border border-gray-300 focus:border-red-300 focus:outline-none focus:ring focus:ring-red-200 focus:ring-opacity-50 disabled:bg-gray-100 mt-1 block w-full"
+              class="py-1.5 px-3 border rounded-md border-gray-300 focus:border-blue-300 focus:outline-none focus:ring focus:ring-blue-200 focus:ring-opacity-50 disabled:bg-gray-100 mt-1 block w-full"
             />
           </div>
           <div class="mb-4">
             <label class="block mb-1" for="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              name="password"
-              class="py-2 px-3 border border-gray-300 focus:border-red-300 focus:outline-none focus:ring focus:ring-red-200 focus:ring-opacity-50 disabled:bg-gray-100 mt-1 block w-full"
-            />
+            <div class="relative">
+              <input
+                id="password"
+                type="password"
+                name="password"
+                autocomplete="off"
+                class="py-1.5 px-3 border rounded-md border-gray-300 focus:border-blue-300 focus:outline-none focus:ring focus:ring-blue-200 focus:ring-opacity-50 disabled:bg-gray-100 mt-1 block w-full"
+              />
+              <button
+                type="button"
+                on:click={togglepasswordFunc}
+                class="absolute inset-y-0 end-0 flex items-center z-20 px-3 cursor-pointer text-gray-400 rounded-e-md focus:outline-none focus:text-blue-600 dark:text-neutral-600 dark:focus:text-blue-500"
+              >
+                <svg
+                  class="shrink-0 size-3.5"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    class={togglePassword ? "hidden" : ""}
+                    d="M9.88 9.88a3 3 0 1 0 4.24 4.24"
+                  ></path>
+                  <path
+                    class={togglePassword ? "hidden" : ""}
+                    d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"
+                  ></path>
+                  <path
+                    class={togglePassword ? "hidden" : ""}
+                    d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"
+                  ></path>
+                  <line
+                    class={togglePassword ? "hidden" : ""}
+                    x1="2"
+                    x2="22"
+                    y1="2"
+                    y2="22"
+                  ></line>
+                  <path
+                    class={togglePassword ? "block" : "hidden"}
+                    d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"
+                  ></path>
+                  <circle
+                    class={togglePassword ? "block" : "hidden"}
+                    cx="12"
+                    cy="12"
+                    r="3"
+                  ></circle>
+                </svg>
+              </button>
+            </div>
           </div>
           <div class="mt-6">
             <button
               type="submit"
-              class="block w-full text-center px-4 py-2 bg-red-400 border border-transparent font-semibold capitalize text-white hover:bg-red-500 active:bg-red-500 focus:outline-none focus:border-red-500 focus:ring focus:ring-red-200 disabled:bg-gray-400 transition"
+              class="block w-full text-center px-4 py-1.5 bg-[#615fff] border rounded-md border-transparent font-semibold capitalize text-white hover:bg-blue-500 active:bg-blue-500 focus:outline-none focus:border-blue-500 focus:ring focus:ring-blue-200 disabled:bg-gray-400 transition"
               disabled={working}
             >
-              Login
+              Sign in
             </button>
           </div>
         </form>
       {/if}
       {#if authInfo.provider.code?.length}
         {#if authInfo.provider.password?.length}
-          <hr class="my-2" />
+          <hr class="mt-8 mb-6 custom-hr" />
         {/if}
         {#each authInfo.provider.code as provider}
           <button
@@ -163,14 +252,14 @@
             on:click={async () => {
               checkWindow(provider.url);
             }}
-            class="block mt-1 w-full text-center px-4 py-2 bg-sky-400 border border-transparent font-semibold capitalize text-white hover:bg-sky-500 active:bg-sky-500 focus:outline-none focus:border-sky-500 focus:ring focus:ring-red-200 disabled:bg-gray-400 transition"
+            class="block rounded-md mt-1 w-full text-center px-4 py-1.5 bg-white border border-gray-300 font-semibold capitalize text-black hover:bg-gray-50 active:bg-blue-50 focus:outline-none focus:border-blue-500 focus:ring focus:ring-blue-200 disabled:bg-gray-400 transition"
           >
-            Login with {provider.name}
+            {provider.name}
           </button>
         {/each}
       {/if}
       {#if error != ""}
-        <div class="mt-4 bg-red-200">
+        <div class="mt-4 px-0.5 bg-red-200">
           <span class="break-all">{error}</span>
         </div>
       {/if}
@@ -179,7 +268,14 @@
 </div>
 
 <style lang="scss">
-  .bg-image {
-    background-image: url('data:image/svg+xml,<svg id="patternId" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="a" patternUnits="userSpaceOnUse" width="40" height="80" patternTransform="scale(2) rotate(0)"><rect x="0" y="0" width="100%" height="100%" fill="hsla(0, 0%, 99%, 1)"/><path d="M-10 7.5l20 5 20-5 20 5" stroke-linecap="square" stroke-width="1" stroke="hsla(54, 100%, 92%, 1)" fill="none"/><path d="M-10 27.5l20 5 20-5 20 5" stroke-linecap="square" stroke-width="1" stroke="hsla(54, 0%, 96%, 1)" fill="none"/><path d="M-10 47.5l20 5 20-5 20 5" stroke-linecap="square" stroke-width="1" stroke="hsla(199, 100%, 94%, 1)" fill="none"/><path d="M-10 67.5l20 5 20-5 20 5" stroke-linecap="square" stroke-width="1" stroke="hsla(4, 100%, 90%, 1)" fill="none"/></pattern></defs><rect width="800%" height="800%" transform="translate(0,0)" fill="url(%23a)"/></svg>');
+  .custom-hr {
+    @apply text-black text-center overflow-visible;
+
+    &::after {
+      content: "Or continue with";
+      top: -13px;
+
+      @apply bg-white relative px-2;
+    }
   }
 </style>

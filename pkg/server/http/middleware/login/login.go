@@ -2,16 +2,22 @@ package login
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"path"
 	"strconv"
 	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/rakunlabs/into"
 	"github.com/worldline-go/klient"
 
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/auth"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/store"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/session"
+	"github.com/worldline-go/turna/pkg/server/http/tcontext"
 	"github.com/worldline-go/turna/pkg/server/model"
 )
 
@@ -25,11 +31,18 @@ type Login struct {
 
 	SessionMiddleware string `cfg:"session_middleware"`
 
-	StateCookie   Cookie `cfg:"state_cookie"`
-	SuccessCookie Cookie `cfg:"success_cookie"`
+	StateCookie   auth.Cookie `cfg:"state_cookie"`
+	SuccessCookie auth.Cookie `cfg:"success_cookie"`
+
+	// Store for effect code, only for code flow and works with redis.
+	Store             store.Store `cfg:"store"`
+	RedirectWhiteList []string    `cfg:"redirect_white_list"`
 
 	client    *klient.Client `cfg:"-"`
 	pathFixed PathFixed      `cfg:"-"`
+
+	session *session.Session  `cfg:"-"`
+	store   *store.StoreCache `cfg:"-"`
 }
 
 type Path struct {
@@ -57,16 +70,16 @@ type UI struct {
 	embedUI        http.Handler `cfg:"-"`
 }
 
-type Provider struct {
-	Oauth2 *session.Oauth2 `cfg:"oauth2"`
+func (m *Login) Init() error {
+	m.session = session.GlobalRegistry.Get(m.SessionMiddleware)
+	if m.session == nil {
+		return errors.New("session middleware not found")
+	}
 
-	// PasswordFlow is use password flow to get token.
-	PasswordFlow bool `cfg:"password_flow"`
-	// Priority is use to sort provider.
-	Priority int `cfg:"priority"`
+	return nil
 }
 
-func (m *Login) Middleware(ctx context.Context, _ string) (echo.MiddlewareFunc, error) {
+func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler, error) {
 	if m.SessionMiddleware == "" {
 		return nil, fmt.Errorf("session middleware is not set")
 	}
@@ -84,6 +97,7 @@ func (m *Login) Middleware(ctx context.Context, _ string) (echo.MiddlewareFunc, 
 		klient.WithDisableRetry(true),
 		klient.WithDisableEnvValues(true),
 		klient.WithInsecureSkipVerify(m.Request.InsecureSkipVerify),
+		klient.WithLogger(slog.Default()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create klient: %w", err)
@@ -145,57 +159,86 @@ func (m *Login) Middleware(ctx context.Context, _ string) (echo.MiddlewareFunc, 
 
 	m.SuccessCookie.HttpOnly = false
 
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			if isLogout, _ := c.Get("logout").(bool); isLogout {
-				return m.Logout(c)
+	// /////////////////////////
+	storeCache, err := m.Store.Init(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	into.ShutdownAdd(storeCache.Close, "login-store")
+
+	m.store = storeCache
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isLogout, _ := tcontext.Get(r, "logout").(bool); isLogout {
+				m.Logout(w, r)
+
+				return
 			}
 
-			urlPath := c.Request().URL.Path
-			method := c.Request().Method
+			urlPath := r.URL.Path
+			method := r.Method
 
 			switch method {
 			case http.MethodGet:
 				if strings.HasPrefix(urlPath, m.pathFixed.Code) {
-					return m.CodeFlow(c)
+					m.CodeFlow(w, r)
+
+					return
 				}
 
 				if strings.HasPrefix(urlPath, m.pathFixed.InfoUI) {
-					return m.InformationUI(c)
+					m.InformationUI(w, r)
+
+					return
 				}
 
-				// check to redirection
-				sessionM := session.GlobalRegistry.Get(m.SessionMiddleware)
-				if sessionM == nil {
-					return c.JSON(http.StatusInternalServerError, model.MetaData{Message: "session middleware not found"})
-				}
-				isLogged, err := sessionM.IsLogged(c)
+				customClaim, isLogged, err := m.session.IsLogged(w, r)
 				if isLogged {
-					return sessionM.RedirectToMain(c)
+					if responseType := r.URL.Query().Get("response_type"); responseType == "code" {
+						m.AuthCodeReturn(w, r, customClaim)
+
+						return
+					}
+
+					m.session.RedirectToMain(w, r)
+
+					return
 				}
 				if err != nil {
-					_ = sessionM.DelToken(c)
+					_ = m.session.DelToken(w, r)
 				}
 
-				if authInfo, _ := strconv.ParseBool(c.QueryParam("auth_info")); authInfo {
-					return m.InformationUI(c)
+				if authInfo, _ := strconv.ParseBool(r.URL.Query().Get("auth_info")); authInfo {
+					m.InformationUI(w, r)
+
+					return
 				}
 
-				m.RemoveSuccess(c)
+				m.RemoveSuccess(w)
 
 				if m.UI.ExternalFolder {
-					return next(c)
+					next.ServeHTTP(w, r)
+
+					return
 				}
 
-				return m.View(c.Response(), c.Request())
+				m.View(w, r)
+
+				return
 			case http.MethodPost:
 				if strings.HasPrefix(urlPath, m.pathFixed.Token) {
-					return m.PasswordFlow(c)
+					m.PasswordFlow(w, r)
+
+					return
 				}
 			}
 
 			// not found
-			return c.String(http.StatusNotFound, http.StatusText(http.StatusNotFound))
-		}
+			httputil.JSON(w, http.StatusNotFound, model.MetaData{Message: http.StatusText(http.StatusNotFound)})
+
+			return
+		})
 	}, nil
 }

@@ -1,6 +1,6 @@
 module github.com/worldline-go/turna
 
-go 1.23
+go 1.24
 
 require (
 	github.com/MicahParks/keyfunc/v2 v2.0.3
@@ -17,30 +17,29 @@ require (
 	github.com/gorilla/securecookie v1.1.2
 	github.com/gorilla/sessions v1.4.0
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
-	github.com/labstack/echo/v4 v4.13.3
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/rakunlabs/chu v0.1.2
-	github.com/rakunlabs/into v0.4.0
+	github.com/rakunlabs/into v0.4.1
 	github.com/rakunlabs/logi v0.4.0
 	github.com/rbcervilla/redisstore/v9 v9.0.0
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/rs/zerolog v1.33.0
 	github.com/rytsh/liz/loader v0.2.5
-	github.com/rytsh/mugo v0.8.2
+	github.com/rytsh/mugo v0.8.3
 	github.com/spf13/cast v1.7.1
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/things-go/go-socks5 v0.0.5
 	github.com/timshannon/badgerhold/v4 v4.0.3
 	github.com/twmb/tlscfg v1.2.1
-	github.com/worldline-go/auth v0.7.7
-	github.com/worldline-go/cache v0.2.2
+	github.com/worldline-go/cache v0.2.3
 	github.com/worldline-go/igconfig v0.3.0
 	github.com/worldline-go/klient v0.9.7
 	github.com/worldline-go/logz v0.5.1
 	github.com/worldline-go/struct2 v1.3.1
 	golang.org/x/crypto v0.32.0
 	golang.org/x/exp v0.0.0-20250103183323-7d7fa50e5329
+	golang.org/x/oauth2 v0.25.0
 	google.golang.org/grpc v1.69.2
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -93,8 +92,6 @@ require (
 	github.com/jaswdr/faker v1.19.1 // indirect
 	github.com/jhump/protoreflect v1.16.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
-	github.com/labstack/echo-jwt/v4 v4.2.0 // indirect
-	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/lmittmann/tint v1.0.5 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -122,12 +119,9 @@ require (
 	github.com/spf13/afero v1.12.0 // indirect
 	github.com/tdewolff/minify/v2 v2.21.3 // indirect
 	github.com/tdewolff/parse/v2 v2.7.19 // indirect
-	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/net v0.33.0 // indirect
-	golang.org/x/oauth2 v0.25.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/text v0.21.0 // indirect

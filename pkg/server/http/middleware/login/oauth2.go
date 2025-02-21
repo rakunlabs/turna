@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/auth"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/session"
 )
 
@@ -30,7 +30,7 @@ func (m *Login) PasswordToken(ctx context.Context, username, password string, oa
 	}
 
 	// set if style is params
-	AuthAdd(req, oauth2.ClientID, oauth2.ClientSecret, oauth2.AuthHeaderStyle)
+	auth.AuthAdd(req, oauth2.ClientID, oauth2.ClientSecret, oauth2.AuthHeaderStyle)
 
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("accept", "application/json")
@@ -58,9 +58,9 @@ func (m *Login) PasswordToken(ctx context.Context, username, password string, oa
 }
 
 // CodeToken get token and set the cookie/session.
-func (m *Login) CodeToken(c echo.Context, code, providerName string, oauth2 *session.Oauth2) ([]byte, int, error) {
-	ctx := c.Request().Context()
-	redirectURI, err := m.AuthCodeRedirectURL(c.Request(), providerName)
+func (m *Login) CodeToken(r *http.Request, code, providerName string, oauth2 *session.Oauth2) ([]byte, int, error) {
+	ctx := r.Context()
+	redirectURI, err := m.AuthCodeRedirectURL(r, providerName)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
@@ -82,7 +82,7 @@ func (m *Login) CodeToken(c echo.Context, code, providerName string, oauth2 *ses
 	}
 
 	// set if style is params
-	AuthAdd(req, oauth2.ClientID, oauth2.ClientSecret, oauth2.AuthHeaderStyle)
+	auth.AuthAdd(req, oauth2.ClientID, oauth2.ClientSecret, oauth2.AuthHeaderStyle)
 
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("accept", "application/json")
@@ -107,36 +107,4 @@ func (m *Login) CodeToken(c echo.Context, code, providerName string, oauth2 *ses
 	}
 
 	return body, statusCode, nil
-}
-
-// AuthAdd is a function to set Authorization header.
-//
-// Style must be AuthHeaderStyleBasic or AuthHeaderStyleBearerSecret, otherwise it does nothing.
-//
-// Default style is AuthHeaderStyleBasic.
-func AuthAdd(req *http.Request, clientID, clientSecret string, style session.AuthHeaderStyle) {
-	if req == nil {
-		return
-	}
-
-	switch style {
-	case session.AuthHeaderStyleBasic:
-		req.SetBasicAuth(url.QueryEscape(clientID), url.QueryEscape(clientSecret))
-	case session.AuthHeaderStyleBearerSecret:
-		SetBearerAuth(req, clientSecret)
-	case session.AuthHeaderStyleParams:
-		query := req.URL.Query()
-		if clientID != "" {
-			query.Add("client_id", clientID)
-		}
-		if clientSecret != "" {
-			query.Add("client_secret", clientSecret)
-		}
-		req.URL.RawQuery = query.Encode()
-	}
-}
-
-// SetBearerAuth sets the Authorization header to use Bearer token.
-func SetBearerAuth(r *http.Request, token string) {
-	r.Header.Add("Authorization", "Bearer "+token)
 }

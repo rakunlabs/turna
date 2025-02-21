@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/gorilla/sessions"
-	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/session/store"
 )
 
@@ -98,27 +97,27 @@ func (m *Session) SetStore(ctx context.Context) error {
 	}
 }
 
-func (m *Session) SetToken(c echo.Context, token []byte, providerName string) error {
+func (m *Session) SetToken(w http.ResponseWriter, r *http.Request, token []byte, providerName string) error {
 	cookieValue := base64.StdEncoding.EncodeToString(token)
 
 	// set the cookie
-	session, _ := m.store.Get(c.Request(), m.GetCookieName(c))
+	session, _ := m.store.Get(r, m.GetCookieName(r))
 	session.Values[TokenKey] = cookieValue
 	session.Values[ProviderKey] = providerName
 
-	if err := session.Save(c.Request(), c.Response()); err != nil {
+	if err := session.Save(r, w); err != nil {
 		return err
 	}
 
 	// add header for session set
-	c.Response().Header().Set("X-Session-Set", "true")
+	w.Header().Set("X-Session-Set", "true")
 
 	return nil
 }
 
-func (m *Session) DelToken(c echo.Context) error {
-	session, _ := m.store.Get(c.Request(), m.GetCookieName(c))
+func (m *Session) DelToken(w http.ResponseWriter, r *http.Request) error {
+	session, _ := m.store.Get(r, m.GetCookieName(r))
 	session.Options.MaxAge = -1
 
-	return session.Save(c.Request(), c.Response())
+	return session.Save(r, w)
 }

@@ -5,9 +5,10 @@ import (
 	"net/http"
 	"regexp"
 
-	"github.com/labstack/echo/v4"
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/claims"
+	"github.com/worldline-go/turna/pkg/server/http/tcontext"
 	"github.com/worldline-go/turna/pkg/server/model"
-	"github.com/worldline-go/auth/claims"
 )
 
 var (
@@ -56,7 +57,7 @@ type Map struct {
 	methods map[string]struct{} `cfg:"-"`
 }
 
-func (m *RoleCheck) Middleware() (echo.MiddlewareFunc, error) {
+func (m *RoleCheck) Middleware() (func(http.Handler) http.Handler, error) {
 	for i := range m.PathMap {
 		regexPath, err := regexp.Compile(m.PathMap[i].RegexPath)
 		if err != nil {
@@ -74,16 +75,17 @@ func (m *RoleCheck) Middleware() (echo.MiddlewareFunc, error) {
 		}
 	}
 
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			request := c.Request()
-			path := request.URL.Path
-			method := request.Method
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			path := r.URL.Path
+			method := r.Method
 
 			// get user roles from context
-			claimValue, ok := c.Get("claims").(*claims.Custom)
+			claimValue, ok := tcontext.Get(r, "claims").(*claims.Custom)
 			if !ok {
-				return c.JSON(http.StatusUnauthorized, model.MetaData{Message: "claims not found"})
+				httputil.JSON(w, http.StatusUnauthorized, model.MetaData{Message: "claims not found"})
+
+				return
 			}
 
 			roles := claimValue.RoleSet
@@ -93,12 +95,16 @@ func (m *RoleCheck) Middleware() (echo.MiddlewareFunc, error) {
 					for _, m := range pathMap.Map {
 						if m.AllMethods {
 							if m.RolesDisabled {
-								return next(c)
+								next.ServeHTTP(w, r)
+
+								return
 							}
 
 							for _, role := range m.Roles {
 								if _, ok := roles[role]; ok {
-									return next(c)
+									next.ServeHTTP(w, r)
+
+									return
 								}
 							}
 						}
@@ -106,12 +112,16 @@ func (m *RoleCheck) Middleware() (echo.MiddlewareFunc, error) {
 						if m.ReadMethods {
 							if _, ok := ReadMethods[method]; ok {
 								if m.RolesDisabled {
-									return next(c)
+									next.ServeHTTP(w, r)
+
+									return
 								}
 
 								for _, role := range m.Roles {
 									if _, ok := roles[role]; ok {
-										return next(c)
+										next.ServeHTTP(w, r)
+
+										return
 									}
 								}
 							}
@@ -120,12 +130,16 @@ func (m *RoleCheck) Middleware() (echo.MiddlewareFunc, error) {
 						if m.WriteMethods {
 							if _, ok := WriteMethods[method]; ok {
 								if m.RolesDisabled {
-									return next(c)
+									next.ServeHTTP(w, r)
+
+									return
 								}
 
 								for _, role := range m.Roles {
 									if _, ok := roles[role]; ok {
-										return next(c)
+										next.ServeHTTP(w, r)
+
+										return
 									}
 								}
 							}
@@ -133,34 +147,48 @@ func (m *RoleCheck) Middleware() (echo.MiddlewareFunc, error) {
 
 						if _, ok := m.methods[method]; ok {
 							if m.RolesDisabled {
-								return next(c)
+								next.ServeHTTP(w, r)
+
+								return
 							}
 
 							for _, role := range m.Roles {
 								if _, ok := roles[role]; ok {
-									return next(c)
+									next.ServeHTTP(w, r)
+
+									return
 								}
 							}
 						}
 					}
 
 					if m.Redirect.Enable {
-						return c.Redirect(http.StatusTemporaryRedirect, m.Redirect.URL)
+						httputil.Redirect(w, http.StatusTemporaryRedirect, m.Redirect.URL)
+
+						return
 					}
 
-					return c.JSON(http.StatusForbidden, model.MetaData{Message: "role not authorized"})
+					httputil.JSON(w, http.StatusForbidden, model.MetaData{Message: "path not authorized"})
+
+					return
 				}
 			}
 
 			if m.AllowOthers {
-				return next(c)
+				next.ServeHTTP(w, r)
+
+				return
 			}
 
 			if m.Redirect.Enable {
-				return c.Redirect(http.StatusTemporaryRedirect, m.Redirect.URL)
+				httputil.Redirect(w, http.StatusTemporaryRedirect, m.Redirect.URL)
+
+				return
 			}
 
-			return c.JSON(http.StatusForbidden, model.MetaData{Message: "path not authorized"})
-		}
+			httputil.JSON(w, http.StatusForbidden, model.MetaData{Message: "path not authorized"})
+
+			return
+		})
 	}, nil
 }

@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
 )
 
 func TestInject_Middleware(t *testing.T) {
@@ -61,13 +61,12 @@ func TestInject_Middleware(t *testing.T) {
 				ContentMap: tt.fields.ContentMap,
 				PathMap:    tt.fields.PathMap,
 			}
-			e := echo.New()
+
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			rec := httptest.NewRecorder()
-			c := e.NewContext(req, rec)
 
-			handler := func(c echo.Context) error {
-				return c.Blob(http.StatusOK, "text/html", tt.send)
+			handler := func(w http.ResponseWriter, r *http.Request) {
+				httputil.Blob(w, http.StatusOK, "text/html", tt.send)
 			}
 
 			// Assert
@@ -76,11 +75,7 @@ func TestInject_Middleware(t *testing.T) {
 				t.Errorf("Inject.Middleware() error = %v", err)
 			}
 
-			if err := middleware[0](func(c echo.Context) error {
-				return handler(c)
-			})(c); err != nil {
-				t.Errorf("Inject.Middleware() error = %v", err)
-			}
+			middleware(http.HandlerFunc(handler)).ServeHTTP(rec, req)
 
 			// Assert
 			if got := rec.Body.Bytes(); !bytes.Equal(got, tt.want) {

@@ -1,6 +1,7 @@
 type AuthInfo = {
   title: string;
   provider: Provider;
+  error?: string;
 };
 
 type Provider = {

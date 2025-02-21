@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/turna/pkg/server/http/httputil"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/requestid"
 	"github.com/worldline-go/turna/pkg/server/http/tcontext"
@@ -136,17 +135,7 @@ var ServerInfoMiddleware = func(next http.Handler) http.Handler {
 
 var PreMiddleware = func(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// set turna value
-		turna := &tcontext.Turna{
-			Vars: make(map[string]interface{}),
-		}
-
-		ctx := context.WithValue(r.Context(), tcontext.TurnaKey, turna)
-		r = r.WithContext(ctx)
-
-		echoContext := echo.New().NewContext(r, w)
-		echoContext.Set("turna", turna)
-		turna.EchoContext = echoContext
+		_, r = tcontext.New(w, r)
 
 		next.ServeHTTP(w, r)
 	})

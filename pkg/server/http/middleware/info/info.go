@@ -3,11 +3,12 @@ package info
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
-	"github.com/worldline-go/auth/pkg/authecho"
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/session"
 )
 
 type Info struct {
@@ -15,40 +16,52 @@ type Info struct {
 	Cookie string `cfg:"cookie"`
 	// Session cookie.
 	Session bool `cfg:"session"`
-	// SessionStoreName to get from auth_echo.
-	SessionStoreName string `cfg:"session_store_name"`
-	// SessionValueName to get from session, default is "cookie".
+	// SessionMiddleware to use, default is "session".
+	SessionMiddleware string `cfg:"session_middleware"`
+	// SessionValueName to get from session, default is "token".
 	SessionValueName string `cfg:"session_value_name"`
 	// Base64 decode when reading cookie.
 	Base64 bool `cfg:"base64"`
 	// Raw cookie to show
 	Raw bool `cfg:"raw"`
+
+	session *session.Session
 }
 
-func (s *Info) Middleware() echo.MiddlewareFunc {
-	if s.SessionValueName == "" {
-		s.SessionValueName = "cookie"
+func (m *Info) Init() error {
+	m.session = session.GlobalRegistry.Get(m.SessionMiddleware)
+	if m.session == nil {
+		return errors.New("session middleware not found")
 	}
 
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+	return nil
+}
+
+func (s *Info) Middleware() func(http.Handler) http.Handler {
+	if s.SessionValueName == "" {
+		s.SessionValueName = "token"
+	}
+
+	if s.SessionMiddleware == "" {
+		s.SessionMiddleware = "session"
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var retValue []byte
 
 			if s.Session {
-				sessionStore := authecho.Store.GetSessionFilesystem(s.SessionStoreName)
-				if sessionStore == nil {
-					return c.String(http.StatusNotFound, fmt.Sprintf("Session %s not found", s.SessionStoreName))
-				}
-
-				if vGet, err := sessionStore.Get(c.Request(), s.Cookie); !vGet.IsNew && err == nil {
+				if vGet, err := s.session.GetStore().Get(r, s.Cookie); !vGet.IsNew && err == nil {
 					// add the access token to the request
 					vStr, _ := vGet.Values[s.SessionValueName].(string)
 					retValue = []byte(vStr)
 				}
 			} else {
-				cookie, err := c.Cookie(s.Cookie)
+				cookie, err := r.Cookie(s.Cookie)
 				if err != nil {
-					return c.String(http.StatusNotFound, fmt.Sprintf("Cookie %s not found", s.Cookie))
+					httputil.HandleError(w, httputil.NewError(fmt.Sprintf("cookie %s not found", s.Cookie), err, http.StatusNotFound))
+
+					return
 				}
 
 				retValue = []byte(cookie.Value)
@@ -58,15 +71,19 @@ func (s *Info) Middleware() echo.MiddlewareFunc {
 				var err error
 				retValue, err = base64.StdEncoding.DecodeString(string(retValue))
 				if err != nil {
-					return c.String(http.StatusBadRequest, err.Error())
+					httputil.HandleError(w, httputil.NewError("base64 decode error", err, http.StatusBadRequest))
+
+					return
 				}
 			}
 
 			if s.Raw {
-				return c.String(http.StatusOK, string(retValue))
+				httputil.Blob(w, http.StatusOK, "text/plain", retValue)
+
+				return
 			}
 
-			return c.JSONPretty(http.StatusOK, json.RawMessage(retValue), "  ")
-		}
+			httputil.JSONBlob(w, http.StatusOK, json.RawMessage(retValue))
+		})
 	}
 }

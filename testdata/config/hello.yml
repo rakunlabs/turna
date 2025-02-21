@@ -19,6 +19,8 @@ server:
             Scheme: {{ .scheme }}
             Path: {{ .path }}
           template: true
+          headers:
+            X-Header: "TURNA"
       inject:
         inject:
           path_map: # map of content-type

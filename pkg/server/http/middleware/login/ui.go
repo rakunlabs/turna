@@ -40,8 +40,6 @@ func (m *Login) SetView() (func(http.Handler) http.Handler, error) {
 	return folder.Middleware()
 }
 
-func (m *Login) View(w http.ResponseWriter, r *http.Request) error {
+func (m *Login) View(w http.ResponseWriter, r *http.Request) {
 	m.UI.embedUI.ServeHTTP(w, r)
-
-	return nil
 }

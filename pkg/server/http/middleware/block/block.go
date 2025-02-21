@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
 )
 
 type Block struct {
@@ -13,7 +13,7 @@ type Block struct {
 	RegexPath string   `cfg:"regex_path"`
 }
 
-func (m *Block) Middleware() (echo.MiddlewareFunc, error) {
+func (m *Block) Middleware() (func(http.Handler) http.Handler, error) {
 	methodsSet := make(map[string]struct{}, len(m.Methods))
 	for _, m := range m.Methods {
 		methodsSet[strings.ToUpper(m)] = struct{}{}
@@ -29,19 +29,23 @@ func (m *Block) Middleware() (echo.MiddlewareFunc, error) {
 		rgxPath = rgx
 	}
 
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			if _, ok := methodsSet[c.Request().Method]; ok {
-				return c.String(http.StatusForbidden, "Method not allowed")
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := methodsSet[r.Method]; ok {
+				httputil.HandleError(w, httputil.NewError("method not allowed", nil, http.StatusForbidden))
+
+				return
 			}
 
 			if rgxPath != nil {
-				if rgxPath.MatchString(c.Request().URL.Path) {
-					return c.String(http.StatusForbidden, "Path not allowed")
+				if rgxPath.MatchString(r.URL.Path) {
+					httputil.HandleError(w, httputil.NewError("path not allowed", nil, http.StatusForbidden))
+
+					return
 				}
 			}
 
-			return next(c)
-		}
+			next.ServeHTTP(w, r)
+		})
 	}, nil
 }

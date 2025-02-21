@@ -1,6 +1,8 @@
 package headers
 
-import "github.com/labstack/echo/v4"
+import (
+	"net/http"
+)
 
 // Headers is a middleware that allows to add custom headers to the request and response.
 //
@@ -10,27 +12,29 @@ type Headers struct {
 	CustomResponseHeaders map[string]string `cfg:"custom_response_headers"`
 }
 
-func (h *Headers) Middleware() echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+func (h *Headers) Middleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			for k, v := range h.CustomRequestHeaders {
 				if v == "" {
-					c.Request().Header.Del(k)
+					r.Header.Del(k)
+
 					continue
 				}
 
-				c.Request().Header.Set(k, v)
+				r.Header.Set(k, v)
 			}
 			for k, v := range h.CustomResponseHeaders {
 				if v == "" {
-					c.Response().Header().Del(k)
+					w.Header().Del(k)
+
 					continue
 				}
 
-				c.Response().Header().Set(k, v)
+				w.Header().Set(k, v)
 			}
 
-			return next(c)
-		}
+			next.ServeHTTP(w, r)
+		})
 	}
 }

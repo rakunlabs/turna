@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"github.com/labstack/echo/v4"
 	"github.com/worldline-go/turna/pkg/render"
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
 	"github.com/worldline-go/turna/pkg/server/model"
 )
 
@@ -65,7 +65,7 @@ func (s *Inject) values(loadName string) ([]oldNew, error) {
 	return valuesOldNew, nil
 }
 
-func (s *Inject) Middleware() ([]echo.MiddlewareFunc, error) {
+func (s *Inject) Middleware() (func(http.Handler) http.Handler, error) {
 	if s.PathMap != nil {
 		for pathValue := range s.PathMap {
 			for i, injectContent := range s.PathMap[pathValue] {
@@ -122,41 +122,44 @@ func (s *Inject) Middleware() ([]echo.MiddlewareFunc, error) {
 		}
 	}
 
-	return []echo.MiddlewareFunc{func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			rec := &customResponseRecorder{
-				ResponseWriter: c.Response().Writer,
+				ResponseWriter: w,
 				body:           new(bytes.Buffer),
 			}
-			c.Response().Writer = rec
 
-			if err := next(c); err != nil {
-				return err
-			}
+			next.ServeHTTP(rec, r)
 
 			bodyBytes := rec.body.Bytes()
 
 			// check header gzip
-			encoding := c.Response().Header().Get("Content-Encoding")
+			encoding := rec.Header().Get("Content-Encoding")
 			if encoding != "" {
 				switch encoding {
 				case "gzip":
 					gzipReader, err := gzip.NewReader(bytes.NewReader(bodyBytes))
 					if err != nil {
-						return c.JSON(http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+						httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+
+						return
 					}
 
 					bodyBytes, err = io.ReadAll(gzipReader)
 					gzipReader.Close()
 					if err != nil {
-						return c.JSON(http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+						httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+
+						return
 					}
 				default:
-					return c.JSON(http.StatusInternalServerError, model.MetaData{Message: fmt.Sprintf("unknown Content-Encoding %s", encoding)})
+					httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: fmt.Sprintf("unknown Content-Encoding %s", encoding)})
+
+					return
 				}
 			}
 
-			contentType := c.Response().Header().Get(echo.HeaderContentType)
+			contentType := w.Header().Get(httputil.HeaderContentType)
 			contentTypeCheck := strings.Split(contentType, ";")[0]
 			for _, injectContent := range s.ContentMap[contentTypeCheck] {
 				if injectContent.Delay > 0 {
@@ -193,7 +196,7 @@ func (s *Inject) Middleware() ([]echo.MiddlewareFunc, error) {
 				}
 			}
 
-			urlPath := c.Request().URL.Path
+			urlPath := r.URL.Path
 			for pathValue := range s.PathMap {
 				if ok, _ := doublestar.Match(pathValue, urlPath); ok {
 					for _, injectContent := range s.PathMap[pathValue] {
@@ -237,27 +240,28 @@ func (s *Inject) Middleware() ([]echo.MiddlewareFunc, error) {
 					gzipWriter := gzip.NewWriter(&buf)
 					_, err := gzipWriter.Write(bodyBytes)
 					if err != nil {
-						return c.JSON(http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+						httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+
+						return
 					}
 					gzipWriter.Close()
 
 					bodyBytes = buf.Bytes()
 				default:
-					return c.JSON(http.StatusInternalServerError, model.MetaData{Message: fmt.Sprintf("unknown Content-Encoding %s", encoding)})
+					httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: fmt.Sprintf("unknown Content-Encoding %s", encoding)})
+
+					return
 				}
 			}
 
-			c.Response().Committed = false
-			c.Response().Header().Set(echo.HeaderContentLength, strconv.Itoa(len(bodyBytes)))
+			rec.ResponseWriter.Header().Set(httputil.HeaderContentLength, strconv.Itoa(len(bodyBytes)))
 			if rec.status != 0 {
 				rec.ResponseWriter.WriteHeader(rec.status)
 			}
 
 			_, _ = rec.ResponseWriter.Write(bodyBytes)
-
-			return nil
-		}
-	}}, nil
+		})
+	}, nil
 }
 
 type customResponseRecorder struct {

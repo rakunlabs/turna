@@ -1,13 +1,17 @@
 package login
 
-import "github.com/labstack/echo/v4"
+import (
+	"net/http"
 
-func (m *Login) SetSuccess(c echo.Context, success string) {
-	SetCookie(c.Response(), success, &m.SuccessCookie)
+	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/auth"
+)
+
+func (m *Login) SetSuccess(w http.ResponseWriter, success string) {
+	auth.SetCookie(w, success, &m.SuccessCookie)
 }
 
-func (m *Login) GetSuccess(c echo.Context) (string, error) {
-	cookie, err := c.Cookie(m.SuccessCookie.CookieName)
+func (m *Login) GetSuccess(r http.Request) (string, error) {
+	cookie, err := r.Cookie(m.SuccessCookie.CookieName)
 	if err != nil {
 		return "", err
 	}
@@ -15,6 +19,6 @@ func (m *Login) GetSuccess(c echo.Context) (string, error) {
 	return cookie.Value, nil
 }
 
-func (m *Login) RemoveSuccess(c echo.Context) {
-	RemoveCookie(c.Response(), &m.SuccessCookie)
+func (m *Login) RemoveSuccess(w http.ResponseWriter) {
+	auth.RemoveCookie(w, &m.SuccessCookie)
 }

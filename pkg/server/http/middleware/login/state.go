@@ -1,33 +1,18 @@
 package login
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
-	"strings"
+	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/auth"
 )
 
-// NewState generates cryptographically secure random state with base64 URL encoding.
-func NewState() (string, error) {
-	cryptoRandBytes := make([]byte, 16)
-	_, err := rand.Read(cryptoRandBytes)
-	if err != nil {
-		return "", err
-	}
-
-	base64State := strings.TrimRight(base64.URLEncoding.EncodeToString(cryptoRandBytes), "=")
-
-	return base64State, nil
+func (m *Login) SetState(w http.ResponseWriter, state string) {
+	auth.SetCookie(w, state, &m.StateCookie)
 }
 
-func (m *Login) SetState(c echo.Context, state string) {
-	SetCookie(c.Response(), state, &m.StateCookie)
-}
-
-func (m *Login) GetState(c echo.Context) (string, error) {
-	cookie, err := c.Cookie(m.StateCookie.CookieName)
+func (m *Login) GetState(r *http.Request) (string, error) {
+	cookie, err := r.Cookie(m.StateCookie.CookieName)
 	if err != nil {
 		return "", err
 	}
@@ -35,13 +20,13 @@ func (m *Login) GetState(c echo.Context) (string, error) {
 	return cookie.Value, nil
 }
 
-func (m *Login) CheckState(c echo.Context, check string) error {
-	state, err := m.GetState(c)
+func (m *Login) CheckState(w http.ResponseWriter, r *http.Request, check string) error {
+	state, err := m.GetState(r)
 	if err != nil {
 		return err
 	}
 
-	m.RemoveState(c)
+	m.RemoveState(w)
 
 	if state != check {
 		return fmt.Errorf("state is not valid")
@@ -50,6 +35,6 @@ func (m *Login) CheckState(c echo.Context, check string) error {
 	return nil
 }
 
-func (m *Login) RemoveState(c echo.Context) {
-	RemoveCookie(c.Response(), &m.StateCookie)
+func (m *Login) RemoveState(w http.ResponseWriter) {
+	auth.RemoveCookie(w, &m.StateCookie)
 }

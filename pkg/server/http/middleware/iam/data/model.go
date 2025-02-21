@@ -8,6 +8,9 @@ var (
 	ErrConflict       = errors.New("conflict")
 	ErrNotFound       = errors.New("not found")
 	ErrInvalidRequest = errors.New("invalid request")
+
+	True  = true
+	False = false
 )
 
 // Permission is a struct that represents a permission table in the database.
@@ -17,6 +20,7 @@ type Permission struct {
 	Resources   []Resource             `json:"resources"`
 	Description string                 `json:"description"`
 	Data        map[string]interface{} `json:"data"`
+	Scope       map[string][]string    `json:"scope"`
 
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
@@ -34,6 +38,7 @@ type PermissionPatch struct {
 	Resources   *[]Resource            `json:"resources"`
 	Description *string                `json:"description"`
 	Data        map[string]interface{} `json:"data"`
+	Scope       map[string][]string    `json:"scope"`
 }
 
 type Resource struct {
@@ -126,10 +131,11 @@ type UserPatch struct {
 type UserExtended struct {
 	*User
 
-	IsActive    bool          `json:"is_active"`
-	Roles       []IDName      `json:"roles,omitempty"`
-	Permissions []IDName      `json:"permissions,omitempty"`
-	Data        []interface{} `json:"data,omitempty"`
+	IsActive    bool                `json:"is_active"`
+	Roles       []IDName            `json:"roles,omitempty"`
+	Permissions []IDName            `json:"permissions,omitempty"`
+	Data        []interface{}       `json:"data,omitempty"`
+	Scope       map[string][]string `json:"scope,omitempty"`
 }
 
 type IDName struct {
@@ -245,6 +251,7 @@ type GetUserRequest struct {
 
 	ServiceAccount *bool `json:"service_account"`
 	Disabled       *bool `json:"disabled"`
+	LocalUser      *bool `json:"local_user"`
 
 	Limit  int64 `json:"limit"`
 	Offset int64 `json:"offset"`
@@ -252,6 +259,7 @@ type GetUserRequest struct {
 	AddRoles       bool `json:"add_role"`
 	AddPermissions bool `json:"add_permissions"`
 	AddData        bool `json:"add_data"`
+	AddScopeRoles  bool `json:"add_scope_roles"`
 
 	Sanitize bool `json:"sanitize"`
 }

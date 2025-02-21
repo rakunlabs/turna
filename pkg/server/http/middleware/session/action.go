@@ -2,16 +2,18 @@ package session
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/labstack/echo/v4"
-	"github.com/worldline-go/auth/claims"
-	"github.com/worldline-go/auth/providers"
-	"github.com/worldline-go/auth/request"
 	"github.com/worldline-go/klient"
+
+	"github.com/worldline-go/turna/pkg/server/http/httputil"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/claims"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/session/providers"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/session/request"
+	"github.com/worldline-go/turna/pkg/server/http/tcontext"
 )
 
 const actionToken = "token"
@@ -45,6 +47,8 @@ type Provider struct {
 	PasswordFlow bool `cfg:"password_flow"`
 	// Priority is use to sort provider.
 	Priority int `cfg:"priority"`
+	// Hide is use to hide provider.
+	Hide bool `cfg:"hide"`
 }
 
 type ProviderWrapper struct {
@@ -68,6 +72,7 @@ func (m *Session) SetAction() error {
 			klient.WithDisableRetry(true),
 			klient.WithDisableEnvValues(true),
 			klient.WithInsecureSkipVerify(m.Action.Token.InsecureSkipVerify),
+			klient.WithLogger(slog.Default()),
 		)
 		if err != nil {
 			return fmt.Errorf("cannot create klient: %w", err)
@@ -111,15 +116,15 @@ func (m *Session) SetAction() error {
 	return nil
 }
 
-func (m *Session) GetCookieName(c echo.Context) string {
-	if v, ok := c.Get(CtxCookieNameKey).(string); ok && v != "" {
+func (m *Session) GetCookieName(r *http.Request) string {
+	if v, ok := tcontext.Get(r, CtxCookieNameKey).(string); ok && v != "" {
 		return v
 	}
 
 	cookieName := m.CookieName
 
 	if len(m.CookieNameHosts) > 0 {
-		host := c.Request().Host
+		host := r.Host
 
 		for _, v := range m.CookieNameHosts {
 			if v.rgx != nil {
@@ -161,30 +166,42 @@ func addXUserHeader(r *http.Request, claim *claims.Custom, xUser []string, email
 	}
 }
 
-func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
+func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) {
 	if m.Action.Active == actionToken {
-		if authorizationHeader := c.Request().Header.Get("Authorization"); authorizationHeader != "" {
+		if authorizationHeader := r.Header.Get("Authorization"); authorizationHeader != "" {
 			// get token from header
 			if token := strings.TrimPrefix(authorizationHeader, "Bearer "); token != "" {
 				// validate token, check if token is valid
 				customClaims := &claims.Custom{}
 				jwtToken, err := m.Action.Token.keyFunc.ParseWithClaims(token, customClaims)
 				if err != nil {
-					c.Logger().Debugf("token is not valid: %v", err)
+					slog.Debug("token is not valid", "error", err.Error())
 
-					return c.JSON(http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+					httputil.JSON(w, http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+
+					return
+				}
+
+				if typ, _ := customClaims.Map["typ"].(string); typ == "Refresh" {
+					slog.Debug("token is refresh token")
+
+					httputil.JSON(w, http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+
+					return
 				}
 
 				// next middlewares can check roles
-				c.Set("claims", customClaims)
-				c.Set("provider", jwtToken.Header["provider_name"])
-				addXUserHeader(c.Request(), customClaims, m.Provider[jwtToken.Header["provider_name"].(string)].XUser, m.Provider[jwtToken.Header["provider_name"].(string)].EmailVerifyCheck)
+				tcontext.Set(r, "claims", customClaims)
+				tcontext.Set(r, "provider", jwtToken.Header["provider_name"])
+				addXUserHeader(r, customClaims, m.Provider[jwtToken.Header["provider_name"].(string)].XUser, m.Provider[jwtToken.Header["provider_name"].(string)].EmailVerifyCheck)
 
-				if v, _ := c.Get(CtxTokenHeaderDelKey).(bool); v {
-					c.Request().Header.Del("Authorization")
+				if v, _ := tcontext.Get(r, CtxTokenHeaderKey).(bool); v {
+					r.Header.Del("Authorization")
 				}
 
-				return next(c)
+				next.ServeHTTP(w, r)
+
+				return
 			}
 		}
 
@@ -195,39 +212,47 @@ func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 		// check if token exist in store
 		token64 := ""
 		providerName := ""
-		if v, err := m.store.Get(c.Request(), m.GetCookieName(c)); !v.IsNew && err == nil {
+		if v, err := m.store.Get(r, m.GetCookieName(r)); !v.IsNew && err == nil {
 			// add the access token to the request
 			token64, _ = v.Values[TokenKey].(string)
 			providerName, _ = v.Values[ProviderKey].(string)
 		} else {
 			if err != nil {
-				c.Logger().Errorf("cannot get session: %v", err)
+				slog.Error("cannot get session", "error", err.Error())
 			}
 
 			// cookie not found, redirect to login page
-			return m.RedirectToLogin(c, m.store, true, false)
+			m.RedirectToLogin(w, r, true, false)
+
+			return
 		}
 
 		// check if token is valid
 		token, err := ParseToken64(token64)
 		if err != nil {
-			c.Logger().Errorf("cannot parse token: %v", err)
-			return m.RedirectToLogin(c, m.store, true, true)
+			slog.Error("cannot parse token", "error", err.Error())
+			m.RedirectToLogin(w, r, true, true)
+
+			return
 		}
 
 		// check if token is expired
 		if !m.Action.Token.DisableRefresh {
 			v, err := IsRefreshNeed(token.AccessToken)
 			if err != nil {
-				c.Logger().Errorf("cannot check if token is expired: %v", err)
-				return m.RedirectToLogin(c, m.store, true, true)
+				slog.Error("cannot check if token is expired", "error", err.Error())
+				m.RedirectToLogin(w, r, true, true)
+
+				return
 			}
 
 			if v {
 				provider, ok := m.Provider[providerName]
 				if !ok || provider.Oauth2 == nil {
-					c.Logger().Errorf("cannot find provider %q", providerName)
-					return m.RedirectToLogin(c, m.store, true, true)
+					slog.Error("cannot find provider", "provider", providerName)
+					m.RedirectToLogin(w, r, true, true)
+
+					return
 				}
 
 				requestConfig := request.AuthRequestConfig{
@@ -238,26 +263,32 @@ func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 
 				requestConfig.Scopes = strings.Fields(token.Scope)
 
-				refreshData, err := m.Action.Token.auth.RefreshToken(c.Request().Context(), request.RefreshTokenConfig{
+				refreshData, err := m.Action.Token.auth.RefreshToken(r.Context(), request.RefreshTokenConfig{
 					RefreshToken:      token.RefreshToken,
 					AuthRequestConfig: requestConfig,
 				})
 				if err != nil {
-					c.Logger().Warnf("cannot refresh token: %v", err)
-					return m.RedirectToLogin(c, m.store, true, true)
+					slog.Error("cannot refresh token", "error", err.Error())
+					m.RedirectToLogin(w, r, true, true)
+
+					return
 				}
 
 				// set new token to the store
-				if err := m.SetToken(c, refreshData, providerName); err != nil {
-					c.Logger().Errorf("cannot set session: %v", err)
-					return m.RedirectToLogin(c, m.store, true, true)
+				if err := m.SetToken(w, r, refreshData, providerName); err != nil {
+					slog.Error("cannot set session", "error", err.Error())
+					m.RedirectToLogin(w, r, true, true)
+
+					return
 				}
 
 				// add the access token to the request
 				token, err = ParseToken(refreshData)
 				if err != nil {
-					c.Logger().Errorf("cannot parse token: %v", err)
-					return m.RedirectToLogin(c, m.store, true, true)
+					slog.Error("cannot parse token", "error", err.Error())
+					m.RedirectToLogin(w, r, true, true)
+
+					return
 				}
 			}
 		}
@@ -266,68 +297,76 @@ func (m *Session) Do(next echo.HandlerFunc, c echo.Context) error {
 		customClaims := &claims.Custom{}
 		jwtToken, err := m.Action.Token.keyFunc.ParseWithClaims(token.AccessToken, customClaims)
 		if err != nil {
-			c.Logger().Debugf("token is not valid: %v", err)
-			return m.RedirectToLogin(c, m.store, true, true)
+			slog.Debug("token is not valid", "error", err.Error())
+			m.RedirectToLogin(w, r, true, true)
+
+			return
 		}
 
 		// next middlewares can check roles
-		c.Set("claims", customClaims)
-		c.Set("provider", jwtToken.Header["provider_name"])
-		addXUserHeader(c.Request(), customClaims, m.Provider[jwtToken.Header["provider_name"].(string)].XUser, m.Provider[jwtToken.Header["provider_name"].(string)].EmailVerifyCheck)
+		tcontext.Set(r, "claims", customClaims)
+		tcontext.Set(r, "provider", jwtToken.Header["provider_name"])
+		addXUserHeader(r, customClaims, m.Provider[jwtToken.Header["provider_name"].(string)].XUser, m.Provider[jwtToken.Header["provider_name"].(string)].EmailVerifyCheck)
 
 		// add the access token to the request
-		if v, _ := c.Get(CtxTokenHeaderKey).(bool); v {
-			c.Request().Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.AccessToken))
+		if v, _ := tcontext.Get(r, CtxTokenHeaderKey).(bool); v {
+			r.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.AccessToken))
 		}
 
-		if v, _ := c.Get(CtxTokenHeaderDelKey).(bool); v {
-			c.Request().Header.Del("Authorization")
+		if v, _ := tcontext.Get(r, CtxTokenHeaderDelKey).(bool); v {
+			r.Header.Del("Authorization")
 		}
 
-		return next(c)
+		next.ServeHTTP(w, r)
+
+		return
 	}
 
-	return c.JSON(http.StatusNotFound, MetaData{Error: fmt.Sprintf("action %q not found", m.Action.Active)})
+	httputil.JSON(w, http.StatusNotFound, MetaData{Error: fmt.Sprintf("action %q not found", m.Action.Active)})
 }
 
-func (m *Session) RedirectToLogin(c echo.Context, store StoreInf, addRedirectPath bool, removeSession bool) error {
+func (m *Session) RedirectToLogin(w http.ResponseWriter, r *http.Request, addRedirectPath bool, removeSession bool) {
 	// check redirection is disabled
-	if v, _ := c.Get(CtxDisableRedirectKey).(bool); v {
-		return c.JSON(http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+	if v, _ := tcontext.Get(r, CtxDisableRedirectKey).(bool); v {
+		httputil.JSON(w, http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+
+		return
 	}
 
 	if removeSession {
-		if err := m.DelToken(c); err != nil {
-			c.Logger().Debugf("cannot remove session: %v", err)
+		if err := m.DelToken(w, r); err != nil {
+			slog.Error("cannot remove session", "error", err.Error())
 		}
 	}
 
 	// add redirect_path query param
 	if !addRedirectPath {
-		return c.Redirect(http.StatusTemporaryRedirect, m.Action.Token.LoginPath)
+		httputil.Redirect(w, http.StatusTemporaryRedirect, m.Action.Token.LoginPath)
+
+		return
 	}
 
-	return c.Redirect(http.StatusTemporaryRedirect, loginPathWithRedirect(c, m.Action.Token.LoginPath))
+	httputil.Redirect(w, http.StatusTemporaryRedirect, loginPathWithRedirect(r, m.Action.Token.LoginPath))
 }
 
-func loginPathWithRedirect(c echo.Context, loginPath string) string {
-	redirectPath := c.Request().URL.Path
-	if c.Request().URL.RawQuery != "" {
-		redirectPath = fmt.Sprintf("%s?%s", redirectPath, c.Request().URL.RawQuery)
+func loginPathWithRedirect(r *http.Request, loginPath string) string {
+	redirectPath := r.URL.Path
+	if r.URL.RawQuery != "" {
+		redirectPath = fmt.Sprintf("%s?%s", redirectPath, r.URL.RawQuery)
 	}
 
-	if (redirectPath == "" || redirectPath == "/") && c.Request().URL.RawQuery == "" {
+	if (redirectPath == "" || redirectPath == "/") && r.URL.RawQuery == "" {
 		return loginPath
 	}
 
 	return fmt.Sprintf("%s?redirect_path=%s", loginPath, url.QueryEscape(redirectPath))
 }
 
-func (m *Session) GetToken(c echo.Context) (*TokenData, *Oauth2, error) {
+func (m *Session) GetToken(r *http.Request) (*TokenData, *Oauth2, error) {
 	// check if token exist in store
 	v64 := ""
 	providerName := ""
-	if v, err := m.store.Get(c.Request(), m.GetCookieName(c)); !v.IsNew && err == nil {
+	if v, err := m.store.Get(r, m.GetCookieName(r)); !v.IsNew && err == nil {
 		// add the access token to the request
 		v64, _ = v.Values[TokenKey].(string)
 		providerName, _ = v.Values[ProviderKey].(string)
@@ -343,13 +382,13 @@ func (m *Session) GetToken(c echo.Context) (*TokenData, *Oauth2, error) {
 	// check if token is valid
 	token, err := ParseToken64(v64)
 	if err != nil {
-		c.Logger().Errorf("cannot parse token: %v", err)
+		slog.Error("cannot parse token", "error", err.Error())
 		return nil, nil, err
 	}
 
 	provider, ok := m.Provider[providerName]
 	if !ok || provider.Oauth2 == nil {
-		c.Logger().Errorf("cannot find provider %q", providerName)
+		slog.Error("cannot find provider", "provider", providerName)
 		return nil, nil, fmt.Errorf("cannot find provider %q", providerName)
 	}
 
@@ -357,43 +396,43 @@ func (m *Session) GetToken(c echo.Context) (*TokenData, *Oauth2, error) {
 }
 
 // IsLogged check token is exist and valid.
-func (m *Session) IsLogged(c echo.Context) (bool, error) {
+func (m *Session) IsLogged(w http.ResponseWriter, r *http.Request) (*claims.Custom, bool, error) {
 	// check if token exist in store
 	v64 := ""
 	providerName := ""
-	if v, err := m.store.Get(c.Request(), m.GetCookieName(c)); !v.IsNew && err == nil {
+	if v, err := m.store.Get(r, m.GetCookieName(r)); !v.IsNew && err == nil {
 		// add the access token to the request
 		v64, _ = v.Values[TokenKey].(string)
 		providerName, _ = v.Values[ProviderKey].(string)
 	} else {
 		if err != nil {
-			return false, err
+			return nil, false, err
 		}
 
 		// cookie not found, redirect to login page
-		return false, nil
+		return nil, false, nil
 	}
 
 	// check if token is valid
 	token, err := ParseToken64(v64)
 	if err != nil {
-		c.Logger().Errorf("cannot parse token: %v", err)
-		return false, err
+		slog.Error("cannot parse token", "error", err.Error())
+		return nil, false, err
 	}
 
 	// check if token is expired
 	if !m.Action.Token.DisableRefresh {
 		v, err := IsRefreshNeed(token.AccessToken)
 		if err != nil {
-			c.Logger().Errorf("cannot check if token is expired: %v", err)
-			return false, err
+			slog.Error("cannot check if token is expired", "error", err.Error())
+			return nil, false, err
 		}
 
 		if v {
 			provider, ok := m.Provider[providerName]
 			if !ok || provider.Oauth2 == nil {
-				c.Logger().Errorf("cannot find provider %q", providerName)
-				return false, fmt.Errorf("cannot find provider %q", providerName)
+				slog.Error("cannot find provider", "provider", providerName)
+				return nil, false, fmt.Errorf("cannot find provider %q", providerName)
 			}
 
 			requestConfig := request.AuthRequestConfig{
@@ -404,44 +443,45 @@ func (m *Session) IsLogged(c echo.Context) (bool, error) {
 
 			requestConfig.Scopes = strings.Fields(token.Scope)
 
-			refreshData, err := m.Action.Token.auth.RefreshToken(c.Request().Context(), request.RefreshTokenConfig{
+			refreshData, err := m.Action.Token.auth.RefreshToken(r.Context(), request.RefreshTokenConfig{
 				RefreshToken:      token.RefreshToken,
 				AuthRequestConfig: requestConfig,
 			})
 			if err != nil {
-				c.Logger().Errorf("cannot refresh token: %v", err)
-				return false, err
+				slog.Error("cannot refresh token", "error", err.Error())
+				return nil, false, err
 			}
 
 			// set new token to the store
-			if err := m.SetToken(c, refreshData, providerName); err != nil {
-				c.Logger().Errorf("cannot set session: %v", err)
-				return false, err
+			if err := m.SetToken(w, r, refreshData, providerName); err != nil {
+				slog.Error("cannot set session", "error", err.Error())
+				return nil, false, err
 			}
 
 			// add the access token to the request
 			token, err = ParseToken(refreshData)
 			if err != nil {
-				c.Logger().Errorf("cannot parse token: %v", err)
-				return false, err
+				slog.Error("cannot parse token", "error", err.Error())
+				return nil, false, err
 			}
 		}
 	}
 
 	// check if token is valid
-	if _, err := m.Action.Token.keyFunc.ParseWithClaims(token.AccessToken, &jwt.RegisteredClaims{}); err != nil {
-		c.Logger().Debugf("token is not valid: %v", err)
-		return false, err
+	customClaim := &claims.Custom{}
+	if _, err := m.Action.Token.keyFunc.ParseWithClaims(token.AccessToken, customClaim); err != nil {
+		slog.Debug("token is not valid", "error", err.Error())
+		return nil, false, err
 	}
 
-	return true, nil
+	return customClaim, true, nil
 }
 
-func (m *Session) RedirectToMain(c echo.Context) error {
-	redirectPath := c.Request().URL.Query().Get("redirect_path")
+func (m *Session) RedirectToMain(w http.ResponseWriter, r *http.Request) {
+	redirectPath := r.URL.Query().Get("redirect_path")
 	if redirectPath == "" {
 		redirectPath = "/"
 	}
 
-	return c.Redirect(http.StatusTemporaryRedirect, redirectPath)
+	httputil.Redirect(w, http.StatusTemporaryRedirect, redirectPath)
 }

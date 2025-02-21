@@ -134,7 +134,7 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserEx
 		userExtended = make([]data.UserExtended, len(users))
 
 		for i, user := range users {
-			extended, err := b.extendUser(txn, req.AddRoles, req.AddPermissions, req.AddData, &user)
+			extended, err := b.extendUser(txn, req.AddRoles, req.AddPermissions, req.AddData, req.AddScopeRoles, &user)
 			if err != nil {
 				return err
 			}
@@ -250,6 +250,14 @@ func (b *Badger) TxGetUser(txn *badger.Txn, req data.GetUserRequest) (*data.User
 		}
 	}
 
+	if req.LocalUser != nil {
+		if badgerHoldQuery.IsEmpty() {
+			badgerHoldQuery = badgerhold.Where("Local").Eq(*req.LocalUser)
+		} else {
+			badgerHoldQuery = badgerHoldQuery.And("Local").Eq(*req.LocalUser)
+		}
+	}
+
 	if err := b.db.TxFindOne(txn, &user, badgerHoldQuery); err != nil {
 		if errors.Is(err, badgerhold.ErrNotFound) {
 			return nil, fmt.Errorf("user with id %s not found; %w", req.ID, data.ErrNotFound)
@@ -258,7 +266,7 @@ func (b *Badger) TxGetUser(txn *badger.Txn, req data.GetUserRequest) (*data.User
 		return nil, err
 	}
 
-	extendedUser, err = b.extendUser(txn, req.AddRoles, req.AddPermissions, req.AddData, &user)
+	extendedUser, err = b.extendUser(txn, req.AddRoles, req.AddPermissions, req.AddData, req.AddScopeRoles, &user)
 	if err != nil {
 		return nil, err
 	}
@@ -522,12 +530,12 @@ func (b *Badger) DeleteUser(ctx context.Context, id string) error {
 	return nil
 }
 
-func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addData bool, user *data.User) (data.UserExtended, error) {
+func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addData, addScopeRoles bool, user *data.User) (data.UserExtended, error) {
 	userExtended := data.UserExtended{
 		User: user,
 	}
 
-	if !addRoles {
+	if !addRoles && !addRolePermissions && !addData && !addScopeRoles {
 		return userExtended, nil
 	}
 
@@ -540,15 +548,18 @@ func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addDa
 	var roles []data.IDName
 	var permissions []data.IDName
 	var rolePermissionData []interface{}
+	var scope map[string][]string
 
 	permissionIDs := make(map[string]struct{}, 100)
 
 	// get roles permissions
 	if err := b.db.TxForEach(txn, badgerhold.Where("ID").In(toInterfaceSlice(roleIDs)...), func(role *data.Role) error {
-		roles = append(roles, data.IDName{
-			ID:   role.ID,
-			Name: role.Name,
-		})
+		if addRoles {
+			roles = append(roles, data.IDName{
+				ID:   role.ID,
+				Name: role.Name,
+			})
+		}
 
 		if addData {
 			if len(role.Data) > 0 {
@@ -556,7 +567,7 @@ func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addDa
 			}
 		}
 
-		if addRolePermissions || addData {
+		if addRolePermissions || addData || addScopeRoles {
 			// get permissions
 			for _, permissionID := range role.PermissionIDs {
 				if _, ok := permissionIDs[permissionID]; ok {
@@ -581,6 +592,16 @@ func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addDa
 					}
 				}
 
+				if addScopeRoles {
+					if scope == nil {
+						scope = make(map[string][]string)
+					}
+
+					for s, v := range permission.Scope {
+						scope[s] = append(scope[s], v...)
+					}
+				}
+
 				permissionIDs[permissionID] = struct{}{}
 			}
 		}
@@ -590,9 +611,17 @@ func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addDa
 		return data.UserExtended{}, err
 	}
 
+	for s, v := range scope {
+		scope[s] = slicesUnique(v)
+	}
+
 	userExtended.Roles = roles
 	userExtended.Permissions = permissions
 	userExtended.Data = rolePermissionData
+
+	if addScopeRoles {
+		userExtended.Scope = scope
+	}
 
 	return userExtended, nil
 }
