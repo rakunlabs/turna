@@ -2,7 +2,7 @@ package login
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -46,7 +46,7 @@ func (m *Login) PasswordToken(ctx context.Context, username, password string, oa
 		}
 
 		if statusCode = r.StatusCode; statusCode < 200 || statusCode > 299 {
-			return fmt.Errorf(string(body))
+			return errors.New(string(body))
 		}
 
 		return nil
@@ -98,7 +98,7 @@ func (m *Login) CodeToken(r *http.Request, code, providerName string, oauth2 *se
 		}
 
 		if statusCode = r.StatusCode; statusCode < 200 || statusCode > 299 {
-			return fmt.Errorf(string(body))
+			return errors.New(string(body))
 		}
 
 		return nil

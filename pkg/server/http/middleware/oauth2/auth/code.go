@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -155,7 +156,7 @@ func (m *Code) CodeToken(ctx context.Context, r *http.Request, code, providerNam
 		}
 
 		if statusCode = r.StatusCode; statusCode < 200 || statusCode > 299 {
-			return fmt.Errorf(string(body))
+			return errors.New(string(body))
 		}
 
 		return nil

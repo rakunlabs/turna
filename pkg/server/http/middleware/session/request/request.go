@@ -2,7 +2,7 @@ package request
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -69,7 +69,7 @@ func RawRequest(req *http.Request, client *http.Client) ([]byte, error) {
 	r.Body.Close()
 
 	if code := r.StatusCode; code < 200 || code > 299 {
-		return nil, fmt.Errorf(string(body))
+		return nil, errors.New(string(body))
 	}
 
 	return body, nil
