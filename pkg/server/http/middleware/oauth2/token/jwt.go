@@ -98,7 +98,7 @@ func (t *JWT) Generate(mapClaims map[string]interface{}, expDate int64) (string,
 		claims["exp"] = expDate
 	}
 
-	if _, ok := claims["type"]; !ok {
+	if _, ok := claims["typ"]; !ok {
 		claims["typ"] = "Bearer"
 	}
 	claims["iat"] = time.Now().Unix()
