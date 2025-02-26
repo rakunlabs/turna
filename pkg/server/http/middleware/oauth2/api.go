@@ -18,17 +18,32 @@ import (
 	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/ldap"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/auth"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/token"
+	"github.com/worldline-go/turna/pkg/server/model"
 )
 
 func (m *Oauth2) MuxSet(prefix string) *chi.Mux {
 	mux := chi.NewMux()
 
 	mux.Get(prefix+"/auth/{provider}", m.APIAuth)
-	mux.Get(prefix+"/code/{provider}", m.CodeAuth)
+	mux.Get(prefix+"/code/{provider}", m.APICodeAuth)
 	mux.Post(prefix+"/token", m.APIToken)
 	mux.Get(prefix+"/certs", m.APICerts)
+	mux.Get(prefix+"{custom}/.well-known/openid-configuration", m.APIWellKnown)
 
 	return mux
+}
+
+func (m *Oauth2) APIWellKnown(w http.ResponseWriter, r *http.Request) {
+	customWell := chi.URLParam(r, "custom")
+	if customWell != "" {
+		if well, ok := m.WellKnown[customWell]; ok {
+			httputil.JSON(w, http.StatusOK, well)
+
+			return
+		}
+	}
+
+	httputil.JSON(w, http.StatusFailedDependency, model.MetaData{Message: "not_found"})
 }
 
 func (m *Oauth2) APICerts(w http.ResponseWriter, r *http.Request) {
@@ -82,10 +97,11 @@ func (m *Oauth2) APIAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stateValue, err := EncodeState(State{
+	stateValue, err := Encode(State{
 		RedirectURI: r.URL.Query().Get("redirect_uri"),
 		State:       state,
 		OrgState:    r.URL.Query().Get("state"),
+		Scope:       strings.Fields(r.URL.Query().Get("scope")),
 	})
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
@@ -124,8 +140,8 @@ func (m *Oauth2) APIAuth(w http.ResponseWriter, r *http.Request) {
 	httputil.Redirect(w, http.StatusTemporaryRedirect, authCodeURL)
 }
 
-// CodeAuth will receive callback and generate new token and respond to redirection.
-func (m *Oauth2) CodeAuth(w http.ResponseWriter, r *http.Request) {
+// APICodeAuth will receive callback and generate new token and respond to redirection.
+func (m *Oauth2) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 	providerName := chi.URLParam(r, "provider")
 
 	provider := m.Providers[providerName]
@@ -172,7 +188,7 @@ func (m *Oauth2) CodeAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stateValue, err := DecodeState(stateRaw)
+	stateValue, err := Decode[State](stateRaw)
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "server_error",
@@ -215,9 +231,12 @@ func (m *Oauth2) CodeAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	alias, _ := v["email"].(string)
-	if alias == "" {
-		alias, _ = v["preferred_username"].(string)
+	var alias string
+	for _, k := range []string{"preferred_username", "email", "name"} {
+		if vAlias, _ := v[k].(string); vAlias != "" {
+			alias = vAlias
+			break
+		}
 	}
 
 	if alias == "" {
@@ -233,8 +252,22 @@ func (m *Oauth2) CodeAuth(w http.ResponseWriter, r *http.Request) {
 	// create code flow response
 	codeID := ulid.Make().String()
 
+	codeValue, err := Encode(Code{
+		Alias: alias,
+		Scope: stateValue.Scope,
+	})
+	if err != nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "server_error",
+			ErrorDescription: err.Error(),
+			code:             http.StatusInternalServerError,
+		})
+
+		return
+	}
+
 	// save code to store
-	if err := m.storeCache.Code.Set(r.Context(), "code_"+codeID, alias); err != nil {
+	if err := m.storeCache.Code.Set(r.Context(), "code_"+codeID, codeValue); err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "server_error",
 			ErrorDescription: err.Error(),
@@ -397,7 +430,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// get alias from code
-		alias, ok, err := m.storeCache.Code.Get(r.Context(), "code_"+accessTokenRequest.Code)
+		codeRaw, ok, err := m.storeCache.Code.Get(r.Context(), "code_"+accessTokenRequest.Code)
 		if err != nil || !ok {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
@@ -408,10 +441,21 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		codeValue, err := Decode[Code](codeRaw)
+		if err != nil {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "server_error",
+				ErrorDescription: err.Error(),
+				code:             http.StatusInternalServerError,
+			})
+
+			return
+		}
+
 		_ = m.storeCache.Code.Delete(r.Context(), "code_"+accessTokenRequest.Code)
 
-		user, err := m.iam.DB().GetUser(data.GetUserRequest{
-			Alias:         alias,
+		user, err := m.iam.GetOrCreateUser(data.GetUserRequest{
+			Alias:         codeValue.Alias,
 			AddScopeRoles: true,
 		})
 		if err != nil {
@@ -424,7 +468,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		m.GenerateToken(w, user.ID, user, clientID, nil, accessClient.Scope)
+		m.GenerateToken(w, user.ID, user, clientID, codeValue.Scope, accessClient.Scope)
 
 		return
 	case "password":
@@ -435,7 +479,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		user, err := m.iam.DB().GetUser(data.GetUserRequest{
+		user, err := m.iam.GetOrCreateUser(data.GetUserRequest{
 			Alias: accessTokenRequest.Username,
 		})
 		if err != nil && !errors.Is(err, data.ErrNotFound) {

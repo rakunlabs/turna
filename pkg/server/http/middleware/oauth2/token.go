@@ -13,9 +13,33 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var (
+	DefaultTokenLifetime   = time.Minute * 15
+	DefaultRefreshLifetime = time.Hour * 24
+)
+
 type Token struct {
 	KID  string `cfg:"kid"`
 	Cert Cert   `cfg:"cert"`
+
+	TokenLifetime   time.Duration `cfg:"token_lifetime"`
+	RefreshLifetime time.Duration `cfg:"refresh_lifetime"`
+}
+
+func (t *Token) GetTokenExpDate() int64 {
+	if t.TokenLifetime == 0 {
+		return time.Now().Add(DefaultTokenLifetime).Unix()
+	}
+
+	return time.Now().Add(t.TokenLifetime).Unix()
+}
+
+func (t *Token) GetRefreshExpDate() int64 {
+	if t.RefreshLifetime == 0 {
+		return time.Now().Add(DefaultRefreshLifetime).Unix()
+	}
+
+	return time.Now().Add(t.RefreshLifetime).Unix()
 }
 
 type Cert struct {
@@ -145,14 +169,12 @@ func (m *Oauth2) GenerateToken(w http.ResponseWriter, userID string, user *data.
 
 	// //////////////////////////////////////////
 
-	claimsAccess["resource_access"] = map[string]interface{}{
-		"finops": map[string]interface{}{
-			"roles": rolesList,
-		},
+	claimsAccess["realm_access"] = map[string]interface{}{
+		"roles": rolesList,
 	}
 
 	// //////////////////////////////////////////
-	accessToken, err := m.jwt.Generate(claimsAccess, time.Now().Add(time.Minute*15).Unix())
+	accessToken, err := m.jwt.Generate(claimsAccess, m.Token.GetTokenExpDate())
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "server_error",
@@ -165,11 +187,26 @@ func (m *Oauth2) GenerateToken(w http.ResponseWriter, userID string, user *data.
 
 	// generate refresh token
 	claimsRefresh := map[string]interface{}{
-		"sub": user.ID,
-		"azp": clientID,
-		"typ": "Refresh",
+		"sub":                user.ID,
+		"azp":                clientID,
+		"typ":                "Refresh",
+		"name":               user.Details["name"],
+		"preferred_username": user.Details["name"],
 	}
-	refreshToken, err := m.jwt.Generate(claimsRefresh, time.Now().Add(time.Hour*24).Unix())
+
+	if v, ok := user.Details["email"]; ok {
+		claimsAccess["email"] = v
+	}
+
+	if v, ok := user.Details["uid"]; ok {
+		claimsAccess["preferred_username"] = v
+	}
+
+	if len(scopeList) > 0 {
+		claimsRefresh["scope"] = strings.Join(scopeList, " ")
+	}
+
+	refreshToken, err := m.jwt.Generate(claimsRefresh, m.Token.GetRefreshExpDate())
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "server_error",
@@ -184,9 +221,9 @@ func (m *Oauth2) GenerateToken(w http.ResponseWriter, userID string, user *data.
 	response := AccessTokenResponse{
 		TokenType:             "Bearer",
 		AccessToken:           accessToken,
-		ExpiresIn:             900,
+		ExpiresIn:             int64(m.Token.TokenLifetime.Seconds()),
 		RefreshToken:          refreshToken,
-		RefreshTokenExpiresIn: 86400,
+		RefreshTokenExpiresIn: int64(m.Token.RefreshLifetime.Seconds()),
 		Scope:                 strings.Join(scopeList, " "),
 	}
 

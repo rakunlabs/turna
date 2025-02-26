@@ -67,14 +67,10 @@ type LdapMap struct {
 	Map  string `json:"map"  db:"map"`
 }
 
-func ldapUIDFilter(uids []string) string {
-	if len(uids) == 1 {
-		return fmt.Sprintf("(uid=%s)", uids[0])
-	}
-
-	filters := make([]string, 0, len(uids))
+func ldapUserFilter(uids []string) string {
+	filters := make([]string, 0, len(uids)*2)
 	for _, uid := range uids {
-		filters = append(filters, fmt.Sprintf("(uid=%s)", uid))
+		filters = append(filters, fmt.Sprintf("(uid=%s)", uid), fmt.Sprintf("(mail=%s)", uid))
 	}
 
 	return fmt.Sprintf("(|%s)", strings.Join(filters, ""))
@@ -181,7 +177,7 @@ func (l *Ldap) Users(conn *ldap.Conn, uids []string) ([]LdapUser, error) {
 		Scope:        ldap.ScopeWholeSubtree,
 		DerefAliases: ldap.NeverDerefAliases,
 		TypesOnly:    false,
-		Filter:       ldapUIDFilter(uids),
+		Filter:       ldapUserFilter(uids),
 		Attributes:   []string{"uid", "mail", "gecos", "displayName"},
 	})
 	if err != nil {

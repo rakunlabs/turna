@@ -32,34 +32,42 @@ func (e AccessTokenErrorResponse) GetCode() int {
 type AccessTokenResponse struct {
 	TokenType             string `json:"token_type"`
 	AccessToken           string `json:"access_token"`
-	ExpiresIn             int    `json:"expires_in"`
+	ExpiresIn             int64  `json:"expires_in"`
 	RefreshToken          string `json:"refresh_token"`
-	RefreshTokenExpiresIn int    `json:"refresh_token_expires_in"`
+	RefreshTokenExpiresIn int64  `json:"refresh_token_expires_in"`
 	Scope                 string `json:"scope,omitempty"`
 }
 
+// /////////////////////////
+
 type State struct {
-	RedirectURI string `json:"redirect_uri"`
-	State       string `json:"state"`
-	OrgState    string `json:"org_state"`
+	RedirectURI string   `json:"redirect_uri"`
+	State       string   `json:"state"`
+	OrgState    string   `json:"org_state"`
+	Scope       []string `json:"scope"`
 }
 
-func EncodeState(state State) (string, error) {
+type Code struct {
+	Alias string   `json:"alias"`
+	Scope []string `json:"scope"`
+}
+
+func Encode[T any](state T) (string, error) {
 	v, err := json.Marshal(state)
 	v64 := base64.StdEncoding.EncodeToString(v)
 
 	return v64, err
 }
 
-func DecodeState(encoded string) (State, error) {
-	var state State
+func Decode[T any](encoded string) (T, error) {
+	var ret T
 
 	v, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
-		return state, err
+		return ret, err
 	}
 
-	err = json.Unmarshal(v, &state)
+	err = json.Unmarshal(v, &ret)
 
-	return state, err
+	return ret, err
 }

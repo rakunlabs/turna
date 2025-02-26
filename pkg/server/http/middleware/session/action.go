@@ -150,7 +150,7 @@ func addXUserHeader(r *http.Request, claim *claims.Custom, xUser []string, email
 	r.Header.Del("X-User")
 
 	if len(xUser) == 0 {
-		xUser = []string{"email", "preferred_username"}
+		xUser = []string{"email", "preferred_username", "name"}
 	}
 
 	for _, v := range xUser {

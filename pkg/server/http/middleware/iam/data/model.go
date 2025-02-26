@@ -13,6 +13,22 @@ var (
 	False = false
 )
 
+// Token is a struct that represents a token table in the database.
+type Token struct {
+	ID          string `json:"id"          badgerhold:"unique"`
+	Name        string `json:"name"        badgerhold:"index"`
+	Token       string `json:"token"       badgerhold:"index"`
+	Description string `json:"description"`
+	ExpiresAt   string `json:"expires_at"`
+
+	PermissionIDs []string `json:"permission_ids"`
+	RoleIDs       []string `json:"role_ids"`
+
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+	UpdatedBy string `json:"updated_by"`
+}
+
 // Permission is a struct that represents a permission table in the database.
 type Permission struct {
 	ID          string                 `json:"id"          badgerhold:"unique"`
@@ -149,18 +165,6 @@ type UserInfo struct {
 	Permissions []string               `json:"permissions,omitempty"`
 	Data        []interface{}          `json:"data,omitempty"`
 	IsActive    bool                   `json:"is_active"`
-}
-
-type Token struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Token       string `json:"token"`
-	Description string `json:"description"`
-	ExpiresAt   string `json:"expires_at"`
-
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
-	UpdatedBy string `json:"updated_by"`
 }
 
 type LMap struct {

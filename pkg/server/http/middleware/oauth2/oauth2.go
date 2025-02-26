@@ -29,6 +29,8 @@ type Oauth2 struct {
 	// Store for cache temporary data.
 	Store store.Store `cfg:"store"`
 
+	WellKnown map[string]map[string]interface{} `cfg:"well_known"`
+
 	storeCache *store.StoreCache
 	jwt        *token.JWT
 	iam        *iam.Iam

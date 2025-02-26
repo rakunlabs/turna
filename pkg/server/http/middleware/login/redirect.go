@@ -135,9 +135,13 @@ func (m *Login) AuthCodeReturn(w http.ResponseWriter, r *http.Request, customCla
 	}
 
 	// get new code
-	alias, _ := customClaim.Map["preferred_username"].(string)
-	if alias == "" {
-		alias, _ = customClaim.Map["email"].(string)
+	var alias string
+	for _, k := range []string{"preferred_username", "email", "name"} {
+		if vAlias, _ := customClaim.Map[k].(string); vAlias != "" {
+			alias = vAlias
+
+			break
+		}
 	}
 
 	if alias == "" {

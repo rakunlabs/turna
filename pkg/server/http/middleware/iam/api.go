@@ -265,7 +265,7 @@ func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	user := data.UserCreate{}
 	if err := httputil.Decode(r, &user); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
@@ -274,7 +274,7 @@ func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	if user.ServiceAccount {
 		if user.Details == nil || cast.ToString(user.Details["name"]) == "" || cast.ToString(user.Details["secret"]) == "" {
-			httputil.HandleError(w, data.NewError("name and secret are required", nil, http.StatusBadRequest))
+			httputil.HandleError(w, httputil.NewError("name and secret are required", nil, http.StatusBadRequest))
 			return
 		}
 
@@ -285,7 +285,7 @@ func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	if user.Local {
 		if user.Details == nil || cast.ToString(user.Details["name"]) == "" || cast.ToString(user.Details["password"]) == "" {
-			httputil.HandleError(w, data.NewError("name and password is required", nil, http.StatusBadRequest))
+			httputil.HandleError(w, httputil.NewError("name and password is required", nil, http.StatusBadRequest))
 			return
 		}
 
@@ -299,11 +299,11 @@ func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 	id, err := m.db.CreateUser(ctx, user.User)
 	if err != nil {
 		if errors.Is(err, data.ErrConflict) {
-			httputil.HandleError(w, data.NewError("User already exists", err, http.StatusConflict))
+			httputil.HandleError(w, httputil.NewError("User already exists", err, http.StatusConflict))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot create user", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot create user", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -383,7 +383,7 @@ func (m *Iam) GetUsers(w http.ResponseWriter, r *http.Request) {
 
 	users, err := m.db.GetUsers(req)
 	if err != nil {
-		httputil.HandleError(w, data.NewError("Cannot get users", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot get users", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -431,7 +431,7 @@ func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
 
 	users, err := m.db.GetUsers(req)
 	if err != nil {
-		httputil.HandleError(w, data.NewError("Cannot get users", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot get users", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -466,7 +466,7 @@ func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := httputil.NewExport(httputil.ExportTypeCSV).ExportHTTP(w, headers, userData, fileName); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot export users", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot export users", err, http.StatusInternalServerError))
 		return
 	}
 }
@@ -490,7 +490,7 @@ func (m *Iam) GetUser(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -506,11 +506,11 @@ func (m *Iam) GetUser(w http.ResponseWriter, r *http.Request) {
 	user, err := m.db.GetUser(req)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("User not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("User not found", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot get user", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot get user", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -534,7 +534,7 @@ func (m *Iam) DeleteUser(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -542,11 +542,11 @@ func (m *Iam) DeleteUser(w http.ResponseWriter, r *http.Request) {
 
 	if err := m.db.DeleteUser(ctx, id); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("User not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("User not found", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot delete user", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot delete user", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -576,13 +576,13 @@ func (m *Iam) PatchUser(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
 	}
 
 	userPatch := data.UserPatch{}
 	if err := httputil.Decode(r, &userPatch); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
@@ -590,11 +590,11 @@ func (m *Iam) PatchUser(w http.ResponseWriter, r *http.Request) {
 
 	if err := m.db.PatchUser(ctx, id, userPatch); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("User not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("User not found", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot patch user", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot patch user", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -624,13 +624,13 @@ func (m *Iam) PutUser(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
 	}
 
 	user := data.User{}
 	if err := httputil.Decode(r, &user); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
@@ -641,11 +641,11 @@ func (m *Iam) PutUser(w http.ResponseWriter, r *http.Request) {
 
 	if err := m.db.PutUser(ctx, user); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("User not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("User not found", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot put user", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot put user", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -709,7 +709,7 @@ func (m *Iam) GetRoles(w http.ResponseWriter, r *http.Request) {
 
 	roles, err := m.db.GetRoles(req)
 	if err != nil {
-		httputil.HandleError(w, data.NewError("Cannot get roles", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot get roles", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -759,7 +759,7 @@ func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 
 	roles, err := m.db.GetRoles(req)
 	if err != nil {
-		httputil.HandleError(w, data.NewError("Cannot get roles", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot get roles", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -775,7 +775,7 @@ func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 
 		permissionByte, err := json.Marshal(permissions)
 		if err != nil {
-			httputil.HandleError(w, data.NewError("Cannot marshal permissions", err, http.StatusInternalServerError))
+			httputil.HandleError(w, httputil.NewError("Cannot marshal permissions", err, http.StatusInternalServerError))
 			return
 		}
 
@@ -786,7 +786,7 @@ func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 
 		rolesByte, err := json.Marshal(roles)
 		if err != nil {
-			httputil.HandleError(w, data.NewError("Cannot marshal roles", err, http.StatusInternalServerError))
+			httputil.HandleError(w, httputil.NewError("Cannot marshal roles", err, http.StatusInternalServerError))
 			return
 		}
 
@@ -802,7 +802,7 @@ func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 	fileName := "roles_" + time.Now().Format("20060102T1504") + ".csv"
 
 	if err := httputil.NewExport(httputil.ExportTypeCSV).ExportHTTP(w, headers, roleData, fileName); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot export roles", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot export roles", err, http.StatusInternalServerError))
 		return
 	}
 }
@@ -822,12 +822,12 @@ func (m *Iam) CreateRole(w http.ResponseWriter, r *http.Request) {
 
 	role := data.Role{}
 	if err := httputil.Decode(r, &role); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
 	if role.Name == "" {
-		httputil.HandleError(w, data.NewError("name is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("name is required", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -836,11 +836,11 @@ func (m *Iam) CreateRole(w http.ResponseWriter, r *http.Request) {
 	id, err := m.db.CreateRole(ctx, role)
 	if err != nil {
 		if errors.Is(err, data.ErrConflict) {
-			httputil.HandleError(w, data.NewError("Role already exists", err, http.StatusConflict))
+			httputil.HandleError(w, httputil.NewError("Role already exists", err, http.StatusConflict))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot create role", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot create role", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -876,7 +876,7 @@ func (m *Iam) GetRole(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -885,11 +885,11 @@ func (m *Iam) GetRole(w http.ResponseWriter, r *http.Request) {
 	role, err := m.db.GetRole(req)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("Role not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("Role not found", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot get role", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot get role", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -912,14 +912,14 @@ func (m *Iam) PutRoleRelation(w http.ResponseWriter, r *http.Request) {
 
 	relation := map[string]data.RoleRelation{}
 	if err := httputil.Decode(r, &relation); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
 	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
 
 	if err := m.db.PutRoleRelation(ctx, relation); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot patch role", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot patch role", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -940,7 +940,7 @@ func (m *Iam) PutRoleRelation(w http.ResponseWriter, r *http.Request) {
 func (m *Iam) GetRoleRelation(w http.ResponseWriter, _ *http.Request) {
 	relation, err := m.db.GetRoleRelation()
 	if err != nil {
-		httputil.HandleError(w, data.NewError("Cannot get role relation", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot get role relation", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -963,13 +963,13 @@ func (m *Iam) PatchRole(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
 	}
 
 	rolePatch := data.RolePatch{}
 	if err := httputil.Decode(r, &rolePatch); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
@@ -977,11 +977,11 @@ func (m *Iam) PatchRole(w http.ResponseWriter, r *http.Request) {
 
 	if err := m.db.PatchRole(ctx, id, rolePatch); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("Role not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("Role not found", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot patch role", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot patch role", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1010,18 +1010,18 @@ func (m *Iam) PutRole(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
 	}
 
 	role := data.Role{}
 	if err := httputil.Decode(r, &role); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
 	if role.Name == "" {
-		httputil.HandleError(w, data.NewError("name is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("name is required", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -1031,11 +1031,11 @@ func (m *Iam) PutRole(w http.ResponseWriter, r *http.Request) {
 
 	if err := m.db.PutRole(ctx, role); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("Role not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("Role not found", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot put role", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot put role", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1059,7 +1059,7 @@ func (m *Iam) DeleteRole(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -1067,11 +1067,11 @@ func (m *Iam) DeleteRole(w http.ResponseWriter, r *http.Request) {
 
 	if err := m.db.DeleteRole(ctx, id); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("Role not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("Role not found", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot delete role", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot delete role", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1123,7 +1123,7 @@ func (m *Iam) GetPermissions(w http.ResponseWriter, r *http.Request) {
 
 	permissions, err := m.db.GetPermissions(req)
 	if err != nil {
-		httputil.HandleError(w, data.NewError("Cannot get permissions", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot get permissions", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1152,7 +1152,7 @@ func (m *Iam) ExportPermissions(w http.ResponseWriter, r *http.Request) {
 
 	permissions, err := m.db.GetPermissions(req)
 	if err != nil {
-		httputil.HandleError(w, data.NewError("Cannot get permissions", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot get permissions", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1163,7 +1163,7 @@ func (m *Iam) ExportPermissions(w http.ResponseWriter, r *http.Request) {
 	for _, permission := range permissions.Payload {
 		resourceByte, err := json.Marshal(permission.Resources)
 		if err != nil {
-			httputil.HandleError(w, data.NewError("Cannot marshal resources", err, http.StatusInternalServerError))
+			httputil.HandleError(w, httputil.NewError("Cannot marshal resources", err, http.StatusInternalServerError))
 			return
 		}
 
@@ -1177,7 +1177,7 @@ func (m *Iam) ExportPermissions(w http.ResponseWriter, r *http.Request) {
 	fileName := "permissions_" + time.Now().Format("20060102T1504") + ".csv"
 
 	if err := httputil.NewExport(httputil.ExportTypeCSV).ExportHTTP(w, headers, permissionData, fileName); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot export permissions", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot export permissions", err, http.StatusInternalServerError))
 		return
 	}
 }
@@ -1197,7 +1197,7 @@ func (m *Iam) CreatePermission(w http.ResponseWriter, r *http.Request) {
 
 	permission := data.Permission{}
 	if err := httputil.Decode(r, &permission); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
@@ -1206,11 +1206,11 @@ func (m *Iam) CreatePermission(w http.ResponseWriter, r *http.Request) {
 	id, err := m.db.CreatePermission(ctx, permission)
 	if err != nil {
 		if errors.Is(err, data.ErrConflict) {
-			httputil.HandleError(w, data.NewError("Permission already exists", err, http.StatusConflict))
+			httputil.HandleError(w, httputil.NewError("Permission already exists", err, http.StatusConflict))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot create permission", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot create permission", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1239,7 +1239,7 @@ func (m *Iam) CreatePermissionBulk(w http.ResponseWriter, r *http.Request) {
 
 	permissions := []data.Permission{}
 	if err := httputil.Decode(r, &permissions); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
@@ -1247,7 +1247,7 @@ func (m *Iam) CreatePermissionBulk(w http.ResponseWriter, r *http.Request) {
 
 	ids, err := m.db.CreatePermissions(ctx, permissions)
 	if err != nil {
-		httputil.HandleError(w, data.NewError("Cannot create permission", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot create permission", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1275,7 +1275,7 @@ func (m *Iam) CreatePermissionBulk(w http.ResponseWriter, r *http.Request) {
 func (m *Iam) GetPermission(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -1292,11 +1292,11 @@ func (m *Iam) GetPermission(w http.ResponseWriter, r *http.Request) {
 	permission, err := m.db.GetPermission(req)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("Permission not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("Permission not found", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot get permission", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot get permission", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1321,13 +1321,13 @@ func (m *Iam) PatchPermission(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
 	}
 
 	permission := data.PermissionPatch{}
 	if err := httputil.Decode(r, &permission); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
@@ -1335,16 +1335,16 @@ func (m *Iam) PatchPermission(w http.ResponseWriter, r *http.Request) {
 
 	if err := m.db.PatchPermission(ctx, id, permission); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("Permission not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("Permission not found", err, http.StatusNotFound))
 			return
 		}
 
 		if errors.Is(err, data.ErrConflict) {
-			httputil.HandleError(w, data.NewError("Permission already exists", err, http.StatusConflict))
+			httputil.HandleError(w, httputil.NewError("Permission already exists", err, http.StatusConflict))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot patch permission", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot patch permission", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1369,13 +1369,13 @@ func (m *Iam) PutPermission(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
 	}
 
 	permission := data.Permission{}
 	if err := httputil.Decode(r, &permission); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
@@ -1385,11 +1385,11 @@ func (m *Iam) PutPermission(w http.ResponseWriter, r *http.Request) {
 
 	if err := m.db.PutPermission(ctx, permission); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("Permission not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("Permission not found", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot put permission", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot put permission", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1413,7 +1413,7 @@ func (m *Iam) DeletePermission(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		httputil.HandleError(w, data.NewError("id is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -1421,11 +1421,11 @@ func (m *Iam) DeletePermission(w http.ResponseWriter, r *http.Request) {
 
 	if err := m.db.DeletePermission(ctx, id); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("Permission not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("Permission not found", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot delete permission", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot delete permission", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1447,7 +1447,7 @@ func (m *Iam) KeepPermissionBulk(w http.ResponseWriter, r *http.Request) {
 
 	permissions := []data.NameRequest{}
 	if err := httputil.Decode(r, &permissions); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
@@ -1460,7 +1460,7 @@ func (m *Iam) KeepPermissionBulk(w http.ResponseWriter, r *http.Request) {
 
 	idName, err := m.db.KeepPermissions(ctx, permissionsMap)
 	if err != nil {
-		httputil.HandleError(w, data.NewError("Cannot delete permission", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot delete permission", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1486,13 +1486,13 @@ func (m *Iam) KeepPermissionBulk(w http.ResponseWriter, r *http.Request) {
 func (m *Iam) PostCheck(w http.ResponseWriter, r *http.Request) {
 	body := data.CheckRequest{}
 	if err := httputil.Decode(r, &body); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
 	resp, err := m.db.Check(body)
 	if err != nil {
-		httputil.HandleError(w, data.NewError("Cannot check", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot check", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1510,13 +1510,13 @@ func (m *Iam) PostCheck(w http.ResponseWriter, r *http.Request) {
 func (m *Iam) PostCheckUser(w http.ResponseWriter, r *http.Request) {
 	user := r.Header.Get("X-User")
 	if user == "" {
-		httputil.HandleError(w, data.NewError("X-User header is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("X-User header is required", nil, http.StatusBadRequest))
 		return
 	}
 
 	body := data.CheckRequestUser{}
 	if err := httputil.Decode(r, &body); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
@@ -1527,7 +1527,7 @@ func (m *Iam) PostCheckUser(w http.ResponseWriter, r *http.Request) {
 		Host:   body.Host,
 	})
 	if err != nil {
-		httputil.HandleError(w, data.NewError("Cannot check", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot check", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1549,12 +1549,12 @@ func (m *Iam) LdapCreateGroupMaps(w http.ResponseWriter, r *http.Request) {
 
 	lmap := data.LMap{}
 	if err := httputil.Decode(r, &lmap); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
 	if lmap.Name == "" {
-		httputil.HandleError(w, data.NewError("name is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("name is required", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -1562,11 +1562,11 @@ func (m *Iam) LdapCreateGroupMaps(w http.ResponseWriter, r *http.Request) {
 
 	if err := m.db.CreateLMap(ctx, lmap); err != nil {
 		if errors.Is(err, data.ErrConflict) {
-			httputil.HandleError(w, data.NewError("Map already exists", err, http.StatusConflict))
+			httputil.HandleError(w, httputil.NewError("Map already exists", err, http.StatusConflict))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot create ldap map", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot create ldap map", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1594,7 +1594,7 @@ func (m *Iam) LdapGetGroupMaps(w http.ResponseWriter, r *http.Request) {
 
 	maps, err := m.db.GetLMaps(req)
 	if err != nil {
-		httputil.HandleError(w, data.NewError("Cannot get ldap maps", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot get ldap maps", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1612,18 +1612,18 @@ func (m *Iam) LdapGetGroupMaps(w http.ResponseWriter, r *http.Request) {
 func (m *Iam) LdapGetGroupMap(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if name == "" {
-		httputil.HandleError(w, data.NewError("name is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("name is required", nil, http.StatusBadRequest))
 		return
 	}
 
 	maps, err := m.db.GetLMap(name)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("Map not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("Map not found", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot get ldap map", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot get ldap map", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1646,13 +1646,13 @@ func (m *Iam) LdapPutGroupMaps(w http.ResponseWriter, r *http.Request) {
 
 	name := chi.URLParam(r, "name")
 	if name == "" {
-		httputil.HandleError(w, data.NewError("name is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("name is required", nil, http.StatusBadRequest))
 		return
 	}
 
 	lmap := data.LMap{}
 	if err := httputil.Decode(r, &lmap); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
@@ -1662,11 +1662,11 @@ func (m *Iam) LdapPutGroupMaps(w http.ResponseWriter, r *http.Request) {
 
 	if err := m.db.PutLMap(ctx, lmap); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("Map not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("Map not found", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot put ldap map", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot put ldap map", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1690,7 +1690,7 @@ func (m *Iam) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
 
 	name := chi.URLParam(r, "name")
 	if name == "" {
-		httputil.HandleError(w, data.NewError("name is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("name is required", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -1698,11 +1698,11 @@ func (m *Iam) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
 
 	if err := m.db.DeleteLMap(ctx, name); err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("Map not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("Map not found", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot delete ldap map", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot delete ldap map", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1725,7 +1725,7 @@ func (m *Iam) Info(w http.ResponseWriter, r *http.Request) {
 	alias := query.Get("alias")
 
 	if alias == "" {
-		httputil.HandleError(w, data.NewError("Alias is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Alias is required", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -1734,11 +1734,11 @@ func (m *Iam) Info(w http.ResponseWriter, r *http.Request) {
 	user, err := m.db.GetUser(data.GetUserRequest{Alias: alias, AddRoles: true, AddPermissions: true, AddData: getData, Sanitize: true})
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("User not found", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("User not found", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot get user", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot get user", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1776,7 +1776,7 @@ func (m *Iam) InfoUser(w http.ResponseWriter, r *http.Request) {
 	xUser := r.Header.Get("X-User")
 
 	if xUser == "" {
-		httputil.HandleError(w, data.NewError("X-User header is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("X-User header is required", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -1794,11 +1794,11 @@ func (m *Iam) InfoUser(w http.ResponseWriter, r *http.Request) {
 	user, err := m.db.GetUser(data.GetUserRequest{Alias: xUser, AddRoles: true, AddPermissions: true, AddData: getData, Sanitize: true})
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, data.NewError("User not found ["+xUser+"]", err, http.StatusNotFound))
+			httputil.HandleError(w, httputil.NewError("User not found ["+xUser+"]", err, http.StatusNotFound))
 			return
 		}
 
-		httputil.HandleError(w, data.NewError("Cannot get user", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot get user", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1836,7 +1836,7 @@ func (m *Iam) Backup(w http.ResponseWriter, r *http.Request) {
 		var err error
 		since, err = strconv.ParseUint(sinceStr, 10, 64)
 		if err != nil {
-			httputil.HandleError(w, data.NewError("Cannot parse since", err, http.StatusBadRequest))
+			httputil.HandleError(w, httputil.NewError("Cannot parse since", err, http.StatusBadRequest))
 			return
 		}
 	}
@@ -1846,7 +1846,7 @@ func (m *Iam) Backup(w http.ResponseWriter, r *http.Request) {
 
 	backupVersion, err := m.db.Backup(w, since)
 	if err != nil {
-		httputil.HandleError(w, data.NewError("Cannot backup", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot backup", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1867,11 +1867,11 @@ func (m *Iam) Restore(w http.ResponseWriter, r *http.Request) {
 
 	file, fileHeader, err := r.FormFile("file")
 	if err != nil {
-		httputil.HandleError(w, data.NewError("Cannot get file", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot get file", err, http.StatusBadRequest))
 		return
 	}
 	if file == nil {
-		httputil.HandleError(w, data.NewError("File is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("File is required", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -1884,7 +1884,7 @@ func (m *Iam) Restore(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err := m.db.Restore(file); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot restore", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot restore", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1913,12 +1913,12 @@ func (m *Iam) Version(w http.ResponseWriter, r *http.Request) {
 func (m *Iam) Trigger(w http.ResponseWriter, r *http.Request) {
 	trigger := Trigger{}
 	if err := httputil.Decode(r, &trigger); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot decode request", err, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
 	if trigger.Path == "" {
-		httputil.HandleError(w, data.NewError("Path is required", nil, http.StatusBadRequest))
+		httputil.HandleError(w, httputil.NewError("Path is required", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -1955,13 +1955,13 @@ func (m *Iam) Sync(w http.ResponseWriter, r *http.Request) {
 		var err error
 		versionNumber, err = strconv.ParseUint(version, 10, 64)
 		if err != nil {
-			httputil.HandleError(w, data.NewError("Cannot parse version", err, http.StatusBadRequest))
+			httputil.HandleError(w, httputil.NewError("Cannot parse version", err, http.StatusBadRequest))
 			return
 		}
 	}
 
 	if err := m.sync.Sync(m.ctxService, versionNumber); err != nil {
-		httputil.HandleError(w, data.NewError("Cannot sync", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot sync", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -1976,7 +1976,7 @@ func (m *Iam) Sync(w http.ResponseWriter, r *http.Request) {
 func (m *Iam) Dashboard(w http.ResponseWriter, _ *http.Request) {
 	dashboard, err := m.db.Dashboard()
 	if err != nil {
-		httputil.HandleError(w, data.NewError("Cannot get dashboard", err, http.StatusInternalServerError))
+		httputil.HandleError(w, httputil.NewError("Cannot get dashboard", err, http.StatusInternalServerError))
 		return
 	}
 
