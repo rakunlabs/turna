@@ -182,18 +182,33 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 					return
 				}
 
-				if typ, _ := customClaims.Map["typ"].(string); typ == "Refresh" {
-					slog.Debug("token is refresh token")
+				if typ, _ := customClaims.Map["typ"].(string); typ != "" {
+					if typ == "Refresh" {
+						slog.Debug("token is refresh token")
+						httputil.JSON(w, http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
 
-					httputil.JSON(w, http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+						return
+					}
 
-					return
+					if typ == "ID" {
+						slog.Debug("token is id token")
+						httputil.JSON(w, http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+
+						return
+					}
 				}
 
 				// next middlewares can check roles
+				var providerName string
+				if m.SetProvider != "" {
+					providerName = m.SetProvider
+				} else {
+					providerName, _ = jwtToken.Header["provider_name"].(string)
+				}
+
 				tcontext.Set(r, "claims", customClaims)
-				tcontext.Set(r, "provider", jwtToken.Header["provider_name"])
-				addXUserHeader(r, customClaims, m.Provider[jwtToken.Header["provider_name"].(string)].XUser, m.Provider[jwtToken.Header["provider_name"].(string)].EmailVerifyCheck)
+				tcontext.Set(r, "provider", providerName)
+				addXUserHeader(r, customClaims, m.Provider[providerName].XUser, m.Provider[providerName].EmailVerifyCheck)
 
 				if v, _ := tcontext.Get(r, CtxTokenHeaderKey).(bool); v {
 					r.Header.Del("Authorization")
@@ -215,7 +230,11 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 		if v, err := m.store.Get(r, m.GetCookieName(r)); !v.IsNew && err == nil {
 			// add the access token to the request
 			token64, _ = v.Values[TokenKey].(string)
-			providerName, _ = v.Values[ProviderKey].(string)
+			if m.SetProvider != "" {
+				providerName = m.SetProvider
+			} else {
+				providerName, _ = v.Values[ProviderKey].(string)
+			}
 		} else {
 			if err != nil {
 				slog.Error("cannot get session", "error", err.Error())
@@ -304,13 +323,20 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 		}
 
 		// next middlewares can check roles
+		if m.SetProvider != "" {
+			providerName = m.SetProvider
+		} else {
+			providerName, _ = jwtToken.Header["provider_name"].(string)
+		}
+
 		tcontext.Set(r, "claims", customClaims)
-		tcontext.Set(r, "provider", jwtToken.Header["provider_name"])
-		addXUserHeader(r, customClaims, m.Provider[jwtToken.Header["provider_name"].(string)].XUser, m.Provider[jwtToken.Header["provider_name"].(string)].EmailVerifyCheck)
+		tcontext.Set(r, "provider", providerName)
+
+		addXUserHeader(r, customClaims, m.Provider[providerName].XUser, m.Provider[providerName].EmailVerifyCheck)
 
 		// add the access token to the request
 		if v, _ := tcontext.Get(r, CtxTokenHeaderKey).(bool); v {
-			r.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.AccessToken))
+			r.Header.Set("Authorization", "Bearer "+token.AccessToken)
 		}
 
 		if v, _ := tcontext.Get(r, CtxTokenHeaderDelKey).(bool); v {

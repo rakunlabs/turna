@@ -54,7 +54,12 @@ type Folder struct {
 
 	DisableFolderSlashRedirect bool `cfg:"disable_folder_slash_redirect"`
 
-	fs http.FileSystem
+	fs            http.FileSystem
+	customContent func(r *http.Request, name string, content io.ReadSeeker) io.ReadSeeker
+}
+
+func (f *Folder) SetCustomContent(customContent func(r *http.Request, name string, content io.ReadSeeker) io.ReadSeeker) {
+	f.customContent = customContent
 }
 
 func (f *Folder) SetFs(fs http.FileSystem) {
@@ -386,6 +391,10 @@ func (f *Folder) Cache(w http.ResponseWriter, fileName string) {
 
 func (f *Folder) ServeContent(w http.ResponseWriter, req *http.Request, name string, modtime time.Time, content io.ReadSeeker) {
 	f.Cache(w, name)
+	if f.customContent != nil {
+		content = f.customContent(req, name, content)
+	}
+
 	http.ServeContent(w, req, name, modtime, content)
 }
 

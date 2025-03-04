@@ -28,6 +28,8 @@ type Oauth2 struct {
 	Code auth.Code `cfg:"code"`
 	// Store for cache temporary data.
 	Store store.Store `cfg:"store"`
+	// PassLower for pass lower case on password flow.
+	PassLower bool `cfg:"pass_lower"`
 
 	WellKnown map[string]map[string]interface{} `cfg:"well_known"`
 

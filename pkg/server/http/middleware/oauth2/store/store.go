@@ -5,9 +5,11 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
+	redis "github.com/redis/go-redis/v9"
 	"github.com/worldline-go/cache"
 	"github.com/worldline-go/cache/store/memory"
-	"github.com/worldline-go/cache/store/redis"
+	storeredis "github.com/worldline-go/cache/store/redis"
+	"github.com/worldline-go/conn/connredis"
 )
 
 var (
@@ -18,34 +20,34 @@ var (
 type Store struct {
 	// Active store type empty mean memory or could be redis.
 	Active string           `cfg:"active"`
-	Redis  redis.Connection `cfg:"redis"`
+	Redis  connredis.Config `cfg:"redis"`
 }
 
 type StoreCache struct {
 	Code  cache.Cacher[string, string]
 	State cache.Cacher[string, string]
 
-	redisClient *redis.Redis
+	redisClient redis.UniversalClient
 }
 
 func (m *Store) Init(ctx context.Context) (*StoreCache, error) {
 	var storeCache StoreCache
 	if m.Active == "redis" {
-		redisClient, err := redis.New(m.Redis)
+		redisClient, err := connredis.New(m.Redis)
 		if err != nil {
 			return nil, err
 		}
 
 		storeCache.redisClient = redisClient
 
-		storeCache.Code, err = cache.New(ctx, redis.Store(redisClient), cache.WithStoreConfig(redis.Config{
+		storeCache.Code, err = cache.New(ctx, storeredis.Store(redisClient), cache.WithStoreConfig(storeredis.Config{
 			TTL: DefaultCodeTimeout,
 		}))
 		if err != nil {
 			return nil, err
 		}
 
-		storeCache.State, err = cache.New(ctx, redis.Store(redisClient), cache.WithStoreConfig(redis.Config{
+		storeCache.State, err = cache.New(ctx, storeredis.Store(redisClient), cache.WithStoreConfig(storeredis.Config{
 			TTL: DefaultStateTimeout,
 		}))
 		if err != nil {
@@ -79,12 +81,20 @@ func (m *StoreCache) Close() error {
 	return nil
 }
 
-func (m *StoreCache) CodeGen(ctx context.Context, alias string) (string, error) {
+func (m *StoreCache) CodeGen(ctx context.Context, alias string, scope []string) (string, error) {
 	// create code flow response
 	codeID := ulid.Make().String()
 
+	codeValue, err := Encode(Code{
+		Alias: alias,
+		Scope: scope,
+	})
+	if err != nil {
+		return "", err
+	}
+
 	// save code to store
-	if err := m.Code.Set(ctx, "code_"+codeID, alias); err != nil {
+	if err := m.Code.Set(ctx, "code_"+codeID, codeValue); err != nil {
 		return "", err
 	}
 

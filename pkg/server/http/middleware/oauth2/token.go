@@ -101,7 +101,7 @@ func CompareBcrypt(hash, password string) error {
 	return bcrypt.CompareHashAndPassword(hashBytes, passwordBytes)
 }
 
-func (m *Oauth2) GenerateToken(w http.ResponseWriter, userID string, user *data.UserExtended, clientID string, scope []string, defScope []string) {
+func (m *Oauth2) GenerateToken(w http.ResponseWriter, userID string, user *data.UserExtended, clientID string, scope []string, defScope []string, extra map[string]interface{}) {
 	if user == nil {
 		// get user from iam
 		var err error
@@ -122,10 +122,12 @@ func (m *Oauth2) GenerateToken(w http.ResponseWriter, userID string, user *data.
 
 	// create access token
 	claimsAccess := map[string]interface{}{
+		"aud":                "iam",
 		"sub":                user.ID,
 		"azp":                clientID,
 		"name":               user.Details["name"],
 		"preferred_username": user.Details["name"],
+		"user_name":          user.Details["name"],
 	}
 
 	if v, ok := user.Details["email"]; ok {
@@ -134,6 +136,19 @@ func (m *Oauth2) GenerateToken(w http.ResponseWriter, userID string, user *data.
 
 	if v, ok := user.Details["uid"]; ok {
 		claimsAccess["preferred_username"] = v
+		claimsAccess["user_name"] = v
+	}
+
+	if v, ok := user.Details["given_name"]; ok {
+		claimsAccess["given_name"] = v
+	}
+
+	if v, ok := user.Details["family_name"]; ok {
+		claimsAccess["family_name"] = v
+	}
+
+	for k, v := range extra {
+		claimsAccess[k] = v
 	}
 
 	// //////////////////////////////////////////
@@ -187,6 +202,7 @@ func (m *Oauth2) GenerateToken(w http.ResponseWriter, userID string, user *data.
 
 	// generate refresh token
 	claimsRefresh := map[string]interface{}{
+		"aud":                "iam",
 		"sub":                user.ID,
 		"azp":                clientID,
 		"typ":                "Refresh",

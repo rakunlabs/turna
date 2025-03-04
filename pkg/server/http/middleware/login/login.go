@@ -41,8 +41,9 @@ type Login struct {
 	client    *klient.Client `cfg:"-"`
 	pathFixed PathFixed      `cfg:"-"`
 
-	session *session.Session  `cfg:"-"`
-	store   *store.StoreCache `cfg:"-"`
+	session       *session.Session  `cfg:"-"`
+	store         *store.StoreCache `cfg:"-"`
+	statusContent string            `cfg:"-"`
 }
 
 type Path struct {
@@ -53,12 +54,14 @@ type Path struct {
 	Code   string `cfg:"code"`
 	Token  string `cfg:"token"`
 	InfoUI string `cfg:"info_ui"`
+	Status string `cfg:"status"`
 }
 
 type PathFixed struct {
 	Code   string
 	InfoUI string
 	Token  string
+	Status string
 }
 
 type Request struct {
@@ -67,7 +70,7 @@ type Request struct {
 
 type UI struct {
 	ExternalFolder bool         `cfg:"external_folder"`
-	embedUI        http.Handler `cfg:"-"`
+	uiHandler      http.Handler `cfg:"-"`
 }
 
 func (m *Login) Init() error {
@@ -84,12 +87,20 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 		return nil, fmt.Errorf("session middleware is not set")
 	}
 
-	embedUIFunc, err := m.SetView()
+	// /////////////////////////
+
+	embedUIFunc, err := m.SetUI()
 	if err != nil {
 		return nil, err
 	}
 
-	m.UI.embedUI = embedUIFunc(nil)
+	m.UI.uiHandler = embedUIFunc(nil)
+
+	if err := m.SetFiles(); err != nil {
+		return nil, err
+	}
+
+	// /////////////////////////
 
 	// set auth client
 	client, err := klient.New(
@@ -123,6 +134,12 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 		m.pathFixed.InfoUI = m.Path.InfoUI
 	} else {
 		m.pathFixed.InfoUI = path.Join(m.Path.Base, "auth/info/ui")
+	}
+
+	if m.Path.Status != "" {
+		m.pathFixed.Status = m.Path.Status
+	} else {
+		m.pathFixed.Status = path.Join(m.Path.Base, "auth/status")
 	}
 
 	// state cookie settings
@@ -194,6 +211,12 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 					return
 				}
 
+				if strings.HasPrefix(urlPath, m.pathFixed.Status) {
+					m.StatusHandler(w, r)
+
+					return
+				}
+
 				customClaim, isLogged, err := m.session.IsLogged(w, r)
 				if isLogged {
 					if responseType := r.URL.Query().Get("response_type"); responseType == "code" {
@@ -224,7 +247,7 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 					return
 				}
 
-				m.View(w, r)
+				m.UIHandler(w, r)
 
 				return
 			case http.MethodPost:

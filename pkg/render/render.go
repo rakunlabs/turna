@@ -2,7 +2,7 @@ package render
 
 import (
 	"bytes"
-	"fmt"
+	"errors"
 
 	"github.com/rs/zerolog/log"
 	"github.com/rytsh/mugo/fstore"
@@ -41,7 +41,7 @@ func (r *Render) Execute(content any) ([]byte, error) {
 
 func (r *Render) ExecuteWithData(content any, data any) ([]byte, error) {
 	if r.template == nil {
-		return nil, fmt.Errorf("template is nil")
+		return nil, errors.New("template is nil")
 	}
 
 	contentStr := cast.ToString(content)
@@ -51,14 +51,13 @@ func (r *Render) ExecuteWithData(content any, data any) ([]byte, error) {
 	}
 
 	var buf bytes.Buffer
-	err := r.template.Execute(
+	if err := r.template.Execute(
 		templatex.WithIO(&buf),
 		templatex.WithData(data),
 		templatex.WithParsed(true),
-	)
-	if err != nil {
+	); err != nil {
 		return nil, err
 	}
 
-	return buf.Bytes(), err
+	return buf.Bytes(), nil
 }

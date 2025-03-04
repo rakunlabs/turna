@@ -124,6 +124,7 @@ func (m *Login) IsForRedirection(r *http.Request) bool {
 func (m *Login) AuthCodeReturn(w http.ResponseWriter, r *http.Request, customClaim *claims.Custom) {
 	query := r.URL.Query()
 	state := query.Get("state")
+	scope := query.Get("scope")
 
 	redirectURI := query.Get("redirect_uri")
 
@@ -150,7 +151,7 @@ func (m *Login) AuthCodeReturn(w http.ResponseWriter, r *http.Request, customCla
 		return
 	}
 
-	code, err := m.store.CodeGen(r.Context(), alias)
+	code, err := m.store.CodeGen(r.Context(), alias, strings.Split(scope, " "))
 	if err != nil {
 		httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: "failed to generate code"})
 

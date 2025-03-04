@@ -18,6 +18,7 @@ type IamCheck struct {
 	CheckAPI  string          `cfg:"check_api"`
 	Public    []data.Resource `cfg:"public"`
 	Responses []Response      `cfg:"responses"`
+	ForceHost string          `cfg:"force_host"`
 
 	InsecureSkipVerify bool           `cfg:"insecure_skip_verify"`
 	client             *klient.Client `cfg:"-"`
@@ -46,6 +47,11 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hostToCheck := r.Host
+			if m.ForceHost != "" {
+				hostToCheck = m.ForceHost
+			}
+
 			// check if the path is public
 			for _, resource := range m.Public {
 				// check hosts
@@ -54,7 +60,7 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 					matchedHost = true
 				} else {
 					for _, host := range resource.Hosts {
-						if v, _ := doublestar.Match(host, r.Host); v {
+						if v, _ := doublestar.Match(host, hostToCheck); v {
 							matchedHost = true
 							break
 						}
@@ -86,7 +92,7 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 				Alias:  xUser,
 				Path:   r.URL.Path,
 				Method: r.Method,
-				Host:   r.Host,
+				Host:   hostToCheck,
 			}
 
 			jsonBody, err := json.Marshal(body)

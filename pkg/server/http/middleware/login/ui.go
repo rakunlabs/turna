@@ -11,7 +11,7 @@ import (
 //go:embed _ui/dist/*
 var uiFS embed.FS
 
-func (m *Login) SetView() (func(http.Handler) http.Handler, error) {
+func (m *Login) SetUI() (func(http.Handler) http.Handler, error) {
 	f, err := fs.Sub(uiFS, "_ui/dist")
 	if err != nil {
 		return nil, err
@@ -40,6 +40,6 @@ func (m *Login) SetView() (func(http.Handler) http.Handler, error) {
 	return folder.Middleware()
 }
 
-func (m *Login) View(w http.ResponseWriter, r *http.Request) {
-	m.UI.embedUI.ServeHTTP(w, r)
+func (m *Login) UIHandler(w http.ResponseWriter, r *http.Request) {
+	m.UI.uiHandler.ServeHTTP(w, r)
 }

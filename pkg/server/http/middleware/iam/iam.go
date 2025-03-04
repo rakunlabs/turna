@@ -2,15 +2,15 @@ package iam
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
 
 	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/logi"
+	"github.com/worldline-go/conn/connredis"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data/badger"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/ldap"
@@ -45,19 +45,10 @@ type Database struct {
 	// Flatten to flatten the data when start, default is true
 	Flatten *bool `cfg:"flatten"`
 
-	// TriggerBackground for sync process in background
-	TriggerBackground bool `cfg:"trigger_background"`
-
-	// SyncSchema is the schema of the sync service, default is http
-	SyncSchema string `cfg:"sync_schema"`
-	// SyncHost is the host of the sync service, default is the caller host
-	SyncHost string `cfg:"sync_host"`
-	// SyncHostFromInterface is for network interface to get the host, default is false
-	SyncHostFromInterface bool `cfg:"sync_host_from_interface"`
-	// SyncHostFromInterfaceIPPrefix is the prefix of the interface IP
-	SyncHostFromInterfaceIPPrefix string `cfg:"sync_host_from_interface_ip_prefix"`
-	// SyncPort is the port of the sync service, default is 8080
-	SyncPort string `cfg:"sync_port"`
+	// Redis configuration to sync between IAM services
+	Redis connredis.Config `cfg:"redis"`
+	// PubSubTopic to sync between IAM services
+	PubSubTopic string `cfg:"pubsub_topic"`
 }
 
 func (m *Iam) DB() *badger.Badger {
@@ -81,6 +72,12 @@ func (m *Iam) Middleware(ctx context.Context, name string) (func(http.Handler) h
 
 	mux := m.MuxSet(m.PrefixPath)
 
+	// redis connection
+	rConn, err := connredis.New(m.Database.Redis)
+	if err != nil {
+		return nil, err
+	}
+
 	// new database
 	flatten := true
 	if m.Database.Flatten != nil {
@@ -88,7 +85,7 @@ func (m *Iam) Middleware(ctx context.Context, name string) (func(http.Handler) h
 	}
 
 	if m.Database.Path == "" && !m.Database.Memory {
-		return nil, fmt.Errorf("database path or memory is required")
+		return nil, errors.New("database path or memory is required")
 	}
 
 	db, err := badger.New(m.Database.Path, m.Database.BackupPath, m.Database.Memory, flatten, m.Check)
@@ -100,34 +97,12 @@ func (m *Iam) Middleware(ctx context.Context, name string) (func(http.Handler) h
 
 	m.db = db
 
-	if m.Database.SyncHostFromInterface {
-		addr, err := net.InterfaceAddrs()
-		if err != nil {
-			return nil, err
-		}
-
-		for _, a := range addr {
-			if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-				if ipnet.IP.To4() != nil {
-					ipAddr := ipnet.IP.String()
-					if strings.HasPrefix(ipAddr, m.Database.SyncHostFromInterfaceIPPrefix) {
-						m.Database.SyncHost = ipnet.IP.String()
-						break
-					}
-				}
-			}
-		}
-	}
-
 	m.sync, err = NewSync(SyncConfig{
-		WriteAPI:          m.Database.WriteAPI,
-		PrefixPath:        m.PrefixPath,
-		DB:                db,
-		TriggerBackground: m.Database.TriggerBackground,
-
-		SyncSchema: m.Database.SyncSchema,
-		SyncHost:   m.Database.SyncHost,
-		SyncPort:   m.Database.SyncPort,
+		WriteAPI:    m.Database.WriteAPI,
+		PrefixPath:  m.PrefixPath,
+		DB:          db,
+		Redis:       rConn,
+		PubSubTopic: m.Database.PubSubTopic,
 	})
 	if err != nil {
 		return nil, err
@@ -136,13 +111,17 @@ func (m *Iam) Middleware(ctx context.Context, name string) (func(http.Handler) h
 	ctx = logi.WithContext(ctx, slog.With(slog.String("middleware", "iam")))
 	m.ctxService = ctx
 
-	m.sync.SyncTTL(ctx)
 	// first sync
 	if err := m.sync.Sync(ctx, 0); err != nil {
 		return nil, err
 	}
 
-	m.sync.SyncStart(ctx)
+	syncClose, err := m.sync.SyncStart(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	into.ShutdownAdd(syncClose, "iam sync")
 
 	if m.Ldap.Addr != "" && m.Database.WriteAPI == "" {
 		if !m.Ldap.DisableFirstConnect {

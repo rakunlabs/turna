@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -95,7 +94,6 @@ func (m *Iam) MuxSet(prefix string) *chi.Mux {
 	mux.Get(prefix+"/v1/backup", m.Backup)
 	mux.Post(prefix+"/v1/restore", m.Restore) // trigger
 	mux.Get(prefix+"/v1/version", m.Version)
-	mux.Post(prefix+"/v1/trigger", m.Trigger)
 	mux.Post(prefix+"/v1/sync", m.Sync)
 
 	mux.Get(prefix+"/ui/info", m.UIInfo)
@@ -1901,44 +1899,6 @@ func (m *Iam) Version(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, data.ResponseVersion{
 		Version: m.db.Version(),
 	})
-}
-
-// @Summary Add trigger endpoint for change sync
-// @Tags backup
-// @Param trigger body Trigger true "Trigger API"
-// @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
-// @Router /v1/trigger [POST]
-func (m *Iam) Trigger(w http.ResponseWriter, r *http.Request) {
-	trigger := Trigger{}
-	if err := httputil.Decode(r, &trigger); err != nil {
-		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
-		return
-	}
-
-	if trigger.Path == "" {
-		httputil.HandleError(w, httputil.NewError("Path is required", nil, http.StatusBadRequest))
-		return
-	}
-
-	if trigger.Host == "" {
-		// add ip address from request
-		host, _, _ := net.SplitHostPort(r.RemoteAddr)
-		trigger.Host = host
-	}
-
-	if trigger.Schema == "" {
-		trigger.Schema = "http"
-	}
-
-	if trigger.Port == "" {
-		trigger.Port = "8080"
-	}
-
-	m.sync.AddSync(m.ctxService, trigger)
-
-	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Recorded trigger endpoint"))
 }
 
 // @Summary Sync with write API

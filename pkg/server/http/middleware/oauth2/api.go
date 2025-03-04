@@ -17,6 +17,7 @@ import (
 	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/ldap"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/auth"
+	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/store"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/token"
 	"github.com/worldline-go/turna/pkg/server/model"
 )
@@ -28,9 +29,109 @@ func (m *Oauth2) MuxSet(prefix string) *chi.Mux {
 	mux.Get(prefix+"/code/{provider}", m.APICodeAuth)
 	mux.Post(prefix+"/token", m.APIToken)
 	mux.Get(prefix+"/certs", m.APICerts)
-	mux.Get(prefix+"{custom}/.well-known/openid-configuration", m.APIWellKnown)
+	mux.Get(prefix+"/{custom}/.well-known/openid-configuration", m.APIWellKnown)
+	mux.Get(prefix+"/userinfo", m.APIUserInfo)
 
 	return mux
+}
+
+func (m *Oauth2) APIUserInfo(w http.ResponseWriter, r *http.Request) {
+	authorizationHeader, ok := r.Header["Authorization"]
+	if !ok {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_request",
+			ErrorDescription: "access token not found",
+			code:             http.StatusBadRequest,
+		})
+
+		return
+	}
+
+	tokenHeader := strings.TrimSpace(strings.TrimPrefix(authorizationHeader[0], "Bearer"))
+	if tokenHeader != "" {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_request",
+			ErrorDescription: "access token not found",
+			code:             http.StatusBadRequest,
+		})
+
+		return
+	}
+
+	claims := jwt.MapClaims{}
+	if _, err := m.jwt.Parse(tokenHeader, &claims); err != nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_token",
+			ErrorDescription: err.Error(),
+			code:             http.StatusUnauthorized,
+		})
+
+		return
+	}
+
+	// create ID token response
+	// find user
+	sub, _ := claims["sub"].(string)
+	if sub == "" {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_token",
+			ErrorDescription: "user not found",
+			code:             http.StatusUnauthorized,
+		})
+
+		return
+	}
+
+	user, err := m.iam.DB().GetUser(data.GetUserRequest{
+		ID: sub,
+	})
+	if err != nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_token",
+			ErrorDescription: "user not found",
+			code:             http.StatusUnauthorized,
+		})
+
+		return
+	}
+
+	// //////////////////////////////////////////
+
+	claimsID := map[string]interface{}{
+		"aud":                "iam",
+		"typ":                "ID",
+		"sub":                user.ID,
+		"name":               user.Details["name"],
+		"preferred_username": user.Details["name"],
+		"user_name":          user.Details["name"],
+	}
+
+	if v, ok := user.Details["email"]; ok {
+		claimsID["email"] = v
+	}
+
+	if v, ok := user.Details["uid"]; ok {
+		claimsID["preferred_username"] = v
+		claimsID["user_name"] = v
+	}
+
+	idToken, err := m.jwt.Generate(claimsID, m.Token.GetTokenExpDate())
+	if err != nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "server_error",
+			ErrorDescription: err.Error(),
+			code:             http.StatusInternalServerError,
+		})
+
+		return
+	}
+
+	// //////////////////////////////////////////
+	w.Header().Set("Content-Type", "application/jwt")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+
+	w.Write([]byte(idToken))
 }
 
 func (m *Oauth2) APIWellKnown(w http.ResponseWriter, r *http.Request) {
@@ -97,11 +198,12 @@ func (m *Oauth2) APIAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stateValue, err := Encode(State{
+	stateValue, err := store.Encode(store.State{
 		RedirectURI: r.URL.Query().Get("redirect_uri"),
 		State:       state,
 		OrgState:    r.URL.Query().Get("state"),
 		Scope:       strings.Fields(r.URL.Query().Get("scope")),
+		Nonce:       r.URL.Query().Get("nonce"),
 	})
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
@@ -188,7 +290,7 @@ func (m *Oauth2) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stateValue, err := Decode[State](stateRaw)
+	stateValue, err := store.Decode[store.State](stateRaw)
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "server_error",
@@ -252,9 +354,10 @@ func (m *Oauth2) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 	// create code flow response
 	codeID := ulid.Make().String()
 
-	codeValue, err := Encode(Code{
+	codeValue, err := store.Encode(store.Code{
 		Alias: alias,
 		Scope: stateValue.Scope,
+		Nonce: stateValue.Nonce,
 	})
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
@@ -378,7 +481,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 
 		scope, _ := claims["scope"].(string)
 
-		m.GenerateToken(w, userID, nil, clientID, strings.Split(scope, " "), accessClient.Scope)
+		m.GenerateToken(w, userID, nil, clientID, strings.Split(scope, " "), accessClient.Scope, nil)
 
 		return
 	case "client_credentials":
@@ -408,7 +511,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 
 		scope, _ := user.Details["scope"].(string)
 
-		m.GenerateToken(w, user.ID, user, clientID, nil, strings.Split(scope, " "))
+		m.GenerateToken(w, user.ID, user, clientID, nil, strings.Split(scope, " "), nil)
 
 		return
 	case "authorization_code":
@@ -441,7 +544,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		codeValue, err := Decode[Code](codeRaw)
+		codeValue, err := store.Decode[store.Code](codeRaw)
 		if err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "server_error",
@@ -468,7 +571,12 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		m.GenerateToken(w, user.ID, user, clientID, codeValue.Scope, accessClient.Scope)
+		extra := make(map[string]any)
+		if codeValue.Nonce != "" {
+			extra["nonce"] = codeValue.Nonce
+		}
+
+		m.GenerateToken(w, user.ID, user, clientID, codeValue.Scope, accessClient.Scope, extra)
 
 		return
 	case "password":
@@ -479,8 +587,13 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		userName := accessTokenRequest.Username
+		if m.PassLower {
+			userName = strings.ToLower(userName)
+		}
+
 		user, err := m.iam.GetOrCreateUser(data.GetUserRequest{
-			Alias: accessTokenRequest.Username,
+			Alias: userName,
 		})
 		if err != nil && !errors.Is(err, data.ErrNotFound) {
 			httputil.HandleError(w, AccessTokenErrorResponse{
@@ -504,7 +617,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 
 		if !user.Local {
 			// check LDAP for external user
-			ok, err := m.iam.LdapCheckPassword(accessTokenRequest.Username, accessTokenRequest.Password)
+			ok, err := m.iam.LdapCheckPassword(userName, accessTokenRequest.Password)
 			if err != nil {
 				if errors.Is(err, ldap.ErrExceedPasswordRetryLimit) {
 					httputil.HandleError(w, AccessTokenErrorResponse{
@@ -558,7 +671,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		m.GenerateToken(w, user.ID, user, clientID, nil, accessClient.Scope)
+		m.GenerateToken(w, user.ID, user, clientID, nil, accessClient.Scope, nil)
 
 		return
 	default:

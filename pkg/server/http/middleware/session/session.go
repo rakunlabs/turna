@@ -27,6 +27,8 @@ type Session struct {
 
 	Action   Action              `cfg:"action"`
 	Provider map[string]Provider `cfg:"provider"`
+	// SetProvider is the default provider to set for refresing tokens.
+	SetProvider string `cfg:"set_provider"`
 
 	store StoreInf `cfg:"-"`
 }

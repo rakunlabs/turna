@@ -1,13 +1,11 @@
 package iam
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -16,26 +14,23 @@ import (
 	"sync"
 	"time"
 
+	"github.com/oklog/ulid/v2"
+	"github.com/redis/go-redis/v9"
+	"github.com/worldline-go/klient"
 	httputil2 "github.com/worldline-go/turna/pkg/server/http/httputil"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
-	"github.com/worldline-go/klient"
 )
 
 var (
-	DefaultIntervalWriteAPI = 10 * time.Second
-	DefaultTriggerTTL       = 60 * time.Second
-
-	DefaultTriggerRequestTimeout = 10 * time.Second
-	DefaultSyncTimeout           = 10 * time.Minute
-
-	DefaultSyncInterval = 10 * time.Minute
+	DefaultSyncTimeout = 10 * time.Minute
+	DefaultTrigger     = 4 * time.Second
 )
 
-type Trigger struct {
-	Path   string `json:"path"`
-	Schema string `json:"schema"` // default is http
-	Host   string `json:"host"`   // default is caller host
-	Port   string `json:"port"`   // default is caller port
+type PubSubModel struct {
+	Type string `json:"type"`
+
+	Version uint64 `json:"version,omitempty"`
+	ID      string `json:"id,omitempty"`
 }
 
 type SyncAPI struct {
@@ -45,7 +40,6 @@ type SyncAPI struct {
 
 	WriteAPI      *url.URL
 	CurrentPrefix string
-	TriggerData   []byte
 }
 
 type SyncDB interface {
@@ -54,28 +48,100 @@ type SyncDB interface {
 }
 
 type SyncConfig struct {
-	WriteAPI          string
-	PrefixPath        string
-	DB                SyncDB
-	TriggerBackground bool
-
-	SyncSchema string
-	SyncHost   string
-	SyncPort   string
+	WriteAPI    string
+	PrefixPath  string
+	DB          SyncDB
+	Redis       redis.UniversalClient
+	PubSubTopic string
 }
 
 type Sync struct {
-	db                SyncDB
-	syncAPI           *SyncAPI
-	triggerAPIs       map[string]TriggerData
-	triggerBackground bool
+	db          SyncDB
+	syncAPI     *SyncAPI
+	client      *klient.Client
+	redis       redis.UniversalClient
+	topic       string
+	shared      Shared
+	lastVersion LastVersion
 
-	m      sync.Mutex
-	client *klient.Client
+	m sync.Mutex
 }
 
-type TriggerData struct {
-	Time time.Time
+type LastVersion struct {
+	Version uint64
+
+	m sync.RWMutex
+}
+
+func (l *LastVersion) Set(version uint64) {
+	l.m.Lock()
+	defer l.m.Unlock()
+
+	l.Version = version
+}
+
+func (l *LastVersion) Get() uint64 {
+	l.m.RLock()
+	defer l.m.RUnlock()
+
+	return l.Version
+}
+
+type Shared struct {
+	V map[string]VersionTime
+
+	m sync.Mutex
+}
+
+type VersionTime struct {
+	Version uint64
+	Time    time.Time
+}
+
+func (s *Shared) Set(key string, version uint64) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	if s.V == nil {
+		s.V = make(map[string]VersionTime)
+	}
+
+	s.V[key] = VersionTime{
+		Version: version,
+		Time:    time.Now(),
+	}
+}
+
+func (s *Shared) Wait(version uint64) {
+	vMax := time.After(30 * time.Second)
+	for {
+		select {
+		case <-vMax:
+			slog.Error("timeout waiting for version", "version", version)
+			return
+		default:
+			s.m.Lock()
+			ready := true
+			for key, v := range s.V {
+				if time.Since(v.Time) > 10*time.Second {
+					delete(s.V, key)
+				}
+
+				if v.Version < version {
+					ready = false
+
+					break
+				}
+			}
+			s.m.Unlock()
+
+			if ready {
+				return
+			}
+
+			time.Sleep(1 * time.Second)
+		}
+	}
 }
 
 func NewSync(cfg SyncConfig) (*Sync, error) {
@@ -93,62 +159,172 @@ func NewSync(cfg SyncConfig) (*Sync, error) {
 			return nil, fmt.Errorf("failed to parse write api: %w", err)
 		}
 
-		trigger := Trigger{
-			Path:   cfg.PrefixPath + "/v1/sync",
-			Schema: cfg.SyncSchema,
-			Host:   cfg.SyncHost,
-			Port:   cfg.SyncPort,
-		}
-
-		triggerBytes, err := json.Marshal(trigger)
-		if err != nil {
-			return nil, err
-		}
-
 		syncAPI = &SyncAPI{
 			Backup:  writeAPI + "/v1/backup",
 			Version: writeAPI + "/v1/version",
 			Trigger: writeAPI + "/v1/trigger",
 
-			TriggerData:   triggerBytes,
 			WriteAPI:      writeAPIURL,
 			CurrentPrefix: cfg.PrefixPath,
 		}
 	}
 
 	return &Sync{
-		db:                cfg.DB,
-		syncAPI:           syncAPI,
-		triggerAPIs:       make(map[string]TriggerData),
-		triggerBackground: cfg.TriggerBackground,
-		client:            client,
+		db:      cfg.DB,
+		syncAPI: syncAPI,
+		client:  client,
+		redis:   cfg.Redis,
+		topic:   cfg.PubSubTopic,
 	}, nil
 }
 
 // ////////////////////////////////////////////////////////////////////////////
 // for READ-ONLY service
 
-func (s *Sync) SyncStart(ctx context.Context) {
+func (s *Sync) SyncStart(ctx context.Context) (func() error, error) {
+	pubsub := s.redis.Subscribe(ctx, s.topic)
+	ch := pubsub.Channel()
+
 	if s.syncAPI == nil {
-		return
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case msg := <-ch:
+					if msg == nil {
+						slog.Error("pubsub message is nil")
+
+						continue
+					}
+
+					var data PubSubModel
+					if err := json.Unmarshal([]byte(msg.Payload), &data); err != nil {
+						slog.Error("pubsub unmarshal", "error", err.Error())
+
+						continue
+					}
+
+					if data.Type != "id" {
+						continue
+					}
+
+					if data.ID != "" {
+						continue
+					}
+
+					s.shared.Set(data.ID, data.Version)
+
+					if s.lastVersion.Get() > data.Version {
+						s.triggerPush(ctx)
+					}
+				}
+			}
+		}()
+
+		return pubsub.Close, nil
 	}
+
+	go func() {
+		idGen := ulid.Make().String()
+		idData, err := json.Marshal(PubSubModel{
+			ID:      idGen,
+			Type:    "id",
+			Version: s.db.Version(),
+		})
+		if err != nil {
+			slog.Error("marshal id", "error", err)
+		}
+
+		if err := s.redis.Publish(ctx, s.topic, idData).Err(); err != nil {
+			slog.Error("pubsub publish id", "error", err)
+			return
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(DefaultTrigger):
+				idData, err := json.Marshal(PubSubModel{
+					ID:      idGen,
+					Type:    "id",
+					Version: s.db.Version(),
+				})
+				if err != nil {
+					slog.Error("marshal id", "error", err)
+
+					continue
+				}
+
+				if err := s.redis.Publish(ctx, s.topic, idData).Err(); err != nil {
+					slog.Error("pubsub publish id", "error", err)
+				}
+			}
+		}
+	}()
 
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(DefaultSyncInterval):
-				if err := s.Sync(ctx, 0); err != nil {
-					slog.Error("failed to sync", slog.String("error", err.Error()))
+			case msg := <-ch:
+				if msg == nil {
+					slog.Error("pubsub message is nil")
+
+					continue
+				}
+
+				var data PubSubModel
+				if err := json.Unmarshal([]byte(msg.Payload), &data); err != nil {
+					slog.Error("pubsub unmarshal", "error", err.Error())
+
+					continue
+				}
+
+				if data.Type != "version" {
+					continue
+				}
+
+				if data.Version == 0 {
+					slog.Error("pubsub version is 0")
+
+					continue
+				}
+
+				if err := s.sync(ctx, data.Version); err != nil {
+					slog.Error("failed to sync", "error", err.Error())
+
+					continue
+				}
+
+				idData, err := json.Marshal(PubSubModel{
+					ID:      ulid.Make().String(),
+					Type:    "id",
+					Version: s.db.Version(),
+				})
+				if err != nil {
+					slog.Error("marshal id", "error", err)
+
+					continue
+				}
+
+				if err := s.redis.Publish(ctx, s.topic, idData).Err(); err != nil {
+					slog.Error("pubsub publish id", "error", err)
+
+					continue
 				}
 			}
 		}
 	}()
+
+	return pubsub.Close, nil
 }
 
 func (s *Sync) Sync(ctx context.Context, targetVersion uint64) error {
 	if s.syncAPI == nil {
+		s.lastVersion.Set(s.db.Version())
 		return nil
 	}
 
@@ -228,45 +404,6 @@ func (s *Sync) getVersion(ctx context.Context) (uint64, error) {
 	return responseVersion.Version, nil
 }
 
-func (s *Sync) SyncTTL(ctx context.Context) {
-	if s.syncAPI == nil {
-		return
-	}
-
-	if err := s.informWrite(ctx); err != nil {
-		slog.Error("failed to trigger write", slog.String("error", err.Error()))
-	}
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(DefaultIntervalWriteAPI):
-				if err := s.informWrite(ctx); err != nil {
-					slog.Error("failed to trigger write", slog.String("error", err.Error()))
-				}
-			}
-		}
-	}()
-}
-
-func (s *Sync) informWrite(ctx context.Context) error {
-	ctx, ctxCancel := context.WithTimeout(ctx, DefaultTriggerRequestTimeout)
-	defer ctxCancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.syncAPI.Trigger, bytes.NewReader(s.syncAPI.TriggerData))
-	if err != nil {
-		return err
-	}
-
-	if err := s.client.Do(req, klient.UnexpectedResponse); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (s *Sync) Redirect(w http.ResponseWriter, r *http.Request) bool {
 	if s.syncAPI == nil {
 		return false
@@ -288,50 +425,8 @@ func (s *Sync) Redirect(w http.ResponseWriter, r *http.Request) bool {
 // ////////////////////////////////////////////////////////////////////////////
 // for WRITE service
 
-func (s *Sync) AddSync(ctx context.Context, trigger Trigger) {
-	if s.syncAPI != nil {
-		return
-	}
-
-	s.m.Lock()
-	defer s.m.Unlock()
-
-	request := url.URL{}
-	request.Scheme = trigger.Schema
-	request.Host = net.JoinHostPort(trigger.Host, trigger.Port)
-	request.Path = trigger.Path
-
-	path := request.String()
-
-	triggerPath := false
-
-	if _, ok := s.triggerAPIs[path]; !ok {
-		slog.Info("add sync", slog.String("path", path))
-		// trigger sync
-		triggerPath = true
-	}
-
-	s.triggerAPIs[path] = TriggerData{
-		Time: time.Now(),
-	}
-
-	if triggerPath {
-		go func() {
-			s.call(ctx, path, strconv.FormatUint(s.db.Version(), 10))
-		}()
-	}
-}
-
 func (s *Sync) Trigger(ctx context.Context) {
 	if s.syncAPI != nil {
-		return
-	}
-
-	if s.triggerBackground {
-		go func() {
-			s.trigger(ctx)
-		}()
-
 		return
 	}
 
@@ -342,39 +437,29 @@ func (s *Sync) trigger(ctx context.Context) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
-	version := strconv.FormatUint(s.db.Version(), 10)
+	s.lastVersion.Set(s.db.Version())
 
-	deleteList := make([]string, 0, len(s.triggerAPIs))
+	if err := s.triggerPush(ctx); err != nil {
+		slog.Error("failed to trigger push", "error", err.Error())
 
-	for path, data := range s.triggerAPIs {
-		if time.Since(data.Time) > DefaultTriggerTTL {
-			deleteList = append(deleteList, path)
-
-			continue
-		}
-
-		s.call(ctx, path, version)
-	}
-
-	for _, path := range deleteList {
-		delete(s.triggerAPIs, path)
-		slog.Info("delete sync", slog.String("path", path))
-	}
-}
-
-func (s *Sync) call(ctx context.Context, path string, version string) {
-	ctx, ctxCancel := context.WithTimeout(ctx, DefaultSyncTimeout)
-	defer ctxCancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, path, nil)
-	if err != nil {
-		slog.Error("failed to create request", slog.String("path", path), slog.String("error", err.Error()))
 		return
 	}
 
-	req.Header.Set("X-Sync-Version", version)
+	s.shared.Wait(s.lastVersion.Get())
+}
 
-	if err := s.client.Do(req, klient.UnexpectedResponse); err != nil {
-		slog.Error("failed to trigger sync", slog.String("path", path), slog.String("error", err.Error()))
+func (s *Sync) triggerPush(ctx context.Context) error {
+	v, err := json.Marshal(PubSubModel{
+		Version: s.lastVersion.Get(),
+		Type:    "version",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal: %w", err)
 	}
+
+	if err := s.redis.Publish(ctx, s.topic, v).Err(); err != nil {
+		return fmt.Errorf("failed to publish: %w", err)
+	}
+
+	return nil
 }

@@ -22,7 +22,7 @@ require (
 	github.com/rakunlabs/into v0.4.1
 	github.com/rakunlabs/logi v0.4.0
 	github.com/rbcervilla/redisstore/v9 v9.0.0
-	github.com/redis/go-redis/v9 v9.7.0
+	github.com/redis/go-redis/v9 v9.7.1
 	github.com/rs/zerolog v1.33.0
 	github.com/rytsh/liz/loader v0.2.5
 	github.com/rytsh/mugo v0.8.3
@@ -32,7 +32,8 @@ require (
 	github.com/things-go/go-socks5 v0.0.5
 	github.com/timshannon/badgerhold/v4 v4.0.3
 	github.com/twmb/tlscfg v1.2.1
-	github.com/worldline-go/cache v0.2.3
+	github.com/worldline-go/cache v0.2.4
+	github.com/worldline-go/conn v0.1.0
 	github.com/worldline-go/igconfig v0.3.0
 	github.com/worldline-go/klient v0.9.7
 	github.com/worldline-go/logz v0.5.1

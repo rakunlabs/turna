@@ -45,5 +45,7 @@ func (m *Login) Logout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	m.RemoveSuccess(w)
+
 	m.session.RedirectToLogin(w, r, false, true)
 }

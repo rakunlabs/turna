@@ -92,18 +92,16 @@ func (t *JWT) Alg() string {
 
 // Generate function get custom values and add 'exp' as expires at with expDate argument with unix format.
 func (t *JWT) Generate(mapClaims map[string]interface{}, expDate int64) (string, error) {
-	claims := jwt.MapClaims(mapClaims)
-
 	if expDate > 0 {
-		claims["exp"] = expDate
+		mapClaims["exp"] = expDate
 	}
 
-	if _, ok := claims["typ"]; !ok {
-		claims["typ"] = "Bearer"
+	if _, ok := mapClaims["typ"]; !ok {
+		mapClaims["typ"] = "Bearer"
 	}
-	claims["iat"] = time.Now().Unix()
+	mapClaims["iat"] = time.Now().Unix()
 
-	token := jwt.NewWithClaims(t.method, claims)
+	token := jwt.NewWithClaims(t.method, jwt.MapClaims(mapClaims))
 
 	// header part
 	if t.kid != "" {
