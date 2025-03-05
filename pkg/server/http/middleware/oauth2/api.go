@@ -48,7 +48,7 @@ func (m *Oauth2) APIUserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tokenHeader := strings.TrimSpace(strings.TrimPrefix(authorizationHeader[0], "Bearer"))
-	if tokenHeader != "" {
+	if tokenHeader == "" {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_request",
 			ErrorDescription: "access token not found",
@@ -97,41 +97,30 @@ func (m *Oauth2) APIUserInfo(w http.ResponseWriter, r *http.Request) {
 
 	// //////////////////////////////////////////
 
-	claimsID := map[string]interface{}{
-		"aud":                "iam",
-		"typ":                "ID",
+	claimsRet := map[string]interface{}{
 		"sub":                user.ID,
 		"name":               user.Details["name"],
 		"preferred_username": user.Details["name"],
-		"user_name":          user.Details["name"],
 	}
 
 	if v, ok := user.Details["email"]; ok {
-		claimsID["email"] = v
+		claimsRet["email"] = v
 	}
 
 	if v, ok := user.Details["uid"]; ok {
-		claimsID["preferred_username"] = v
-		claimsID["user_name"] = v
+		claimsRet["preferred_username"] = v
 	}
 
-	idToken, err := m.jwt.Generate(claimsID, m.Token.GetTokenExpDate())
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
+	if v, ok := user.Details["family_name"]; ok {
+		claimsRet["family_name"] = v
+	}
 
-		return
+	if v, ok := user.Details["given_name"]; ok {
+		claimsRet["given_name"] = v
 	}
 
 	// //////////////////////////////////////////
-	w.Header().Set("Content-Type", "application/jwt")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Pragma", "no-cache")
-
-	w.Write([]byte(idToken))
+	httputil.JSON(w, http.StatusOK, claimsRet)
 }
 
 func (m *Oauth2) APIWellKnown(w http.ResponseWriter, r *http.Request) {
@@ -571,12 +560,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		extra := make(map[string]any)
-		if codeValue.Nonce != "" {
-			extra["nonce"] = codeValue.Nonce
-		}
-
-		m.GenerateToken(w, user.ID, user, clientID, codeValue.Scope, accessClient.Scope, extra)
+		m.GenerateToken(w, user.ID, user, clientID, codeValue.Scope, accessClient.Scope, nil)
 
 		return
 	case "password":
@@ -595,20 +579,10 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 		user, err := m.iam.GetOrCreateUser(data.GetUserRequest{
 			Alias: userName,
 		})
-		if err != nil && !errors.Is(err, data.ErrNotFound) {
-			httputil.HandleError(w, AccessTokenErrorResponse{
-				Error:            "server_error",
-				ErrorDescription: err.Error(),
-				code:             http.StatusInternalServerError,
-			})
-
-			return
-		}
-
-		if errors.Is(err, data.ErrNotFound) {
+		if err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
-				ErrorDescription: "user not found",
+				ErrorDescription: err.Error(),
 				code:             http.StatusUnauthorized,
 			})
 

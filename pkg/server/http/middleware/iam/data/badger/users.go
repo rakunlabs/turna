@@ -419,6 +419,10 @@ func (b *Badger) PatchUser(ctx context.Context, id string, userPatch data.UserPa
 				(*userPatch.Details)["password"] = hashPassword
 			}
 
+			if foundUser.Details != nil && foundUser.Details["password"] != nil && (*userPatch.Details)["password"] == nil {
+				(*userPatch.Details)["password"] = foundUser.Details["password"]
+			}
+
 			foundUser.Details = *userPatch.Details
 		}
 

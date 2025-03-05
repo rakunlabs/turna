@@ -101,7 +101,7 @@ func CompareBcrypt(hash, password string) error {
 	return bcrypt.CompareHashAndPassword(hashBytes, passwordBytes)
 }
 
-func (m *Oauth2) GenerateToken(w http.ResponseWriter, userID string, user *data.UserExtended, clientID string, scope []string, defScope []string, extra map[string]interface{}) {
+func (m *Oauth2) GenerateToken(w http.ResponseWriter, userID string, user *data.UserExtended, clientID string, scope []string, defScope []string, _ map[string]interface{}) {
 	if user == nil {
 		// get user from iam
 		var err error
@@ -127,7 +127,6 @@ func (m *Oauth2) GenerateToken(w http.ResponseWriter, userID string, user *data.
 		"azp":                clientID,
 		"name":               user.Details["name"],
 		"preferred_username": user.Details["name"],
-		"user_name":          user.Details["name"],
 	}
 
 	if v, ok := user.Details["email"]; ok {
@@ -136,7 +135,6 @@ func (m *Oauth2) GenerateToken(w http.ResponseWriter, userID string, user *data.
 
 	if v, ok := user.Details["uid"]; ok {
 		claimsAccess["preferred_username"] = v
-		claimsAccess["user_name"] = v
 	}
 
 	if v, ok := user.Details["given_name"]; ok {
@@ -145,10 +143,6 @@ func (m *Oauth2) GenerateToken(w http.ResponseWriter, userID string, user *data.
 
 	if v, ok := user.Details["family_name"]; ok {
 		claimsAccess["family_name"] = v
-	}
-
-	for k, v := range extra {
-		claimsAccess[k] = v
 	}
 
 	// //////////////////////////////////////////
@@ -184,8 +178,10 @@ func (m *Oauth2) GenerateToken(w http.ResponseWriter, userID string, user *data.
 
 	// //////////////////////////////////////////
 
-	claimsAccess["realm_access"] = map[string]interface{}{
-		"roles": rolesList,
+	if len(rolesList) > 0 {
+		claimsAccess["realm_access"] = map[string]interface{}{
+			"roles": rolesList,
+		}
 	}
 
 	// //////////////////////////////////////////

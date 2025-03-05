@@ -32,7 +32,6 @@ func TestTry_Middleware(t *testing.T) {
 			path: "/test/one",
 			next: func(w http.ResponseWriter, r *http.Request) {
 				path := r.URL.Path
-				// fmt.Println(path)
 
 				if path == "/test/one" {
 					w.(http.Flusher).Flush()

@@ -9,8 +9,8 @@ import (
 )
 
 type Service struct {
-	InsecureSkipVerify bool `cfg:"insecure_skip_verify"`
-	PassHostHeader     bool `cfg:"pass_host_header"`
+	InsecureSkipVerify bool  `cfg:"insecure_skip_verify"`
+	PassHostHeader     *bool `cfg:"pass_host_header"`
 
 	PrefixBalancer PrefixBalancer `cfg:"prefixbalancer"`
 	LoadBalancer   LoadBalancer   `cfg:"loadbalancer"`
@@ -93,7 +93,7 @@ func (m *Service) Middleware() ([]func(http.Handler) http.Handler, error) {
 
 	checkHost := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !m.PassHostHeader {
+			if m.PassHostHeader != nil && !(*m.PassHostHeader) {
 				r.Host = ""
 			}
 

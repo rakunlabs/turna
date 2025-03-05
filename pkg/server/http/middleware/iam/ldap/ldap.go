@@ -51,9 +51,11 @@ type Group struct {
 }
 
 type LdapUser struct {
-	UID   string `json:"uid"`
-	Email string `json:"email"`
-	Name  string `json:"name"`
+	UID        string `json:"uid"`
+	Email      string `json:"email"`
+	Name       string `json:"name"`
+	GivenName  string `json:"given_name"`
+	FamilyName string `json:"family_name"`
 }
 
 type LdapGroup struct {
@@ -178,7 +180,7 @@ func (l *Ldap) Users(conn *ldap.Conn, uids []string) ([]LdapUser, error) {
 		DerefAliases: ldap.NeverDerefAliases,
 		TypesOnly:    false,
 		Filter:       ldapUserFilter(uids),
-		Attributes:   []string{"uid", "mail", "gecos", "displayName"},
+		Attributes:   []string{"uid", "mail", "gecos", "displayName", "sn", "givenName"},
 	})
 	if err != nil {
 		if ldap.IsErrorWithCode(err, ldap.LDAPResultNoSuchObject) {
@@ -195,9 +197,11 @@ func (l *Ldap) Users(conn *ldap.Conn, uids []string) ([]LdapUser, error) {
 	ldapUsers := make([]LdapUser, 0, len(result.Entries))
 	for _, entry := range result.Entries {
 		user := LdapUser{
-			UID:   entry.GetAttributeValue("uid"),
-			Email: entry.GetAttributeValue("mail"),
-			Name:  entry.GetAttributeValue("gecos"),
+			UID:        entry.GetAttributeValue("uid"),
+			Email:      entry.GetAttributeValue("mail"),
+			Name:       entry.GetAttributeValue("gecos"),
+			GivenName:  entry.GetAttributeValue("givenName"),
+			FamilyName: entry.GetAttributeValue("sn"),
 		}
 
 		ldapUsers = append(ldapUsers, user)

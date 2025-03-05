@@ -183,6 +183,8 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 					userDB.User.Details["email"] = u.Email
 					userDB.User.Details["uid"] = u.UID
 					userDB.User.Details["name"] = u.Name
+					userDB.User.Details["family_name"] = u.FamilyName
+					userDB.User.Details["given_name"] = u.GivenName
 
 					userDB.User.SyncRoleIDs = roleIDs
 
@@ -213,9 +215,11 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 						SyncRoleIDs: roleIDs,
 						Alias:       []string{u.Email, u.UID},
 						Details: map[string]interface{}{
-							"email": u.Email,
-							"uid":   u.UID,
-							"name":  u.Name,
+							"email":       u.Email,
+							"uid":         u.UID,
+							"name":        u.Name,
+							"family_name": u.FamilyName,
+							"given_name":  u.GivenName,
 						},
 					})
 					if err != nil {
