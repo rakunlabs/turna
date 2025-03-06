@@ -100,6 +100,10 @@ func (m *Session) SetStore(ctx context.Context) error {
 func (m *Session) SetToken(w http.ResponseWriter, r *http.Request, token []byte, providerName string) error {
 	cookieValue := base64.StdEncoding.EncodeToString(token)
 
+	if m.SetProvider != "" {
+		providerName = m.SetProvider
+	}
+
 	// set the cookie
 	session, _ := m.store.Get(r, m.GetCookieName(r))
 	session.Values[TokenKey] = cookieValue

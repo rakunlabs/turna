@@ -405,6 +405,10 @@ func (m *Session) GetToken(r *http.Request) (*TokenData, *Oauth2, error) {
 		return nil, nil, fmt.Errorf("cookie not found")
 	}
 
+	if m.SetProvider != "" {
+		providerName = m.SetProvider
+	}
+
 	// check if token is valid
 	token, err := ParseToken64(v64)
 	if err != nil {
@@ -437,6 +441,10 @@ func (m *Session) IsLogged(w http.ResponseWriter, r *http.Request) (*claims.Cust
 
 		// cookie not found, redirect to login page
 		return nil, false, nil
+	}
+
+	if m.SetProvider != "" {
+		providerName = m.SetProvider
 	}
 
 	// check if token is valid
