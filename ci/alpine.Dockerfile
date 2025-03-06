@@ -1,4 +1,4 @@
-ARG ALPINE=alpine:3.21.2
+ARG ALPINE=alpine:3.21.3
 
 FROM $ALPINE
 

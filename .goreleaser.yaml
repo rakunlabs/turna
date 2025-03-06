@@ -98,7 +98,7 @@ dockers:
 - image_templates:
   - 'ghcr.io/worldline-go/turna:{{ .Tag }}'
   - 'ghcr.io/worldline-go/turna:{{ .Tag }}-alpine'
-  - 'ghcr.io/worldline-go/turna:{{ .Tag }}-alpine3.21.2'
+  - 'ghcr.io/worldline-go/turna:{{ .Tag }}-alpine3.21.3'
   - 'ghcr.io/worldline-go/turna:latest'
   dockerfile: ci/alpine.Dockerfile
   build_flag_templates:
