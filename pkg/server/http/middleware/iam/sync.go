@@ -56,7 +56,8 @@ type SyncConfig struct {
 }
 
 type Sync struct {
-	db          SyncDB
+	db SyncDB
+	// syncAPI is not nil, it means this service is read-only
 	syncAPI     *SyncAPI
 	client      *klient.Client
 	redis       redis.UniversalClient
@@ -125,6 +126,8 @@ func (s *Shared) Wait(version uint64) {
 			for key, v := range s.V {
 				if time.Since(v.Time) > 10*time.Second {
 					delete(s.V, key)
+
+					continue
 				}
 
 				if v.Version < version {
@@ -182,6 +185,8 @@ func NewSync(cfg SyncConfig) (*Sync, error) {
 // for READ-ONLY service
 
 func (s *Sync) SyncStart(ctx context.Context) (func() error, error) {
+	idGen := ulid.Make().String()
+
 	pubsub := s.redis.Subscribe(ctx, s.topic)
 	ch := pubsub.Channel()
 
@@ -209,7 +214,7 @@ func (s *Sync) SyncStart(ctx context.Context) (func() error, error) {
 						continue
 					}
 
-					if data.ID != "" {
+					if data.ID == "" {
 						continue
 					}
 
@@ -226,7 +231,6 @@ func (s *Sync) SyncStart(ctx context.Context) (func() error, error) {
 	}
 
 	go func() {
-		idGen := ulid.Make().String()
 		idData, err := json.Marshal(PubSubModel{
 			ID:      idGen,
 			Type:    "id",
@@ -300,7 +304,7 @@ func (s *Sync) SyncStart(ctx context.Context) (func() error, error) {
 				}
 
 				idData, err := json.Marshal(PubSubModel{
-					ID:      ulid.Make().String(),
+					ID:      idGen,
 					Type:    "id",
 					Version: s.db.Version(),
 				})
