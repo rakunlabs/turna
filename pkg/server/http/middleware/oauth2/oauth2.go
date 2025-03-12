@@ -31,7 +31,7 @@ type Oauth2 struct {
 	// PassLower for pass lower case on password flow.
 	PassLower bool `cfg:"pass_lower"`
 
-	WellKnown map[string]map[string]interface{} `cfg:"well_known"`
+	WellKnown map[string]map[string]any `cfg:"well_known"`
 
 	storeCache *store.StoreCache
 	jwt        *token.JWT
@@ -95,6 +95,14 @@ func (m *Oauth2) Middleware(ctx context.Context) (func(http.Handler) http.Handle
 	}
 
 	m.jwt = jwt
+
+	if m.Token.TokenLifetime == 0 {
+		m.Token.TokenLifetime = DefaultTokenLifetime
+	}
+
+	if m.Token.RefreshLifetime == 0 {
+		m.Token.RefreshLifetime = DefaultRefreshLifetime
+	}
 
 	// /////////////////////////
 

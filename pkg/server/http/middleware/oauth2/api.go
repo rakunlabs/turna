@@ -475,7 +475,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 		return
 	case "client_credentials":
 		user, err := m.iam.DB().GetUser(data.GetUserRequest{
-			Alias:          accessTokenRequest.Username,
+			Alias:          clientID,
 			ServiceAccount: &data.True,
 			AddScopeRoles:  true,
 		})
@@ -488,7 +488,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// check secret
-		if secret, _ := user.Details["secret"].(string); secret != accessTokenRequest.Password {
+		if secret, _ := user.Details["secret"].(string); secret != clientSecret {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
 				ErrorDescription: "password not match",
@@ -666,10 +666,27 @@ func (m *Oauth2) APILogout(w http.ResponseWriter, _ *http.Request) {
 func (m *Oauth2) GetAccessClient(clientID, clientSecret string) (*AccessClient, *AccessTokenErrorResponse) {
 	accessClient, ok := m.AccessClients[clientID]
 	if !ok {
-		return nil, &AccessTokenErrorResponse{
-			Error:            "invalid_client",
-			ErrorDescription: "client not found",
-			code:             http.StatusBadRequest,
+		// try to fetch from IAM
+		getAccess, err := m.iam.DB().GetUser(data.GetUserRequest{
+			Alias:          clientID,
+			ServiceAccount: &data.True,
+		})
+		if err != nil {
+			return nil, &AccessTokenErrorResponse{
+				Error:            "invalid_client",
+				ErrorDescription: "client not found",
+				code:             http.StatusBadRequest,
+			}
+		}
+
+		secret, _ := getAccess.Details["secret"].(string)
+		scope, _ := getAccess.Details["scope"].(string)
+		whitelistURLs, _ := getAccess.Details["whitelist_urls"].(string)
+
+		accessClient = AccessClient{
+			ClientSecret:  secret,
+			Scope:         strings.Split(scope, " "),
+			WhitelistURLs: strings.Split(whitelistURLs, " "),
 		}
 	}
 

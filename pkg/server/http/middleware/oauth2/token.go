@@ -27,18 +27,10 @@ type Token struct {
 }
 
 func (t *Token) GetTokenExpDate() int64 {
-	if t.TokenLifetime == 0 {
-		return time.Now().Add(DefaultTokenLifetime).Unix()
-	}
-
 	return time.Now().Add(t.TokenLifetime).Unix()
 }
 
 func (t *Token) GetRefreshExpDate() int64 {
-	if t.RefreshLifetime == 0 {
-		return time.Now().Add(DefaultRefreshLifetime).Unix()
-	}
-
 	return time.Now().Add(t.RefreshLifetime).Unix()
 }
 
