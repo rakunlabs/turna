@@ -132,6 +132,14 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 		}
 	}
 
+	synced := false
+
+	defer func() {
+		if synced {
+			m.sync.UpdateLastVersion()
+		}
+	}()
+
 	// add that users into the database
 	return m.db.Update(func(txn *badger.Txn) error {
 		// create role (group) if not exists
@@ -152,6 +160,7 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 				}
 
 				if !data.CompareSlices(userDB.SyncRoleIDs, roleIDs) {
+					synced = true
 					// patch user in the database
 					userDB.User.SyncRoleIDs = roleIDs
 					if err := m.db.TxPutUser(ctx, txn, *userDB.User); err != nil {
@@ -189,6 +198,7 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 					userDB.User.SyncRoleIDs = roleIDs
 
 					// update user in the database
+					synced = true
 					if err := m.db.TxPutUser(ctx, txn, *userDB.User); err != nil {
 						return httputil.NewError("failed updating user", err, http.StatusInternalServerError)
 					}
@@ -211,6 +221,7 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 
 				for _, u := range userLdap {
 					// add user to the database
+					synced = true
 					_, err := m.db.TxCreateUser(ctx, txn, data.User{
 						SyncRoleIDs: roleIDs,
 						Alias:       []string{u.Email, u.UID},

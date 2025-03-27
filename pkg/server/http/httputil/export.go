@@ -58,7 +58,5 @@ func (e Export) ExportHTTP(w http.ResponseWriter, headers []string, data []map[s
 
 	writer.Flush()
 
-	NoContent(w, http.StatusOK)
-
 	return nil
 }

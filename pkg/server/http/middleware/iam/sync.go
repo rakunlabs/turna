@@ -437,6 +437,13 @@ func (s *Sync) Trigger(ctx context.Context) {
 	s.trigger(ctx)
 }
 
+func (s *Sync) UpdateLastVersion() {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	s.lastVersion.Set(s.db.Version())
+}
+
 func (s *Sync) trigger(ctx context.Context) {
 	s.m.Lock()
 	defer s.m.Unlock()
