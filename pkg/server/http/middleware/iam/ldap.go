@@ -2,8 +2,10 @@ package iam
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/go-chi/chi/v5"
@@ -240,6 +242,39 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 			default:
 				return httputil.NewError("failed getting user", err, http.StatusInternalServerError)
 			}
+		}
+
+		// update other users to set null roles
+		if err := m.db.TxFuncUser(txn, data.GetUserRequest{
+			ServiceAccount: &data.False,
+			LocalUser:      &data.False,
+		}, func(user *data.User) (*data.User, error) {
+			if user == nil {
+				return nil, nil
+			}
+
+			// check alias in the users map
+			for _, alias := range user.Alias {
+				if _, ok := users[alias]; ok {
+					return nil, nil
+				}
+			}
+
+			// user not found in the users map, set roles to nil
+			if len(user.SyncRoleIDs) > 0 || (len(user.RoleIDs) == 0 && len(user.MixRoleIDs) > 0) {
+				user.SyncRoleIDs = nil
+				user.MixRoleIDs = user.RoleIDs
+
+				synced = true
+
+				slog.Info("user roles to null", slog.String("id", user.ID), slog.String("alias", strings.Join(user.Alias, ",")), slog.String("by", "LDAP"))
+
+				return user, nil
+			}
+
+			return nil, nil
+		}); err != nil {
+			return httputil.NewError("failed updating users", err, http.StatusInternalServerError)
 		}
 
 		return nil

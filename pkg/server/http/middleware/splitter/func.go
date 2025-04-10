@@ -21,6 +21,10 @@ func (r *Requester) Path(path string) bool {
 	return v
 }
 
+func (r *Requester) PathPrefix(path string) bool {
+	return strings.HasPrefix(r.Req.URL.Path, path)
+}
+
 func (r *Requester) Method(method string) bool {
 	return strings.EqualFold(r.Req.Method, method)
 }

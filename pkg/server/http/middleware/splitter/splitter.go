@@ -30,11 +30,12 @@ func (m *Splitter) funcs(r *http.Request) map[string]interface{} {
 	req := &Requester{Req: r}
 
 	return map[string]interface{}{
-		"Header": req.Header,
-		"Path":   req.Path,
-		"Method": req.Method,
-		"Host":   req.Host,
-		"Query":  req.Query,
+		"Header":     req.Header,
+		"Path":       req.Path,
+		"PathPrefix": req.PathPrefix,
+		"Method":     req.Method,
+		"Host":       req.Host,
+		"Query":      req.Query,
 	}
 }
 

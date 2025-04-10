@@ -281,6 +281,43 @@ func (b *Badger) TxGetUser(txn *badger.Txn, req data.GetUserRequest) (*data.User
 	return &extendedUser, nil
 }
 
+func (b *Badger) TxFuncUser(txn *badger.Txn, req data.GetUserRequest, fn func(*data.User) (*data.User, error)) error {
+	badgerHoldQuery := &badgerhold.Query{}
+
+	if req.ServiceAccount != nil {
+		if badgerHoldQuery.IsEmpty() {
+			badgerHoldQuery = badgerhold.Where("ServiceAccount").Eq(*req.ServiceAccount)
+		} else {
+			badgerHoldQuery = badgerHoldQuery.And("ServiceAccount").Eq(*req.ServiceAccount)
+		}
+	}
+
+	if req.LocalUser != nil {
+		if badgerHoldQuery.IsEmpty() {
+			badgerHoldQuery = badgerhold.Where("Local").Eq(*req.LocalUser)
+		} else {
+			badgerHoldQuery = badgerHoldQuery.And("Local").Eq(*req.LocalUser)
+		}
+	}
+
+	return b.db.TxForEach(txn, badgerHoldQuery, func(user *data.User) error {
+		userNew, err := fn(user)
+		if err != nil {
+			return err
+		}
+
+		if userNew == nil {
+			return nil
+		}
+
+		if err := b.db.TxUpdate(txn, userNew.ID, userNew); err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
 func (b *Badger) GetUser(req data.GetUserRequest) (*data.UserExtended, error) {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
