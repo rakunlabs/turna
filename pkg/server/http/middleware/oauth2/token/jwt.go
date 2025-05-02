@@ -150,11 +150,15 @@ func ParseUnverified(tokenString string, claims jwt.Claims) (*jwt.Token, []strin
 	return defaultParser.ParseUnverified(tokenString, claims)
 }
 
-func ParseAccessToken(tokenValue []byte, claims jwt.Claims) (*jwt.Token, []string, error) {
+func ParseAccessTokenJWT(accessToken string, claims jwt.Claims) (*jwt.Token, []string, error) {
+	return ParseUnverified(accessToken, claims)
+}
+
+func ParseAccessToken(tokenValue []byte) (string, error) {
 	v := accessToken{}
 	if err := json.Unmarshal(tokenValue, &v); err != nil {
-		return nil, nil, err
+		return "", err
 	}
 
-	return ParseUnverified(v.AccessToken, claims)
+	return v.AccessToken, nil
 }

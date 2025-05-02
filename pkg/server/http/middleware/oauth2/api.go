@@ -5,6 +5,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -311,10 +312,10 @@ func (m *Oauth2) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	v := jwt.MapClaims{}
-	if _, _, err := token.ParseAccessToken(tokenValue, &v); err != nil {
+	accessToken, err := token.ParseAccessToken(tokenValue)
+	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
+			Error:            "invalid_request",
 			ErrorDescription: err.Error(),
 			code:             http.StatusInternalServerError,
 		})
@@ -322,11 +323,52 @@ func (m *Oauth2) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer func() {
+		if provider.RevocationURL != "" {
+			// revoke token
+			if err := m.Code.RevokeToken(r.Context(), accessToken, provider); err != nil {
+				slog.Error("failed to revoke token", "error", err)
+			}
+		}
+	}()
+
 	var alias string
-	for _, k := range []string{"preferred_username", "email", "name"} {
-		if vAlias, _ := v[k].(string); vAlias != "" {
-			alias = vAlias
-			break
+	// if userinfo_endpoint is not empty, use it to get user info
+	if provider.UserInfoURL != "" {
+		userInfo, statusCode, err := m.Code.UserInfo(r.Context(), accessToken, provider)
+		if err != nil {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_request",
+				ErrorDescription: err.Error(),
+				code:             statusCode,
+			})
+
+			return
+		}
+
+		for _, k := range []string{"email"} {
+			if vAlias, _ := userInfo[k].(string); vAlias != "" {
+				alias = vAlias
+				break
+			}
+		}
+	} else {
+		v := jwt.MapClaims{}
+		if _, _, err := token.ParseAccessTokenJWT(accessToken, &v); err != nil {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_request",
+				ErrorDescription: err.Error(),
+				code:             http.StatusInternalServerError,
+			})
+
+			return
+		}
+
+		for _, k := range []string{"preferred_username", "email", "name"} {
+			if vAlias, _ := v[k].(string); vAlias != "" {
+				alias = vAlias
+				break
+			}
 		}
 	}
 

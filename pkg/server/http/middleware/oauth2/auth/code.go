@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -165,4 +166,63 @@ func (m *Code) CodeToken(ctx context.Context, r *http.Request, code, providerNam
 	}
 
 	return body, statusCode, nil
+}
+
+func (m *Code) UserInfo(ctx context.Context, token string, oauth2 *session.Oauth2) (map[string]interface{}, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, oauth2.UserInfoURL, nil)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+
+	// add bearer token
+	req.Header.Add("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+
+	var body map[string]interface{}
+	statusCode := 0
+	if err := m.client.Do(req, func(r *http.Response) error {
+		statusCode = r.StatusCode
+		headerInfo := r.Header.Get("WWW-Authenticate")
+		if err := klient.UnexpectedResponse(r); err != nil {
+			return fmt.Errorf("%w: %s", err, headerInfo)
+		}
+
+		jsonDecoder := json.NewDecoder(r.Body)
+		if err := jsonDecoder.Decode(&body); err != nil {
+			return err
+		}
+
+		return nil
+	}); err != nil {
+		return nil, statusCode, fmt.Errorf("failed to get user info: %w", err)
+	}
+
+	return body, statusCode, nil
+}
+
+func (m *Code) RevokeToken(ctx context.Context, token string, oauth2 *session.Oauth2) error {
+	if oauth2.RevocationURL == "" {
+		return nil
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, oauth2.RevocationURL, nil)
+	if err != nil {
+		return err
+	}
+
+	query := req.URL.Query()
+	if oauth2.ClientID != "" {
+		query.Add("client_id", oauth2.ClientID)
+	}
+	if oauth2.ClientID != "" {
+		query.Add("client_secret", oauth2.ClientID)
+	}
+
+	req.URL.RawQuery = query.Encode()
+
+	if err := m.client.Do(req, klient.UnexpectedResponse); err != nil {
+		return err
+	}
+
+	return nil
 }

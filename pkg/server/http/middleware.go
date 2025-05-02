@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/worldline-go/turna/pkg/server/http/middleware/accesslog"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/addprefix"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/basicauth"
 	"github.com/worldline-go/turna/pkg/server/http/middleware/block"
@@ -91,6 +92,7 @@ type HTTPMiddleware struct {
 	PathMiddleware             *path.Path                            `cfg:"path"`
 	RequestIDMiddleware        *requestid.RequestID                  `cfg:"request_id"`
 	Oauth2                     *oauth2.Oauth2                        `cfg:"oauth2"`
+	AccessLogMiddleware        *accesslog.AccessLog                  `cfg:"access_log"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
@@ -205,6 +207,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 	case h.Oauth2 != nil:
 		registry.GlobalReg.AddInitFunc(name, h.Oauth2.Init)
 		m, err := h.Oauth2.Middleware(ctx)
+		return []MiddlewareFunc{m}, err
+	case h.AccessLogMiddleware != nil:
+		m, err := h.AccessLogMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
 	}
 

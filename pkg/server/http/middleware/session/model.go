@@ -24,6 +24,10 @@ type Oauth2 struct {
 	CertURL string `cfg:"cert_url"`
 	// IntrospectURL is the check the active or not with request.
 	IntrospectURL string `cfg:"introspect_url"`
+	// UserInfoURL is the get information about user.
+	UserInfoURL string `cfg:"userinfo_url"`
+	// RevocationURL for token revocation.
+	RevocationURL string `cfg:"revocation_url"`
 	// AuthURL is the resource server's authorization endpoint
 	// use for redirection to login page.
 	AuthURL string `cfg:"auth_url"`

@@ -1,0 +1,24 @@
+server:
+  entrypoints:
+    web:
+      address: ":8082"
+  http:
+    middlewares:
+      request:
+        request:
+          urlRgx: "^/beers/(.*)$"
+          url: https://api.openbrewerydb.org/v1/breweries/$1
+          method: GET
+          headers:
+            Accept: application/json
+      log:
+        access_log:
+          path:
+            enabled:
+              - url: /**
+    routers:
+      whoami:
+        path: /beers/*
+        middlewares:
+          - log
+          - request
