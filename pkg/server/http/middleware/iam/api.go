@@ -72,14 +72,14 @@ func (m *Iam) MuxSet(prefix string) *chi.Mux {
 	// mux.Put(prefix+"/v1/tokens/{id}", m.PutToken)       // trigger
 	// mux.Delete(prefix+"/v1/tokens/{id}", m.DeleteToken) // trigger
 
-	mux.Get(prefix+"/v1/ldap/users/{uid}", m.LdapGetUsers)
-	mux.Get(prefix+"/v1/ldap/groups", m.LdapGetGroups)
+	mux.Get(prefix+"/v1/ldap/users/{uid}", m.LdapGetUsers)      // trigger
+	mux.Get(prefix+"/v1/ldap/groups", m.LdapGetGroups)          // trigger
 	mux.Post(prefix+"/v1/ldap/sync", m.LdapSyncGroups)          // trigger
 	mux.Post(prefix+"/v1/ldap/sync/{uid}", m.LdapSyncGroupsUID) // trigger
 
-	mux.Get(prefix+"/v1/ldap/maps", m.LdapGetGroupMaps)
-	mux.Post(prefix+"/v1/ldap/maps", m.LdapCreateGroupMaps) // trigger
-	mux.Get(prefix+"/v1/ldap/maps/{name}", m.LdapGetGroupMap)
+	mux.Get(prefix+"/v1/ldap/maps", m.LdapGetGroupMaps)              // trigger
+	mux.Post(prefix+"/v1/ldap/maps", m.LdapCreateGroupMaps)          // trigger
+	mux.Get(prefix+"/v1/ldap/maps/{name}", m.LdapGetGroupMap)        // trigger
 	mux.Put(prefix+"/v1/ldap/maps/{name}", m.LdapPutGroupMaps)       // trigger
 	mux.Delete(prefix+"/v1/ldap/maps/{name}", m.LdapDeleteGroupMaps) // trigger
 
@@ -1583,6 +1583,10 @@ func (m *Iam) LdapCreateGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/maps [GET]
 func (m *Iam) LdapGetGroupMaps(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	req := data.GetLMapRequest{}
 
 	query := r.URL.Query()
@@ -1608,6 +1612,10 @@ func (m *Iam) LdapGetGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/maps/{name} [GET]
 func (m *Iam) LdapGetGroupMap(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	name := chi.URLParam(r, "name")
 	if name == "" {
 		httputil.HandleError(w, httputil.NewError("name is required", nil, http.StatusBadRequest))

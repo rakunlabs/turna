@@ -51,11 +51,12 @@ type Group struct {
 }
 
 type LdapUser struct {
-	UID        string `json:"uid"`
-	Email      string `json:"email"`
-	Name       string `json:"name"`
-	GivenName  string `json:"given_name"`
-	FamilyName string `json:"family_name"`
+	UID        string   `json:"uid"`
+	Email      string   `json:"email"`
+	Name       string   `json:"name"`
+	GivenName  string   `json:"given_name"`
+	FamilyName string   `json:"family_name"`
+	MemberOf   []string `json:"member_of"`
 }
 
 type LdapGroup struct {
@@ -180,7 +181,7 @@ func (l *Ldap) Users(conn *ldap.Conn, uids []string) ([]LdapUser, error) {
 		DerefAliases: ldap.NeverDerefAliases,
 		TypesOnly:    false,
 		Filter:       ldapUserFilter(uids),
-		Attributes:   []string{"uid", "mail", "gecos", "displayName", "sn", "givenName"},
+		Attributes:   []string{"uid", "mail", "gecos", "displayName", "sn", "givenName", "memberOf"},
 	})
 	if err != nil {
 		if ldap.IsErrorWithCode(err, ldap.LDAPResultNoSuchObject) {
@@ -202,6 +203,7 @@ func (l *Ldap) Users(conn *ldap.Conn, uids []string) ([]LdapUser, error) {
 			Name:       entry.GetAttributeValue("gecos"),
 			GivenName:  entry.GetAttributeValue("givenName"),
 			FamilyName: entry.GetAttributeValue("sn"),
+			MemberOf:   entry.GetEqualFoldAttributeValues("memberOf"),
 		}
 
 		ldapUsers = append(ldapUsers, user)

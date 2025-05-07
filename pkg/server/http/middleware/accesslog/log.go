@@ -183,7 +183,9 @@ func (m *AccessLog) Middleware() (func(http.Handler) http.Handler, error) {
 			argsResponse = append(argsResponse,
 				"status", rec.status,
 				"size", humanize.Bytes(uint64(len(bodyBytes))),
+				"size_bytes", len(bodyBytes),
 				"duration", time.Since(start).String(),
+				"duration_ms", time.Since(start).Milliseconds(),
 			)
 
 			if logDetails.GetResponseBody() {

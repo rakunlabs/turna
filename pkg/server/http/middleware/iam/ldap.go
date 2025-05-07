@@ -35,7 +35,11 @@ func (m *Iam) LdapCheckPassword(username, password string) (bool, error) {
 // @Success 200 {object} data.Response[[]ldap.LdapGroup]
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/groups [GET]
-func (m *Iam) LdapGetGroups(w http.ResponseWriter, _ *http.Request) {
+func (m *Iam) LdapGetGroups(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	conn, err := m.Ldap.ConnectWithCheck()
 	if err != nil {
 		httputil.HandleError(w, httputil.NewError("LDAP connection problem", err, http.StatusInternalServerError))
@@ -66,6 +70,10 @@ func (m *Iam) LdapGetGroups(w http.ResponseWriter, _ *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/ldap/users/{uid} [GET]
 func (m *Iam) LdapGetUsers(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
 	conn, err := m.Ldap.ConnectWithCheck()
 	if err != nil {
 		httputil.HandleError(w, httputil.NewError("LDAP connection problem", err, http.StatusInternalServerError))
