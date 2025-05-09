@@ -469,6 +469,8 @@ github.com/worldline-go/klient v0.9.7 h1:mfJ+cFFwRZTN3X8QpVZiG/Fj+jldXsgNFq/3IeN
 github.com/worldline-go/klient v0.9.7/go.mod h1:lvBn2nliEhdT7qzti0xyvgmV8nLyiKYEPQj6TcVjYaM=
 github.com/worldline-go/logz v0.5.1 h1:jpbKUd1FbecEzs7/p1zFH7tFtQ5demmc89Fa2YTHL/Q=
 github.com/worldline-go/logz v0.5.1/go.mod h1:CbiHbwLTA6oKud62HbmfwG5fgSZ6ppVbkSdRv44X8Vc=
+github.com/worldline-go/query v0.1.10 h1:Oi0yEyZ3gmqyMvS5Yd84DGKDr2zAySpe+1BF3ilQuUI=
+github.com/worldline-go/query v0.1.10/go.mod h1:4B+YZ5RgoiZ4GT39wfpCWUDEB6Ve0HX3FCiIlmMiUec=
 github.com/worldline-go/struct2 v1.3.1 h1:YPO4PptJCM+Qu0i2qjHGpDjVVjANijD2XyDnyR6xIhw=
 github.com/worldline-go/struct2 v1.3.1/go.mod h1:WQ0q9deNrhnzWkWvrC1sIYc6SfziRsRCAwQBgS94T8E=
 github.com/xhit/go-str2duration/v2 v2.1.0 h1:lxklc02Drh6ynqX+DdPyp5pCKLUQpRT8bp8Ydu2Bstc=

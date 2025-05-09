@@ -345,6 +345,12 @@ func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/users [GET]
 func (m *Iam) GetUsers(w http.ResponseWriter, r *http.Request) {
+	parsedQuery, err := httputil.ParseQuery(r)
+	if err != nil {
+		httputil.HandleError(w, httputil.NewError("Cannot parse query", err, http.StatusBadRequest))
+		return
+	}
+
 	req := data.GetUserRequest{
 		AddRoles:       true,
 		ServiceAccount: isServiceAccountPtr(r),
@@ -354,7 +360,7 @@ func (m *Iam) GetUsers(w http.ResponseWriter, r *http.Request) {
 	req.Alias = query.Get("alias")
 	req.ID = query.Get("id")
 
-	req.RoleIDs = httputil.CommaQueryParam(query["role_ids"])
+	req.RoleIDs = parsedQuery.GetValues("role_ids")
 
 	req.UID = query.Get("uid")
 	req.Name = query.Get("name")
@@ -362,7 +368,7 @@ func (m *Iam) GetUsers(w http.ResponseWriter, r *http.Request) {
 
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
-	req.Permissions = httputil.CommaQueryParam(query["permission"])
+	req.Permissions = parsedQuery.GetValues("permission")
 
 	if v := query.Get("is_active"); v != "" {
 		vBool, _ := strconv.ParseBool(query.Get("is_active"))
@@ -403,6 +409,12 @@ func (m *Iam) GetUsers(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/users/export [GET]
 func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
+	parsedQuery, err := httputil.ParseQuery(r)
+	if err != nil {
+		httputil.HandleError(w, httputil.NewError("Cannot parse query", err, http.StatusBadRequest))
+		return
+	}
+
 	req := data.GetUserRequest{
 		AddRoles:       true,
 		ServiceAccount: isServiceAccountPtr(r),
@@ -412,7 +424,7 @@ func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
 	req.Alias = query.Get("alias")
 	req.ID = query.Get("id")
 
-	req.RoleIDs = httputil.CommaQueryParam(query["role_ids"])
+	req.RoleIDs = parsedQuery.GetValues("role_ids")
 
 	req.UID = query.Get("uid")
 	req.Name = query.Get("name")
@@ -676,6 +688,12 @@ func (m *Iam) PutUser(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/roles [GET]
 func (m *Iam) GetRoles(w http.ResponseWriter, r *http.Request) {
+	parsedQuery, err := httputil.ParseQuery(r)
+	if err != nil {
+		httputil.HandleError(w, httputil.NewError("Cannot parse query", err, http.StatusBadRequest))
+		return
+	}
+
 	req := data.GetRoleRequest{
 		AddPermissions: true,
 		AddRoles:       true,
@@ -685,9 +703,9 @@ func (m *Iam) GetRoles(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	req.ID = query.Get("id")
 	req.Name = query.Get("name")
-	req.PermissionIDs = httputil.CommaQueryParam(query["permission_ids"])
-	req.RoleIDs = httputil.CommaQueryParam(query["role_ids"])
-	req.Permissions = httputil.CommaQueryParam(query["permission"])
+	req.PermissionIDs = parsedQuery.GetValues("permission_ids")
+	req.RoleIDs = parsedQuery.GetValues("role_ids")
+	req.Permissions = parsedQuery.GetValues("permission")
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
 	req.Description = query.Get("description")
@@ -727,6 +745,12 @@ func (m *Iam) GetRoles(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} data.ResponseError
 // @Router /v1/roles/export [GET]
 func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
+	parsedQuery, err := httputil.ParseQuery(r)
+	if err != nil {
+		httputil.HandleError(w, httputil.NewError("Cannot parse query", err, http.StatusBadRequest))
+		return
+	}
+
 	req := data.GetRoleRequest{
 		AddPermissions: true,
 		AddRoles:       true,
@@ -736,8 +760,8 @@ func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	req.ID = query.Get("id")
 	req.Name = query.Get("name")
-	req.PermissionIDs = httputil.CommaQueryParam(query["permission_ids"])
-	req.RoleIDs = httputil.CommaQueryParam(query["role_ids"])
+	req.PermissionIDs = parsedQuery.GetValues("permission_ids")
+	req.RoleIDs = parsedQuery.GetValues("role_ids")
 	req.Path = query.Get("path")
 	req.Method = query.Get("method")
 	req.Description = query.Get("description")

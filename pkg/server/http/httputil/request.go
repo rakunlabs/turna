@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/worldline-go/query"
 )
 
 func IsWebSocket(r *http.Request) bool {
@@ -87,4 +89,8 @@ func OffsetLimit(r *http.Request) (offset, limit int64) {
 	}
 
 	return
+}
+
+func ParseQuery(r *http.Request) (*query.Query, error) {
+	return query.Parse(r.URL.RawQuery)
 }

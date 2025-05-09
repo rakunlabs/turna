@@ -37,6 +37,7 @@ require (
 	github.com/worldline-go/igconfig v0.3.0
 	github.com/worldline-go/klient v0.9.7
 	github.com/worldline-go/logz v0.5.1
+	github.com/worldline-go/query v0.1.10
 	github.com/worldline-go/struct2 v1.3.1
 	golang.org/x/crypto v0.32.0
 	golang.org/x/exp v0.0.0-20250103183323-7d7fa50e5329

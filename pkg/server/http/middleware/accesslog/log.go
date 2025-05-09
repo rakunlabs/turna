@@ -119,6 +119,12 @@ func (m *AccessLog) Middleware() (func(http.Handler) http.Handler, error) {
 			argsRequest = append(argsRequest,
 				"method", r.Method,
 				"path", r.URL.Path,
+				"raw_query", r.URL.RawQuery,
+				"raw_fragment", r.URL.EscapedFragment(),
+				"remote_addr", r.RemoteAddr,
+				"host", r.Host,
+				"proto", r.Proto,
+				"scheme", r.URL.Scheme,
 			)
 
 			if requestID := r.Header.Get("X-Request-Id"); requestID != "" {
@@ -203,7 +209,7 @@ func (m *AccessLog) Middleware() (func(http.Handler) http.Handler, error) {
 
 			Log(m.Level, m.Message, slog.Group("request", argsRequest...), slog.Group("response", argsResponse...))
 
-			rec.WriteHeader(rec.status)
+			rec.ResponseWriter.WriteHeader(rec.status)
 			_, _ = rec.ResponseWriter.Write(bodyBytes)
 		})
 	}, nil
