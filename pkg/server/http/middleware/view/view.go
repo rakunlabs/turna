@@ -16,9 +16,9 @@ import (
 	"github.com/worldline-go/cache/store/memory"
 
 	"github.com/worldline-go/klient"
-	"github.com/worldline-go/turna/pkg/loader/decoder"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/folder"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/grpcui"
+	"github.com/rakunlabs/turna/pkg/loader/decoder"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/grpcui"
 )
 
 var DefaultInfoDelay = 4 * time.Second

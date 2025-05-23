@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/worldline-go/turna/pkg/render"
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/render"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 )
 
 const indexPage = "/index.html"

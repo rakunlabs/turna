@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/worldline-go/turna/pkg/server/cert"
-	"github.com/worldline-go/turna/pkg/server/registry"
+	"github.com/rakunlabs/turna/pkg/server/cert"
+	"github.com/rakunlabs/turna/pkg/server/registry"
 )
 
 type HTTP struct {

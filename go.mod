@@ -1,4 +1,4 @@
-module github.com/worldline-go/turna
+module github.com/rakunlabs/turna
 
 go 1.24
 

@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rs/zerolog/log"
 	"github.com/rytsh/mugo/fstore"
 	"github.com/rytsh/mugo/templatex"

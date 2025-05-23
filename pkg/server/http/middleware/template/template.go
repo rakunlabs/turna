@@ -11,8 +11,8 @@ import (
 	"github.com/rytsh/mugo/fstore"
 	"github.com/rytsh/mugo/templatex"
 	"github.com/worldline-go/logz"
-	"github.com/worldline-go/turna/pkg/render"
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/render"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 )
 
 type Template struct {

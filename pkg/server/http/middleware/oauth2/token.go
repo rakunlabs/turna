@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	"golang.org/x/crypto/bcrypt"
 )
 

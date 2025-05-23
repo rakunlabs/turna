@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/sessions"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/session/store"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session/store"
 )
 
 type Store struct {

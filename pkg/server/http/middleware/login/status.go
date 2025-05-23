@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/worldline-go/turna/pkg/render"
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/render"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 )
 
 //go:embed files/*

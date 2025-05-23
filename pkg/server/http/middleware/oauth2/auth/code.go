@@ -14,7 +14,7 @@ import (
 
 	"github.com/worldline-go/klient"
 
-	"github.com/worldline-go/turna/pkg/server/http/middleware/session"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
 
 type Code struct {

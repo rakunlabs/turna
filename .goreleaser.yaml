@@ -15,11 +15,11 @@ release:
     Get the latest release with brew or binary:
 
     ```sh
-    # curl -fSL https://github.com/worldline-go/turna/releases/latest/download/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
-    curl -fSL https://github.com/worldline-go/turna/releases/download/{{ .Tag }}/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
+    # curl -fSL https://github.com/rakunlabs/turna/releases/latest/download/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
+    curl -fSL https://github.com/rakunlabs/turna/releases/download/{{ .Tag }}/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
     ```
   footer: |
-    **Full Changelog**: https://github.com/worldline-go/turna/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **Full Changelog**: https://github.com/rakunlabs/turna/compare/{{ .PreviousTag }}...{{ .Tag }}
 before:
   hooks:
     # You may remove this if you don't use go modules.
@@ -86,7 +86,7 @@ changelog:
 
 brews:
 - name: turna
-  homepage: https://github.com/worldline-go/turna
+  homepage: https://github.com/rakunlabs/turna
   description: "swiss knife for services"
   repository:
     owner: brew-tools

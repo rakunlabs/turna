@@ -4,7 +4,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/worldline-go/turna/pkg/render"
+	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rytsh/liz/loader"
 )
 

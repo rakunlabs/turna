@@ -3,8 +3,8 @@ package main
 import (
 	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/logi"
-	"github.com/worldline-go/turna/cmd/turna/args"
-	"github.com/worldline-go/turna/internal/config"
+	"github.com/rakunlabs/turna/cmd/turna/args"
+	"github.com/rakunlabs/turna/internal/config"
 )
 
 var (

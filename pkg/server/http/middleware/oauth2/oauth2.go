@@ -8,11 +8,11 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rakunlabs/into"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/auth"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/store"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/token"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/session"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/token"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
 
 type Oauth2 struct {

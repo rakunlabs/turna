@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/worldline-go/turna/pkg/render"
+	"github.com/rakunlabs/turna/pkg/render"
 )
 
 type Config struct {

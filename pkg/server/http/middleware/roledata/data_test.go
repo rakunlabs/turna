@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/claims"
-	"github.com/worldline-go/turna/pkg/server/http/tcontext"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/claims"
+	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
 )
 
 func TestRoleData_Middleware(t *testing.T) {

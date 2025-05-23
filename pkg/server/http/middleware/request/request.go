@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/worldline-go/klient"
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
-	"github.com/worldline-go/turna/pkg/server/model"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/model"
 )
 
 type Request struct {

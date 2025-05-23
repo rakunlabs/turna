@@ -8,11 +8,11 @@ import (
 
 	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/logi"
-	"github.com/worldline-go/turna/internal/config"
-	"github.com/worldline-go/turna/pkg/render"
-	"github.com/worldline-go/turna/pkg/runner"
-	"github.com/worldline-go/turna/pkg/server/http"
-	serverReg "github.com/worldline-go/turna/pkg/server/registry"
+	"github.com/rakunlabs/turna/internal/config"
+	"github.com/rakunlabs/turna/pkg/render"
+	"github.com/rakunlabs/turna/pkg/runner"
+	"github.com/rakunlabs/turna/pkg/server/http"
+	serverReg "github.com/rakunlabs/turna/pkg/server/registry"
 	"github.com/worldline-go/struct2"
 
 	"github.com/rs/zerolog/log"

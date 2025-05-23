@@ -17,8 +17,8 @@ import (
 	"github.com/spf13/cast"
 
 	"github.com/rakunlabs/logi"
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
 
 // @Title IAM API

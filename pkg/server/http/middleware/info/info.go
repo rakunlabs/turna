@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/session"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
 
 type Info struct {

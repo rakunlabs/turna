@@ -17,8 +17,8 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/worldline-go/klient"
-	httputil2 "github.com/worldline-go/turna/pkg/server/http/httputil"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
+	httputil2 "github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
 
 var (

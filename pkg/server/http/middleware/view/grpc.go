@@ -8,9 +8,9 @@ import (
 
 	"github.com/worldline-go/cache"
 
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/grpcui"
-	"github.com/worldline-go/turna/pkg/server/model"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/grpcui"
+	"github.com/rakunlabs/turna/pkg/server/model"
 )
 
 type GrpcUI struct {

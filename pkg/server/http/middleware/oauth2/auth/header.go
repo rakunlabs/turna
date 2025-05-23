@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/worldline-go/turna/pkg/server/http/middleware/session"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
 
 // AuthAdd is a function to set Authorization header.

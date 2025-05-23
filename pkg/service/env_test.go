@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/worldline-go/turna/pkg/render"
+	"github.com/rakunlabs/turna/pkg/render"
 )
 
 func TestGetEnv(t *testing.T) {

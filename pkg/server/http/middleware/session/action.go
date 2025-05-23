@@ -9,11 +9,11 @@ import (
 
 	"github.com/worldline-go/klient"
 
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/claims"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/session/providers"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/session/request"
-	"github.com/worldline-go/turna/pkg/server/http/tcontext"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/claims"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session/providers"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session/request"
+	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
 )
 
 const actionToken = "token"

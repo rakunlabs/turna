@@ -3,7 +3,7 @@ package login
 import (
 	"net/http"
 
-	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/auth"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
 )
 
 func (m *Login) SetSuccess(w http.ResponseWriter, success string) {

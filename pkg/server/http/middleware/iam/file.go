@@ -5,7 +5,7 @@ import (
 	"io/fs"
 	"net/http"
 
-	"github.com/worldline-go/turna/pkg/server/http/middleware/folder"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
 )
 
 var (

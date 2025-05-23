@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
 
 func TestBadgerCheck(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/auth"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/session"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
 
 func (m *Login) PasswordToken(ctx context.Context, username, password string, oauth2 *session.Oauth2) ([]byte, int, error) {

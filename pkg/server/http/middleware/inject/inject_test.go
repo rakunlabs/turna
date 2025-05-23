@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 )
 
 func TestInject_Middleware(t *testing.T) {

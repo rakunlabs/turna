@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 )
 
 type Decompress struct{}

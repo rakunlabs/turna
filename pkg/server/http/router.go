@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/requestid"
-	"github.com/worldline-go/turna/pkg/server/http/tcontext"
-	"github.com/worldline-go/turna/pkg/server/registry"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/requestid"
+	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
+	"github.com/rakunlabs/turna/pkg/server/registry"
 )
 
 var ServerInfo = "turna"

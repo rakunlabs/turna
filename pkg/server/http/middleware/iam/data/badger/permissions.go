@@ -12,7 +12,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/logi"
 	badgerhold "github.com/timshannon/badgerhold/v4"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
 
 func (b *Badger) GetPermissions(req data.GetPermissionRequest) (*data.Response[[]data.PermissionExtended], error) {

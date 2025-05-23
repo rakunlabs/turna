@@ -12,8 +12,8 @@ import (
 	"github.com/worldline-go/cache"
 	"github.com/worldline-go/klient"
 
-	httputil2 "github.com/worldline-go/turna/pkg/server/http/httputil"
-	"github.com/worldline-go/turna/pkg/server/model"
+	httputil2 "github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/model"
 )
 
 type PageUI struct {

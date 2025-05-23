@@ -47,7 +47,7 @@ server:
 
                 | Name | Links |
                 | ---- | ----- |
-                | TURNA | [GitHub](github.com/worldline-go/turna) |
+                | TURNA | [GitHub](github.com/rakunlabs/turna) |
             iframe:
               - name: Map
                 path: street

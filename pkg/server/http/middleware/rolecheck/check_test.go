@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/claims"
-	"github.com/worldline-go/turna/pkg/server/http/tcontext"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/claims"
+	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
 )
 
 func TestRoleCheck_Middleware(t *testing.T) {

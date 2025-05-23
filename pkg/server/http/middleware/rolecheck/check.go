@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"regexp"
 
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/claims"
-	"github.com/worldline-go/turna/pkg/server/http/tcontext"
-	"github.com/worldline-go/turna/pkg/server/model"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/claims"
+	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
+	"github.com/rakunlabs/turna/pkg/server/model"
 )
 
 var (

@@ -14,13 +14,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/oklog/ulid/v2"
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/ldap"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/auth"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/store"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/token"
-	"github.com/worldline-go/turna/pkg/server/model"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/ldap"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/token"
+	"github.com/rakunlabs/turna/pkg/server/model"
 )
 
 func (m *Oauth2) MuxSet(prefix string) *chi.Mux {

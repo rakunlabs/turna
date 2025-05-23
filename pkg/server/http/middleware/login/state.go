@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/worldline-go/turna/pkg/server/http/middleware/oauth2/auth"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
 )
 
 func (m *Login) SetState(w http.ResponseWriter, state string) {

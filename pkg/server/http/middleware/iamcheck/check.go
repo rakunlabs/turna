@@ -10,8 +10,8 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/worldline-go/klient"
-	"github.com/worldline-go/turna/pkg/server/http/httputil"
-	"github.com/worldline-go/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
 
 type IamCheck struct {
