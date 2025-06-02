@@ -96,14 +96,14 @@ brews:
 
 dockers:
 - image_templates:
-  - 'ghcr.io/worldline-go/turna:{{ .Tag }}'
-  - 'ghcr.io/worldline-go/turna:{{ .Tag }}-alpine'
-  - 'ghcr.io/worldline-go/turna:{{ .Tag }}-alpine3.21.3'
-  - 'ghcr.io/worldline-go/turna:latest'
+  - 'ghcr.io/rakunlabs/turna:{{ .Tag }}'
+  - 'ghcr.io/rakunlabs/turna:{{ .Tag }}-alpine'
+  - 'ghcr.io/rakunlabs/turna:{{ .Tag }}-alpine3.22.0'
+  - 'ghcr.io/rakunlabs/turna:latest'
   dockerfile: ci/alpine.Dockerfile
   build_flag_templates:
   - "--pull"
-  - "--label=io.artifacthub.package.readme-url=https://raw.githubusercontent.com/worldline-go/turna/main/README.md"
+  - "--label=io.artifacthub.package.readme-url=https://raw.githubusercontent.com/rakunlabs/turna/main/README.md"
   - "--label=io.artifacthub.package.maintainers=[{\"name\":\"Eray Ates\",\"email\":\"eates23@gmail.com\"}]"
   - "--label=io.artifacthub.package.license=MIT"
   - "--label=org.opencontainers.image.description=swiss knife for services"
