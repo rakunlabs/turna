@@ -6,7 +6,7 @@ server:
     middlewares:
       project:
         folder:
-          path: ./testdata/html
+          path: ./testdata/
           browse: true
           spa: false
           index: false

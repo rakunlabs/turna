@@ -22,6 +22,8 @@ import (
 const indexPage = "/index.html"
 
 type Folder struct {
+	// BasePath for better UI browser expriance and not show .. if already in base path
+	BasePath string `cfg:"base_path"`
 	// Path is the path to the folder
 	Path string `cfg:"path"`
 	// Index is automatically redirect to index.html
@@ -122,6 +124,12 @@ func (f *Folder) Middleware() (func(http.Handler) http.Handler, error) {
 
 	if f.fs == nil {
 		f.fs = http.Dir(f.Path)
+	}
+
+	if f.BasePath != "" {
+		f.BasePath = "/" + strings.Trim(f.BasePath, "/") + "/"
+	} else {
+		f.BasePath = "/"
 	}
 
 	return func(_ http.Handler) http.Handler {
@@ -252,6 +260,7 @@ func (f *Folder) dirList(w http.ResponseWriter, r *http.Request, folder http.Fil
 	dirs = append(folderDirs, folderFiles...)
 
 	values := map[string]interface{}{
+		"basePath":  f.BasePath,
 		"dirs":      dirs,
 		"url":       r.URL.Path,
 		"utc":       f.UTC,
@@ -270,7 +279,7 @@ table tr:nth-child(even) {
 	background-color: #e5e5e5;
 }
 table tr:hover > td {
-	background-color: #ff6700;
+	background-color:#ff4000;
 	color: #fff;
 }
 table tr:hover a, th a {
@@ -295,16 +304,18 @@ table tr:hover a, th a {
 		<col span="1" style="width: 25%;">
 		<col span="1" style="width: 25%;">
 	</colgroup>
-	<tr style="background-color: #fca311">
+	<tr style="background-color: #000; color: #fff;">
 		<th><a href="./?sort=title{{and (eq .sortField "title") (not .sortDesc) | ternary "&desc=1" "" }}">Title</a></th>
 		<th><a href="./?sort=size{{and (eq .sortField "size") (not .sortDesc) | ternary "&desc=1" "" }}">File Size</a></th>
 		<th><a href="./?sort=date{{and (eq .sortField "date") (not .sortDesc) | ternary "&desc=1" "" }}">Last Modified</a></th>
 	</tr>
+	{{- if ne .url .basePath }}
 	<tr>
 		<td>📁 <a href="../">..</a></td>
 		<td>-</td>
 		<td>-</td>
 	</tr>
+	{{- end }}
 	{{- range .dirs }}
 	<tr>
 		<td>{{ ternary "📁" "📄" .IsDir }} <a href="./{{ .Name }}{{ ternary "/" "" .IsDir }}" {{ ternary "" "download" .IsDir }}>{{ html2.EscapeString .Name }}{{ ternary "/" "" .IsDir }}</a></td>
@@ -318,7 +329,7 @@ table tr:hover a, th a {
 {{ execTemplate "html" . | codec.StringToByte | minify "html" | codec.ByteToString }}
 `, values)
 	if err != nil {
-		return fmt.Errorf("error executing template")
+		return fmt.Errorf("error executing template: %w", err)
 	}
 
 	if f.BrowseCache != "" {

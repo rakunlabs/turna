@@ -403,8 +403,8 @@ github.com/rytsh/liz/templatex v0.1.0 h1:r8w8kWvMOe6DZpo9YE1nCl7Cp7RcaEoH3vjmKDb
 github.com/rytsh/liz/templatex v0.1.0/go.mod h1:I444dM/a4pAL4LcL0aA8CjDnk655Y40fX6TnmuN6kvA=
 github.com/rytsh/liz/vault v0.1.0 h1:UDuK3zoe5Jbtp9KWTUKDStO0KllrmXWRbIoCdrgPYkQ=
 github.com/rytsh/liz/vault v0.1.0/go.mod h1:9TK84Msm/hMNVzTh8GEvGoR54Oy2oAbhGZ24d8ZRDQw=
-github.com/rytsh/mugo v0.8.3 h1:tx8rtQZ+ntwMYYMMWUgMkLCPzsoZSB9sJdGFxT315Fs=
-github.com/rytsh/mugo v0.8.3/go.mod h1:KU/oUHZwnxjPaJ+CQf2mRYkT3+tjKFwMLHGUzlFNp+k=
+github.com/rytsh/mugo v0.8.4 h1:g1iFIBnz6MsxUq7bbLqxb3lunwPGRJexSXeTiFrdAZ8=
+github.com/rytsh/mugo v0.8.4/go.mod h1:KU/oUHZwnxjPaJ+CQf2mRYkT3+tjKFwMLHGUzlFNp+k=
 github.com/samber/go-singleflightx v0.3.1 h1:D9NAWs1t2TKf4wpkxRw6MIXqpDt2bXb5ZZyT2QuvybY=
 github.com/samber/go-singleflightx v0.3.1/go.mod h1:X2BR+oheHIYc73PvxRMlcASg6KYYTQyUYpdVU7t/ux4=
 github.com/samber/hot v0.5.2 h1:3SZjf/v2RgufixH4Qid/4DhXe7pGHWuGR8AJCTi7iyE=

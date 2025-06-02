@@ -1,6 +1,7 @@
 package httputil
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 )
@@ -57,3 +58,26 @@ func Blob(w http.ResponseWriter, code int, contentType string, b []byte) error {
 
 	return err
 }
+
+// //////////////////////////////
+
+type CustomResponseRecorder struct {
+	http.ResponseWriter
+	Body *bytes.Buffer
+
+	Status int
+}
+
+func (r *CustomResponseRecorder) Write(b []byte) (int, error) {
+	return r.Body.Write(b)
+}
+
+func (r *CustomResponseRecorder) WriteHeader(code int) {
+	r.Status = code
+}
+
+func (r *CustomResponseRecorder) Flush() {
+	// no-op
+}
+
+var _ http.Flusher = (*CustomResponseRecorder)(nil)

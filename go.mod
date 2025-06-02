@@ -25,7 +25,7 @@ require (
 	github.com/redis/go-redis/v9 v9.7.1
 	github.com/rs/zerolog v1.33.0
 	github.com/rytsh/liz/loader v0.2.5
-	github.com/rytsh/mugo v0.8.3
+	github.com/rytsh/mugo v0.8.4
 	github.com/spf13/cast v1.7.1
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
