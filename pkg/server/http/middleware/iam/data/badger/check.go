@@ -7,8 +7,8 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/dgraph-io/badger/v4"
-	"github.com/timshannon/badgerhold/v4"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/timshannon/badgerhold/v4"
 )
 
 var (
@@ -56,7 +56,7 @@ func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 		}
 
 		// get all roles of roles
-		roleIDs, err := b.getVirtualRoleIDs(txn, slices.Concat(user.RoleIDs, user.SyncRoleIDs))
+		roleIDs, err := b.getVirtualRoleIDs(txn, slicesUnique(user.RoleIDs, user.SyncRoleIDs, validIDs(user.TmpRoleIDs)))
 		if err != nil {
 			return err
 		}
@@ -70,6 +70,9 @@ func (b *Badger) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 
 		permissionMapIDs := make(map[string]struct{})
 		for _, permID := range user.PermissionIDs {
+			permissionMapIDs[permID] = struct{}{}
+		}
+		for _, permID := range validIDs(user.TmpPermissionIDs) {
 			permissionMapIDs[permID] = struct{}{}
 		}
 		for i := range roles {

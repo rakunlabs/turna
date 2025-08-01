@@ -3,6 +3,7 @@ package iam
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -10,10 +11,10 @@ import (
 
 	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/logi"
-	"github.com/worldline-go/conn/connredis"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data/badger"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/ldap"
+	"github.com/worldline-go/conn/connredis"
 )
 
 type Iam struct {
@@ -75,7 +76,7 @@ func (m *Iam) Middleware(ctx context.Context, name string) (func(http.Handler) h
 	// redis connection
 	rConn, err := connredis.New(m.Database.Redis)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("redis cannot connect: %w", err)
 	}
 
 	// new database
@@ -94,6 +95,11 @@ func (m *Iam) Middleware(ctx context.Context, name string) (func(http.Handler) h
 	}
 
 	into.ShutdownAdd(db.Close, "iam db")
+
+	// fix datas
+	if err := db.FixData(ctx); err != nil {
+		return nil, fmt.Errorf("failed to fix data: %w", err)
+	}
 
 	m.db = db
 

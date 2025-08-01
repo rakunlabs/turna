@@ -164,18 +164,18 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 
 	for name, middleware := range h.Middlewares {
 		if err := middleware.Set(ctx, name); err != nil {
-			return err
+			return fmt.Errorf("middleware %s cannot set: %w", name, err)
 		}
 	}
 
 	// init middlewares
 	if err := registry.GlobalReg.RunHTTPInitFuncs(); err != nil {
-		return err
+		return fmt.Errorf("cannot init http middlewares: %w", err)
 	}
 
 	for name, router := range h.Routers {
 		if err := router.Set(name, ruleRouter); err != nil {
-			return err
+			return fmt.Errorf("router %s cannot set: %w", name, err)
 		}
 	}
 

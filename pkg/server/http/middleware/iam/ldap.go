@@ -33,7 +33,7 @@ func (m *Iam) LdapCheckPassword(username, password string) (bool, error) {
 // @Summary Get LDAP groups
 // @Tags ldap
 // @Success 200 {object} data.Response[[]ldap.LdapGroup]
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/ldap/groups [GET]
 func (m *Iam) LdapGetGroups(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -65,9 +65,9 @@ func (m *Iam) LdapGetGroups(w http.ResponseWriter, r *http.Request) {
 // @Tags ldap
 // @Param uid path string true "user uid"
 // @Success 200 {object} data.Response[ldap.LdapUser]
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/ldap/users/{uid} [GET]
 func (m *Iam) LdapGetUsers(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -269,9 +269,8 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 			}
 
 			// user not found in the users map, set roles to nil
-			if len(user.SyncRoleIDs) > 0 || (len(user.RoleIDs) == 0 && len(user.MixRoleIDs) > 0) {
+			if len(user.SyncRoleIDs) > 0 {
 				user.SyncRoleIDs = nil
-				user.MixRoleIDs = user.RoleIDs
 
 				synced = true
 
@@ -294,7 +293,7 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 // @Tags ldap
 // @Param Body body SyncRequest false "force"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/ldap/sync [POST]
 func (m *Iam) LdapSyncGroups(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -322,7 +321,7 @@ func (m *Iam) LdapSyncGroups(w http.ResponseWriter, r *http.Request) {
 // @Param uid path string true "user uid"
 // @Param Body body SyncRequest false "force"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/ldap/sync/{uid} [POST]
 func (m *Iam) LdapSyncGroupsUID(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
