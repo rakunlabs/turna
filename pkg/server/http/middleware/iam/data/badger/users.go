@@ -12,10 +12,10 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/logi"
-	"github.com/spf13/cast"
-	"github.com/timshannon/badgerhold/v4"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/access"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/spf13/cast"
+	"github.com/timshannon/badgerhold/v4"
 )
 
 func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserExtended], error) {
@@ -108,9 +108,13 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserEx
 				}
 
 				if badgerHoldQuery.IsEmpty() {
-					badgerHoldQuery = badgerhold.Where("MixRoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...)
+					badgerHoldQuery = badgerhold.Where("RoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...).
+						Or(badgerhold.Where("SyncRoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...)).
+						Or(badgerhold.Where("TmpRoleIDs").MatchFunc(matchTmpIDWithCheck(roleIDs...)))
 				} else {
-					badgerHoldQuery = badgerHoldQuery.And("MixRoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...)
+					badgerHoldQuery = badgerHoldQuery.And("RoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...).
+						Or(badgerHoldQuery.And("SyncRoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...)).
+						Or(badgerHoldQuery.And("TmpRoleIDs").MatchFunc(matchTmpIDWithCheck(roleIDs...)))
 				}
 			}
 		}
@@ -363,7 +367,6 @@ func (b *Badger) TxCreateUser(ctx context.Context, txn *badger.Txn, user data.Us
 
 	user.RoleIDs = slicesUnique(user.RoleIDs)
 	user.SyncRoleIDs = slicesUnique(user.SyncRoleIDs)
-	user.MixRoleIDs = slicesUnique(user.RoleIDs, user.SyncRoleIDs)
 
 	user.CreatedAt = time.Now().Format(time.RFC3339)
 	user.UpdatedAt = user.CreatedAt
@@ -475,10 +478,91 @@ func (b *Badger) PatchUser(ctx context.Context, id string, userPatch data.UserPa
 			foundUser.SyncRoleIDs = slicesUnique(*userPatch.SyncRoleIDs)
 		}
 
-		foundUser.MixRoleIDs = slicesUnique(foundUser.RoleIDs, foundUser.SyncRoleIDs)
-
 		if userPatch.IsActive != nil {
 			foundUser.Disabled = !*userPatch.IsActive
+		}
+	})
+}
+
+func (b *Badger) PatchUserAccess(ctx context.Context, id string, userAccess data.UserAccess) error {
+	if len(userAccess.RoleIDs) == 0 && len(userAccess.PermissionIDs) == 0 {
+		return fmt.Errorf("at least one role or permission must be provided; %w", data.ErrInvalidRequest)
+	}
+
+	expires, err := userAccess.Expires()
+	if err != nil {
+		return fmt.Errorf("failed to get user access expiration: %w; %w", err, data.ErrInvalidRequest)
+	}
+	roleIDMap := make(map[string]struct{}, len(userAccess.RoleIDs))
+	for _, roleID := range userAccess.RoleIDs {
+		roleIDMap[roleID] = struct{}{}
+	}
+	permissionIDMap := make(map[string]struct{}, len(userAccess.PermissionIDs))
+	for _, permissionID := range userAccess.PermissionIDs {
+		permissionIDMap[permissionID] = struct{}{}
+	}
+
+	return b.editUser(ctx, id, func(_ *badger.Txn, foundUser *data.User) {
+		if expires == nil {
+			// remove access
+			newTmpRoleIDs := make([]data.TmpID, 0, len(foundUser.TmpRoleIDs))
+			for _, tmpRole := range foundUser.TmpRoleIDs {
+				if _, ok := roleIDMap[tmpRole.ID]; !ok {
+					newTmpRoleIDs = append(newTmpRoleIDs, tmpRole)
+				}
+			}
+			foundUser.TmpRoleIDs = newTmpRoleIDs
+
+			newTmpPermissionIDs := make([]data.TmpID, 0, len(foundUser.TmpPermissionIDs))
+			for _, tmpPermission := range foundUser.TmpPermissionIDs {
+				if _, ok := permissionIDMap[tmpPermission.ID]; !ok {
+					newTmpPermissionIDs = append(newTmpPermissionIDs, tmpPermission)
+				}
+			}
+
+			foundUser.TmpPermissionIDs = newTmpPermissionIDs
+
+			return
+		}
+
+		for tmpRole := range roleIDMap {
+			// replace existing tmp role
+			index := slices.IndexFunc(foundUser.TmpRoleIDs, func(existingTmpRole data.TmpID) bool {
+				return existingTmpRole.ID == tmpRole
+			})
+
+			if index == -1 {
+				// add new tmp role
+				foundUser.TmpRoleIDs = append(foundUser.TmpRoleIDs, data.TmpID{
+					ID:        tmpRole,
+					ExpiresAt: *expires,
+				})
+
+				continue
+			}
+
+			// update existing tmp role
+			foundUser.TmpRoleIDs[index].ExpiresAt = *expires
+		}
+
+		for tmpPermission := range permissionIDMap {
+			// replace existing tmp permission
+			index := slices.IndexFunc(foundUser.TmpPermissionIDs, func(existingTmpPermission data.TmpID) bool {
+				return existingTmpPermission.ID == tmpPermission
+			})
+
+			if index == -1 {
+				// add new tmp permission
+				foundUser.TmpPermissionIDs = append(foundUser.TmpPermissionIDs, data.TmpID{
+					ID:        tmpPermission,
+					ExpiresAt: *expires,
+				})
+
+				continue
+			}
+
+			// update existing tmp permission
+			foundUser.TmpPermissionIDs[index].ExpiresAt = *expires
 		}
 	})
 }
@@ -506,7 +590,6 @@ func (b *Badger) TxPutUser(ctx context.Context, txn *badger.Txn, user data.User)
 
 	user.RoleIDs = slicesUnique(user.RoleIDs)
 	user.SyncRoleIDs = slicesUnique(user.SyncRoleIDs)
-	user.MixRoleIDs = slicesUnique(user.RoleIDs, user.SyncRoleIDs)
 	user.UpdatedAt = time.Now().Format(time.RFC3339)
 	user.CreatedAt = foundUser.CreatedAt
 	user.UpdatedBy = data.CtxUserName(ctx)
@@ -581,7 +664,7 @@ func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addDa
 	}
 
 	// get users roleIDs
-	roleIDs, err := b.getVirtualRoleIDs(txn, user.MixRoleIDs)
+	roleIDs, err := b.getVirtualRoleIDs(txn, slicesUnique(user.RoleIDs, user.SyncRoleIDs, validIDs(user.TmpRoleIDs)))
 	if err != nil {
 		return data.UserExtended{}, err
 	}
@@ -592,6 +675,45 @@ func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addDa
 	var scope map[string][]string
 
 	permissionIDs := make(map[string]struct{}, 100)
+
+	if addRolePermissions || addData || addScopeRoles {
+		// get permissions
+		for _, permissionID := range slicesUnique(user.PermissionIDs, validIDs(user.TmpPermissionIDs)) {
+			if _, ok := permissionIDs[permissionID]; ok {
+				continue
+			}
+
+			var permission data.Permission
+			if err := b.db.TxGet(txn, permissionID, &permission); err != nil {
+				return data.UserExtended{}, err
+			}
+
+			if addRolePermissions {
+				permissions = append(permissions, data.IDName{
+					ID:   permission.ID,
+					Name: permission.Name,
+				})
+			}
+
+			if addData {
+				if len(permission.Data) > 0 {
+					rolePermissionData = append(rolePermissionData, permission.Data)
+				}
+			}
+
+			if addScopeRoles {
+				if scope == nil {
+					scope = make(map[string][]string)
+				}
+
+				for s, v := range permission.Scope {
+					scope[s] = append(scope[s], v...)
+				}
+			}
+
+			permissionIDs[permissionID] = struct{}{}
+		}
+	}
 
 	// get roles permissions
 	if err := b.db.TxForEach(txn, badgerhold.Where("ID").In(toInterfaceSlice(roleIDs)...), func(role *data.Role) error {

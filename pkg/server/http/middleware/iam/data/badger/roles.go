@@ -11,8 +11,8 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/logi"
-	badgerhold "github.com/timshannon/badgerhold/v4"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	badgerhold "github.com/timshannon/badgerhold/v4"
 )
 
 func (b *Badger) GetRoles(req data.GetRoleRequest) (*data.Response[[]data.RoleExtended], error) {
@@ -395,7 +395,11 @@ func (b *Badger) DeleteRole(ctx context.Context, id string) error {
 		}
 
 		// Delete the role from all users
-		if err := b.db.TxForEach(txn, badgerhold.Where("MixRoleIDs").Contains(id), func(user *data.User) error {
+		userRoleIDQuery := badgerhold.Where("RoleIDs").Contains(id).Or(badgerhold.Where("SyncRoleIDs").Contains(id)).Or(
+			badgerhold.Where("TmpRoleIDs").MatchFunc(matchTmpID(id)),
+		)
+
+		if err := b.db.TxForEach(txn, userRoleIDQuery, func(user *data.User) error {
 			user.RoleIDs = slices.DeleteFunc(user.RoleIDs, func(cmp string) bool {
 				return cmp == id
 			})
@@ -404,7 +408,9 @@ func (b *Badger) DeleteRole(ctx context.Context, id string) error {
 				return cmp == id
 			})
 
-			user.MixRoleIDs = slicesUnique(user.RoleIDs, user.SyncRoleIDs)
+			user.TmpRoleIDs = slices.DeleteFunc(user.TmpRoleIDs, func(cmp data.TmpID) bool {
+				return cmp.ID == id
+			})
 
 			if err := b.db.TxUpdate(txn, user.ID, user); err != nil {
 				return err
@@ -523,7 +529,8 @@ func (b *Badger) ExtendRole(txn *badger.Txn, addRoles bool, addPermissions bool,
 
 	if addTotalUsers {
 		count, err := b.db.TxCount(txn, data.User{}, badgerhold.Where("RoleIDs").Contains(role.ID).
-			Or(badgerhold.Where("SyncRoleIDs").Contains(role.ID)))
+			Or(badgerhold.Where("SyncRoleIDs").Contains(role.ID)).
+			Or(badgerhold.Where("TmpRoleIDs").MatchFunc(matchTmpIDWithCheck(role.ID))))
 		if err != nil {
 			return data.RoleExtended{}, err
 		}

@@ -2,6 +2,10 @@ package data
 
 import (
 	"errors"
+	"time"
+
+	"github.com/worldline-go/types"
+	"github.com/xhit/go-str2duration/v2"
 )
 
 var (
@@ -111,18 +115,25 @@ type Alias struct {
 	ID   string `json:"id"   badgerhold:"index"`
 }
 
+type TmpID struct {
+	ID        string     `json:"id"`
+	ExpiresAt types.Time `json:"expires_at"`
+}
+
 // User is a struct that represents a user table in the database.
 type User struct {
 	ID             string                 `json:"id"              badgerhold:"unique"`
 	Alias          []string               `json:"alias"`
 	RoleIDs        []string               `json:"role_ids"`
 	SyncRoleIDs    []string               `json:"sync_role_ids"`
-	MixRoleIDs     []string               `json:"-"`
 	Details        map[string]interface{} `json:"details"`
 	Disabled       bool                   `json:"-"`
 	ServiceAccount bool                   `json:"service_account"`
 	Local          bool                   `json:"local"`
 	PermissionIDs  []string               `json:"permission_ids"`
+
+	TmpRoleIDs       []TmpID `json:"tmp_role_ids"`
+	TmpPermissionIDs []TmpID `json:"tmp_permission_ids"`
 
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
@@ -144,6 +155,42 @@ type UserPatch struct {
 	IsActive      *bool                   `json:"is_active"`
 }
 
+type UserAccess struct {
+	RoleIDs       []string    `json:"role_ids"`
+	PermissionIDs []string    `json:"permission_ids"`
+	ExpiresAt     *types.Time `json:"expires_at"` // RFC3339 time format, e.g., "2024-12-31T23:59:59Z"
+	ExpiresIn     *string     `json:"expires_in"` // Duration string, e.g., "24h", "7d", etc.
+}
+
+// Expires returns the expiration time.
+func (u *UserAccess) Expires() (*types.Time, error) {
+	switch {
+	case u.ExpiresIn == nil && u.ExpiresAt == nil:
+		return nil, nil
+	case u.ExpiresIn != nil:
+		if *u.ExpiresIn == "" {
+			return nil, nil
+		}
+
+		duration, err := str2duration.ParseDuration(*u.ExpiresIn)
+		if err != nil {
+			return nil, err
+		}
+
+		expires := types.NewTime(time.Now().Add(duration))
+
+		return &expires, nil
+	case u.ExpiresAt != nil:
+		if u.ExpiresAt.IsZero() {
+			return nil, nil
+		}
+
+		return u.ExpiresAt, nil
+	}
+
+	return nil, nil
+}
+
 type UserExtended struct {
 	*User
 
@@ -155,8 +202,9 @@ type UserExtended struct {
 }
 
 type IDName struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID        string      `json:"id"`
+	Name      string      `json:"name"`
+	ExpiresIn *types.Time `json:"expires_in,omitempty"` // Optional field for temporary roles
 }
 
 type UserInfo struct {

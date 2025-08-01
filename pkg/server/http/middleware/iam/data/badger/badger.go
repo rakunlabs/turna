@@ -3,11 +3,12 @@ package badger
 import (
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dgraph-io/badger/v4"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	"github.com/spf13/cast"
 	badgerhold "github.com/timshannon/badgerhold/v4"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
 
 var (
@@ -83,6 +84,43 @@ func matchAll(values ...string) badgerhold.MatchFunc {
 		for _, v := range values {
 			if strings.Contains(strings.ToLower(record), strings.ToLower(v)) {
 				return true, nil
+			}
+		}
+
+		return false, nil
+	}
+}
+
+func matchTmpID(id string) badgerhold.MatchFunc {
+	return func(ra *badgerhold.RecordAccess) (bool, error) {
+		record, _ := ra.Field().([]data.TmpID)
+
+		for _, r := range record {
+			if r.ID == id {
+				return true, nil
+			}
+		}
+
+		return false, nil
+	}
+}
+
+func matchTmpIDWithCheck(ids ...string) badgerhold.MatchFunc {
+	now := time.Now()
+
+	mappedIDs := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		mappedIDs[id] = struct{}{}
+	}
+
+	return func(ra *badgerhold.RecordAccess) (bool, error) {
+		record, _ := ra.Field().([]data.TmpID)
+
+		for _, r := range record {
+			if _, ok := mappedIDs[r.ID]; ok {
+				if now.Before(r.ExpiresAt.Time) {
+					return true, nil
+				}
 			}
 		}
 
@@ -166,6 +204,19 @@ func slicesUnique(ss ...[]string) []string {
 	}
 
 	return result
+}
+
+func validIDs(ids []data.TmpID) []string {
+	valid := make([]string, 0, len(ids))
+	now := time.Now()
+
+	for _, id := range ids {
+		if now.Before(id.ExpiresAt.Time) {
+			valid = append(valid, id.ID)
+		}
+	}
+
+	return valid
 }
 
 func (b *Badger) Update(fn func(txn *badger.Txn) error) error {

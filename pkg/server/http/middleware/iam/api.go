@@ -25,7 +25,7 @@ import (
 // @BasePath /
 // @description Identity and Access Management API
 //
-//go:generate swag init -pd -d ./ -g api.go --ot json -o ./files
+//go:generate go tool swag init -pd -d ./ -g api.go --ot json -o ./files
 func (m *Iam) MuxSet(prefix string) *chi.Mux {
 	mux := chi.NewMux()
 
@@ -33,17 +33,19 @@ func (m *Iam) MuxSet(prefix string) *chi.Mux {
 	mux.Post(prefix+"/v1/users", m.CreateUser) // trigger
 	mux.Get(prefix+"/v1/users/export", m.ExportUsers)
 	mux.Get(prefix+"/v1/users/{id}", m.GetUser)
-	mux.Patch(prefix+"/v1/users/{id}", m.PatchUser)   // trigger
-	mux.Put(prefix+"/v1/users/{id}", m.PutUser)       // trigger
-	mux.Delete(prefix+"/v1/users/{id}", m.DeleteUser) // trigger
+	mux.Patch(prefix+"/v1/users/{id}", m.PatchUser)        // trigger
+	mux.Put(prefix+"/v1/users/{id}", m.PutUser)            // trigger
+	mux.Delete(prefix+"/v1/users/{id}", m.DeleteUser)      // trigger
+	mux.Post(prefix+"/v1/users/{id}/access", m.AccessUser) // trigger
 
 	mux.Get(prefix+"/v1/service-accounts", m.GetServiceAccounts)
 	mux.Post(prefix+"/v1/service-accounts", m.CreateServiceAccount) // trigger
 	mux.Get(prefix+"/v1/service-accounts/export", m.ExportServiceAccounts)
 	mux.Get(prefix+"/v1/service-accounts/{id}", m.GetServiceAccount)
-	mux.Patch(prefix+"/v1/service-accounts/{id}", m.PatchServiceAccount)   // trigger
-	mux.Put(prefix+"/v1/service-accounts/{id}", m.PutServiceAccount)       // trigger
-	mux.Delete(prefix+"/v1/service-accounts/{id}", m.DeleteServiceAccount) // trigger
+	mux.Patch(prefix+"/v1/service-accounts/{id}", m.PatchServiceAccount)        // trigger
+	mux.Put(prefix+"/v1/service-accounts/{id}", m.PutServiceAccount)            // trigger
+	mux.Delete(prefix+"/v1/service-accounts/{id}", m.DeleteServiceAccount)      // trigger
+	mux.Post(prefix+"/v1/service-accounts/{id}/access", m.AccessServiceAccount) // trigger
 
 	mux.Get(prefix+"/v1/roles", m.GetRoles)
 	mux.Post(prefix+"/v1/roles", m.CreateRole)              // trigger
@@ -145,9 +147,9 @@ func isServiceAccountPtr(r *http.Request) *bool {
 // @Tags service-accounts
 // @Param user body data.UserCreate true "Service Account"
 // @Success 200 {object} data.Response[data.ResponseCreate]
-// @Failure 400 {object} data.ResponseError
-// @Failure 409 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 409 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/service-accounts [POST]
 func (m *Iam) CreateServiceAccount(w http.ResponseWriter, r *http.Request) {
 	m.CreateUser(w, wrapServiceAccount(r))
@@ -171,7 +173,7 @@ func (m *Iam) CreateServiceAccount(w http.ResponseWriter, r *http.Request) {
 // @Param limit query int false "limit" default(20)
 // @Param offset query int false "offset"
 // @Success 200 {object} data.Response[[]data.UserExtended]
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/service-accounts [GET]
 func (m *Iam) GetServiceAccounts(w http.ResponseWriter, r *http.Request) {
 	m.GetUsers(w, wrapServiceAccount(r))
@@ -189,7 +191,7 @@ func (m *Iam) GetServiceAccounts(w http.ResponseWriter, r *http.Request) {
 // @Param method query string false "request method"
 // @Param is_active query bool false "is_active"
 // @Success 200
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/service-accounts/export [GET]
 func (m *Iam) ExportServiceAccounts(w http.ResponseWriter, r *http.Request) {
 	m.ExportUsers(w, wrapServiceAccount(r))
@@ -202,9 +204,9 @@ func (m *Iam) ExportServiceAccounts(w http.ResponseWriter, r *http.Request) {
 // @Param add_permissions query bool false "add permissions"
 // @Param add_data query bool false "add data"
 // @Success 200 {object} data.Response[data.UserExtended]
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/service-accounts/{id} [GET]
 func (m *Iam) GetServiceAccount(w http.ResponseWriter, r *http.Request) {
 	m.GetUser(w, wrapServiceAccount(r))
@@ -215,12 +217,26 @@ func (m *Iam) GetServiceAccount(w http.ResponseWriter, r *http.Request) {
 // @Param id path string true "service id"
 // @Param user body data.UserPatch true "Service"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/service-accounts/{id} [PATCH]
 func (m *Iam) PatchServiceAccount(w http.ResponseWriter, r *http.Request) {
 	m.PatchUser(w, wrapServiceAccount(r))
+}
+
+// @Summary Access service account
+// @Description Give temporary access to service account
+// @Tags service-accounts
+// @Param id path string true "user id"
+// @Param access body data.UserAccess true "Access"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/service-accounts/{id}/access [POST]
+func (m *Iam) AccessServiceAccount(w http.ResponseWriter, r *http.Request) {
+	m.AccessUser(w, wrapServiceAccount(r))
 }
 
 // @Summary Put service account
@@ -228,9 +244,9 @@ func (m *Iam) PatchServiceAccount(w http.ResponseWriter, r *http.Request) {
 // @Param id path string true "service id"
 // @Param user body data.User true "Service"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/service-accounts/{id} [PUT]
 func (m *Iam) PutServiceAccount(w http.ResponseWriter, r *http.Request) {
 	m.PutUser(w, wrapServiceAccount(r))
@@ -240,9 +256,9 @@ func (m *Iam) PutServiceAccount(w http.ResponseWriter, r *http.Request) {
 // @Tags service-accounts
 // @Param id path string true "service id"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/service-accounts/{id} [DELETE]
 func (m *Iam) DeleteServiceAccount(w http.ResponseWriter, r *http.Request) {
 	m.DeleteUser(w, wrapServiceAccount(r))
@@ -252,9 +268,9 @@ func (m *Iam) DeleteServiceAccount(w http.ResponseWriter, r *http.Request) {
 // @Tags users
 // @Param user body data.UserCreate true "User"
 // @Success 200 {object} data.Response[data.ResponseCreate]
-// @Failure 400 {object} data.ResponseError
-// @Failure 409 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 409 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/users [POST]
 func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -342,7 +358,7 @@ func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 // @Param limit query int false "limit" default(20)
 // @Param offset query int false "offset"
 // @Success 200 {object} data.Response[[]data.UserExtended]
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/users [GET]
 func (m *Iam) GetUsers(w http.ResponseWriter, r *http.Request) {
 	parsedQuery, err := httputil.ParseQuery(r)
@@ -406,7 +422,7 @@ func (m *Iam) GetUsers(w http.ResponseWriter, r *http.Request) {
 // @Param method query string false "request method"
 // @Param is_active query bool false "is_active"
 // @Success 200
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/users/export [GET]
 func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
 	parsedQuery, err := httputil.ParseQuery(r)
@@ -488,9 +504,9 @@ func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
 // @Param add_permissions query bool false "add permissions"
 // @Param add_data query bool false "add data"
 // @Success 200 {object} data.Response[data.UserExtended]
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/users/{id} [GET]
 func (m *Iam) GetUser(w http.ResponseWriter, r *http.Request) {
 	req := data.GetUserRequest{
@@ -533,9 +549,9 @@ func (m *Iam) GetUser(w http.ResponseWriter, r *http.Request) {
 // @Tags users
 // @Param id path string true "user id"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/users/{id} [DELETE]
 func (m *Iam) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -575,9 +591,9 @@ func (m *Iam) DeleteUser(w http.ResponseWriter, r *http.Request) {
 // @Param id path string true "user id"
 // @Param user body data.UserPatch true "User"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/users/{id} [PATCH]
 func (m *Iam) PatchUser(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -618,14 +634,68 @@ func (m *Iam) PatchUser(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("User's data patched"))
 }
 
+// @Summary Access user
+// @Description Give temporary access to user
+// @Tags users
+// @Param id path string true "user id"
+// @Param access body data.UserAccess true "Access"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/users/{id}/access [POST]
+func (m *Iam) AccessUser(w http.ResponseWriter, r *http.Request) {
+	if m.sync.Redirect(w, r) {
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
+		return
+	}
+
+	access := data.UserAccess{}
+	if err := httputil.Decode(r, &access); err != nil {
+		httputil.HandleError(w, httputil.NewError("Cannot decode request", err, http.StatusBadRequest))
+		return
+	}
+
+	ctx := data.WithContextUserName(m.ctxService, getUserName(r))
+
+	if err := m.db.PatchUserAccess(ctx, id, access); err != nil {
+		if errors.Is(err, data.ErrNotFound) {
+			httputil.HandleError(w, httputil.NewError("User not found", err, http.StatusNotFound))
+			return
+		}
+
+		if errors.Is(err, data.ErrInvalidRequest) {
+			httputil.HandleError(w, httputil.NewError("Invalid access request", err, http.StatusBadRequest))
+			return
+		}
+
+		httputil.HandleError(w, httputil.NewError("Cannot change access of user", err, http.StatusInternalServerError))
+		return
+	}
+
+	m.sync.Trigger(m.ctxService)
+
+	if isServiceAccount(r) {
+		httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Service account's access replaced"))
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("User's access replaced"))
+}
+
 // @Summary Put user
 // @Tags users
 // @Param id path string true "user id"
 // @Param user body data.User true "User"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/users/{id} [PUT]
 func (m *Iam) PutUser(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -685,7 +755,7 @@ func (m *Iam) PutUser(w http.ResponseWriter, r *http.Request) {
 // @Param limit query int false "limit" default(20)
 // @Param offset query int false "offset"
 // @Success 200 {object} data.Response[[]data.RoleExtended]
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/roles [GET]
 func (m *Iam) GetRoles(w http.ResponseWriter, r *http.Request) {
 	parsedQuery, err := httputil.ParseQuery(r)
@@ -742,7 +812,7 @@ func (m *Iam) GetRoles(w http.ResponseWriter, r *http.Request) {
 // @Param method query string false "request method"
 // @Param path query string false "request path"
 // @Success 200
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/roles/export [GET]
 func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 	parsedQuery, err := httputil.ParseQuery(r)
@@ -833,9 +903,9 @@ func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 // @Tags roles
 // @Param role body data.Role true "Role"
 // @Success 200 {object} data.Response[data.ResponseCreate]
-// @Failure 400 {object} data.ResponseError
-// @Failure 409 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 409 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/roles [POST]
 func (m *Iam) CreateRole(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -885,9 +955,9 @@ func (m *Iam) CreateRole(w http.ResponseWriter, r *http.Request) {
 // @Param add_roles query bool false "add roles default(true)"
 // @Param add_total_users query bool false "add total users default(true)"
 // @Success 200 {object} data.Response[data.RoleExtended]
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/roles/{id} [GET]
 func (m *Iam) GetRole(w http.ResponseWriter, r *http.Request) {
 	req := data.GetRoleRequest{
@@ -924,8 +994,8 @@ func (m *Iam) GetRole(w http.ResponseWriter, r *http.Request) {
 // @Tags roles
 // @Param relation body map[string]data.RoleRelation true "RoleRelation"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/roles/relation [PUT]
 func (m *Iam) PutRoleRelation(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -957,7 +1027,7 @@ func (m *Iam) PutRoleRelation(w http.ResponseWriter, r *http.Request) {
 // @Summary Get role relation (dump)
 // @Tags roles
 // @Success 200 {object} map[string]data.RoleRelation
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/roles/relation [GET]
 func (m *Iam) GetRoleRelation(w http.ResponseWriter, _ *http.Request) {
 	relation, err := m.db.GetRoleRelation()
@@ -974,9 +1044,9 @@ func (m *Iam) GetRoleRelation(w http.ResponseWriter, _ *http.Request) {
 // @Param id path string true "role ID"
 // @Param role body data.RolePatch true "Role"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/roles/{id} [PATCH]
 func (m *Iam) PatchRole(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -1021,9 +1091,9 @@ func (m *Iam) PatchRole(w http.ResponseWriter, r *http.Request) {
 // @Param id path string true "role ID"
 // @Param role body data.Role true "Role"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/roles/{id} [PUT]
 func (m *Iam) PutRole(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -1070,9 +1140,9 @@ func (m *Iam) PutRole(w http.ResponseWriter, r *http.Request) {
 // @Tags roles
 // @Param id path string true "role name"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/roles/{id} [DELETE]
 func (m *Iam) DeleteRole(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -1113,7 +1183,7 @@ func (m *Iam) DeleteRole(w http.ResponseWriter, r *http.Request) {
 // @Param limit query int false "limit" default(20)
 // @Param offset query int false "offset"
 // @Success 200 {object} data.Response[[]data.Permission]
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/permissions [GET]
 func (m *Iam) GetPermissions(w http.ResponseWriter, r *http.Request) {
 	req := data.GetPermissionRequest{
@@ -1160,7 +1230,7 @@ func (m *Iam) GetPermissions(w http.ResponseWriter, r *http.Request) {
 // @Param path query string false "request path"
 // @Param method query string false "request method"
 // @Success 200
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/permissions/export [GET]
 func (m *Iam) ExportPermissions(w http.ResponseWriter, r *http.Request) {
 	var req data.GetPermissionRequest
@@ -1208,9 +1278,9 @@ func (m *Iam) ExportPermissions(w http.ResponseWriter, r *http.Request) {
 // @Tags permissions
 // @Param permission body data.Permission true "Permission"
 // @Success 200 {object} data.Response[data.ResponseCreate]
-// @Failure 400 {object} data.ResponseError
-// @Failure 409 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 409 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/permissions [POST]
 func (m *Iam) CreatePermission(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -1252,7 +1322,7 @@ func (m *Iam) CreatePermission(w http.ResponseWriter, r *http.Request) {
 // @Tags permissions
 // @Param permission body []data.Permission true "Permission"
 // @Success 200 {object} data.Response[data.ResponseCreateBulk]
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/permissions/bulk [POST]
 func (m *Iam) CreatePermissionBulk(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -1290,9 +1360,9 @@ func (m *Iam) CreatePermissionBulk(w http.ResponseWriter, r *http.Request) {
 // @Param id path string true "permission name"
 // @Param add_roles query bool false "add roles default(true)"
 // @Success 200 {object} data.Response[data.Permission]
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/permissions/{id} [GET]
 func (m *Iam) GetPermission(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -1332,9 +1402,9 @@ func (m *Iam) GetPermission(w http.ResponseWriter, r *http.Request) {
 // @Param id path string true "permission ID"
 // @Param permission body data.PermissionPatch true "Permission"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/permissions/{id} [PATCH]
 func (m *Iam) PatchPermission(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -1380,9 +1450,9 @@ func (m *Iam) PatchPermission(w http.ResponseWriter, r *http.Request) {
 // @Param id path string true "permission ID"
 // @Param permission body data.Permission true "Permission"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/permissions/{id} [PUT]
 func (m *Iam) PutPermission(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -1424,9 +1494,9 @@ func (m *Iam) PutPermission(w http.ResponseWriter, r *http.Request) {
 // @Tags permissions
 // @Param id path string true "permission name"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/permissions/{id} [DELETE]
 func (m *Iam) DeletePermission(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -1460,7 +1530,7 @@ func (m *Iam) DeletePermission(w http.ResponseWriter, r *http.Request) {
 // @Tags permissions
 // @Param permission body []data.Permission true "Permission"
 // @Success 200 {object} data.Response[[]data.IDName]
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/permissions/keep [POST]
 func (m *Iam) KeepPermissionBulk(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -1502,8 +1572,8 @@ func (m *Iam) KeepPermissionBulk(w http.ResponseWriter, r *http.Request) {
 // @Tags check
 // @Param check body data.CheckRequest true "Check"
 // @Success 200 {object} data.CheckResponse
-// @Failure 400 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/check [POST]
 func (m *Iam) PostCheck(w http.ResponseWriter, r *http.Request) {
 	body := data.CheckRequest{}
@@ -1526,8 +1596,8 @@ func (m *Iam) PostCheck(w http.ResponseWriter, r *http.Request) {
 // @Param X-User header string false "User alias, X-User is authorized user auto adds"
 // @Param check body data.CheckRequestUser true "Check"
 // @Success 200 {object} data.CheckResponse
-// @Failure 400 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /check [POST]
 func (m *Iam) PostCheckUser(w http.ResponseWriter, r *http.Request) {
 	user := r.Header.Get("X-User")
@@ -1560,9 +1630,9 @@ func (m *Iam) PostCheckUser(w http.ResponseWriter, r *http.Request) {
 // @Tags ldap
 // @Param map body data.LMap true "Map"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 409 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 409 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/ldap/maps [POST]
 func (m *Iam) LdapCreateGroupMaps(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -1604,7 +1674,7 @@ func (m *Iam) LdapCreateGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Param limit query int false "limit" default(20)
 // @Param offset query int false "offset"
 // @Success 200 {object} data.Response[[]data.LMap]
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/ldap/maps [GET]
 func (m *Iam) LdapGetGroupMaps(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -1631,9 +1701,9 @@ func (m *Iam) LdapGetGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Tags ldap
 // @Param name path string true "map name"
 // @Success 200 {object} data.Response[data.LMap]
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/ldap/maps/{name} [GET]
 func (m *Iam) LdapGetGroupMap(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -1665,9 +1735,9 @@ func (m *Iam) LdapGetGroupMap(w http.ResponseWriter, r *http.Request) {
 // @Param name path string true "map name"
 // @Param map body data.LMap true "Map"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/ldap/maps/{name} [PUT]
 func (m *Iam) LdapPutGroupMaps(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -1709,9 +1779,9 @@ func (m *Iam) LdapPutGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Tags ldap
 // @Param name path string true "map name"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/ldap/maps/{name} [DELETE]
 func (m *Iam) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -1746,9 +1816,9 @@ func (m *Iam) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
 // @Param alias query string true "User alias"
 // @Param data query bool false "add role data"
 // @Success 200 {object} data.Response[data.UserInfo]
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/info [GET]
 func (m *Iam) Info(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
@@ -1798,9 +1868,9 @@ func (m *Iam) Info(w http.ResponseWriter, r *http.Request) {
 // @Param X-User header string false "User alias, X-User is authorized user auto adds"
 // @Param data query bool false "add role data"
 // @Success 200 {object} data.Response[data.UserInfo]
-// @Failure 400 {object} data.ResponseError
-// @Failure 404 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /info [GET]
 func (m *Iam) InfoUser(w http.ResponseWriter, r *http.Request) {
 	xUser := r.Header.Get("X-User")
@@ -1857,7 +1927,7 @@ func (m *Iam) InfoUser(w http.ResponseWriter, r *http.Request) {
 // @Tags backup
 // @Param since query number false "since txid"
 // @Success 200
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/backup [GET]
 func (m *Iam) Backup(w http.ResponseWriter, r *http.Request) {
 	var since uint64
@@ -1887,8 +1957,8 @@ func (m *Iam) Backup(w http.ResponseWriter, r *http.Request) {
 // @Tags backup
 // @Param file formData file true "Backup file"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/restore [POST]
 func (m *Iam) Restore(w http.ResponseWriter, r *http.Request) {
 	if m.sync.Redirect(w, r) {
@@ -1937,8 +2007,8 @@ func (m *Iam) Version(w http.ResponseWriter, r *http.Request) {
 // @Tags backup
 // @Param X-Sync-Version header string false "Sync version"
 // @Success 200 {object} data.ResponseMessage
-// @Failure 400 {object} data.ResponseError
-// @Failure 500 {object} data.ResponseError
+// @Failure 400 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
 // @Router /v1/sync [POST]
 func (m *Iam) Sync(w http.ResponseWriter, r *http.Request) {
 	var versionNumber uint64
@@ -1963,7 +2033,7 @@ func (m *Iam) Sync(w http.ResponseWriter, r *http.Request) {
 // @Summary Get dashboard info
 // @Tags dashboard
 // @Success 200 {object} data.Response[data.Dashboard]
-// @Failure 500 {object} data.ResponseError
+// @Failure 500 {object} httputil.Error
 // @Router /v1/dashboard [GET]
 func (m *Iam) Dashboard(w http.ResponseWriter, _ *http.Request) {
 	dashboard, err := m.db.Dashboard()
