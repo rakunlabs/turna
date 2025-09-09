@@ -91,21 +91,7 @@ func matchAll(values ...string) badgerhold.MatchFunc {
 	}
 }
 
-func matchTmpID(id string) badgerhold.MatchFunc {
-	return func(ra *badgerhold.RecordAccess) (bool, error) {
-		record, _ := ra.Field().([]data.TmpID)
-
-		for _, r := range record {
-			if r.ID == id {
-				return true, nil
-			}
-		}
-
-		return false, nil
-	}
-}
-
-func matchTmpIDWithCheck(ids ...string) badgerhold.MatchFunc {
+func matchMixIDWithCheck(ids ...string) badgerhold.MatchFunc {
 	now := time.Now()
 
 	mappedIDs := make(map[string]struct{}, len(ids))
@@ -114,13 +100,36 @@ func matchTmpIDWithCheck(ids ...string) badgerhold.MatchFunc {
 	}
 
 	return func(ra *badgerhold.RecordAccess) (bool, error) {
-		record, _ := ra.Field().([]data.TmpID)
+		record, _ := ra.Field().([]data.MixID)
 
 		for _, r := range record {
 			if _, ok := mappedIDs[r.ID]; ok {
-				if now.Before(r.ExpiresAt.Time) {
+				if r.IsTmp {
+					if now.Before(r.ExpiresAt.Time) {
+						return true, nil
+					}
+				} else {
 					return true, nil
 				}
+			}
+		}
+
+		return false, nil
+	}
+}
+
+func matchMixID(ids ...string) badgerhold.MatchFunc {
+	mappedIDs := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		mappedIDs[id] = struct{}{}
+	}
+
+	return func(ra *badgerhold.RecordAccess) (bool, error) {
+		record, _ := ra.Field().([]data.MixID)
+
+		for _, r := range record {
+			if _, ok := mappedIDs[r.ID]; ok {
+				return true, nil
 			}
 		}
 
@@ -219,9 +228,77 @@ func validIDs(ids []data.TmpID) []string {
 	return valid
 }
 
+func validTmpIDs(ids []data.TmpID) []data.TmpID {
+	valid := make([]data.TmpID, 0, len(ids))
+	now := time.Now()
+
+	for _, id := range ids {
+		if now.Before(id.ExpiresAt.Time) {
+			valid = append(valid, id)
+		}
+	}
+
+	return valid
+}
+
 func (b *Badger) Update(fn func(txn *badger.Txn) error) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
 	return b.db.Badger().Update(fn)
+}
+
+// ///////////////////////////////////////////////////////////////////
+
+func totalID(opts ...OptionTotalID) []data.MixID {
+	o := &optionTotalID{}
+	for _, opt := range opts {
+		opt(o)
+	}
+
+	var total []data.MixID
+
+	// elimitate duplicate
+	seen := make(map[string]struct{})
+	for _, v := range o.values {
+		for _, vv := range v {
+			if _, ok := seen[vv]; !ok {
+				total = append(total, data.MixID{
+					ID: vv,
+				})
+				seen[vv] = struct{}{}
+			}
+		}
+	}
+
+	for _, v := range o.tmps {
+		for _, vv := range v {
+			total = append(total, data.MixID{
+				ID:        vv.ID,
+				IsTmp:     true,
+				ExpiresAt: vv.ExpiresAt,
+			})
+		}
+	}
+
+	return total
+}
+
+type optionTotalID struct {
+	values [][]string
+	tmps   [][]data.TmpID
+}
+
+type OptionTotalID func(*optionTotalID)
+
+func WithTotalID(values ...[]string) OptionTotalID {
+	return func(o *optionTotalID) {
+		o.values = append(o.values, values...)
+	}
+}
+
+func WithTotalTmpID(tmps ...[]data.TmpID) OptionTotalID {
+	return func(o *optionTotalID) {
+		o.tmps = append(o.tmps, tmps...)
+	}
 }

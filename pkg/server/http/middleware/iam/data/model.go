@@ -120,20 +120,29 @@ type TmpID struct {
 	ExpiresAt types.Time `json:"expires_at"`
 }
 
+type MixID struct {
+	IsTmp     bool
+	ID        string
+	ExpiresAt types.Time
+}
+
 // User is a struct that represents a user table in the database.
 type User struct {
-	ID             string                 `json:"id"              badgerhold:"unique"`
-	Alias          []string               `json:"alias"`
-	RoleIDs        []string               `json:"role_ids"`
-	SyncRoleIDs    []string               `json:"sync_role_ids"`
-	Details        map[string]interface{} `json:"details"`
-	Disabled       bool                   `json:"-"`
-	ServiceAccount bool                   `json:"service_account"`
-	Local          bool                   `json:"local"`
-	PermissionIDs  []string               `json:"permission_ids"`
+	ID             string         `json:"id"              badgerhold:"unique"`
+	Alias          []string       `json:"alias"`
+	RoleIDs        []string       `json:"role_ids"`
+	SyncRoleIDs    []string       `json:"sync_role_ids"`
+	Details        map[string]any `json:"details"`
+	Disabled       bool           `json:"-"`
+	ServiceAccount bool           `json:"service_account"`
+	Local          bool           `json:"local"`
+	PermissionIDs  []string       `json:"permission_ids"`
 
 	TmpRoleIDs       []TmpID `json:"tmp_role_ids"`
 	TmpPermissionIDs []TmpID `json:"tmp_permission_ids"`
+
+	AllRoleIDs []MixID `json:"-"`
+	AllPermIDs []MixID `json:"-"`
 
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`

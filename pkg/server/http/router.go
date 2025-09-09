@@ -59,7 +59,7 @@ func (r *Router) Set(_ string, ruleRouter *RuleRouter) error {
 		for _, middlewareName := range r.Middlewares {
 			middlewareFromGlobal, err := registry.GlobalReg.GetHttpMiddleware(middlewareName)
 			if err != nil {
-				return err
+				return fmt.Errorf("middleware %s: %w", middlewareName, err)
 			}
 
 			middlewares = append(middlewares, middlewareFromGlobal...)

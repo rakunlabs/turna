@@ -108,13 +108,9 @@ func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserEx
 				}
 
 				if badgerHoldQuery.IsEmpty() {
-					badgerHoldQuery = badgerhold.Where("RoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...).
-						Or(badgerhold.Where("SyncRoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...)).
-						Or(badgerhold.Where("TmpRoleIDs").MatchFunc(matchTmpIDWithCheck(roleIDs...)))
+					badgerHoldQuery = badgerhold.Where("AllRoleIDs").MatchFunc(matchMixIDWithCheck(roleIDs...))
 				} else {
-					badgerHoldQuery = badgerHoldQuery.And("RoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...).
-						Or(badgerHoldQuery.And("SyncRoleIDs").ContainsAny(toInterfaceSlice(roleIDs)...)).
-						Or(badgerHoldQuery.And("TmpRoleIDs").MatchFunc(matchTmpIDWithCheck(roleIDs...)))
+					badgerHoldQuery = badgerHoldQuery.And("AllRoleIDs").MatchFunc(matchMixIDWithCheck(roleIDs...))
 				}
 			}
 		}
@@ -314,6 +310,12 @@ func (b *Badger) TxFuncUser(txn *badger.Txn, req data.GetUserRequest, fn func(*d
 			return nil
 		}
 
+		userNew.TmpRoleIDs = validTmpIDs(userNew.TmpRoleIDs)
+		userNew.TmpPermissionIDs = validTmpIDs(userNew.TmpPermissionIDs)
+
+		userNew.AllRoleIDs = totalID(WithTotalID(userNew.RoleIDs, userNew.SyncRoleIDs), WithTotalTmpID(userNew.TmpRoleIDs))
+		userNew.AllPermIDs = totalID(WithTotalID(userNew.PermissionIDs), WithTotalTmpID(userNew.TmpPermissionIDs))
+
 		if err := b.db.TxUpdate(txn, userNew.ID, userNew); err != nil {
 			return err
 		}
@@ -367,6 +369,13 @@ func (b *Badger) TxCreateUser(ctx context.Context, txn *badger.Txn, user data.Us
 
 	user.RoleIDs = slicesUnique(user.RoleIDs)
 	user.SyncRoleIDs = slicesUnique(user.SyncRoleIDs)
+	user.TmpRoleIDs = validTmpIDs(user.TmpRoleIDs)
+
+	user.PermissionIDs = slicesUnique(user.PermissionIDs)
+	user.TmpPermissionIDs = validTmpIDs(user.TmpPermissionIDs)
+
+	user.AllRoleIDs = totalID(WithTotalID(user.RoleIDs, user.SyncRoleIDs), WithTotalTmpID(user.TmpRoleIDs))
+	user.AllPermIDs = totalID(WithTotalID(user.PermissionIDs), WithTotalTmpID(user.TmpPermissionIDs))
 
 	user.CreatedAt = time.Now().Format(time.RFC3339)
 	user.UpdatedAt = user.CreatedAt
@@ -427,6 +436,11 @@ func (b *Badger) editUser(ctx context.Context, id string, fn func(*badger.Txn, *
 
 		foundUser.UpdatedAt = time.Now().Format(time.RFC3339)
 		foundUser.UpdatedBy = userName
+
+		foundUser.TmpRoleIDs = validTmpIDs(foundUser.TmpRoleIDs)
+		foundUser.TmpPermissionIDs = validTmpIDs(foundUser.TmpPermissionIDs)
+		foundUser.AllRoleIDs = totalID(WithTotalID(foundUser.RoleIDs, foundUser.SyncRoleIDs), WithTotalTmpID(foundUser.TmpRoleIDs))
+		foundUser.AllPermIDs = totalID(WithTotalID(foundUser.PermissionIDs), WithTotalTmpID(foundUser.TmpPermissionIDs))
 
 		if err := b.db.TxUpdate(txn, foundUser.ID, foundUser); err != nil {
 			return err
@@ -590,6 +604,14 @@ func (b *Badger) TxPutUser(ctx context.Context, txn *badger.Txn, user data.User)
 
 	user.RoleIDs = slicesUnique(user.RoleIDs)
 	user.SyncRoleIDs = slicesUnique(user.SyncRoleIDs)
+	user.TmpRoleIDs = validTmpIDs(user.TmpRoleIDs)
+
+	user.PermissionIDs = slicesUnique(user.PermissionIDs)
+	user.TmpPermissionIDs = validTmpIDs(user.TmpPermissionIDs)
+
+	user.AllRoleIDs = totalID(WithTotalID(user.RoleIDs, user.SyncRoleIDs), WithTotalTmpID(user.TmpRoleIDs))
+	user.AllPermIDs = totalID(WithTotalID(user.PermissionIDs), WithTotalTmpID(user.TmpPermissionIDs))
+
 	user.UpdatedAt = time.Now().Format(time.RFC3339)
 	user.CreatedAt = foundUser.CreatedAt
 	user.UpdatedBy = data.CtxUserName(ctx)

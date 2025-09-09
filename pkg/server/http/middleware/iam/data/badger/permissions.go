@@ -11,8 +11,8 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/logi"
-	badgerhold "github.com/timshannon/badgerhold/v4"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	badgerhold "github.com/timshannon/badgerhold/v4"
 )
 
 func (b *Badger) GetPermissions(req data.GetPermissionRequest) (*data.Response[[]data.PermissionExtended], error) {
@@ -394,6 +394,35 @@ func (b *Badger) DeletePermission(ctx context.Context, id string) error {
 			return nil
 		}); err != nil {
 			return fmt.Errorf("failed to delete permission from roles; %w", err)
+		}
+
+		// Delete the permission from all users
+		userRoleIDQuery := badgerhold.Where("AllPermIDs").MatchFunc(matchMixID(id))
+
+		now := time.Now()
+
+		if err := b.db.TxForEach(txn, userRoleIDQuery, func(user *data.User) error {
+			user.PermissionIDs = slices.DeleteFunc(user.PermissionIDs, func(cmp string) bool {
+				return cmp == id
+			})
+
+			user.TmpPermissionIDs = slices.DeleteFunc(user.TmpPermissionIDs, func(cmp data.TmpID) bool {
+				if now.After(cmp.ExpiresAt.Time) {
+					return true
+				}
+
+				return cmp.ID == id
+			})
+
+			user.AllPermIDs = totalID(WithTotalID(user.PermissionIDs), WithTotalTmpID(user.TmpPermissionIDs))
+
+			if err := b.db.TxUpdate(txn, user.ID, user); err != nil {
+				return err
+			}
+
+			return nil
+		}); err != nil {
+			return fmt.Errorf("failed to delete role from users; %w", err)
 		}
 
 		return nil
