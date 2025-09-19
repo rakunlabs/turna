@@ -395,7 +395,7 @@ func (b *Badger) DeleteRole(ctx context.Context, id string) error {
 		}
 
 		// Delete the role from all users
-		userRoleIDQuery := badgerhold.Where("AllRoleIDs").MatchFunc(matchMixID(id))
+		userRoleIDQuery := badgerhold.Where("AllRoleTmpIDs").MatchFunc(matchMixID(id))
 
 		now := time.Now()
 		if err := b.db.TxForEach(txn, userRoleIDQuery, func(user *data.User) error {
@@ -415,7 +415,8 @@ func (b *Badger) DeleteRole(ctx context.Context, id string) error {
 				return cmp.ID == id
 			})
 
-			user.AllRoleIDs = totalID(WithTotalID(user.RoleIDs, user.SyncRoleIDs), WithTotalTmpID(user.TmpRoleIDs))
+			user.AllRolePermanentIDs = slicesUnique(user.RoleIDs, user.SyncRoleIDs)
+			user.AllRoleTmpIDs = totalID(WithTotalID(user.RoleIDs, user.SyncRoleIDs), WithTotalTmpID(user.TmpRoleIDs))
 
 			if err := b.db.TxUpdate(txn, user.ID, user); err != nil {
 				return err
@@ -533,7 +534,7 @@ func (b *Badger) ExtendRole(txn *badger.Txn, addRoles bool, addPermissions bool,
 	}
 
 	if addTotalUsers {
-		count, err := b.db.TxCount(txn, data.User{}, badgerhold.Where("AllRoleIDs").MatchFunc(matchMixIDWithCheck(role.ID)))
+		count, err := b.db.TxCount(txn, data.User{}, badgerhold.Where("AllRoleTmpIDs").MatchFunc(matchMixIDWithCheck(role.ID)))
 		if err != nil {
 			return data.RoleExtended{}, err
 		}

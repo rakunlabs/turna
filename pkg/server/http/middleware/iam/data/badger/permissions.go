@@ -397,7 +397,7 @@ func (b *Badger) DeletePermission(ctx context.Context, id string) error {
 		}
 
 		// Delete the permission from all users
-		userRoleIDQuery := badgerhold.Where("AllPermIDs").MatchFunc(matchMixID(id))
+		userRoleIDQuery := badgerhold.Where("AllPermTmpIDs").MatchFunc(matchMixID(id))
 
 		now := time.Now()
 
@@ -414,7 +414,7 @@ func (b *Badger) DeletePermission(ctx context.Context, id string) error {
 				return cmp.ID == id
 			})
 
-			user.AllPermIDs = totalID(WithTotalID(user.PermissionIDs), WithTotalTmpID(user.TmpPermissionIDs))
+			user.AllPermTmpIDs = totalID(WithTotalID(user.PermissionIDs), WithTotalTmpID(user.TmpPermissionIDs))
 
 			if err := b.db.TxUpdate(txn, user.ID, user); err != nil {
 				return err

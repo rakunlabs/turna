@@ -141,8 +141,9 @@ type User struct {
 	TmpRoleIDs       []TmpID `json:"tmp_role_ids"`
 	TmpPermissionIDs []TmpID `json:"tmp_permission_ids"`
 
-	AllRoleIDs []MixID `json:"-"`
-	AllPermIDs []MixID `json:"-"`
+	AllRolePermanentIDs []string `json:"-"`
+	AllRoleTmpIDs       []MixID  `json:"-"`
+	AllPermTmpIDs       []MixID  `json:"-"`
 
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
@@ -167,6 +168,7 @@ type UserPatch struct {
 type UserAccess struct {
 	RoleIDs       []string    `json:"role_ids"`
 	PermissionIDs []string    `json:"permission_ids"`
+	StartAt       *types.Time `json:"start_at"`   // RFC3339 time format, e.g., "2024-12-31T23:59:59Z"
 	ExpiresAt     *types.Time `json:"expires_at"` // RFC3339 time format, e.g., "2024-12-31T23:59:59Z"
 	ExpiresIn     *string     `json:"expires_in"` // Duration string, e.g., "24h", "7d", etc.
 }
@@ -184,6 +186,11 @@ func (u *UserAccess) Expires() (*types.Time, error) {
 		duration, err := str2duration.ParseDuration(*u.ExpiresIn)
 		if err != nil {
 			return nil, err
+		}
+
+		if u.StartAt != nil && !u.StartAt.IsZero() {
+			expires := types.NewTime(u.StartAt.Add(duration))
+			return &expires, nil
 		}
 
 		expires := types.NewTime(time.Now().Add(duration))
@@ -302,9 +309,10 @@ type GetUserRequest struct {
 
 	RoleIDs []string `json:"role_ids"`
 
-	UID   string `json:"uid"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
+	UID      string `json:"uid"`
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	RoleType string `json:"role_type"`
 
 	Path        string   `json:"path"`
 	Method      string   `json:"method"`

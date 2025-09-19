@@ -2141,6 +2141,16 @@
                         "in": "query"
                     },
                     {
+                        "enum": [
+                            "PERMANENT",
+                            "TEMPORARY"
+                        ],
+                        "type": "string",
+                        "description": "role type",
+                        "name": "role_type",
+                        "in": "query"
+                    },
+                    {
                         "type": "string",
                         "description": "details-\u003euid",
                         "name": "uid",
@@ -3282,7 +3292,7 @@
                 },
                 "details": {
                     "type": "object",
-                    "additionalProperties": true
+                    "additionalProperties": {}
                 },
                 "id": {
                     "type": "string"
@@ -3353,6 +3363,10 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "start_at": {
+                    "description": "RFC3339 time format, e.g., \"2024-12-31T23:59:59Z\"",
+                    "type": "string"
                 }
             }
         },
@@ -3370,7 +3384,7 @@
                 },
                 "details": {
                     "type": "object",
-                    "additionalProperties": true
+                    "additionalProperties": {}
                 },
                 "id": {
                     "type": "string"
@@ -3440,7 +3454,7 @@
                 },
                 "details": {
                     "type": "object",
-                    "additionalProperties": true
+                    "additionalProperties": {}
                 },
                 "id": {
                     "type": "string"

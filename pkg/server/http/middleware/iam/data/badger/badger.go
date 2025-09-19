@@ -91,6 +91,52 @@ func matchAll(values ...string) badgerhold.MatchFunc {
 	}
 }
 
+func matchAnyIDs() badgerhold.MatchFunc {
+	return func(ra *badgerhold.RecordAccess) (bool, error) {
+		record, _ := ra.Field().([]string)
+
+		return len(record) > 0, nil
+	}
+}
+
+func matchAnyTmpIDWithCheck() badgerhold.MatchFunc {
+	return func(ra *badgerhold.RecordAccess) (bool, error) {
+		record, _ := ra.Field().([]data.TmpID)
+		now := time.Now()
+
+		for _, r := range record {
+			if now.Before(r.ExpiresAt.Time) {
+				return true, nil
+			}
+		}
+
+		return false, nil
+	}
+}
+
+func matchTmpIDWithCheck(ids ...string) badgerhold.MatchFunc {
+	now := time.Now()
+
+	mappedIDs := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		mappedIDs[id] = struct{}{}
+	}
+
+	return func(ra *badgerhold.RecordAccess) (bool, error) {
+		record, _ := ra.Field().([]data.TmpID)
+
+		for _, r := range record {
+			if _, ok := mappedIDs[r.ID]; ok {
+				if now.Before(r.ExpiresAt.Time) {
+					return true, nil
+				}
+			}
+		}
+
+		return false, nil
+	}
+}
+
 func matchMixIDWithCheck(ids ...string) badgerhold.MatchFunc {
 	now := time.Now()
 
@@ -111,6 +157,25 @@ func matchMixIDWithCheck(ids ...string) badgerhold.MatchFunc {
 				} else {
 					return true, nil
 				}
+			}
+		}
+
+		return false, nil
+	}
+}
+
+func matchIDs(ids ...string) badgerhold.MatchFunc {
+	mappedIDs := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		mappedIDs[id] = struct{}{}
+	}
+
+	return func(ra *badgerhold.RecordAccess) (bool, error) {
+		record, _ := ra.Field().([]string)
+
+		for _, r := range record {
+			if _, ok := mappedIDs[r]; ok {
+				return true, nil
 			}
 		}
 

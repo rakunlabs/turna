@@ -344,6 +344,7 @@ func (m *Iam) CreateUser(w http.ResponseWriter, r *http.Request) {
 // @Param alias query string false "user alias"
 // @Param id query string false "user id"
 // @Param role_ids query []string false "role ids" collectionFormat(multi)
+// @Param role_type query string false "role type" Enums(PERMANENT, TEMPORARY)
 // @Param uid query string false "details->uid"
 // @Param name query string false "details->name"
 // @Param email query string false "details->email"
@@ -377,6 +378,7 @@ func (m *Iam) GetUsers(w http.ResponseWriter, r *http.Request) {
 	req.ID = query.Get("id")
 
 	req.RoleIDs = parsedQuery.GetValues("role_ids")
+	req.RoleType = strings.ToUpper(strings.TrimSpace(query.Get("role_type")))
 
 	req.UID = query.Get("uid")
 	req.Name = query.Get("name")
