@@ -596,6 +596,7 @@ func (b *Badger) PatchUserAccess(ctx context.Context, id string, userAccess data
 				// add new tmp role
 				foundUser.TmpRoleIDs = append(foundUser.TmpRoleIDs, data.TmpID{
 					ID:        tmpRole,
+					StartsAt:  userAccess.StartsAt,
 					ExpiresAt: *expires,
 				})
 
@@ -604,6 +605,7 @@ func (b *Badger) PatchUserAccess(ctx context.Context, id string, userAccess data
 
 			// update existing tmp role
 			foundUser.TmpRoleIDs[index].ExpiresAt = *expires
+			foundUser.TmpRoleIDs[index].StartsAt = userAccess.StartsAt
 		}
 
 		for tmpPermission := range permissionIDMap {
@@ -616,6 +618,7 @@ func (b *Badger) PatchUserAccess(ctx context.Context, id string, userAccess data
 				// add new tmp permission
 				foundUser.TmpPermissionIDs = append(foundUser.TmpPermissionIDs, data.TmpID{
 					ID:        tmpPermission,
+					StartsAt:  userAccess.StartsAt,
 					ExpiresAt: *expires,
 				})
 
@@ -624,6 +627,7 @@ func (b *Badger) PatchUserAccess(ctx context.Context, id string, userAccess data
 
 			// update existing tmp permission
 			foundUser.TmpPermissionIDs[index].ExpiresAt = *expires
+			foundUser.TmpPermissionIDs[index].StartsAt = userAccess.StartsAt
 		}
 	})
 }

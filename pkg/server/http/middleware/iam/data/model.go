@@ -117,12 +117,14 @@ type Alias struct {
 
 type TmpID struct {
 	ID        string     `json:"id"`
+	StartsAt  types.Time `json:"starts_at"`
 	ExpiresAt types.Time `json:"expires_at"`
 }
 
 type MixID struct {
 	IsTmp     bool
 	ID        string
+	StartsAt  types.Time
 	ExpiresAt types.Time
 }
 
@@ -168,7 +170,7 @@ type UserPatch struct {
 type UserAccess struct {
 	RoleIDs       []string    `json:"role_ids"`
 	PermissionIDs []string    `json:"permission_ids"`
-	StartAt       *types.Time `json:"start_at"`   // RFC3339 time format, e.g., "2024-12-31T23:59:59Z"
+	StartsAt      types.Time  `json:"starts_at"`  // RFC3339 time format, e.g., "2024-12-31T23:59:59Z"
 	ExpiresAt     *types.Time `json:"expires_at"` // RFC3339 time format, e.g., "2024-12-31T23:59:59Z"
 	ExpiresIn     *string     `json:"expires_in"` // Duration string, e.g., "24h", "7d", etc.
 }
@@ -188,8 +190,8 @@ func (u *UserAccess) Expires() (*types.Time, error) {
 			return nil, err
 		}
 
-		if u.StartAt != nil && !u.StartAt.IsZero() {
-			expires := types.NewTime(u.StartAt.Add(duration))
+		if !u.StartsAt.IsZero() {
+			expires := types.NewTime(u.StartsAt.Add(duration))
 			return &expires, nil
 		}
 

@@ -105,6 +105,7 @@ func matchAnyTmpIDWithCheck() badgerhold.MatchFunc {
 		now := time.Now()
 
 		for _, r := range record {
+			// only check expiresAt
 			if now.Before(r.ExpiresAt.Time) {
 				return true, nil
 			}
@@ -127,6 +128,7 @@ func matchTmpIDWithCheck(ids ...string) badgerhold.MatchFunc {
 
 		for _, r := range record {
 			if _, ok := mappedIDs[r.ID]; ok {
+				// only check expiresAt
 				if now.Before(r.ExpiresAt.Time) {
 					return true, nil
 				}
@@ -151,7 +153,8 @@ func matchMixIDWithCheck(ids ...string) badgerhold.MatchFunc {
 		for _, r := range record {
 			if _, ok := mappedIDs[r.ID]; ok {
 				if r.IsTmp {
-					if now.Before(r.ExpiresAt.Time) {
+					// this is general check startssAt and expiresAt
+					if now.Before(r.ExpiresAt.Time) && now.After(r.StartsAt.Time) {
 						return true, nil
 					}
 				} else {
@@ -285,7 +288,7 @@ func validIDs(ids []data.TmpID) []string {
 	now := time.Now()
 
 	for _, id := range ids {
-		if now.Before(id.ExpiresAt.Time) {
+		if now.Before(id.ExpiresAt.Time) && now.After(id.StartsAt.Time) {
 			valid = append(valid, id.ID)
 		}
 	}
@@ -341,6 +344,7 @@ func totalID(opts ...OptionTotalID) []data.MixID {
 			total = append(total, data.MixID{
 				ID:        vv.ID,
 				IsTmp:     true,
+				StartsAt:  vv.StartsAt,
 				ExpiresAt: vv.ExpiresAt,
 			})
 		}

@@ -108,6 +108,10 @@ func isDiffTmpID(a, b []data.TmpID) bool {
 		if !v.ExpiresAt.Equal(s.ExpiresAt.Time) {
 			return true
 		}
+
+		if !v.StartsAt.Equal(s.StartsAt.Time) {
+			return true
+		}
 	}
 
 	return false

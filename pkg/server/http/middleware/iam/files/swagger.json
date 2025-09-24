@@ -3364,7 +3364,7 @@
                         "type": "string"
                     }
                 },
-                "start_at": {
+                "starts_at": {
                     "description": "RFC3339 time format, e.g., \"2024-12-31T23:59:59Z\"",
                     "type": "string"
                 }
