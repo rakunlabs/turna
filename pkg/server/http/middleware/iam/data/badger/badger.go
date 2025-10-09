@@ -296,6 +296,19 @@ func validIDs(ids []data.TmpID) []string {
 	return valid
 }
 
+func validIDsWithTmpID(ids []data.TmpID) []data.TmpID {
+	valid := make([]data.TmpID, 0, len(ids))
+	now := time.Now()
+
+	for _, id := range ids {
+		if now.Before(id.ExpiresAt.Time) && now.After(id.StartsAt.Time) {
+			valid = append(valid, id)
+		}
+	}
+
+	return valid
+}
+
 func validTmpIDs(ids []data.TmpID) []data.TmpID {
 	valid := make([]data.TmpID, 0, len(ids))
 	now := time.Now()

@@ -16,6 +16,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	"github.com/spf13/cast"
 	"github.com/timshannon/badgerhold/v4"
+	"github.com/worldline-go/types"
 )
 
 func (b *Badger) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserExtended], error) {
@@ -737,6 +738,29 @@ func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addDa
 		return userExtended, nil
 	}
 
+	mapFixedRoleIDs := make(map[string]struct{}, len(user.RoleIDs)+len(user.SyncRoleIDs))
+	for _, roleID := range user.RoleIDs {
+		mapFixedRoleIDs[roleID] = struct{}{}
+	}
+	for _, roleID := range user.SyncRoleIDs {
+		mapFixedRoleIDs[roleID] = struct{}{}
+	}
+
+	mapTmpRoleIDs := make(map[string]types.Time, len(user.TmpRoleIDs))
+	for _, tmpRole := range validIDsWithTmpID(user.TmpRoleIDs) {
+		mapTmpRoleIDs[tmpRole.ID] = tmpRole.ExpiresAt
+	}
+
+	mapTmpPermissionIDs := make(map[string]types.Time, len(user.TmpPermissionIDs))
+	for _, tmpPermission := range validIDsWithTmpID(user.TmpPermissionIDs) {
+		mapTmpPermissionIDs[tmpPermission.ID] = tmpPermission.ExpiresAt
+	}
+
+	mapFixedPermissionIDs := make(map[string]struct{}, len(user.PermissionIDs))
+	for _, permissionID := range user.PermissionIDs {
+		mapFixedPermissionIDs[permissionID] = struct{}{}
+	}
+
 	// get users roleIDs
 	roleIDs, err := b.getVirtualRoleIDs(txn, slicesUnique(user.RoleIDs, user.SyncRoleIDs, validIDs(user.TmpRoleIDs)))
 	if err != nil {
@@ -763,10 +787,26 @@ func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addDa
 			}
 
 			if addRolePermissions {
-				permissions = append(permissions, data.IDName{
+				permissionAdd := data.IDName{
 					ID:   permission.ID,
 					Name: permission.Name,
-				})
+				}
+
+				// check if permission is inherited
+				_, isFixed := mapFixedPermissionIDs[permission.ID]
+				_, isTmp := mapTmpPermissionIDs[permission.ID]
+
+				if !isFixed && isTmp {
+					expiresAt := mapTmpPermissionIDs[permission.ID]
+					permissionAdd.ExpiresAt = &expiresAt
+				}
+
+				if !isFixed && !isTmp {
+					// permission is not directly assigned to user, it is inherited from virtual role
+					permissionAdd.Inherited = true
+				}
+
+				permissions = append(permissions, permissionAdd)
 			}
 
 			if addData {
@@ -792,10 +832,26 @@ func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addDa
 	// get roles permissions
 	if err := b.db.TxForEach(txn, badgerhold.Where("ID").In(toInterfaceSlice(roleIDs)...), func(role *data.Role) error {
 		if addRoles {
-			roles = append(roles, data.IDName{
+			roleAdd := data.IDName{
 				ID:   role.ID,
 				Name: role.Name,
-			})
+			}
+
+			// check if role is inherited
+			_, isFixed := mapFixedRoleIDs[role.ID]
+			_, isTmp := mapTmpRoleIDs[role.ID]
+
+			if !isFixed && isTmp {
+				expiresAt := mapTmpRoleIDs[role.ID]
+				roleAdd.ExpiresAt = &expiresAt
+			}
+
+			if !isFixed && !isTmp {
+				// role is not directly assigned to user, it is inherited from virtual role
+				roleAdd.Inherited = true
+			}
+
+			roles = append(roles, roleAdd)
 		}
 
 		if addData {
@@ -817,10 +873,26 @@ func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addDa
 				}
 
 				if addRolePermissions {
-					permissions = append(permissions, data.IDName{
+					permissionAdd := data.IDName{
 						ID:   permission.ID,
 						Name: permission.Name,
-					})
+					}
+
+					// check if permission is inherited
+					_, isFixed := mapFixedPermissionIDs[permission.ID]
+					_, isTmp := mapTmpPermissionIDs[permission.ID]
+
+					if !isFixed && isTmp {
+						expiresAt := mapTmpPermissionIDs[permission.ID]
+						permissionAdd.ExpiresAt = &expiresAt
+					}
+
+					if !isFixed && !isTmp {
+						// permission is not directly assigned to user, it is inherited from virtual role
+						permissionAdd.Inherited = true
+					}
+
+					permissions = append(permissions, permissionAdd)
 				}
 
 				if addData {

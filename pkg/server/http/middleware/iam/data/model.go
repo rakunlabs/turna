@@ -222,7 +222,8 @@ type UserExtended struct {
 type IDName struct {
 	ID        string      `json:"id"`
 	Name      string      `json:"name"`
-	ExpiresIn *types.Time `json:"expires_in,omitempty"` // Optional field for temporary roles
+	ExpiresAt *types.Time `json:"expires_at,omitempty"` // Optional field for temporary roles
+	Inherited bool        `json:"inherited,omitempty"`  // Indicates if the role/permission is inherited
 }
 
 type UserInfo struct {
