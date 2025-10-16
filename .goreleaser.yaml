@@ -52,7 +52,7 @@ archives:
       - goos: windows
         format: zip
 checksum:
-  name_template: '{{ .ProjectName }}-{{ .Version }}-checksums.txt'
+  name_template: "{{ .ProjectName }}-{{ .Version }}-checksums.txt"
 snapshot:
   name_template: "{{ incpatch .Version }}-next"
 changelog:
@@ -60,55 +60,55 @@ changelog:
   use: github
   filters:
     exclude:
-    - '^docs:'
-    - '^test:'
-    - '^chore'
-    - 'merge conflict'
-    - Merge pull request
-    - Merge remote-tracking branch
-    - Merge branch
-    - go mod tidy
+      - "^docs:"
+      - "^test:"
+      - "^chore"
+      - "merge conflict"
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+      - go mod tidy
   groups:
     - title: Dependency updates
       regexp: "^.*feat\\(deps\\)*:+.*$"
       order: 300
-    - title: 'New Features'
+    - title: "New Features"
       regexp: "^.*feat[(\\w)]*:+.*$"
       order: 100
-    - title: 'Bug fixes'
+    - title: "Bug fixes"
       regexp: "^.*fix[(\\w)]*:+.*$"
       order: 200
-    - title: 'Documentation updates'
+    - title: "Documentation updates"
       regexp: "^.*docs[(\\w)]*:+.*$"
       order: 400
     - title: Other work
       order: 9999
 
 brews:
-- name: turna
-  homepage: https://github.com/rakunlabs/turna
-  description: "swiss knife for services"
-  repository:
-    owner: brew-tools
-    name: homebrew-tap
-    token: "{{ .Env.BREW_TOKEN }}"
-  directory: Formula
+  - name: turna
+    homepage: https://github.com/rakunlabs/turna
+    description: "swiss knife for services"
+    repository:
+      owner: brew-tools
+      name: homebrew-tap
+      token: "{{ .Env.BREW_TOKEN }}"
+    directory: Formula
 
 dockers:
-- image_templates:
-  - 'ghcr.io/rakunlabs/turna:{{ .Tag }}'
-  - 'ghcr.io/rakunlabs/turna:{{ .Tag }}-alpine'
-  - 'ghcr.io/rakunlabs/turna:{{ .Tag }}-alpine3.22.0'
-  - 'ghcr.io/rakunlabs/turna:latest'
-  dockerfile: ci/alpine.Dockerfile
-  build_flag_templates:
-  - "--pull"
-  - "--label=io.artifacthub.package.readme-url=https://raw.githubusercontent.com/rakunlabs/turna/main/README.md"
-  - "--label=io.artifacthub.package.maintainers=[{\"name\":\"Eray Ates\",\"email\":\"eates23@gmail.com\"}]"
-  - "--label=io.artifacthub.package.license=MIT"
-  - "--label=org.opencontainers.image.description=swiss knife for services"
-  - "--label=org.opencontainers.image.created={{.Date}}"
-  - "--label=org.opencontainers.image.name={{.ProjectName}}"
-  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-  - "--label=org.opencontainers.image.version={{.Version}}"
-  - "--label=org.opencontainers.image.source={{.GitURL}}"
+  - image_templates:
+      - "ghcr.io/rakunlabs/turna:{{ .Tag }}"
+      - "ghcr.io/rakunlabs/turna:{{ .Tag }}-alpine"
+      - "ghcr.io/rakunlabs/turna:{{ .Tag }}-alpine3.22.2"
+      - "ghcr.io/rakunlabs/turna:latest"
+    dockerfile: ci/alpine.Dockerfile
+    build_flag_templates:
+      - "--pull"
+      - "--label=io.artifacthub.package.readme-url=https://raw.githubusercontent.com/rakunlabs/turna/main/README.md"
+      - '--label=io.artifacthub.package.maintainers=[{"name":"Eray Ates","email":"eates23@gmail.com"}]'
+      - "--label=io.artifacthub.package.license=MIT"
+      - "--label=org.opencontainers.image.description=swiss knife for services"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.name={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
