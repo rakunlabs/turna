@@ -44,6 +44,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/template"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/tokenpass"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/try"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/url"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/view"
 
 	"github.com/rakunlabs/turna/pkg/server/registry"
@@ -93,6 +94,7 @@ type HTTPMiddleware struct {
 	RequestIDMiddleware        *requestid.RequestID                  `cfg:"request_id"`
 	Oauth2                     *oauth2.Oauth2                        `cfg:"oauth2"`
 	AccessLogMiddleware        *accesslog.AccessLog                  `cfg:"access_log"`
+	URL                        *url.URL                              `cfg:"url"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
@@ -210,6 +212,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	case h.AccessLogMiddleware != nil:
 		m, err := h.AccessLogMiddleware.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.URL != nil:
+		m, err := h.URL.Middleware()
 		return []MiddlewareFunc{m}, err
 	}
 
