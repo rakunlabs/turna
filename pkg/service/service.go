@@ -53,9 +53,9 @@ func (s *Service) SetFilters() {
 	filterX := s.Filters
 
 	for _, path := range s.FiltersValues {
-		if vInner, ok := loader.InnerPath(path, render.GlobalRender.Data).([]interface{}); ok {
+		if vInner, ok := loader.InnerPath(path, render.Data).([]interface{}); ok {
 			for _, val := range vInner {
-				rV, err := render.GlobalRender.Execute(val)
+				rV, err := render.Execute(val)
 				if err != nil {
 					slog.Warn("failed to render filter value "+s.Name, "err", err.Error())
 
@@ -92,7 +92,7 @@ func (s *Service) Register() error {
 		return err
 	}
 
-	renderedCommand, err := render.GlobalRender.Execute(s.Command)
+	renderedCommand, err := render.Execute(s.Command)
 	if err != nil {
 		return fmt.Errorf("failed to render command %s: %w", s.Name, err)
 	}

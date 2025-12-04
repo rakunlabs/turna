@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/rs/zerolog/log"
 	"github.com/rytsh/mugo/fstore"
 	"github.com/rytsh/mugo/templatex"
-	"github.com/worldline-go/logz"
 )
 
 type Hello struct {
@@ -47,13 +46,13 @@ func (h *Hello) Middleware() (func(http.Handler) http.Handler, error) {
 		h.Message = "OK"
 	}
 
-	tpl := templatex.New(templatex.WithAddFuncsTpl(
-		fstore.FuncMapTpl(
-			fstore.WithLog(logz.AdapterKV{Log: log.Logger}),
+	tpl := templatex.New(templatex.WithAddFuncMapWithOpts(func(o templatex.Option) map[string]any {
+		return fstore.FuncMap(
+			fstore.WithLog(slog.Default()),
 			fstore.WithTrust(h.Trust),
 			fstore.WithWorkDir(h.WorkDir),
-		),
-	))
+		)
+	}))
 
 	if h.Delims != nil {
 		tpl.SetDelims(h.Delims[0], h.Delims[1])

@@ -9,7 +9,7 @@ func TestRender_Execute(t *testing.T) {
 		Data map[string]interface{}
 	}
 	type args struct {
-		content any
+		content string
 	}
 	tests := []struct {
 		name    string
@@ -38,17 +38,14 @@ func TestRender_Execute(t *testing.T) {
 				},
 			},
 			args: args{
-				content: "{{ .test }}",
+				content: "{{ addf 1.1 .test }}",
 			},
-			want: "1234",
+			want: "1235.1",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := New()
-			r.Data = tt.fields.Data
-
-			got, err := r.Execute(tt.args.content)
+			got, err := ExecuteWithData(tt.args.content, tt.fields.Data)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Render.Execute() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -57,11 +54,5 @@ func TestRender_Execute(t *testing.T) {
 				t.Errorf("Render.Execute() = %v, want %v", string(got), tt.want)
 			}
 		})
-	}
-}
-
-func TestRender_IsTemplateExist(t *testing.T) {
-	if got := GlobalRender.IsTemplateExist(); got != true {
-		t.Errorf("Render.IsTemplateExist() = %v, want %v", got, true)
 	}
 }

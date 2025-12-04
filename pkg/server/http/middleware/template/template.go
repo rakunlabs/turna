@@ -4,15 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 
-	"github.com/rs/zerolog/log"
-	"github.com/rytsh/mugo/fstore"
-	"github.com/rytsh/mugo/templatex"
-	"github.com/worldline-go/logz"
 	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rytsh/mugo/fstore"
+	"github.com/rytsh/mugo/templatex"
 )
 
 type Template struct {
@@ -83,16 +82,16 @@ func (s *Template) Middleware() (func(http.Handler) http.Handler, error) {
 		}
 	}
 
-	s.tpl = templatex.New(templatex.WithAddFuncsTpl(
-		fstore.FuncMapTpl(
-			fstore.WithLog(logz.AdapterKV{Log: log.Logger}),
+	s.tpl = templatex.New(templatex.WithAddFuncMapWithOpts(func(o templatex.Option) map[string]any {
+		return fstore.FuncMap(
+			fstore.WithLog(slog.Default()),
 			fstore.WithTrust(s.Trust),
 			fstore.WithWorkDir(s.WorkDir),
-		),
-	))
+		)
+	}))
 
 	if s.Value != "" {
-		value, ok := render.GlobalRender.Data[s.Value].(map[string]interface{})
+		value, ok := render.Data[s.Value].(map[string]interface{})
 		if !ok {
 			return nil, fmt.Errorf("inject value %s is not map[string]interface{}", s.Value)
 		}

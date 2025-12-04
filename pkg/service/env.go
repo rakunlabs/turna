@@ -19,9 +19,9 @@ func (s *Service) GetEnv(predefined map[string]interface{}, environ bool, envPat
 
 	// add values
 	for _, path := range envPaths {
-		if vInner, ok := loader.InnerPath(path, render.GlobalRender.Data).(map[string]interface{}); ok {
+		if vInner, ok := loader.InnerPath(path, render.Data).(map[string]interface{}); ok {
 			for k, val := range vInner {
-				rV, err := render.GlobalRender.Execute(val)
+				rV, err := render.Execute(val)
 				if err != nil {
 					return nil, err
 				}
@@ -31,7 +31,7 @@ func (s *Service) GetEnv(predefined map[string]interface{}, environ bool, envPat
 	}
 
 	for k, val := range predefined {
-		rV, err := render.GlobalRender.Execute(val)
+		rV, err := render.Execute(val)
 		if err != nil {
 			return nil, err
 		}

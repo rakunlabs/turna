@@ -1,63 +1,18 @@
 package render
 
 import (
-	"bytes"
-	"errors"
-
-	"github.com/rs/zerolog/log"
-	"github.com/rytsh/mugo/fstore"
-	"github.com/rytsh/mugo/templatex"
+	_ "github.com/rytsh/mugo/fstore/registry"
 	"github.com/spf13/cast"
-	"github.com/worldline-go/logz"
+
+	"github.com/rytsh/mugo/render"
 )
 
-var Template = templatex.New(templatex.WithAddFuncsTpl(fstore.FuncMapTpl(
-	fstore.WithLog(logz.AdapterKV{Log: log.Logger}),
-	fstore.WithTrust(true),
-)))
+var (
+	ExecuteWithData = render.ExecuteWithData
+)
 
-var GlobalRender = Render{
-	template: Template,
-}
+var Data = make(map[string]any)
 
-type Render struct {
-	Data     map[string]interface{}
-	template *templatex.Template
-}
-
-func New() Render {
-	return Render{
-		template: Template,
-	}
-}
-
-func (r *Render) IsTemplateExist() bool {
-	return r.template != nil
-}
-
-func (r *Render) Execute(content any) ([]byte, error) {
-	return r.ExecuteWithData(content, r.Data)
-}
-
-func (r *Render) ExecuteWithData(content any, data any) ([]byte, error) {
-	if r.template == nil {
-		return nil, errors.New("template is nil")
-	}
-
-	contentStr := cast.ToString(content)
-
-	if err := r.template.Parse(contentStr); err != nil {
-		return nil, err
-	}
-
-	var buf bytes.Buffer
-	if err := r.template.Execute(
-		templatex.WithIO(&buf),
-		templatex.WithData(data),
-		templatex.WithParsed(true),
-	); err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
+func Execute(content any) ([]byte, error) {
+	return ExecuteWithData(cast.ToString(content), Data)
 }

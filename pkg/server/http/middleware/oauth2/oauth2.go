@@ -31,7 +31,8 @@ type Oauth2 struct {
 	// PassLower for pass lower case on password flow.
 	PassLower bool `cfg:"pass_lower"`
 
-	WellKnown map[string]map[string]any `cfg:"well_known"`
+	WellKnown  map[string]map[string]any    `cfg:"well_known"`
+	CustomInfo map[string]map[string]string `cfg:"custom_info"`
 
 	storeCache *store.StoreCache
 	jwt        *token.JWT
