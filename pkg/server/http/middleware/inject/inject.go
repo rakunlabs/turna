@@ -49,7 +49,7 @@ type oldNew struct {
 }
 
 func (s *Inject) values(loadName string) ([]oldNew, error) {
-	v, ok := render.GlobalRender.Data[loadName].(map[string]interface{})
+	v, ok := render.Data[loadName].(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("inject value %s is not map[string]interface{}", loadName)
 	}
@@ -124,6 +124,13 @@ func (s *Inject) Middleware() (func(http.Handler) http.Handler, error) {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// check if need inject
+			if s.isNotNeed(r) {
+				next.ServeHTTP(w, r)
+
+				return
+			}
+
 			rec := &customResponseRecorder{
 				ResponseWriter: w,
 				body:           new(bytes.Buffer),
@@ -262,6 +269,35 @@ func (s *Inject) Middleware() (func(http.Handler) http.Handler, error) {
 			_, _ = rec.ResponseWriter.Write(bodyBytes)
 		})
 	}, nil
+}
+
+func (s *Inject) isNotNeed(r *http.Request) bool {
+	if len(s.ContentMap) == 0 && len(s.PathMap) == 0 {
+		return true
+	}
+
+	isNeed := false
+
+	if s.PathMap != nil {
+		urlPath := r.URL.Path
+		for pathValue := range s.PathMap {
+			if ok, _ := doublestar.Match(pathValue, urlPath); ok {
+				isNeed = true
+				break
+			}
+		}
+	}
+
+	if !isNeed && s.ContentMap != nil {
+		// check content type
+		contentType := r.Header.Get(httputil.HeaderContentType)
+		contentTypeCheck := strings.Split(contentType, ";")[0]
+		if _, ok := s.ContentMap[contentTypeCheck]; ok {
+			isNeed = true
+		}
+	}
+
+	return !isNeed
 }
 
 type customResponseRecorder struct {

@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/oklog/ulid/v2"
+	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/ldap"
@@ -30,8 +31,9 @@ func (m *Oauth2) MuxSet(prefix string) *chi.Mux {
 	mux.Get(prefix+"/code/{provider}", m.APICodeAuth)
 	mux.Post(prefix+"/token", m.APIToken)
 	mux.Get(prefix+"/certs", m.APICerts)
-	mux.Get(prefix+"/{custom}/.well-known/openid-configuration", m.APIWellKnown)
+	mux.Get(prefix+"/openid/{custom}/.well-known/openid-configuration", m.APIWellKnown)
 	mux.Get(prefix+"/userinfo", m.APIUserInfo)
+	mux.Get(prefix+"/userinfo/{custom}", m.APIUserInfo)
 
 	return mux
 }
@@ -98,7 +100,7 @@ func (m *Oauth2) APIUserInfo(w http.ResponseWriter, r *http.Request) {
 
 	// //////////////////////////////////////////
 
-	claimsRet := map[string]interface{}{
+	claimsRet := map[string]any{
 		"sub":                user.ID,
 		"name":               user.Details["name"],
 		"preferred_username": user.Details["name"],
@@ -118,6 +120,25 @@ func (m *Oauth2) APIUserInfo(w http.ResponseWriter, r *http.Request) {
 
 	if v, ok := user.Details["given_name"]; ok {
 		claimsRet["given_name"] = v
+	}
+
+	// apply custom info
+	customName := chi.URLParam(r, "custom")
+	if customName != "" {
+		if customUserInfo, ok := m.CustomInfo[customName]; ok {
+			for k, v := range customUserInfo {
+				if data, ok := claimsRet[k]; ok {
+					result, err := render.ExecuteWithData(v, data)
+					if err != nil {
+						slog.Error("failed to render custom info", "error", err, "key", k)
+
+						continue
+					}
+
+					claimsRet[k] = result
+				}
+			}
+		}
 	}
 
 	// //////////////////////////////////////////

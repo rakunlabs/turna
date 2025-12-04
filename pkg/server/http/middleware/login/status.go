@@ -49,7 +49,7 @@ func (m *Login) StatusHandler(w http.ResponseWriter, r *http.Request) {
 		cookieName = m.SuccessCookie.CookieName
 	}
 
-	data, err := render.GlobalRender.ExecuteWithData(m.statusContent, map[string]interface{}{
+	data, err := render.ExecuteWithData(m.statusContent, map[string]interface{}{
 		"cookie": cookieName,
 	})
 	if err != nil {

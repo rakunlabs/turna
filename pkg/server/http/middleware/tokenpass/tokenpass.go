@@ -11,11 +11,9 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/rs/zerolog/log"
 	"github.com/rytsh/mugo/fstore"
 	"github.com/rytsh/mugo/templatex"
 	"github.com/worldline-go/klient"
-	"github.com/worldline-go/logz"
 	"gopkg.in/yaml.v3"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
@@ -90,11 +88,11 @@ func (m *TokenPass) Middleware() (func(http.Handler) http.Handler, error) {
 		return nil, err
 	}
 
-	m.tpl = templatex.New(templatex.WithAddFuncsTpl(
-		fstore.FuncMapTpl(
-			fstore.WithLog(logz.AdapterKV{Log: log.Logger}),
-		),
-	))
+	m.tpl = templatex.New(templatex.WithAddFuncMapWithOpts(func(o templatex.Option) map[string]any {
+		return fstore.FuncMap(
+			fstore.WithLog(slog.Default()),
+		)
+	}))
 
 	jwtMethod := jwt.GetSigningMethod(m.SigningMethod)
 	if jwtMethod == nil {

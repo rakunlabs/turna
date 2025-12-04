@@ -60,7 +60,7 @@ func (c *Content) set() error {
 	c.new = []byte(c.New)
 
 	if c.Value != "" {
-		v, ok := render.GlobalRender.Data[c.Value].(map[string]interface{})
+		v, ok := render.Data[c.Value].(map[string]interface{})
 		if !ok {
 			return fmt.Errorf("inject value %s is not map[string]interface{}", c.Value)
 		}

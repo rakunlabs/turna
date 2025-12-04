@@ -268,7 +268,7 @@ func (f *Folder) dirList(w http.ResponseWriter, r *http.Request, folder http.Fil
 		"sortDesc":  sortDesc,
 	}
 
-	v, err := render.GlobalRender.ExecuteWithData(`
+	v, err := render.ExecuteWithData(`
 {{- define "style" -}}
 body {
 	padding: 0;

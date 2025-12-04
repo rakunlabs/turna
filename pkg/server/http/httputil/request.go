@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/worldline-go/query"
+	"github.com/rakunlabs/query"
 )
 
 func IsWebSocket(r *http.Request) bool {
