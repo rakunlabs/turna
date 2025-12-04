@@ -12,8 +12,6 @@ import (
 func TestInject_Middleware(t *testing.T) {
 	type fields struct {
 		PathMap map[string][]InjectContent `cfg:"path_map"`
-		// ContentMap is the mime type to inject like "text/html"
-		ContentMap map[string][]InjectContent `cfg:"content_map"`
 	}
 	tests := []struct {
 		name   string
@@ -22,22 +20,6 @@ func TestInject_Middleware(t *testing.T) {
 		send   []byte
 		want   []byte
 	}{
-		{
-			name: "Test Inject Middleware",
-			fields: fields{
-				ContentMap: map[string][]InjectContent{
-					"text/html": {
-						{
-							Old: "Hello World",
-							New: "Hello Mars",
-						},
-					},
-				},
-			},
-			path: "/",
-			send: []byte("Hello World"),
-			want: []byte("Hello Mars"),
-		},
 		{
 			name: "Path and Regex",
 			fields: fields{
@@ -58,8 +40,7 @@ func TestInject_Middleware(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Inject{
-				ContentMap: tt.fields.ContentMap,
-				PathMap:    tt.fields.PathMap,
+				PathMap: tt.fields.PathMap,
 			}
 
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)

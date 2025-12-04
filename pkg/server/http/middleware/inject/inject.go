@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -19,8 +18,6 @@ import (
 
 type Inject struct {
 	PathMap map[string][]InjectContent `cfg:"path_map"`
-	// ContentMap is the mime type to inject like "text/html"
-	ContentMap map[string][]InjectContent `cfg:"content_map"`
 }
 
 type InjectContent struct {
@@ -94,34 +91,6 @@ func (s *Inject) Middleware() (func(http.Handler) http.Handler, error) {
 		}
 	}
 
-	if s.ContentMap != nil {
-		for contentType := range s.ContentMap {
-			for i, injectContent := range s.ContentMap[contentType] {
-				if injectContent.Value != "" {
-					valuesOldNew, err := s.values(injectContent.Value)
-					if err != nil {
-						return nil, err
-					}
-
-					s.PathMap[contentType][i].valueBytes = valuesOldNew
-
-					continue
-				}
-
-				if injectContent.Regex != "" {
-					var err error
-					s.ContentMap[contentType][i].reg, err = regexp.Compile(injectContent.Regex)
-					if err != nil {
-						return nil, err
-					}
-				}
-
-				s.ContentMap[contentType][i].old = []byte(injectContent.Old)
-				s.ContentMap[contentType][i].new = []byte(injectContent.New)
-			}
-		}
-	}
-
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// check if need inject
@@ -163,43 +132,6 @@ func (s *Inject) Middleware() (func(http.Handler) http.Handler, error) {
 					httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: fmt.Sprintf("unknown Content-Encoding %s", encoding)})
 
 					return
-				}
-			}
-
-			contentType := w.Header().Get(httputil.HeaderContentType)
-			contentTypeCheck := strings.Split(contentType, ";")[0]
-			for _, injectContent := range s.ContentMap[contentTypeCheck] {
-				if injectContent.Delay > 0 {
-					time.Sleep(injectContent.Delay)
-				}
-
-				if injectContent.valueBytes != nil {
-					for _, valueOldNew := range injectContent.valueBytes {
-						bodyBytes = bytes.ReplaceAll(bodyBytes, valueOldNew.Old, valueOldNew.New)
-					}
-
-					continue
-				}
-
-				if injectContent.reg != nil {
-					bodyBytes = injectContent.reg.ReplaceAll(bodyBytes, injectContent.new)
-
-					continue
-				}
-
-				// check old exist
-				if len(injectContent.old) > 0 {
-					bodyBytes = bytes.ReplaceAll(bodyBytes, injectContent.old, injectContent.new)
-				}
-
-				// check add prefix
-				if injectContent.AddPrefix != "" {
-					bodyBytes = append([]byte(injectContent.AddPrefix), bodyBytes...)
-				}
-
-				// check add postfix
-				if injectContent.AddPostfix != "" {
-					bodyBytes = append(bodyBytes, []byte(injectContent.AddPostfix)...)
 				}
 			}
 
@@ -272,7 +204,7 @@ func (s *Inject) Middleware() (func(http.Handler) http.Handler, error) {
 }
 
 func (s *Inject) isNotNeed(r *http.Request) bool {
-	if len(s.ContentMap) == 0 && len(s.PathMap) == 0 {
+	if len(s.PathMap) == 0 {
 		return true
 	}
 
@@ -285,15 +217,6 @@ func (s *Inject) isNotNeed(r *http.Request) bool {
 				isNeed = true
 				break
 			}
-		}
-	}
-
-	if !isNeed && s.ContentMap != nil {
-		// check content type
-		contentType := r.Header.Get(httputil.HeaderContentType)
-		contentTypeCheck := strings.Split(contentType, ";")[0]
-		if _, ok := s.ContentMap[contentTypeCheck]; ok {
-			isNeed = true
 		}
 	}
 
