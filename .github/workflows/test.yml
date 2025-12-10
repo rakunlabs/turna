@@ -23,7 +23,7 @@ jobs:
       #   run: |
       #     [[ ! -f ".golangci.yml" ]] && curl -kfsSL -O https://raw.githubusercontent.com/worldline-go/guide/main/lint/.golangci.yml || true
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
           args: --timeout 10m --new-from-rev=HEAD~1 --issues-exit-code=0
       - name: Run tests
