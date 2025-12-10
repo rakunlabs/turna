@@ -62,9 +62,12 @@ type PermissionPatch struct {
 }
 
 type Resource struct {
-	Hosts   []string `json:"hosts"`
-	Path    string   `json:"path"`
-	Methods []string `json:"methods"`
+	Hosts []string `json:"hosts"`
+	// Deprecated: use Paths instead of Path
+	Path     string     `json:"path"`
+	Paths    []string   `json:"paths"`
+	Methods  []string   `json:"methods"`
+	Excluded []Resource `json:"excluded"`
 }
 
 // Role is a struct that represents a role table in the database.

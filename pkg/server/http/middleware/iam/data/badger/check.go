@@ -130,6 +130,36 @@ func (b *Badger) CheckAccess(perm *data.Permission, host, pathRequest, method st
 			continue
 		}
 
+		if checkExcluded(req.Excluded, host, pathRequest, method) {
+			continue
+		}
+
+		if checkPaths(req.Paths, pathRequest) {
+			return true
+		}
+
+		if checkPath(req.Path, pathRequest) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func checkExcluded(resources []data.Resource, host, pathRequest, method string) bool {
+	for _, req := range resources {
+		if len(req.Hosts) > 0 && !checkHost(req.Hosts, host) {
+			continue
+		}
+
+		if !checkMethod(req.Methods, method) {
+			continue
+		}
+
+		if checkPaths(req.Paths, pathRequest) {
+			return true
+		}
+
 		if checkPath(req.Path, pathRequest) {
 			return true
 		}
@@ -162,4 +192,15 @@ func checkPath(pattern, pathRequest string) bool {
 	v, _ := doublestar.Match(pattern, pathRequest)
 
 	return v
+}
+
+func checkPaths(patterns []string, pathRequest string) bool {
+	for _, pattern := range patterns {
+		v, _ := doublestar.Match(pattern, pathRequest)
+		if v {
+			return true
+		}
+	}
+
+	return false
 }

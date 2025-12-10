@@ -1,6 +1,6 @@
 module github.com/rakunlabs/turna
 
-go 1.24.0
+go 1.25
 
 require (
 	github.com/MicahParks/keyfunc/v2 v2.0.3

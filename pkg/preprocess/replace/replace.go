@@ -29,14 +29,21 @@ type Content struct {
 	//  - If regex is not empty, Old will be ignored.
 	Regex string `cfg:"regex"`
 	// Old is the old content to replace.
-	Old string `cfg:"old"`
-	old []byte
-	New string `cfg:"new"`
-	new []byte
+	Old         string `cfg:"old"`
+	OldTemplate bool   `cfg:"old_template"`
+	old         []byte
+	New         string `cfg:"new"`
+	NewTemplate bool   `cfg:"new_template"`
+	new         []byte
 
 	// Value from load name, key value and type is map[string]interface{}
 	Value      string `cfg:"value"`
 	valueBytes []oldNew
+}
+
+type oldNew struct {
+	Old []byte `cfg:"old"`
+	New []byte `cfg:"new"`
 }
 
 func (c *Content) Check(v bool) {
@@ -56,20 +63,59 @@ func (c *Content) set() error {
 		}
 	}
 
-	c.old = []byte(c.Old)
-	c.new = []byte(c.New)
+	if c.OldTemplate {
+		oldRendered, err := render.Execute(c.Old)
+		if err != nil {
+			return fmt.Errorf("failed to render old template: %w", err)
+		}
+		c.old = oldRendered
+	} else {
+		c.old = []byte(c.Old)
+	}
+
+	if c.NewTemplate {
+		newRendered, err := render.Execute(c.New)
+		if err != nil {
+			return fmt.Errorf("failed to render new template: %w", err)
+		}
+		c.new = newRendered
+	} else {
+		c.new = []byte(c.New)
+	}
 
 	if c.Value != "" {
-		v, ok := render.Data[c.Value].(map[string]interface{})
+		v, ok := render.Data[c.Value].(map[string]any)
 		if !ok {
-			return fmt.Errorf("inject value %s is not map[string]interface{}", c.Value)
+			return fmt.Errorf("inject value %s is not map[string]any", c.Value)
 		}
 
 		valuesOldNew := make([]oldNew, 0, len(v))
 		for k, v := range v {
+			var oldData []byte
+			var newData []byte
+			if c.OldTemplate {
+				oldRendered, err := render.Execute(k)
+				if err != nil {
+					return fmt.Errorf("failed to render old template: %w", err)
+				}
+				oldData = oldRendered
+			} else {
+				oldData = []byte(k)
+			}
+
+			if c.NewTemplate {
+				newRendered, err := render.Execute(fmt.Sprintf("%v", v))
+				if err != nil {
+					return fmt.Errorf("failed to render new template: %w", err)
+				}
+				newData = newRendered
+			} else {
+				newData = []byte(fmt.Sprintf("%v", v))
+			}
+
 			valuesOldNew = append(valuesOldNew, oldNew{
-				Old: []byte(k),
-				New: []byte(fmt.Sprintf("%v", v)),
+				Old: oldData,
+				New: newData,
 			})
 		}
 
@@ -79,11 +125,6 @@ func (c *Content) set() error {
 	c.checked = true
 
 	return nil
-}
-
-type oldNew struct {
-	Old []byte `cfg:"old"`
-	New []byte `cfg:"new"`
 }
 
 func (c *Config) Run(ctx context.Context) error {

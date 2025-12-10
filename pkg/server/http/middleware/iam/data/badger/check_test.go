@@ -41,8 +41,14 @@ func TestBadgerCheck(t *testing.T) {
 					Resources: []data.Resource{
 						{
 							Methods: []string{"*"},
-							Path:    "/test/**",
+							Paths:   []string{"/test/**"},
 							// Hosts:   []string{"*.example.com"},
+							Excluded: []data.Resource{
+								{
+									Paths:   []string{"/test/example/excluded/**"},
+									Methods: []string{"*"},
+								},
+							},
 						},
 					},
 				},
@@ -69,6 +75,15 @@ func TestBadgerCheck(t *testing.T) {
 						Host:   "test.example.com",
 					},
 					expected: true,
+				},
+				{
+					checkRequest: data.CheckRequest{
+						Alias:  "my-user",
+						Path:   "/test/example/excluded/1234",
+						Method: "POST",
+						Host:   "test.example.com",
+					},
+					expected: false,
 				},
 			},
 		},
