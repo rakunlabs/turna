@@ -28,7 +28,7 @@ jobs:
           args: --timeout 10m --new-from-rev=HEAD~1 --issues-exit-code=0
       - name: Run tests
         run: |
-          GOPATH="$(dirname ${PWD})" golangci-lint run --issues-exit-code=0 --out-format checkstyle ./... > golangci-lint-report.out
+          GOPATH="$(dirname ${PWD})" golangci-lint run --issues-exit-code=0 --output.checkstyle.path=golangci-lint-report.out ./...
           go test -coverprofile=coverage.out -json ./... > test-report.out
       - name: SonarCloud Scan
         uses: sonarsource/sonarcloud-github-action@master
