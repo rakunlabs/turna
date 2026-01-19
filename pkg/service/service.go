@@ -21,7 +21,7 @@ type Service struct {
 	// Command is the command to run with args, gotemplate enabled.
 	Command string `cfg:"command"`
 	// Env GoTemplate and Sprig functions are available.
-	Env map[string]interface{} `cfg:"env"`
+	Env map[string]any `cfg:"env"`
 	// EnvValues is a list of environment variables path from exported config.
 	EnvValues []string `cfg:"env_values"`
 	// Inherit environment variables, default is false.

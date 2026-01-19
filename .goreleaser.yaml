@@ -12,7 +12,7 @@ git:
 
 release:
   header: |
-    Get the latest release with brew or binary:
+    Get the latest release with binary:
 
     ```sh
     # curl -fSL https://github.com/rakunlabs/turna/releases/latest/download/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
@@ -84,21 +84,11 @@ changelog:
     - title: Other work
       order: 9999
 
-brews:
-  - name: turna
-    homepage: https://github.com/rakunlabs/turna
-    description: "swiss knife for services"
-    repository:
-      owner: brew-tools
-      name: homebrew-tap
-      token: "{{ .Env.BREW_TOKEN }}"
-    directory: Formula
-
 dockers:
   - image_templates:
       - "ghcr.io/rakunlabs/turna:{{ .Tag }}"
       - "ghcr.io/rakunlabs/turna:{{ .Tag }}-alpine"
-      - "ghcr.io/rakunlabs/turna:{{ .Tag }}-alpine3.22.2"
+      - "ghcr.io/rakunlabs/turna:{{ .Tag }}-alpine3.23.2"
       - "ghcr.io/rakunlabs/turna:latest"
     dockerfile: ci/alpine.Dockerfile
     build_flag_templates:

@@ -26,6 +26,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/path"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/print"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/ratelimit"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/redirectcontinue"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/redirection"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/regexpath"
@@ -95,6 +96,7 @@ type HTTPMiddleware struct {
 	Oauth2                     *oauth2.Oauth2                        `cfg:"oauth2"`
 	AccessLogMiddleware        *accesslog.AccessLog                  `cfg:"access_log"`
 	URL                        *url.URL                              `cfg:"url"`
+	RateLimit                  *ratelimit.RateLimit                  `cfg:"rate_limit"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
@@ -216,6 +218,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 	case h.URL != nil:
 		m, err := h.URL.Middleware()
 		return []MiddlewareFunc{m}, err
+	case h.RateLimit != nil:
+		m := h.RateLimit.Middleware()
+		return []MiddlewareFunc{m}, nil
 	}
 
 	return nil, nil
