@@ -238,7 +238,8 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 				switch {
 				case httputil2.IsWebSocket(r):
 					proxyRaw(tgt, &errHolder).ServeHTTP(w, r)
-				case r.Header.Get(httputil2.HeaderAccept) == "text/event-stream":
+				// case r.Header.Get(httputil2.HeaderAccept) == "text/event-stream":
+				// 	proxyHTTP(tgt, &errHolder, config).ServeHTTP(w, r)
 				default:
 					proxyHTTP(tgt, &errHolder, config).ServeHTTP(w, r)
 				}
