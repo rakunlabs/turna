@@ -41,8 +41,11 @@ type Provider struct {
 	Oauth2 *Oauth2 `cfg:"oauth2"`
 	// XUser header set from token claims. Default is email and preferred_username.
 	// It set first found value.
-	XUser            []string `cfg:"x_user"`
-	EmailVerifyCheck bool     `cfg:"email_verify_check"`
+	XUser []string `cfg:"x_user"`
+	// ClaimHeader is use to map claim to header.
+	//   - Example: claim_header = {"X-User-Id": "preferred_username", "X-User-Email": "email"}
+	ClaimHeader      map[string]string `cfg:"claim_header"`
+	EmailVerifyCheck bool              `cfg:"email_verify_check"`
 	// PasswordFlow is use password flow to get token.
 	PasswordFlow bool `cfg:"password_flow"`
 	// Priority is use to sort provider.
@@ -146,7 +149,7 @@ func (m *Session) GetCookieName(r *http.Request) string {
 	return cookieName
 }
 
-func addXUserHeader(r *http.Request, claim *claims.Custom, xUser []string, emailVerify bool) {
+func addXUserHeader(r *http.Request, claim *claims.Custom, xUser []string, emailVerify bool, customClaimHeader map[string]string) {
 	r.Header.Del("X-User")
 
 	if len(xUser) == 0 {
@@ -162,6 +165,17 @@ func addXUserHeader(r *http.Request, claim *claims.Custom, xUser []string, email
 			r.Header.Set("X-User", claimValue)
 
 			break
+		}
+	}
+
+	// add custom claim headers
+	if len(customClaimHeader) > 0 {
+		for k, v := range customClaimHeader {
+			if headerValue, ok := claim.Map[v].(string); ok {
+				r.Header.Set(k, headerValue)
+			} else {
+				r.Header.Del(k)
+			}
 		}
 	}
 }
@@ -208,7 +222,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 
 				tcontext.Set(r, "claims", customClaims)
 				tcontext.Set(r, "provider", providerName)
-				addXUserHeader(r, customClaims, m.Provider[providerName].XUser, m.Provider[providerName].EmailVerifyCheck)
+				addXUserHeader(r, customClaims, m.Provider[providerName].XUser, m.Provider[providerName].EmailVerifyCheck, m.Provider[providerName].ClaimHeader)
 
 				if v, _ := tcontext.Get(r, CtxTokenHeaderKey).(bool); v {
 					r.Header.Del("Authorization")
@@ -332,7 +346,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 		tcontext.Set(r, "claims", customClaims)
 		tcontext.Set(r, "provider", providerName)
 
-		addXUserHeader(r, customClaims, m.Provider[providerName].XUser, m.Provider[providerName].EmailVerifyCheck)
+		addXUserHeader(r, customClaims, m.Provider[providerName].XUser, m.Provider[providerName].EmailVerifyCheck, m.Provider[providerName].ClaimHeader)
 
 		// add the access token to the request
 		if v, _ := tcontext.Get(r, CtxTokenHeaderKey).(bool); v {
