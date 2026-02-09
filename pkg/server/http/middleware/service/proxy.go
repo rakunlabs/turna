@@ -91,13 +91,14 @@ var (
 	}
 )
 
-func proxyRaw(t *ProxyTarget, errHolder *httputil2.Error) http.Handler {
+func proxyRaw(t *ProxyTarget, errHolder *httputil2.Error, hijacked *bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		in, _, err := w.(http.Hijacker).Hijack()
 		if err != nil {
 			errHolder.Err = fmt.Errorf("proxy raw, hijack error=%w, url=%s", err, t.URL)
 			return
 		}
+		*hijacked = true
 		defer in.Close()
 
 		out, err := net.Dial("tcp", t.URL.Host)
@@ -234,10 +235,13 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 				// This is needed for ProxyConfig.ModifyResponse and/or ProxyConfig.Transport to be able to process the Request
 				// that Balancer may have replaced with c.SetRequest.
 
+				// Track if connection was hijacked (for WebSocket)
+				hijacked := false
+
 				// Proxy
 				switch {
 				case httputil2.IsWebSocket(r):
-					proxyRaw(tgt, &errHolder).ServeHTTP(w, r)
+					proxyRaw(tgt, &errHolder, &hijacked).ServeHTTP(w, r)
 				// case r.Header.Get(httputil2.HeaderAccept) == "text/event-stream":
 				// 	proxyHTTP(tgt, &errHolder, config).ServeHTTP(w, r)
 				default:
@@ -245,6 +249,11 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 				}
 
 				if errHolder.Err == nil {
+					return
+				}
+
+				// If connection was hijacked, we cannot write error response
+				if hijacked {
 					return
 				}
 
