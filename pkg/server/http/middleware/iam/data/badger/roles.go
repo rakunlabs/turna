@@ -374,7 +374,17 @@ func (b *Badger) DeleteRole(ctx context.Context, id string) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
+	var roleStored data.Role
+
 	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
+		if err := b.db.TxGet(txn, id, &roleStored); err != nil {
+			if errors.Is(err, badgerhold.ErrNotFound) {
+				return fmt.Errorf("role with id %s not found; %w", id, data.ErrNotFound)
+			}
+
+			return err
+		}
+
 		if err := b.db.TxDelete(txn, id, data.Role{}); err != nil {
 			return err
 		}
@@ -432,7 +442,7 @@ func (b *Badger) DeleteRole(ctx context.Context, id string) error {
 		return err
 	}
 
-	logi.Ctx(ctx).Info("role deleted", slog.String("id", id), slog.String("by", data.CtxUserName(ctx)))
+	logi.Ctx(ctx).Info("role deleted", slog.String("id", id), slog.String("name", roleStored.Name), slog.String("by", data.CtxUserName(ctx)))
 
 	return nil
 }

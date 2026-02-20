@@ -94,6 +94,7 @@ func (m *Iam) MuxSet(prefix string) *chi.Mux {
 	mux.Get(prefix+"/info", m.InfoUser)
 
 	mux.Get(prefix+"/v1/backup", m.Backup)
+	mux.Get(prefix+"/v1/backup/until", m.BackupUntil)
 	mux.Post(prefix+"/v1/restore", m.Restore) // trigger
 	mux.Get(prefix+"/v1/version", m.Version)
 	mux.Post(prefix+"/v1/sync", m.Sync)
@@ -1810,6 +1811,8 @@ func (m *Iam) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
 
 	m.sync.Trigger(m.ctxService)
 
+	slog.Info("LDAP map deleted", "name", name)
+
 	httputil.JSON(w, http.StatusOK, data.NewResponseMessage("Map deleted"))
 }
 
@@ -1928,6 +1931,7 @@ func (m *Iam) InfoUser(w http.ResponseWriter, r *http.Request) {
 // @Summary Backup Database
 // @Tags backup
 // @Param since query number false "since txid"
+// @Param deleted query bool false "include deleted data"
 // @Success 200
 // @Failure 500 {object} httputil.Error
 // @Router /v1/backup [GET]
@@ -1943,16 +1947,50 @@ func (m *Iam) Backup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	deletedData, _ := strconv.ParseBool(r.URL.Query().Get("deleted"))
+
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", "attachment; filename=iam_"+time.Now().Format("2006-01-02_15-04-05")+".db")
 
-	backupVersion, err := m.db.Backup(w, since)
+	backupVersion, err := m.db.Backup(w, since, deletedData)
 	if err != nil {
 		httputil.HandleError(w, httputil.NewError("Cannot backup", err, http.StatusInternalServerError))
 		return
 	}
 
 	slog.Info("database backup", slog.Uint64("since", since), slog.Uint64("version", backupVersion))
+}
+
+// @Summary Backup Database until txid
+// @Tags backup
+// @Param until query number true "until txid"
+// @Success 200
+// @Failure 400 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/backup/until [GET]
+func (m *Iam) BackupUntil(w http.ResponseWriter, r *http.Request) {
+	untilStr := r.URL.Query().Get("until")
+	if untilStr == "" {
+		httputil.HandleError(w, httputil.NewError("until is required", nil, http.StatusBadRequest))
+		return
+	}
+
+	until, err := strconv.ParseUint(untilStr, 10, 64)
+	if err != nil {
+		httputil.HandleError(w, httputil.NewError("Cannot parse until", err, http.StatusBadRequest))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", "attachment; filename=iam_until_"+time.Now().Format("2006-01-02_15-04-05")+".db")
+
+	maxVersion, err := m.db.BackupUntil(w, until)
+	if err != nil {
+		httputil.HandleError(w, httputil.NewError("Cannot backup until", err, http.StatusInternalServerError))
+		return
+	}
+
+	slog.Info("database backup until", slog.Uint64("until", until), slog.Uint64("max_version", maxVersion))
 }
 
 // @Summary Restore Database

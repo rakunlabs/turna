@@ -375,7 +375,17 @@ func (b *Badger) DeletePermission(ctx context.Context, id string) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
+	var permissionStored data.Permission
+
 	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
+		if err := b.db.TxGet(txn, id, &permissionStored); err != nil {
+			if errors.Is(err, badgerhold.ErrNotFound) {
+				return fmt.Errorf("permission with id %s not found; %w", id, data.ErrNotFound)
+			}
+
+			return err
+		}
+
 		// Delete the permission
 		if err := b.db.TxDelete(txn, id, data.Permission{}); err != nil {
 			return err
@@ -430,7 +440,7 @@ func (b *Badger) DeletePermission(ctx context.Context, id string) error {
 		return err
 	}
 
-	logi.Ctx(ctx).Info("permission deleted", slog.String("id", id), slog.String("by", data.CtxUserName(ctx)))
+	logi.Ctx(ctx).Info("permission deleted", slog.String("id", id), slog.String("name", permissionStored.Name), slog.String("by", data.CtxUserName(ctx)))
 
 	return nil
 }

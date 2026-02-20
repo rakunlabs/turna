@@ -112,11 +112,51 @@
                         "description": "since txid",
                         "name": "since",
                         "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "include deleted data",
+                        "name": "deleted",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK"
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httputil.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/backup/until": {
+            "get": {
+                "tags": [
+                    "backup"
+                ],
+                "summary": "Backup Database until txid",
+                "parameters": [
+                    {
+                        "type": "number",
+                        "description": "until txid",
+                        "name": "until",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httputil.Error"
+                        }
                     },
                     "500": {
                         "description": "Internal Server Error",
@@ -2715,12 +2755,16 @@
         "data.IDName": {
             "type": "object",
             "properties": {
-                "expires_in": {
+                "expires_at": {
                     "description": "Optional field for temporary roles",
                     "type": "string"
                 },
                 "id": {
                     "type": "string"
+                },
+                "inherited": {
+                    "description": "Indicates if the role/permission is inherited",
+                    "type": "boolean"
                 },
                 "name": {
                     "type": "string"
@@ -2850,6 +2894,12 @@
         "data.Resource": {
             "type": "object",
             "properties": {
+                "excluded": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/data.Resource"
+                    }
+                },
                 "hosts": {
                     "type": "array",
                     "items": {
@@ -2863,7 +2913,14 @@
                     }
                 },
                 "path": {
+                    "description": "Deprecated: use Paths instead of Path",
                     "type": "string"
+                },
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -3274,6 +3331,9 @@
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "starts_at": {
                     "type": "string"
                 }
             }

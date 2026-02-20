@@ -80,7 +80,7 @@ func (m *Iam) Middleware(ctx context.Context, name string) (func(http.Handler) h
 	}
 
 	// new database
-	flatten := true
+	flatten := false
 	if m.Database.Flatten != nil {
 		flatten = *m.Database.Flatten
 	}

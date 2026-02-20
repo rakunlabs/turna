@@ -696,8 +696,11 @@ func (b *Badger) DeleteUser(ctx context.Context, id string) error {
 	b.dbBackupLock.RLock()
 	defer b.dbBackupLock.RUnlock()
 
+	var userStored data.User
+
 	if err := b.db.Badger().Update(func(txn *badger.Txn) error {
-		if err := b.db.TxDelete(txn, id, data.User{}); err != nil {
+		// get user first to retrieve aliases before deletion
+		if err := b.db.TxGet(txn, id, &userStored); err != nil {
 			if errors.Is(err, badgerhold.ErrNotFound) {
 				return fmt.Errorf("user with id %s not found; %w", id, data.ErrNotFound)
 			}
@@ -705,15 +708,12 @@ func (b *Badger) DeleteUser(ctx context.Context, id string) error {
 			return err
 		}
 
-		// delete alias cache
-		var user data.User
-		if err := b.db.TxFindOne(txn, &user, badgerhold.Where("ID").Eq(id)); err != nil {
-			if !errors.Is(err, badgerhold.ErrNotFound) {
-				return err
-			}
+		if err := b.db.TxDelete(txn, id, data.User{}); err != nil {
+			return err
 		}
 
-		for _, alias := range user.Alias {
+		// delete alias cache
+		for _, alias := range userStored.Alias {
 			if err := b.db.TxDelete(txn, alias, data.Alias{}); err != nil {
 				return err
 			}
@@ -724,7 +724,7 @@ func (b *Badger) DeleteUser(ctx context.Context, id string) error {
 		return err
 	}
 
-	logi.Ctx(ctx).Info("deleted user", slog.String("id", id), slog.String("by", data.CtxUserName(ctx)))
+	logi.Ctx(ctx).Info("deleted user", slog.String("id", id), slog.String("alias", strings.Join(userStored.Alias, ",")), slog.String("by", data.CtxUserName(ctx)))
 
 	return nil
 }

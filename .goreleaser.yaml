@@ -35,6 +35,9 @@ builds:
       - amd64
       - arm
       - arm64
+    ignore:
+      - goos: windows
+        goarch: arm
     main: ./cmd/turna
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}

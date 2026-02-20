@@ -15,9 +15,10 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
+	httputil2 "github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/redis/go-redis/v9"
 	"github.com/worldline-go/klient"
-	httputil2 "github.com/rakunlabs/turna/pkg/server/http/httputil"
+
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
 
@@ -365,6 +366,7 @@ func (s *Sync) sync(ctx context.Context, targetVersion uint64) error {
 
 	query := req.URL.Query()
 	query.Add("since", strconv.FormatUint(currentVersion, 10))
+	query.Add("deleted", "true")
 	req.URL.RawQuery = query.Encode()
 
 	if err := s.client.Do(req, func(r *http.Response) error {
