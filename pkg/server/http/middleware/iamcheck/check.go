@@ -10,6 +10,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/worldline-go/klient"
+
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
@@ -45,6 +46,13 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 
 	m.client = client
 
+	// fill paths on public resources
+	for i := range m.Public {
+		if m.Public[i].Path != "" {
+			m.Public[i].Paths = append(m.Public[i].Paths, m.Public[i].Path)
+		}
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			hostToCheck := r.Host
@@ -69,12 +77,14 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 
 				if matchedHost {
 					// check path
-					if v, _ := doublestar.Match(resource.Path, r.URL.Path); v {
-						if len(resource.Methods) == 0 || slices.ContainsFunc(resource.Methods, func(cmp string) bool {
-							return strings.EqualFold(cmp, r.Method)
-						}) {
-							next.ServeHTTP(w, r)
-							return
+					for _, publicPath := range resource.Paths {
+						if v, _ := doublestar.Match(publicPath, r.URL.Path); v {
+							if len(resource.Methods) == 0 || slices.ContainsFunc(resource.Methods, func(cmp string) bool {
+								return strings.EqualFold(cmp, r.Method)
+							}) {
+								next.ServeHTTP(w, r)
+								return
+							}
 						}
 					}
 				}
