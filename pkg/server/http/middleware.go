@@ -182,6 +182,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		m, err := h.IamCheckMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
 	case h.IamForwardAuthMiddleware != nil:
+		if h.IamForwardAuthMiddleware.IamMiddleware != nil {
+			registry.GlobalReg.AddInitFunc(name, h.IamForwardAuthMiddleware.Init)
+		}
 		m, err := h.IamForwardAuthMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
 	case h.RoleCheckMiddleware != nil:

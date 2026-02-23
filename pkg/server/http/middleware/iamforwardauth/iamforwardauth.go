@@ -10,11 +10,17 @@ import (
 	"github.com/worldline-go/klient"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
 
 type IamForwardAuth struct {
 	CheckAPI string `cfg:"check_api"`
+
+	// IamMiddleware is the name of a registered IAM middleware instance.
+	// When set, the check is performed directly in-process via the IAM
+	// database instead of making an HTTP request to CheckAPI.
+	IamMiddleware *string `cfg:"iam_middleware"`
 
 	MethodHeader string `cfg:"method_header"`
 	HostHeader   string `cfg:"host_header"`
@@ -22,17 +28,31 @@ type IamForwardAuth struct {
 
 	InsecureSkipVerify bool           `cfg:"insecure_skip_verify"`
 	client             *klient.Client `cfg:"-"`
+	iamInstance        *iam.Iam       `cfg:"-"`
+}
+
+func (m *IamForwardAuth) Init() error {
+	if m.IamMiddleware != nil {
+		m.iamInstance = iam.GlobalRegistry.Get(*m.IamMiddleware)
+		if m.iamInstance == nil {
+			return fmt.Errorf("iam middleware %q not found in registry", *m.IamMiddleware)
+		}
+	}
+
+	return nil
 }
 
 func (m *IamForwardAuth) Middleware() (func(http.Handler) http.Handler, error) {
-	client, err := klient.NewPlain(
-		klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("cannot create klient: %w", err)
-	}
+	if m.IamMiddleware == nil {
+		client, err := klient.NewPlain(
+			klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("cannot create klient: %w", err)
+		}
 
-	m.client = client
+		m.client = client
+	}
 
 	// Set default header names.
 	if m.MethodHeader == "" {
@@ -91,40 +111,56 @@ func (m *IamForwardAuth) Middleware() (func(http.Handler) http.Handler, error) {
 				Host:   host,
 			}
 
-			jsonBody, err := json.Marshal(body)
-			if err != nil {
-				httputil.HandleError(w, httputil.NewError("Cannot marshal request", err, http.StatusInternalServerError))
-				return
-			}
+			var allowed bool
 
-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.CheckAPI, bytes.NewReader(jsonBody))
-			if err != nil {
-				httputil.HandleError(w, httputil.NewError("Cannot create request", err, http.StatusInternalServerError))
-				return
-			}
+			if m.iamInstance != nil {
+				// Direct in-process check via IAM database.
+				resp, err := m.iamInstance.DB().Check(body)
+				if err != nil {
+					httputil.HandleError(w, httputil.NewError("check failed", err, http.StatusInternalServerError))
+					return
+				}
 
-			var resp data.CheckResponse
-			if err := m.client.Do(req, func(r *http.Response) error {
-				if r.StatusCode != http.StatusOK {
-					response := httputil.Response{}
-					if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
+				allowed = resp.Allowed
+			} else {
+				// HTTP-based check via CheckAPI.
+				jsonBody, err := json.Marshal(body)
+				if err != nil {
+					httputil.HandleError(w, httputil.NewError("Cannot marshal request", err, http.StatusInternalServerError))
+					return
+				}
+
+				req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.CheckAPI, bytes.NewReader(jsonBody))
+				if err != nil {
+					httputil.HandleError(w, httputil.NewError("Cannot create request", err, http.StatusInternalServerError))
+					return
+				}
+
+				var resp data.CheckResponse
+				if err := m.client.Do(req, func(r *http.Response) error {
+					if r.StatusCode != http.StatusOK {
+						response := httputil.Response{}
+						if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
+							return httputil.NewError("Cannot decode response", err, http.StatusInternalServerError)
+						}
+
+						return httputil.NewError(response.Msg, nil, http.StatusInternalServerError)
+					}
+
+					if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
 						return httputil.NewError("Cannot decode response", err, http.StatusInternalServerError)
 					}
 
-					return httputil.NewError(response.Msg, nil, http.StatusInternalServerError)
+					return nil
+				}); err != nil {
+					httputil.HandleError(w, httputil.NewErrorAs(err))
+					return
 				}
 
-				if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
-					return httputil.NewError("Cannot decode response", err, http.StatusInternalServerError)
-				}
-
-				return nil
-			}); err != nil {
-				httputil.HandleError(w, httputil.NewErrorAs(err))
-				return
+				allowed = resp.Allowed
 			}
 
-			if !resp.Allowed {
+			if !allowed {
 				httputil.HandleError(w, httputil.NewError("", nil, http.StatusForbidden))
 				return
 			}

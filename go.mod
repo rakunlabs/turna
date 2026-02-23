@@ -8,6 +8,7 @@ require (
 	github.com/ajg/form v1.5.1
 	github.com/bmatcuk/doublestar/v4 v4.7.1
 	github.com/dgraph-io/badger/v4 v4.5.0
+	github.com/dgraph-io/ristretto/v2 v2.0.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/expr-lang/expr v1.16.9
 	github.com/fullstorydev/grpcui v1.5.0
@@ -46,6 +47,7 @@ require (
 	golang.org/x/exp v0.0.0-20250103183323-7d7fa50e5329
 	golang.org/x/oauth2 v0.25.0
 	google.golang.org/grpc v1.69.2
+	google.golang.org/protobuf v1.36.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -68,7 +70,6 @@ require (
 	github.com/cli/safeexec v1.0.1 // indirect
 	github.com/cncf/xds/go v0.0.0-20240905190251-b4127c9b8d78 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.6 // indirect
-	github.com/dgraph-io/ristretto/v2 v2.0.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/envoyproxy/go-control-plane v0.13.1 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.1.0 // indirect
@@ -147,7 +148,6 @@ require (
 	golang.org/x/time v0.11.0 // indirect
 	golang.org/x/tools v0.35.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241223144023-3abc09e42ca8 // indirect
-	google.golang.org/protobuf v1.36.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
