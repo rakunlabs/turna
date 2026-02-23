@@ -19,6 +19,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/hello"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iamcheck"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iamforwardauth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/info"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/inject"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/log"
@@ -83,6 +84,7 @@ type HTTPMiddleware struct {
 	SessionInfoMiddleware      *sessioninfo.Info                     `cfg:"session_info"`
 	IamMiddleware              *iam.Iam                              `cfg:"iam"`
 	IamCheckMiddleware         *iamcheck.IamCheck                    `cfg:"iam_check"`
+	IamForwardAuthMiddleware   *iamforwardauth.IamForwardAuth        `cfg:"iam_forward_auth"`
 	RoleCheckMiddleware        *rolecheck.RoleCheck                  `cfg:"role_check"`
 	RoleDataMiddleware         *roledata.RoleData                    `cfg:"role_data"`
 	TokenPassMiddleware        *tokenpass.TokenPass                  `cfg:"token_pass"`
@@ -178,6 +180,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	case h.IamCheckMiddleware != nil:
 		m, err := h.IamCheckMiddleware.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.IamForwardAuthMiddleware != nil:
+		m, err := h.IamForwardAuthMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
 	case h.RoleCheckMiddleware != nil:
 		m, err := h.RoleCheckMiddleware.Middleware()
