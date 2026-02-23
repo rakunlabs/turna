@@ -44,6 +44,8 @@ type Provider struct {
 	XUser []string `cfg:"x_user"`
 	// ClaimHeader is use to map claim to header.
 	//   - Example: claim_header = {"X-User-Id": "preferred_username", "X-User-Email": "email"}
+	//   - Default is adding "X-User-Id" header with "preferred_username" claim.
+	//   - Set empty value to delete the header.
 	ClaimHeader      map[string]string `cfg:"claim_header"`
 	EmailVerifyCheck bool              `cfg:"email_verify_check"`
 	// PasswordFlow is use password flow to get token.
@@ -168,13 +170,20 @@ func addXUserHeader(r *http.Request, claim *claims.Custom, xUser []string, email
 		}
 	}
 
+	// Add X-User-Id header with preferred_username claim if exist and not set in custom claim header.
+	r.Header.Del("X-User-Id")
+
+	if claimValue, ok := claim.Map["preferred_username"].(string); ok {
+		r.Header.Set("X-User-Id", claimValue)
+	}
+
 	// add custom claim headers
 	if len(customClaimHeader) > 0 {
 		for k, v := range customClaimHeader {
+			r.Header.Del(k)
+
 			if headerValue, ok := claim.Map[v].(string); ok {
 				r.Header.Set(k, headerValue)
-			} else {
-				r.Header.Del(k)
 			}
 		}
 	}
