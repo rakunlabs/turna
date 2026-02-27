@@ -26,6 +26,10 @@ type IamForwardAuth struct {
 	HostHeader   string `cfg:"host_header"`
 	URIHeader    string `cfg:"uri_header"`
 
+	// PassHeaders is a list of header names to copy from the incoming
+	// request to the outgoing response on a successful auth check.
+	PassHeaders []string `cfg:"pass_headers"`
+
 	InsecureSkipVerify bool           `cfg:"insecure_skip_verify"`
 	client             *klient.Client `cfg:"-"`
 	iamInstance        *iam.Iam       `cfg:"-"`
@@ -163,6 +167,13 @@ func (m *IamForwardAuth) Middleware() (func(http.Handler) http.Handler, error) {
 			if !allowed {
 				httputil.HandleError(w, httputil.NewError("", nil, http.StatusForbidden))
 				return
+			}
+
+			// Copy configured headers from the request to the response.
+			for _, h := range m.PassHeaders {
+				if v := r.Header.Get(h); v != "" {
+					w.Header().Set(h, v)
+				}
 			}
 
 			// Forward auth succeeded - return 200 OK to the proxy.
