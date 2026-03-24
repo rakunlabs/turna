@@ -242,8 +242,6 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 				switch {
 				case httputil2.IsWebSocket(r):
 					proxyRaw(tgt, &errHolder, &hijacked).ServeHTTP(w, r)
-				// case r.Header.Get(httputil2.HeaderAccept) == "text/event-stream":
-				// 	proxyHTTP(tgt, &errHolder, config).ServeHTTP(w, r)
 				default:
 					proxyHTTP(tgt, &errHolder, config).ServeHTTP(w, r)
 				}
@@ -278,6 +276,7 @@ const StatusCodeContextCanceled = 499
 
 func proxyHTTP(tgt *ProxyTarget, errHolder *httputil2.Error, config ProxyConfig) http.Handler {
 	proxy := httputil.NewSingleHostReverseProxy(tgt.URL)
+	proxy.FlushInterval = -1 // Flush immediately for streaming responses (SSE)
 	proxy.ErrorHandler = func(resp http.ResponseWriter, req *http.Request, err error) {
 		desc := tgt.URL.String()
 		if tgt.Name != "" {

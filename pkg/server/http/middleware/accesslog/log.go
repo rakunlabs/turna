@@ -17,6 +17,10 @@ type AccessLog struct {
 	Level   string `cfg:"level"`
 	Message string `cfg:"message"`
 
+	// SkipSSE disables access logging for SSE (text/event-stream) requests.
+	// Default is true (SSE logging is skipped). Set to false to enable SSE logging.
+	SkipSSE *bool `cfg:"skip_sse"`
+
 	Path Path `cfg:"path"`
 
 	LogDetails LogDetails `cfg:"log_details"`
@@ -87,6 +91,11 @@ func (m *AccessLog) Middleware() (func(http.Handler) http.Handler, error) {
 		}
 	}
 
+	if m.SkipSSE == nil {
+		m.SkipSSE = new(bool)
+		*m.SkipSSE = true
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// check if the path is disabled
@@ -106,6 +115,13 @@ func (m *AccessLog) Middleware() (func(http.Handler) http.Handler, error) {
 				}
 			}
 			if logDetails == nil {
+				next.ServeHTTP(w, r)
+
+				return
+			}
+
+			// Check if this is an SSE request - skip buffering to allow streaming
+			if *m.SkipSSE && r.Header.Get("Accept") == "text/event-stream" {
 				next.ServeHTTP(w, r)
 
 				return
@@ -184,6 +200,21 @@ func (m *AccessLog) Middleware() (func(http.Handler) http.Handler, error) {
 
 			next.ServeHTTP(rec, r)
 
+			// If the response switched to streaming mode (SSE detected from response Content-Type),
+			// the data was already written directly to the client. Log what we can and return.
+			if rec.streaming {
+				argsResponse = append(argsResponse,
+					"status", rec.status,
+					"streaming", true,
+					"duration", time.Since(start).String(),
+					"duration_ms", time.Since(start).Milliseconds(),
+				)
+
+				Log(m.Level, m.Message, slog.Group("request", argsRequest...), slog.Group("response", argsResponse...))
+
+				return
+			}
+
 			bodyBytes := rec.body.Bytes()
 
 			argsResponse = append(argsResponse,
@@ -219,19 +250,54 @@ type customResponseRecorder struct {
 	http.ResponseWriter
 	body *bytes.Buffer
 
-	status int
+	status    int
+	streaming bool
 }
 
 func (r *customResponseRecorder) Write(b []byte) (int, error) {
+	if r.streaming {
+		n, err := r.ResponseWriter.Write(b)
+		if err != nil {
+			return n, err
+		}
+
+		if f, ok := r.ResponseWriter.(http.Flusher); ok {
+			f.Flush()
+		}
+
+		return n, nil
+	}
+
 	return r.body.Write(b)
 }
 
 func (r *customResponseRecorder) WriteHeader(code int) {
 	r.status = code
+
+	// Detect SSE response from upstream: if the Content-Type is text/event-stream,
+	// switch to streaming mode - write headers immediately and stop buffering.
+	if strings.HasPrefix(r.Header().Get("Content-Type"), "text/event-stream") {
+		r.streaming = true
+		r.ResponseWriter.WriteHeader(code)
+
+		// Flush any previously buffered bytes to the real writer
+		if r.body.Len() > 0 {
+			_, _ = r.ResponseWriter.Write(r.body.Bytes())
+			r.body.Reset()
+
+			if f, ok := r.ResponseWriter.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	}
 }
 
 func (r *customResponseRecorder) Flush() {
-	// no-op
+	if r.streaming {
+		if f, ok := r.ResponseWriter.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
 }
 
 var _ http.Flusher = (*customResponseRecorder)(nil)
