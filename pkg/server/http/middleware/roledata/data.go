@@ -10,13 +10,13 @@ import (
 )
 
 type RoleData struct {
-	Map     []Data      `cfg:"map"`
-	Default interface{} `cfg:"default"`
+	Map     []Data `cfg:"map"`
+	Default any    `cfg:"default"`
 }
 
 type Data struct {
-	Roles []string    `cfg:"roles"`
-	Data  interface{} `cfg:"data"`
+	Roles []string `cfg:"roles"`
+	Data  any      `cfg:"data"`
 }
 
 func (m *RoleData) Middleware() (func(http.Handler) http.Handler, error) {
@@ -32,7 +32,7 @@ func (m *RoleData) Middleware() (func(http.Handler) http.Handler, error) {
 
 			roles := claimValue.RoleSet
 
-			values := []interface{}{}
+			values := []any{}
 			for _, data := range m.Map {
 				for _, role := range data.Roles {
 					if _, ok := roles[role]; ok {
@@ -45,7 +45,7 @@ func (m *RoleData) Middleware() (func(http.Handler) http.Handler, error) {
 
 			if m.Default != nil {
 				switch v := m.Default.(type) {
-				case []interface{}:
+				case []any:
 					values = append(values, v...)
 				default:
 					values = append(values, v)

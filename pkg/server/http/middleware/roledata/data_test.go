@@ -13,7 +13,7 @@ import (
 func TestRoleData_Middleware(t *testing.T) {
 	type fields struct {
 		Map     []Data
-		Default interface{}
+		Default any
 	}
 	tests := []struct {
 		name   string

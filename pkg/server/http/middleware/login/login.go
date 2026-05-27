@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/rakunlabs/into"
-	"github.com/worldline-go/klient"
+	"github.com/rakunlabs/ok"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
@@ -38,8 +38,8 @@ type Login struct {
 	Store             store.Store `cfg:"store"`
 	RedirectWhiteList []string    `cfg:"redirect_white_list"`
 
-	client    *klient.Client `cfg:"-"`
-	pathFixed PathFixed      `cfg:"-"`
+	client    *ok.Client `cfg:"-"`
+	pathFixed PathFixed  `cfg:"-"`
 
 	session       *session.Session  `cfg:"-"`
 	store         *store.StoreCache `cfg:"-"`
@@ -103,15 +103,13 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 	// /////////////////////////
 
 	// set auth client
-	client, err := klient.New(
-		klient.WithDisableBaseURLCheck(true),
-		klient.WithDisableRetry(true),
-		klient.WithDisableEnvValues(true),
-		klient.WithInsecureSkipVerify(m.Request.InsecureSkipVerify),
-		klient.WithLogger(slog.Default()),
+	client, err := ok.New(
+		ok.WithDisableRetry(true),
+		ok.WithInsecureSkipVerify(m.Request.InsecureSkipVerify),
+		ok.WithLogger(slog.Default()),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("cannot create klient: %w", err)
+		return nil, fmt.Errorf("cannot create ok client: %w", err)
 	}
 
 	m.client = client

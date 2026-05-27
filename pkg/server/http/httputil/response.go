@@ -13,11 +13,11 @@ func writeContentType(w http.ResponseWriter, value string) {
 	}
 }
 
-func JSON(w http.ResponseWriter, code int, data interface{}) error {
+func JSON(w http.ResponseWriter, code int, data any) error {
 	return JSONPretty(w, code, data, "")
 }
 
-func JSONPretty(w http.ResponseWriter, code int, data interface{}, indent string) error {
+func JSONPretty(w http.ResponseWriter, code int, data any, indent string) error {
 	w.Header().Set("Content-Type", MIMEApplicationJSONCharsetUTF8)
 	w.WriteHeader(code)
 

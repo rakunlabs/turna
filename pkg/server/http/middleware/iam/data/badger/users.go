@@ -769,7 +769,7 @@ func (b *Badger) extendUser(txn *badger.Txn, addRoles, addRolePermissions, addDa
 
 	var roles []data.IDName
 	var permissions []data.IDName
-	var rolePermissionData []interface{}
+	var rolePermissionData []any
 	var scope map[string][]string
 
 	permissionIDs := make(map[string]struct{}, 100)

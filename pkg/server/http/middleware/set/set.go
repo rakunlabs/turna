@@ -11,8 +11,8 @@ import (
 //
 // Usable for other middlewares.
 type Set struct {
-	Values []string               `cfg:"values"`
-	Map    map[string]interface{} `cfg:"map"`
+	Values []string       `cfg:"values"`
+	Map    map[string]any `cfg:"map"`
 }
 
 func (s *Set) Middleware() func(http.Handler) http.Handler {

@@ -12,7 +12,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/worldline-go/klient"
+	"github.com/rakunlabs/ok"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
@@ -29,16 +29,14 @@ type Code struct {
 
 	InsecureSkipVerify bool `cfg:"insecure_skip_verify"`
 
-	client *klient.Client `cfg:"-"`
+	client *ok.Client `cfg:"-"`
 }
 
 func (m *Code) Init() error {
-	client, err := klient.New(
-		klient.WithDisableBaseURLCheck(true),
-		klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
-		klient.WithDisableRetry(true),
-		klient.WithDisableEnvValues(true),
-		klient.WithLogger(slog.Default()),
+	client, err := ok.New(
+		ok.WithInsecureSkipVerify(m.InsecureSkipVerify),
+		ok.WithDisableRetry(true),
+		ok.WithLogger(slog.Default()),
 	)
 	if err != nil {
 		return err
@@ -168,7 +166,7 @@ func (m *Code) CodeToken(ctx context.Context, r *http.Request, code, providerNam
 	return body, statusCode, nil
 }
 
-func (m *Code) UserInfo(ctx context.Context, token string, oauth2 *session.Oauth2) (map[string]interface{}, int, error) {
+func (m *Code) UserInfo(ctx context.Context, token string, oauth2 *session.Oauth2) (map[string]any, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, oauth2.UserInfoURL, nil)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
@@ -178,12 +176,12 @@ func (m *Code) UserInfo(ctx context.Context, token string, oauth2 *session.Oauth
 	req.Header.Add("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
 
-	var body map[string]interface{}
+	var body map[string]any
 	statusCode := 0
 	if err := m.client.Do(req, func(r *http.Response) error {
 		statusCode = r.StatusCode
 		headerInfo := r.Header.Get("WWW-Authenticate")
-		if err := klient.UnexpectedResponse(r); err != nil {
+		if err := ok.UnexpectedResponse(r); err != nil {
 			return fmt.Errorf("%w: %s", err, headerInfo)
 		}
 
@@ -220,7 +218,7 @@ func (m *Code) RevokeToken(ctx context.Context, token string, oauth2 *session.Oa
 
 	req.URL.RawQuery = query.Encode()
 
-	if err := m.client.Do(req, klient.UnexpectedResponse); err != nil {
+	if err := m.client.Do(req, ok.UnexpectedResponse); err != nil {
 		return err
 	}
 

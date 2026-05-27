@@ -36,7 +36,7 @@ func (m *Log) Middleware() (func(http.Handler) http.Handler, error) {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			args := []interface{}{
+			args := []any{
 				"method", r.Method,
 				"path", r.URL.Path,
 				"request_id", r.Header.Get("X-Request-Id"),

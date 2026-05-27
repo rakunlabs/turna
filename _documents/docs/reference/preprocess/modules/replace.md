@@ -1,57 +1,57 @@
-# Replace
+# replace
 
-This preprocessor replaces a string with another string in a folder paths.
+The `replace` preprocess module walks a directory and rewrites files before Turna starts the server and services.
 
 ```yaml
 preprocess:
   - replace:
-      path: "/dist" # path to replace
-      skip_files: [] # default: [] files to skip, use glob pattern, included your path like /dist/**/index.html
-      skip_dirs: [] # default: [] dirs to skip, it will skip all files in the dir, included your path like /dist/assets
+      path: ./dist
+      skip_dirs:
+        - ./dist/assets
       contents:
-      - regex: "" # regex to find, override old if not empty
-        old: "" # old string
-        new: "" # new string
-        value: "" # value from load name, key value and type is map[string]interface{}
+        - old: __API_URL__
+          new: https://api.example.com
+        - regex: "version: .*"
+          new: "version: 2026.05"
 ```
 
-## Example
+## Fields
 
-In this example, before to serve the folder, replacing all content with the value from load.  
-This is useful for frontend applications to adding environment variables for each platform.
+| Field | Description |
+| --- | --- |
+| `path` | Root directory to walk. |
+| `skip_dirs` | Exact directory paths to skip. |
+| `skip_files` | File paths recognized by the walker. Prefer narrowing `path` or using `skip_dirs` for reliable exclusion. |
+| `contents` | Replacement rules applied to each visited file. |
+
+Replacement rule fields:
+
+| Field | Description |
+| --- | --- |
+| `regex` | Regular expression to replace. When set, it overrides `old`. |
+| `old` | Literal string to replace. |
+| `old_template` | Render `old` as a Turna template before replacement. |
+| `new` | Replacement string. |
+| `new_template` | Render `new` as a Turna template before replacement. |
+| `value` | Name of a loaded `map[string]any`. Each map key is replaced by its value. |
+
+## Loaded Values Example
 
 ```yaml
 loads:
-  - statics:
-    - content:
-        content: |
-          Turna: XXX2
-        name: values
+  - name: frontend_env
+    statics:
+      - content:
+          name: frontend_env
+          content: |
+            __API_URL__: https://api.example.com
+            __APP_NAME__: turna
 
 preprocess:
   - replace:
-      path: ./testdata/html
+      path: ./dist
       contents:
-        value: values
-
-server:
-  entrypoints:
-    web:
-      address: ":8080"
-  http:
-    middlewares:
-      project:
-        folder:
-          path: ./testdata/html
-          browse: false
-          spa: false
-          index: true
-          cache_regex:
-            - regex: .*
-              cache_control: no-cache
-    routers:
-      project:
-        path: /*
-        middlewares:
-          - project
+        - value: frontend_env
 ```
+
+This is useful for frontend builds that contain placeholder strings and need platform-specific values at runtime.

@@ -1,50 +1,31 @@
 # inject
 
-Inject middleware help to change content of the anything. Give a content-type you want to change it.
+`inject` rewrites response bodies after the next middleware returns. It matches requests by path using doublestar patterns.
 
 ```yaml
-middlewares:
-  test:
-    inject:
-      path_map:
-        "/test": # checking with doublestar.Match
-          - regex: "" # old is ignored if regex is set
-            old: ""
-            new: ""
-      content_map: # map of content-type
-        "text/html":
-          - regex: "" # old is ignored if regex is set
-            old: "my text"
-            new: "my mext"
+server:
+  http:
+    middlewares:
+      inject_html:
+        inject:
+          path_map:
+            "**/*.html":
+              - old: "</head>"
+                new: |
+                  <script src="/runtime.js"></script>
+                  </head>
 ```
 
-Example:
+## Replacement Fields
 
-```yaml
-inject:
-  content_map:
-    "text/html":
-      - old: "</head>"
-        new: |
-          <script defer>
-          // Override the fetch function
-          window.fetch = async function(...args) {
-            try {
-            // Use the original fetch function and get the response
-            const response = await originalFetch(...args);
+| Field | Description |
+| --- | --- |
+| `regex` | Regular expression to replace. When set, it overrides `old`. |
+| `old` | Literal string to replace. |
+| `new` | Replacement string. |
+| `add_prefix` | String inserted at the beginning of the response body. |
+| `add_postfix` | String appended to the response body. |
+| `value` | Name of a loaded `map[string]any`. Each key is replaced with its value. |
+| `delay` | Optional duration to sleep before applying this replacement. |
 
-            // Check for the 407 status code
-            if (response.status === 407) {
-              location.reload();  // Refresh the page
-              return;  // Optionally, you can throw an error or return a custom response here
-            }
-
-            // Return the original response for other cases
-            return response;
-            } catch (error) {
-            throw error;  // Rethrow any errors that occurred during the fetch
-            }
-          }
-          </script>
-          </head>
-```
+`inject` can read and rewrite gzip responses when the upstream response has `Content-Encoding: gzip`; it recompresses the body before returning it.

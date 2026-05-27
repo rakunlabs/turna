@@ -16,14 +16,14 @@ import (
 
 type Template struct {
 	Template string `cfg:"template"`
-	// RawBody is the value of the body is raw or is an interface{}
+	// RawBody is the value of the body is raw or is an any
 	RawBody bool `cfg:"raw_body"`
 	// Status code to return, default is from response
 	StatusCode int `cfg:"status_code"`
-	// Value from load name, key value and type is map[string]interface{}
+	// Value from load name, key value and type is map[string]any
 	Value string `cfg:"value"`
 	// Additional is additional values for the template
-	Additional map[string]interface{} `cfg:"additional"`
+	Additional map[string]any `cfg:"additional"`
 	// Headers are additional to return
 	Headers map[string]string `cfg:"headers"`
 	// ApplyStatusCodes on specific status codes
@@ -37,11 +37,11 @@ type Template struct {
 	Delims []string `cfg:"delims"`
 
 	tpl   *templatex.Template
-	value map[string]interface{}
+	value map[string]any
 }
 
 func (s *Template) render(r *http.Request, body []byte) ([]byte, error) {
-	var bodyPass interface{}
+	var bodyPass any
 	if !s.RawBody {
 		if err := json.Unmarshal(body, &bodyPass); err != nil {
 			return nil, err
@@ -51,7 +51,7 @@ func (s *Template) render(r *http.Request, body []byte) ([]byte, error) {
 	}
 
 	// get all data for the template
-	data := map[string]interface{}{
+	data := map[string]any{
 		"body":         bodyPass,
 		"body_raw":     body,
 		"method":       r.Method,
@@ -91,9 +91,9 @@ func (s *Template) Middleware() (func(http.Handler) http.Handler, error) {
 	}))
 
 	if s.Value != "" {
-		value, ok := render.Data[s.Value].(map[string]interface{})
+		value, ok := render.Data[s.Value].(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("inject value %s is not map[string]interface{}", s.Value)
+			return nil, fmt.Errorf("inject value %s is not map[string]any", s.Value)
 		}
 		s.value = value
 	}

@@ -195,7 +195,7 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 
 				for _, u := range userLdap {
 					if userDB.User.Details == nil {
-						userDB.User.Details = make(map[string]interface{})
+						userDB.User.Details = make(map[string]any)
 					}
 
 					userDB.User.Alias = []string{u.Email, u.UID}
@@ -235,7 +235,7 @@ func (m *Iam) LdapSync(force bool, uid string) error {
 					_, err := m.db.TxCreateUser(ctx, txn, data.User{
 						SyncRoleIDs: roleIDs,
 						Alias:       []string{u.Email, u.UID},
-						Details: map[string]interface{}{
+						Details: map[string]any{
 							"email":       u.Email,
 							"uid":         u.UID,
 							"name":        u.Name,

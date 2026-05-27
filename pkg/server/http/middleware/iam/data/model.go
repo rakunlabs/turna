@@ -35,12 +35,12 @@ type Token struct {
 
 // Permission is a struct that represents a permission table in the database.
 type Permission struct {
-	ID          string                 `json:"id"          badgerhold:"unique"`
-	Name        string                 `json:"name"        badgerhold:"index"`
-	Resources   []Resource             `json:"resources"`
-	Description string                 `json:"description"`
-	Data        map[string]interface{} `json:"data"`
-	Scope       map[string][]string    `json:"scope"`
+	ID          string              `json:"id"          badgerhold:"unique"`
+	Name        string              `json:"name"        badgerhold:"index"`
+	Resources   []Resource          `json:"resources"`
+	Description string              `json:"description"`
+	Data        map[string]any      `json:"data"`
+	Scope       map[string][]string `json:"scope"`
 
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
@@ -54,11 +54,11 @@ type PermissionExtended struct {
 }
 
 type PermissionPatch struct {
-	Name        *string                `json:"name"`
-	Resources   *[]Resource            `json:"resources"`
-	Description *string                `json:"description"`
-	Data        map[string]interface{} `json:"data"`
-	Scope       map[string][]string    `json:"scope"`
+	Name        *string             `json:"name"`
+	Resources   *[]Resource         `json:"resources"`
+	Description *string             `json:"description"`
+	Data        map[string]any      `json:"data"`
+	Scope       map[string][]string `json:"scope"`
 }
 
 type Resource struct {
@@ -72,12 +72,12 @@ type Resource struct {
 
 // Role is a struct that represents a role table in the database.
 type Role struct {
-	ID            string                 `json:"id"             badgerhold:"unique"`
-	Name          string                 `json:"name"           badgerhold:"index"`
-	PermissionIDs []string               `json:"permission_ids"`
-	RoleIDs       []string               `json:"role_ids"`
-	Data          map[string]interface{} `json:"data"`
-	Description   string                 `json:"description"`
+	ID            string         `json:"id"             badgerhold:"unique"`
+	Name          string         `json:"name"           badgerhold:"index"`
+	PermissionIDs []string       `json:"permission_ids"`
+	RoleIDs       []string       `json:"role_ids"`
+	Data          map[string]any `json:"data"`
+	Description   string         `json:"description"`
 
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
@@ -85,11 +85,11 @@ type Role struct {
 }
 
 type RolePatch struct {
-	Name          *string                 `json:"name"`
-	PermissionIDs *[]string               `json:"permission_ids"`
-	RoleIDs       *[]string               `json:"role_ids"`
-	Data          *map[string]interface{} `json:"data"`
-	Description   *string                 `json:"description"`
+	Name          *string         `json:"name"`
+	PermissionIDs *[]string       `json:"permission_ids"`
+	RoleIDs       *[]string       `json:"role_ids"`
+	Data          *map[string]any `json:"data"`
+	Description   *string         `json:"description"`
 }
 
 type RoleRelation struct {
@@ -162,12 +162,12 @@ type UserCreate struct {
 }
 
 type UserPatch struct {
-	Alias         *[]string               `json:"alias"`
-	RoleIDs       *[]string               `json:"role_ids"`
-	SyncRoleIDs   *[]string               `json:"sync_role_ids"`
-	PermissionIDs *[]string               `json:"permission_ids"`
-	Details       *map[string]interface{} `json:"details"`
-	IsActive      *bool                   `json:"is_active"`
+	Alias         *[]string       `json:"alias"`
+	RoleIDs       *[]string       `json:"role_ids"`
+	SyncRoleIDs   *[]string       `json:"sync_role_ids"`
+	PermissionIDs *[]string       `json:"permission_ids"`
+	Details       *map[string]any `json:"details"`
+	IsActive      *bool           `json:"is_active"`
 }
 
 type UserAccess struct {
@@ -218,7 +218,7 @@ type UserExtended struct {
 	IsActive    bool                `json:"is_active"`
 	Roles       []IDName            `json:"roles,omitempty"`
 	Permissions []IDName            `json:"permissions,omitempty"`
-	Data        []interface{}       `json:"data,omitempty"`
+	Data        []any               `json:"data,omitempty"`
 	Scope       map[string][]string `json:"scope,omitempty"`
 }
 
@@ -230,11 +230,11 @@ type IDName struct {
 }
 
 type UserInfo struct {
-	Details     map[string]interface{} `json:"details"`
-	Roles       []string               `json:"roles,omitempty"`
-	Permissions []string               `json:"permissions,omitempty"`
-	Data        []interface{}          `json:"data,omitempty"`
-	IsActive    bool                   `json:"is_active"`
+	Details     map[string]any `json:"details"`
+	Roles       []string       `json:"roles,omitempty"`
+	Permissions []string       `json:"permissions,omitempty"`
+	Data        []any          `json:"data,omitempty"`
+	IsActive    bool           `json:"is_active"`
 }
 
 type LMap struct {

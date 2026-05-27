@@ -6,7 +6,7 @@ import (
 
 func TestRender_Execute(t *testing.T) {
 	type fields struct {
-		Data map[string]interface{}
+		Data map[string]any
 	}
 	type args struct {
 		content string
@@ -21,7 +21,7 @@ func TestRender_Execute(t *testing.T) {
 		{
 			name: "test",
 			fields: fields{
-				Data: map[string]interface{}{
+				Data: map[string]any{
 					"test": "test",
 				},
 			},
@@ -33,7 +33,7 @@ func TestRender_Execute(t *testing.T) {
 		{
 			name: "test",
 			fields: fields{
-				Data: map[string]interface{}{
+				Data: map[string]any{
 					"test": 1234,
 				},
 			},

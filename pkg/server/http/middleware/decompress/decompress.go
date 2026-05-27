@@ -12,7 +12,7 @@ import (
 type Decompress struct{}
 
 func (m *Decompress) Middleware() func(http.Handler) http.Handler {
-	pool := sync.Pool{New: func() interface{} { return new(gzip.Reader) }}
+	pool := sync.Pool{New: func() any { return new(gzip.Reader) }}
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

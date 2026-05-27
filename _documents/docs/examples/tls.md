@@ -1,29 +1,33 @@
 # TLS
 
+This example serves the same `hello` response on one HTTP entrypoint and one HTTPS entrypoint.
+
 ```yaml
 server:
   entrypoints:
     web:
       address: ":8080"
-    web-https:
-      address: ":8082"
+    websecure:
+      address: ":8443"
   http:
     middlewares:
-      merhaba:
+      hello:
         hello:
-          message: "merhaba 👋"
+          message: hello from turna
     routers:
-      merhaba:
-        tls: {}
+      https:
         entrypoints:
-          - web-https
+          - websecure
         path: /
+        tls: {}
         middlewares:
-          - merhaba
-      merhaba2:
+          - hello
+      http:
         entrypoints:
           - web
         path: /
         middlewares:
-          - merhaba
+          - hello
 ```
+
+When `http.tls.store.default` is not configured, Turna generates a self-signed TLS 1.3 certificate for TLS routers.

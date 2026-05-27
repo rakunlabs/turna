@@ -259,7 +259,7 @@ func (f *Folder) dirList(w http.ResponseWriter, r *http.Request, folder http.Fil
 
 	dirs = append(folderDirs, folderFiles...)
 
-	values := map[string]interface{}{
+	values := map[string]any{
 		"basePath":  f.BasePath,
 		"dirs":      dirs,
 		"url":       r.URL.Path,

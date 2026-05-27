@@ -1,14 +1,21 @@
 # strip_prefix
 
-Prefix middleware is use to strip prefix from the request path.
+`strip_prefix` removes one configured prefix from the request path.
 
 ```yaml
-middlewares:
-  test:
-    strip_prefix:
-      force_slash: true # default is true, auto add slash begin of the path if not exist
-      prefix: /test # default is empty
-      prefixes: # default is empty, prefixes has priority over prefix
-        - /test
-        - /test2
+server:
+  http:
+    middlewares:
+      strip_api:
+        strip_prefix:
+          prefix: /api
+          force_slash: true
 ```
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `prefix` | | Single prefix to strip. |
+| `prefixes` | | Multiple prefixes. When set, this takes priority over `prefix`. |
+| `force_slash` | `true` | Ensure the result starts with `/`. |
+
+If the request path does not start with a configured prefix, it continues unchanged except for `force_slash` normalization.

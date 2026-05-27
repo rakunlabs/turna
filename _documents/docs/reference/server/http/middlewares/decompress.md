@@ -1,9 +1,13 @@
 # decompress
 
-Use echo's Decompress middleware.
+`decompress` replaces a gzip request body with an uncompressed reader when `Content-Encoding: gzip` is present.
 
 ```yaml
-middlewares:
-  test:
-    decompress: {}
+server:
+  http:
+    middlewares:
+      gunzip:
+        decompress: {}
 ```
+
+Requests without gzip encoding continue unchanged.

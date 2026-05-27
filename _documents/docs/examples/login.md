@@ -1,6 +1,6 @@
 # Login
 
-Oauth2 login support for web applications.
+This example combines `session`, `login`, `session_info`, and `role_check` for a browser application backed by an external OAuth2 provider.
 
 ```yaml
 server:
@@ -9,154 +9,91 @@ server:
       address: ":8082"
   http:
     middlewares:
-      role:
-        role:
-          roles:
-          - "transaction"
-          methods:
-          - "GET"
-      main:
-        hello:
-          headers:
-            Content-Type: "text/html; charset=utf-8"
-          message: |
-            <!DOCTYPE html>
-            <head>
-              <title>Turna</title>
-              <style>
-                body {background-color: #f7fff7;}
-                h1 {border-bottom: 2px solid #ff6b6b;}
-                .logout {float: right; color: #ff6b6b; text-decoration: none;}
-                pre {background-color: #faf0ca; overflow: auto; white-space: pre-wrap; word-wrap: break-word; }
-              </style>
-            </head>
-            <body>
-              <h1>Turna - Test Page <a class="logout" href="/logout/">Logout</a></h1>
-              <div>
-                <p>Test page</p>
-              </div>
-            </body>
-            </html>
-      token:
-        set:
-          values:
-          - token_header
-          - disable_redirect
-      session_info:
-        session_info:
-          information:
-            values:
-            - preferred_username
-            - email
-            - given_name
-            - family_name
-            roles: true
-          session_middleware: "session"
       session:
         session:
-          cookie_name: "turna_test"
-          session_key: "my_secret_key"
+          cookie_name: turna_auth
           store:
             active: file
-            file: {}
-            redis:
-              address: "localhost:6379"
-              key_prefix: "turna_test_"
+            file:
+              session_key: my_secret_key
           options:
             http_only: true
             secure: false
             same_site: 2
           provider:
-            test1:
+            keycloak:
+              name: Keycloak
               password_flow: true
               oauth2:
-                client_id: "test"
+                client_id: test
                 client_secret: ""
-                cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
-                token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
-                auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth"
-                logout_url: "http://localhost:8080/realms/master/protocol/openid-connect/logout"
-                scopes:
-                  - "openid"
-            # test2:
-            #   oauth2:
-            #     client_id: "test2"
-            #     client_secret: ""
-            #     cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
-            #     token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
-            #     auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth?kc_idp_hint=test1"
-            # test11:
-            #   password_flow: true
-            #   oauth2:
-            #     client_id: "test1"
-            #     client_secret: ""
-            #     cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
-            #     token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
-            #     auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth"
-            # test2:
-            #   priority: 1
-            #   oauth2:
-            #     client_id: "test2"
-            #     client_secret: "K5lR1GyWdBVFK4E2b9vShu6XUsFyo6bI"
-            #     cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
-            #     token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
-            #     auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth"
-            # test3:
-            #   priority: 2
-            #   oauth2:
-            #     client_id: "test3"
-            #     client_secret: ""
-            #     cert_url: "http://localhost:8080/realms/master/protocol/openid-connect/certs"
-            #     token_url: "http://localhost:8080/realms/master/protocol/openid-connect/token"
-            #     auth_url: "http://localhost:8080/realms/master/protocol/openid-connect/auth"
+                scopes: [openid]
+                cert_url: http://localhost:8080/realms/master/protocol/openid-connect/certs
+                token_url: http://localhost:8080/realms/master/protocol/openid-connect/token
+                auth_url: http://localhost:8080/realms/master/protocol/openid-connect/auth
+                logout_url: http://localhost:8080/realms/master/protocol/openid-connect/logout
           action:
             token:
-              login_path: "/login/"
-      logout:
-        set:
-          values:
-          - logout
+              login_path: /login/
+
       login:
         login:
+          session_middleware: session
           path:
-            base: "/login/"
+            base: /login/
           redirect:
             schema: http
           info:
-            title: "Turna Login"
-          session_middleware: "session"
-      role_data:
-        role_data:
-          map:
-          - roles:
-            - "transaction_rw"
-            data:
-              "test": 5555
-          default:
-            - test: 0
-            - test2: 0
-      role_check:
+            title: Turna Login
+
+      logout_flag:
+        set:
+          values:
+            - logout
+
+      token_api_mode:
+        set:
+          values:
+            - token_header
+            - disable_redirect
+
+      current_user:
+        session_info:
+          session_middleware: session
+          information:
+            values:
+              - preferred_username
+              - email
+            roles: true
+
+      api_roles:
         role_check:
           allow_others: true
           path_map:
-          - regex_path: "^/api/transaction/.*"
-            map:
-              - roles:
-                - "transaction_r"
-                - "transaction_rw"
-                methods:
-                - "GET"
-              - roles:
-                - "transaction_rw"
-                methods:
-                - "POST"
-                - "PUT"
-                - "DELETE"
-      whoami:
+            - regex_path: ^/api/transaction/.*
+              map:
+                - roles: [transaction_r, transaction_rw]
+                  methods: [GET]
+                - roles: [transaction_rw]
+                  write_methods: true
+
+      app:
+        hello:
+          content_type: text/html; charset=utf-8
+          message: |
+            <html>
+              <body>
+                <h1>Turna protected page</h1>
+                <a href="/logout/">Logout</a>
+              </body>
+            </html>
+
+      api:
         service:
           loadbalancer:
             servers:
-              - url: "http://localhost:9090"
+              - url: http://localhost:9090
+
     routers:
       login:
         path: /login/*
@@ -165,34 +102,24 @@ server:
       logout:
         path: /logout/*
         middlewares:
-          - logout
+          - logout_flag
           - login
-      info:
+      current_user:
         path: /auth/info
         middlewares:
-          - session_info
-      role_data:
-        path: /role_data
-        middlewares:
-          - session
-          - role_data
-      role_check:
+          - current_user
+      api:
         path: /api/*
         middlewares:
-          - token
+          - token_api_mode
           - session
-          - role_check
-          - whoami
-      whoami:
-        path: /whoami/*
-        middlewares:
-          - token
-          - session
-          # - role
-          - whoami
-      main:
+          - api_roles
+          - api
+      app:
         path: /*
         middlewares:
           - session
-          - main
+          - app
 ```
+
+Routes under `/api/*` return `407` instead of redirecting because `token_api_mode` sets `disable_redirect`. Browser routes use the default redirect behavior and send users to `/login/`.

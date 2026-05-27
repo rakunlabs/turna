@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/rakunlabs/ok"
 	"github.com/spf13/cobra"
-	"github.com/worldline-go/klient"
 )
 
 var apiCmd = &cobra.Command{
@@ -41,12 +41,10 @@ func init() {
 }
 
 func runAPI(ctx context.Context) error {
-	client, err := klient.New(
-		klient.WithPooledClient(false),
-		klient.WithInsecureSkipVerify(apiCmdFlags.skipVerify),
-		klient.WithDisableRetry(true),
-		klient.WithDisableBaseURLCheck(true),
-		klient.WithLogger(slog.Default()),
+	client, err := ok.New(
+		ok.WithInsecureSkipVerify(apiCmdFlags.skipVerify),
+		ok.WithDisableRetry(true),
+		ok.WithLogger(slog.Default()),
 	)
 	if err != nil {
 		return err

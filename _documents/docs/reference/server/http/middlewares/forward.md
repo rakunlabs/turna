@@ -1,33 +1,26 @@
-# Forward
+# forward
 
-Forward HTTP proxy middleware is used to forward the request in the server.
-
-> Use this like `http_proxy` variable in the environment.
-
-```yaml
-server:
-  http:
-    middlewares:
-      forward:
-        forward:
-          insecure_skip_verify: false # default is false, bool, skip verify the certificate
-```
-
-Example configuration:
+`forward` turns an HTTP entrypoint into a forward proxy. It supports regular HTTP proxy requests and `CONNECT` tunnels.
 
 ```yaml
 server:
   entrypoints:
-    web:
+    proxy:
       address: ":9292"
   http:
     middlewares:
-      forward:
-        forward: {}
+      forward_proxy:
+        forward:
+          insecure_skip_verify: false
     routers:
-      project:
+      proxy:
         path: /*
-        # tls: {}
         middlewares:
-          - forward
+          - forward_proxy
 ```
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `insecure_skip_verify` | `false` | Skip upstream TLS verification. |
+
+Configure clients as if using an `http_proxy` or `https_proxy` endpoint.

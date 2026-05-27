@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rakunlabs/ok"
 	"github.com/worldline-go/cache"
 	"github.com/worldline-go/cache/store/memory"
 
-	"github.com/worldline-go/klient"
 	"github.com/rakunlabs/turna/pkg/loader/decoder"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/grpcui"
@@ -34,9 +34,9 @@ type View struct {
 	infoURLTime  time.Time
 	infoTmp      *Info
 
-	client *klient.Client `cfg:"-"`
-	grpcUI GrpcUI         `cfg:"-"`
-	pageUI PageUI         `cfg:"-"`
+	client *ok.Client `cfg:"-"`
+	grpcUI GrpcUI     `cfg:"-"`
+	pageUI PageUI     `cfg:"-"`
 
 	decoder *decoder.Decoder `cfg:"-"`
 }
@@ -114,12 +114,10 @@ func (m *View) Middleware(ctx context.Context, _ string) (func(http.Handler) htt
 	embedUI := setView(nil)
 
 	if m.InfoURL != "" {
-		client, err := klient.New(
-			klient.WithDisableBaseURLCheck(true),
-			klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
-			klient.WithDisableRetry(true),
-			klient.WithDisableEnvValues(true),
-			klient.WithLogger(slog.Default()),
+		client, err := ok.New(
+			ok.WithInsecureSkipVerify(m.InsecureSkipVerify),
+			ok.WithDisableRetry(true),
+			ok.WithLogger(slog.Default()),
 		)
 		if err != nil {
 			return nil, err

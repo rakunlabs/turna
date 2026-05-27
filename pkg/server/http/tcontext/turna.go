@@ -13,7 +13,7 @@ const (
 )
 
 type Turna struct {
-	Vars map[string]interface{}
+	Vars map[string]any
 
 	m sync.Mutex
 }
@@ -21,7 +21,7 @@ type Turna struct {
 func New(w http.ResponseWriter, r *http.Request) (*Turna, *http.Request) {
 	// set turna value
 	turna := &Turna{
-		Vars: make(map[string]interface{}),
+		Vars: make(map[string]any),
 	}
 
 	ctx := context.WithValue(r.Context(), TurnaKey, turna)
@@ -30,14 +30,14 @@ func New(w http.ResponseWriter, r *http.Request) (*Turna, *http.Request) {
 	return turna, r
 }
 
-func (t *Turna) Set(key string, value interface{}) {
+func (t *Turna) Set(key string, value any) {
 	t.m.Lock()
 	defer t.m.Unlock()
 
 	t.Vars[key] = value
 }
 
-func (t *Turna) Get(key string) (interface{}, bool) {
+func (t *Turna) Get(key string) (any, bool) {
 	t.m.Lock()
 	defer t.m.Unlock()
 
@@ -46,7 +46,7 @@ func (t *Turna) Get(key string) (interface{}, bool) {
 	return value, ok
 }
 
-func (t *Turna) GetInterface(key string) interface{} {
+func (t *Turna) GetInterface(key string) any {
 	value, _ := t.Get(key)
 
 	return value
@@ -67,7 +67,7 @@ func Set(r *http.Request, key string, value any) {
 	turna.Set(key, value)
 }
 
-func Get(r *http.Request, key string) interface{} {
+func Get(r *http.Request, key string) any {
 	turna, ok := GetTurna(r)
 	if !ok {
 		return nil

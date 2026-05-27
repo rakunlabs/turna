@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/worldline-go/klient"
+	"github.com/rakunlabs/ok"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/claims"
@@ -72,15 +72,13 @@ func (p *ProviderWrapper) GetName() string {
 func (m *Session) SetAction() error {
 	if m.Action.Token != nil {
 		// set auth client
-		client, err := klient.New(
-			klient.WithDisableBaseURLCheck(true),
-			klient.WithDisableRetry(true),
-			klient.WithDisableEnvValues(true),
-			klient.WithInsecureSkipVerify(m.Action.Token.InsecureSkipVerify),
-			klient.WithLogger(slog.Default()),
+		client, err := ok.New(
+			ok.WithDisableRetry(true),
+			ok.WithInsecureSkipVerify(m.Action.Token.InsecureSkipVerify),
+			ok.WithLogger(slog.Default()),
 		)
 		if err != nil {
-			return fmt.Errorf("cannot create klient: %w", err)
+			return fmt.Errorf("cannot create ok client: %w", err)
 		}
 
 		m.Action.Token.auth.Client = client.HTTP

@@ -20,7 +20,7 @@ type Information struct {
 	// Values list to store in the cookie like "preferred_username", "given_name", "family_name", "sid", "azp", "aud"
 	Values []string `cfg:"values"`
 	// Custom map to store in the cookie.
-	Custom map[string]interface{} `cfg:"custom"`
+	Custom map[string]any `cfg:"custom"`
 	// Roles to store in the cookie as []string.
 	Roles bool `cfg:"roles"`
 	// Scopes to store in the cookie as []string.
@@ -85,7 +85,7 @@ func (m *Info) Info(w http.ResponseWriter, r *http.Request) {
 		totalLen++
 	}
 
-	response := make(map[string]interface{}, totalLen)
+	response := make(map[string]any, totalLen)
 
 	for _, v := range m.Information.Values {
 		if claim, ok := claim.Map[v]; ok {

@@ -1,9 +1,16 @@
 # gzip
 
-Activate echo's gzip middleware.
+`gzip` compresses HTTP responses using chi's compression middleware.
 
 ```yaml
-middlewares:
-  test:
-    gzip: {}
+server:
+  http:
+    middlewares:
+      compress:
+        gzip:
+          level: 5
 ```
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `level` | `5` | Compression level. |

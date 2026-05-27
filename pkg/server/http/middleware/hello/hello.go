@@ -82,7 +82,7 @@ func (h *Hello) Middleware() (func(http.Handler) http.Handler, error) {
 				r.Body.Close()
 
 				// get all data for the template
-				data := map[string]interface{}{
+				data := map[string]any{
 					"body":         body,
 					"method":       r.Method,
 					"headers":      r.Header,

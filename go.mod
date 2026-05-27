@@ -23,6 +23,7 @@ require (
 	github.com/rakunlabs/chu v0.1.2
 	github.com/rakunlabs/into v0.4.2
 	github.com/rakunlabs/logi v0.4.3
+	github.com/rakunlabs/ok v0.1.0
 	github.com/rakunlabs/query v0.3.3
 	github.com/rbcervilla/redisstore/v9 v9.0.0
 	github.com/redis/go-redis/v9 v9.7.1
@@ -34,11 +35,10 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/things-go/go-socks5 v0.0.5
 	github.com/timshannon/badgerhold/v4 v4.0.3
-	github.com/twmb/tlscfg v1.2.1
+	github.com/twmb/tlscfg v1.3.0
 	github.com/worldline-go/cache v0.2.4
 	github.com/worldline-go/conn v0.1.0
 	github.com/worldline-go/igconfig v0.3.0
-	github.com/worldline-go/klient v0.9.16
 	github.com/worldline-go/logz v0.5.5
 	github.com/worldline-go/struct2 v1.3.1
 	github.com/worldline-go/types v0.5.5
@@ -81,6 +81,7 @@ require (
 	github.com/go-openapi/jsonreference v0.19.6 // indirect
 	github.com/go-openapi/spec v0.20.4 // indirect
 	github.com/go-openapi/swag v0.19.15 // indirect
+	github.com/go-test/deep v1.1.1 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/gomarkdown/markdown v0.0.0-20250810172220-2e2c11897d1a // indirect

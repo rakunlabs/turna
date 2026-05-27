@@ -1,101 +1,120 @@
 # Config
 
+Turna configuration is decoded into four main sections: `loads`, `preprocess`, `server`, and `services`.
+
 ```yaml
-log_level: info # application log, default is info
+log_level: info
+print: "turna started for {{ .APP_NAME }}"
 
-print: "text to print after the load complate: {{ .APP_NAME }}"
-
-loads: [] # check loads section
-preprocess: [] # check preprocess section
-server: {} # check server section
-services: [] # check services section
+loads: []
+preprocess: []
+server: {}
+services: []
 ```
 
-Turna now has 4 main sections, `loads`, `preprocess`, `server` and `services`. Check their sections for more information.
+## Startup Order
 
-- [loads](loads.md)
-- [preprocess](preprocess/preprocess.md)
-- [server](server/server.md)
-- [services](services.md)
+Turna applies configuration and runtime work in this order:
 
-Inside of the main parameters, there is `--config-consul`, `--config-vault` additional parameters to get configuration from consul and vault (consul first).  
-Also this can editable with environment variables.
+1. Load bootstrap settings from environment variables.
+2. Load Turna application config from Consul, Vault, file, and environment sources depending on `config_set`.
+3. Run `loads` and store loaded data in template memory.
+4. Run `preprocess` modules.
+5. Render and write the top-level `print` message to logs when configured.
+6. Start server entrypoints and routers.
+7. Start services.
+
+Dynamic `loads` can update loaded data later. When that happens, Turna refreshes template data and service filters.
+
+## Top-Level Fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `log_level` | string | Application log level. Default is `info`. |
+| `print` | string | Template rendered after loads and preprocess complete. |
+| `loads` | array | External data loaders. See [Loads](./loads). |
+| `preprocess` | array | Pre-start file processors. See [Preprocess](./preprocess/preprocess). |
+| `server` | object | HTTP/TCP server configuration. See [Server](./server/server). |
+| `services` | array | Local commands to run. See [Services](./services). |
+
+## Bootstrap Settings
+
+Bootstrap settings decide where the Turna config itself is loaded from.
+
+```yaml
+prefix:
+  vault: ""
+  consul: ""
+app_name: turna
+config_set:
+  consul: false
+  vault: false
+  file: true
+```
+
+Equivalent environment variables:
 
 ```sh
-APP_NAME=test # default is turna
-PREFIX_VAULT=finops # default is empty
-PREFIX_CONSUL=finops # default is empty
-
-# First initialize configuration, these variables are default
+APP_NAME=turna
+PREFIX_CONSUL=finops
+PREFIX_VAULT=secret
 CONFIG_SET_CONSUL=false
 CONFIG_SET_VAULT=false
 CONFIG_SET_FILE=true
 ```
 
-To set Consul's and Vault's configuration use their environment variables.
+The effective loader order is Consul, Vault, file, and environment. Environment variables are always loaded last.
 
-For basic configuration:
+## File Config
+
+File loading is enabled by default. Supported extensions are `toml`, `yaml`, `yml`, and `json`.
+
+Turna looks for a file named after `APP_NAME`, which defaults to `turna`, such as `turna.yaml`. Set `CONFIG_FILE` to use a specific file name.
 
 ```sh
-# CONSUL
-CONSUL_HTTP_ADDR="localhost:8500"
-
-# VAULT
-VAULT_ADDR="http://localhost:8200"
-VAULT_ROLE_ID="${ROLE_ID}"
-# VAULT_CONSUL_ADDR_DISABLE=false
+CONFIG_FILE=local.yaml turna
 ```
 
-## Environment variables
+## Consul And Vault Client Environment
 
-### Consul
+Consul uses `github.com/hashicorp/consul/api` environment variables. Common options:
 
-Using `github.com/hashicorp/consul/api`
+| Environment variable | Description |
+| --- | --- |
+| `CONSUL_HTTP_ADDR` | Consul address. |
+| `CONSUL_HTTP_TOKEN_FILE` | File containing the Consul token. |
+| `CONSUL_HTTP_TOKEN` | Consul token. |
+| `CONSUL_HTTP_AUTH` | HTTP basic auth. |
+| `CONSUL_HTTP_SSL` | Enable TLS. |
+| `CONSUL_TLS_SERVER_NAME` | TLS server name. |
+| `CONSUL_CACERT` | CA certificate file. |
+| `CONSUL_CAPATH` | CA certificate directory. |
+| `CONSUL_CLIENT_CERT` | Client certificate. |
+| `CONSUL_CLIENT_KEY` | Client key. |
+| `CONSUL_HTTP_SSL_VERIFY` | TLS verification toggle. |
+| `CONSUL_NAMESPACE` | Consul namespace. |
+| `CONSUL_PARTITION` | Consul partition. |
 
-| Environment variable   | Description            |
-| ---------------------- | ---------------------- |
-| CONSUL_HTTP_ADDR       | Consul address         |
-| CONSUL_HTTP_TOKEN_FILE | Consul token file      |
-| CONSUL_HTTP_TOKEN      | Consul token           |
-| CONSUL_HTTP_AUTH       | Consul auth            |
-| CONSUL_HTTP_SSL        | Consul ssl             |
-| CONSUL_TLS_SERVER_NAME | Consul tls server name |
-| CONSUL_CACERT          | Consul cacert          |
-| CONSUL_CAPATH          | Consul capath          |
-| CONSUL_CLIENT_CERT     | Consul client cert     |
-| CONSUL_CLIENT_KEY      | Consul client key      |
-| CONSUL_HTTP_SSL_VERIFY | Consul ssl verify      |
-| CONSUL_NAMESPACE       | Consul namespace       |
-| CONSUL_PARTITION       | Consul partition       |
+Vault uses `github.com/hashicorp/vault/api` environment variables. Common options:
 
-### Vault
-
-Using `github.com/hashicorp/vault/api`
-
-| Environment variable    | Description          |
-| ----------------------- | -------------------- |
-| VAULT_ROLE_ID           | Role ID              |
-| VAULT_ROLE_SECRET       | Role secret          |
-| VAULT_ADDR              | Vault address        |
-| VAULT_TOKEN             | Vault token          |
-| VAULT_AGENT_ADDR        | Vault agent address  |
-| VAULT_MAX_RETRIES       | Max retries          |
-| VAULT_CACERT            | CA certificate       |
-| VAULT_CACERT_BYTES      | CA certificate bytes |
-| VAULT_CAPATH            | CA path              |
-| VAULT_CLIENT_CERT       | Client certificate   |
-| VAULT_CLIENT_KEY        | Client key           |
-| VAULT_RATE_LIMIT        | Rate limit           |
-| VAULT_CLIENT_TIMEOUT    | Client timeout       |
-| VAULT_SKIP_VERIFY       | Skip verify          |
-| VAULT_SRV_LOOKUP        | SRV lookup           |
-| VAULT_TLS_SERVER_NAME   | TLS server name      |
-| VAULT_HTTP_PROXY        | HTTP proxy           |
-| VAULT_PROXY_ADDR        | Proxy address        |
-| VAULT_DISABLE_REDIRECTS | Disable redirects    |
-| VAULT_APPROLE_BASE_PATH | /auth/approle/login/ |
-
-## File
-
-Giving a file configuration, config file can be __[toml, yaml, yml, json]__ in the same directory with binary (`turna.yaml`) or your `APP_NAME` env value so if it is `test` than files checking `test.[...]`.  
-`CONFIG_FILE` environment variable also can be used to set config file name. Codec understand the file type from the extension.
+| Environment variable | Description |
+| --- | --- |
+| `VAULT_ADDR` | Vault address. |
+| `VAULT_TOKEN` | Vault token. |
+| `VAULT_ROLE_ID` | AppRole role ID. |
+| `VAULT_ROLE_SECRET` | AppRole secret. |
+| `VAULT_AGENT_ADDR` | Vault agent address. |
+| `VAULT_MAX_RETRIES` | Retry count. |
+| `VAULT_CACERT` | CA certificate file. |
+| `VAULT_CACERT_BYTES` | CA certificate bytes. |
+| `VAULT_CAPATH` | CA certificate directory. |
+| `VAULT_CLIENT_CERT` | Client certificate. |
+| `VAULT_CLIENT_KEY` | Client key. |
+| `VAULT_RATE_LIMIT` | Client-side rate limit. |
+| `VAULT_CLIENT_TIMEOUT` | Client timeout. |
+| `VAULT_SKIP_VERIFY` | Skip TLS verification. |
+| `VAULT_TLS_SERVER_NAME` | TLS server name. |
+| `VAULT_HTTP_PROXY` | HTTP proxy. |
+| `VAULT_PROXY_ADDR` | Proxy address. |
+| `VAULT_DISABLE_REDIRECTS` | Disable redirects. |
+| `VAULT_APPROLE_BASE_PATH` | AppRole login path. |

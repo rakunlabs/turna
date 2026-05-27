@@ -1,34 +1,27 @@
-# gRPC UI
+# grpcui
 
-Show gRPC UI in the browser to reaching your services.
-
-```yaml
-server:
-  http:
-    middlewares:
-      grpcui:
-        grpcui:
-            addr: dns:///localhost:8080 # addr is the address of the gRPC server like 'dns:///localhost:8080'
-            basepath: /xyz/
-            timer: "5m" # default is 5m, duration, timer to close the backend connection
-```
-
-Example configuration:
+`grpcui` serves a browser UI for a gRPC server.
 
 ```yaml
 server:
-  entrypoints:
-    web:
-      address: ":8082"
   http:
     middlewares:
       grpcui:
         grpcui:
           addr: dns:///localhost:8080
-          basepath: /xyz/
+          basepath: /grpc/
+          timer: 5m
     routers:
-      project:
-        path: /xyz/*
+      grpcui:
+        path: /grpc/*
         middlewares:
           - grpcui
 ```
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `addr` | | gRPC target address, such as `dns:///localhost:8080`. |
+| `basepath` | | Base path where the UI is served. |
+| `timer` | `5m` | Duration before closing the backend connection. |
+
+The config key is `grpcui`; the documentation file keeps the older `grpc_ui` path for stable links.

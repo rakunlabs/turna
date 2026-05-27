@@ -9,7 +9,7 @@ import (
 
 func TestGetEnv(t *testing.T) {
 	type args struct {
-		predefined map[string]interface{}
+		predefined map[string]any
 		environ    bool
 		envPaths   []string
 	}
@@ -17,14 +17,14 @@ func TestGetEnv(t *testing.T) {
 		name     string
 		args     args
 		osEnv    func()
-		exported map[string]interface{}
+		exported map[string]any
 		want     []string
 		wantErr  bool
 	}{
 		{
 			name: "test",
 			args: args{
-				predefined: map[string]interface{}{
+				predefined: map[string]any{
 					"test": "test",
 				},
 				environ: false,
@@ -34,7 +34,7 @@ func TestGetEnv(t *testing.T) {
 		{
 			name: "with env",
 			args: args{
-				predefined: map[string]interface{}{
+				predefined: map[string]any{
 					"PATH": "x",
 				},
 				environ: true,
@@ -47,7 +47,7 @@ func TestGetEnv(t *testing.T) {
 		{
 			name: "mix with env",
 			args: args{
-				predefined: map[string]interface{}{
+				predefined: map[string]any{
 					"PATH": "x",
 					"ABC":  "1234",
 				},
@@ -62,7 +62,7 @@ func TestGetEnv(t *testing.T) {
 		{
 			name: "mix with env and env_paths",
 			args: args{
-				predefined: map[string]interface{}{
+				predefined: map[string]any{
 					"PATH": "x",
 					"ABC":  "1234",
 				},
@@ -75,9 +75,9 @@ func TestGetEnv(t *testing.T) {
 				os.Setenv("PATH", "y")
 				os.Setenv("TR", "31")
 			},
-			exported: map[string]interface{}{
-				"test": map[string]interface{}{
-					"env": map[string]interface{}{
+			exported: map[string]any{
+				"test": map[string]any{
+					"env": map[string]any{
 						"Name": "Eray",
 					},
 				},

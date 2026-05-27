@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	okclient "github.com/rakunlabs/ok"
 	"github.com/worldline-go/cache"
-	"github.com/worldline-go/klient"
 
 	httputil2 "github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/model"
@@ -43,7 +43,7 @@ func (m *View) GetPageUI(ctx context.Context, page *Page) (*httputil.ReverseProx
 		return nil, err
 	}
 
-	c, err := klient.NewPlain()
+	c, err := okclient.New(okclient.WithDisableRetry(true))
 	if err != nil {
 		return nil, err
 	}

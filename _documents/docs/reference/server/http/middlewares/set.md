@@ -1,14 +1,23 @@
 # set
 
-Set values to the context. It is useful for interacting other middlewares.
+`set` stores values in Turna's request context for later middlewares.
 
 ```yaml
-middlewares:
-  test:
-    set:
-      values: # default is empty, []string values always true
-        - value1
-        - value2
-      map: # default is empty, map[string]interface{}
-        key: value
+server:
+  http:
+    middlewares:
+      token_mode:
+        set:
+          values:
+            - token_header
+            - disable_redirect
+          map:
+            cookie_name: api_session
 ```
+
+| Field | Description |
+| --- | --- |
+| `values` | Each listed key is stored with boolean value `true`. |
+| `map` | Arbitrary key/value pairs stored in request context. |
+
+Common session/login context keys include `token_header`, `token_header_delete`, `disable_redirect`, `cookie_name`, and `logout`.

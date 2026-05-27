@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/worldline-go/klient"
+	"github.com/rakunlabs/ok"
 )
 
 type Service struct {
@@ -82,11 +82,12 @@ func (m *Service) Middleware() ([]func(http.Handler) http.Handler, error) {
 
 	cfg.Balancer = balancer
 
-	client, err := klient.NewPlain(
-		klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
+	client, err := ok.New(
+		ok.WithDisableRetry(true),
+		ok.WithInsecureSkipVerify(m.InsecureSkipVerify),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("cannot create klient: %w", err)
+		return nil, fmt.Errorf("cannot create ok client: %w", err)
 	}
 
 	cfg.Transport = client.HTTP.Transport

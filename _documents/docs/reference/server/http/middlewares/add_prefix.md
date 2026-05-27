@@ -1,9 +1,16 @@
 # add_prefix
 
-Addition of a prefix to the path of the request.
+`add_prefix` prepends a path segment to `r.URL.Path` before the next middleware runs.
 
 ```yaml
-test:
-  addprefix:
-    prefix: /test
+server:
+  http:
+    middlewares:
+      add_api:
+        add_prefix:
+          prefix: /api
 ```
+
+If the incoming path is `/users`, the next middleware sees `/api/users`.
+
+Use `strip_prefix` for the opposite operation.

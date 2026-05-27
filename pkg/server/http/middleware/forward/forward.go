@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/worldline-go/klient"
+	"github.com/rakunlabs/ok"
 )
 
 type Forward struct {
@@ -19,11 +19,12 @@ type Forward struct {
 }
 
 func (m *Forward) Middleware() (func(http.Handler) http.Handler, error) {
-	client, err := klient.NewPlain(
-		klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
+	client, err := ok.New(
+		ok.WithDisableRetry(true),
+		ok.WithInsecureSkipVerify(m.InsecureSkipVerify),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("cannot create klient: %w", err)
+		return nil, fmt.Errorf("cannot create ok client: %w", err)
 	}
 
 	return func(next http.Handler) http.Handler {

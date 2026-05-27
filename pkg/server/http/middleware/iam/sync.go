@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/rakunlabs/ok"
 	httputil2 "github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/redis/go-redis/v9"
-	"github.com/worldline-go/klient"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
@@ -60,7 +60,7 @@ type Sync struct {
 	db SyncDB
 	// syncAPI is not nil, it means this service is read-only
 	syncAPI     *SyncAPI
-	client      *klient.Client
+	client      *ok.Client
 	redis       redis.UniversalClient
 	topic       string
 	shared      Shared
@@ -149,7 +149,7 @@ func (s *Shared) Wait(version uint64) {
 }
 
 func NewSync(cfg SyncConfig) (*Sync, error) {
-	client, err := klient.NewPlain()
+	client, err := ok.New(ok.WithDisableRetry(true))
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +370,7 @@ func (s *Sync) sync(ctx context.Context, targetVersion uint64) error {
 	req.URL.RawQuery = query.Encode()
 
 	if err := s.client.Do(req, func(r *http.Response) error {
-		if err := klient.UnexpectedResponse(r); err != nil {
+		if err := ok.UnexpectedResponse(r); err != nil {
 			return err
 		}
 
@@ -403,7 +403,7 @@ func (s *Sync) getVersion(ctx context.Context) (uint64, error) {
 	}
 
 	responseVersion := data.ResponseVersion{}
-	if err := s.client.Do(req, klient.ResponseFuncJSON(&responseVersion)); err != nil {
+	if err := s.client.Do(req, ok.ResponseFuncJSON(&responseVersion)); err != nil {
 		return 0, fmt.Errorf("failed to get version: %w", err)
 	}
 

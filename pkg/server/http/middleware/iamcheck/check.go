@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"github.com/worldline-go/klient"
+	"github.com/rakunlabs/ok"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
@@ -21,8 +21,8 @@ type IamCheck struct {
 	Responses []Response      `cfg:"responses"`
 	ForceHost string          `cfg:"force_host"`
 
-	InsecureSkipVerify bool           `cfg:"insecure_skip_verify"`
-	client             *klient.Client `cfg:"-"`
+	InsecureSkipVerify bool       `cfg:"insecure_skip_verify"`
+	client             *ok.Client `cfg:"-"`
 }
 
 type Response struct {
@@ -37,11 +37,12 @@ type Response struct {
 
 func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 	// set cehck client
-	client, err := klient.NewPlain(
-		klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
+	client, err := ok.New(
+		ok.WithDisableRetry(true),
+		ok.WithInsecureSkipVerify(m.InsecureSkipVerify),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("cannot create klient: %w", err)
+		return nil, fmt.Errorf("cannot create ok client: %w", err)
 	}
 
 	m.client = client

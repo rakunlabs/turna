@@ -1,37 +1,79 @@
 # Services
 
-With services you can run multiple applications. Define the order of the services, or define dependencies between them.
+`services` starts local commands after loads, preprocess, and server setup. Use it to run migrations, helper processes, or the main application next to Turna.
 
 ```yaml
 services:
-  - name: "" # name of the service, must be unique.
-    path: "" # path of service, command run inside this path
-    command: "" # command to run with args
-    env: {} # environment variables, usable with go template (mugo funcs)
-    env_values: [] # list of environment variables path from exported config
-    inherit_env: false # inherit environment variables
-    filters: [] # to filter stdout
-    filters_values: [] # list of filters variables path from exported config
-    order: 0 # order of the service, default is 0, lower is first. If same order set, they will run in parallel. All should be done to continue next order.
-    depends: [] # Depends is a list of service names to depend on. Order is ignoring if depend is set
-    allow_failure: false # allow failure of the service, default is false
-    user: "" # set user, uid:gid or username to run the command. Example: 0 or root:root or 1234:5555
+  - name: app
+    path: .
+    command: ./app --config {{ .config_path }}
+    env:
+      APP_ENV: production
+    env_values: []
+    inherit_env: false
+    user: ""
+    filters: []
+    filters_values: []
+    order: 0
+    depends: []
+    allow_failure: false
 ```
 
-## Example
+## Fields
 
-Run multiple command first and start the main program.
+| Field | Description |
+| --- | --- |
+| `name` | Unique service name. Used by dependencies and logs. |
+| `path` | Working directory for the command. |
+| `command` | Command line. Rendered as a Turna template, then parsed like a shell command. |
+| `env` | Environment variables. Values can use templates. |
+| `env_values` | Paths in loaded data that provide extra environment variables. |
+| `inherit_env` | Copy the current process environment before applying `env`. |
+| `user` | Run as a user or uid/gid, such as `root`, `1000`, or `1000:1000`. |
+| `filters` | Suppress stdout/stderr lines containing these byte strings. |
+| `filters_values` | Paths in loaded data that provide additional filters. |
+| `order` | Services without dependencies run by ascending order. Same order runs in parallel. |
+| `depends` | Service names that must finish before this one starts. When set, `order` is ignored. |
+| `allow_failure` | Continue even if the command exits with a non-zero status. |
+
+## Dependency Example
 
 ```yaml
 services:
-  - name: echo
-    command: echo sss
-  - name: fail
-    command: /bin/bash -c "exit 2"
+  - name: migrate
+    command: ./migrate.sh
+    order: 0
+
+  - name: cache-warmup
+    command: ./warmup.sh
+    order: 0
     allow_failure: true
-  - name: main
-    command: echo main
+
+  - name: app
+    command: ./app
     depends:
-      - echo
-      - fail
+      - migrate
+      - cache-warmup
+```
+
+`migrate` and `cache-warmup` can run in parallel because they share the same order. `app` starts after both dependencies complete. `cache-warmup` may fail without stopping the run because `allow_failure` is true.
+
+## Template Data
+
+`command` and `env` values are rendered with loaded data. For example:
+
+```yaml
+loads:
+  - name: app_env
+    statics:
+      - content:
+          name: app_env
+          content: |
+            PORT: "3000"
+
+services:
+  - name: app
+    command: ./app --port {{ .app_env.PORT }}
+    env:
+      PORT: "{{ .app_env.PORT }}"
 ```

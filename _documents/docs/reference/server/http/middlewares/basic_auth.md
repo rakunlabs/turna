@@ -1,18 +1,23 @@
 # basic_auth
 
-Basic authentication middleware.
-
-For basic auth check uses `github.com/abbot/go-http-auth` package.  
-Users as `htpasswd`.
+`basic_auth` protects a route with HTTP Basic authentication. Users are configured as `username:htpasswd_hash` entries and are checked with `github.com/abbot/go-http-auth`.
 
 ```yaml
-middlewares:
-  test:
-    basic_auth:
-      users:
-        - "test:$apr1$JMWtQHoL$g/5ey5x7psJM7htuB6OEy0" # pass
-        - "test2:$apr1$u4NQ6Doq$KdCzBPfjarcQ0mk4Fd/3v1" # pass
-      header_field: "" # default is empty, string, add the username to the request's header
-      remove_header: false # default is false, bool, remove the Authorization header
+server:
+  http:
+    middlewares:
+      private_auth:
+        basic_auth:
+          realm: Restricted
+          users:
+            - "test:$apr1$JMWtQHoL$g/5ey5x7psJM7htuB6OEy0"
+          header_field: X-User
+          remove_header: true
 ```
 
+| Field | Default | Description |
+| --- | --- | --- |
+| `users` | | List of `username:hash` credentials. |
+| `realm` | `Restricted` | Realm sent in `WWW-Authenticate`. |
+| `header_field` | `X-User` | Request header set to the authenticated username. Set an empty value to disable. |
+| `remove_header` | `false` | Remove the original `Authorization` header after successful authentication. |

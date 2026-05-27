@@ -20,7 +20,7 @@ type (
 	ProxyTarget struct {
 		Name string
 		URL  *url.URL
-		Meta map[string]interface{}
+		Meta map[string]any
 	}
 
 	// ProxyBalancer defines an interface to implement a load balancing technique.

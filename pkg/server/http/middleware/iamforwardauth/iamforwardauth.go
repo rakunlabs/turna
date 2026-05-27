@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/worldline-go/klient"
+	"github.com/rakunlabs/ok"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam"
@@ -31,8 +31,8 @@ type IamForwardAuth struct {
 	PassHeaders []string `cfg:"pass_headers"`
 
 	InsecureSkipVerify bool           `cfg:"insecure_skip_verify"`
-	client             *klient.Client `cfg:"-"`
-	iamInstance        *iam.Iam       `cfg:"-"`
+	client             *ok.Client `cfg:"-"`
+	iamInstance        *iam.Iam   `cfg:"-"`
 }
 
 func (m *IamForwardAuth) Init() error {
@@ -48,11 +48,12 @@ func (m *IamForwardAuth) Init() error {
 
 func (m *IamForwardAuth) Middleware() (func(http.Handler) http.Handler, error) {
 	if m.IamMiddleware == nil {
-		client, err := klient.NewPlain(
-			klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
+		client, err := ok.New(
+			ok.WithDisableRetry(true),
+			ok.WithInsecureSkipVerify(m.InsecureSkipVerify),
 		)
 		if err != nil {
-			return nil, fmt.Errorf("cannot create klient: %w", err)
+			return nil, fmt.Errorf("cannot create ok client: %w", err)
 		}
 
 		m.client = client

@@ -24,7 +24,7 @@ type Custom struct {
 	RoleSet  map[string]struct{} `json:"-"`
 
 	// Map claims
-	Map map[string]interface{} `json:"-"`
+	Map map[string]any `json:"-"`
 
 	jwt.RegisteredClaims
 }

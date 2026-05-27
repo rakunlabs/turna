@@ -2,7 +2,7 @@ package config
 
 import "github.com/worldline-go/struct2"
 
-func Decode(input, output interface{}) error {
+func Decode(input, output any) error {
 	if input == nil {
 		return nil
 	}

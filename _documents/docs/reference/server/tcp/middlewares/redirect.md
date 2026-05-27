@@ -1,37 +1,35 @@
-# Redirect
+# redirect
 
-Redirect middleware is used to redirect the request to a different address and network.
-
-```yaml
-server:
-  tcp:
-    middlewares:
-      redirect:
-        redirect:
-          address: "example.com:22" # Address to redirect to should be in the format with network
-          network: "tcp" # Could be "tcp", "tcp4", "tcp6", "unix", "unixpacket", "udp", "udp4", "udp6"
-          disable_nagle: false # Disable Nagle's algorithm
-          dial_timeout: "10s" # Timeout for the connection, default is none
-          proxy_protocol: false # Enable PROXY protocol
-          buffer: 65535 # Buffer size for the connection default is 65535 (64KB)
-```
-
-Example configuration:
+`redirect` connects each accepted TCP connection to another address and copies bytes in both directions.
 
 ```yaml
 server:
   entrypoints:
-    ssh:
-      address: ":8822"
+    docker:
+      address: ":2375"
   tcp:
     middlewares:
-      redirect:
+      docker_socket:
         redirect:
-          address: "example.com:22"
+          address: /var/run/docker.sock
+          network: unix
+          disable_nagle: false
+          dial_timeout: 10s
+          proxy_protocol: false
+          buffer: 65535
     routers:
-      mytcprouter:
+      docker:
         entrypoints:
-          - ssh
+          - docker
         middlewares:
-          - redirect
+          - docker_socket
 ```
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `address` | | Upstream address. |
+| `network` | `tcp` | Upstream network: `tcp`, `tcp4`, `tcp6`, `unix`, `unixpacket`, `udp`, `udp4`, or `udp6`. |
+| `disable_nagle` | `false` | Disable Nagle's algorithm for TCP connections. |
+| `dial_timeout` | none | Timeout for dialing the upstream. |
+| `proxy_protocol` | `false` | Send PROXY protocol metadata for TCP upstreams. |
+| `buffer` | `65535` | Copy buffer size. |

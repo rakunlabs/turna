@@ -1,6 +1,6 @@
 # View
 
-Swagger pages in one place.
+This example serves the API documentation UI under `/view/*` with inline Swagger entries.
 
 ```yaml
 server:
@@ -9,50 +9,27 @@ server:
       address: ":8082"
   http:
     middlewares:
-      info:
-        hello:
-          message: |
-            swagger_settings:
-              base_path_prefix: /api
-              disable_authorize_button: true
-              schemes: ["HTTPS"]
-            swagger:
-              - name: test1
-                link: https://petstore.swagger.io/v2/swagger.json
-                base_path_prefix: /api
-                disable_authorize_button: true
-              - name: test2
-                link: https://petstore.swagger.io/v2/swagger.json
-                disable_authorize_button: false
-              - name: test3
-                link: https://petstore.swagger.io/v2/swagger.json
       view:
         view:
           prefix_path: /view/
-          # info_url: http://localhost:8082/info
-          info_url_type: YAML
+          info_url_type: yaml
           info:
             swagger_settings:
               base_path_prefix: /api
               disable_authorize_button: true
-              schemes: ["HTTPS"]
+              schemes: [HTTPS]
             swagger:
-              - name: test1
+              - name: petstore
                 link: https://petstore.swagger.io/v2/swagger.json
                 base_path_prefix: /api
                 disable_authorize_button: true
-              - name: test2
-                link: https://petstore.swagger.io/v2/swagger.json
-                disable_authorize_button: false
-              - name: test3
+              - name: petstore-public
                 link: https://petstore.swagger.io/v2/swagger.json
     routers:
       view:
         path: /view/*
         middlewares:
           - view
-      info:
-        path: /info
-        middlewares:
-          - info
 ```
+
+Use `info_url` when the Swagger list should be fetched from another endpoint instead of being embedded in the Turna config.

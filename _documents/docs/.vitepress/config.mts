@@ -1,15 +1,62 @@
 import { defineConfig } from 'vitepress'
 
-// https://vitepress.dev/reference/site-config
+const httpMiddlewares = [
+  ['Overview', '/reference/server/http/middlewares/'],
+  ['access_log', '/reference/server/http/middlewares/access_log'],
+  ['add_prefix', '/reference/server/http/middlewares/add_prefix'],
+  ['basic_auth', '/reference/server/http/middlewares/basic_auth'],
+  ['block', '/reference/server/http/middlewares/block'],
+  ['cors', '/reference/server/http/middlewares/cors'],
+  ['decompress', '/reference/server/http/middlewares/decompress'],
+  ['dns_path', '/reference/server/http/middlewares/dns_path'],
+  ['folder', '/reference/server/http/middlewares/folder'],
+  ['forward', '/reference/server/http/middlewares/forward'],
+  ['grpcui', '/reference/server/http/middlewares/grpc_ui'],
+  ['gzip', '/reference/server/http/middlewares/gzip'],
+  ['headers', '/reference/server/http/middlewares/headers'],
+  ['hello', '/reference/server/http/middlewares/hello'],
+  ['iam', '/reference/server/http/middlewares/iam'],
+  ['iam_check', '/reference/server/http/middlewares/iam_check'],
+  ['iam_forward_auth', '/reference/server/http/middlewares/iam_forward_auth'],
+  ['info', '/reference/server/http/middlewares/info'],
+  ['inject', '/reference/server/http/middlewares/inject'],
+  ['log', '/reference/server/http/middlewares/log'],
+  ['login', '/reference/server/http/middlewares/login'],
+  ['oauth2', '/reference/server/http/middlewares/oauth2'],
+  ['path', '/reference/server/http/middlewares/path'],
+  ['print', '/reference/server/http/middlewares/print'],
+  ['rate_limit', '/reference/server/http/middlewares/rate_limit'],
+  ['redirect_continue', '/reference/server/http/middlewares/redirect_continue'],
+  ['redirection', '/reference/server/http/middlewares/redirection'],
+  ['regex_path', '/reference/server/http/middlewares/regex_path'],
+  ['request', '/reference/server/http/middlewares/request'],
+  ['request_id', '/reference/server/http/middlewares/request_id'],
+  ['role', '/reference/server/http/middlewares/role'],
+  ['role_check', '/reference/server/http/middlewares/role_check'],
+  ['role_data', '/reference/server/http/middlewares/role_data'],
+  ['scope', '/reference/server/http/middlewares/scope'],
+  ['service', '/reference/server/http/middlewares/service'],
+  ['session', '/reference/server/http/middlewares/session'],
+  ['session_info', '/reference/server/http/middlewares/session_info'],
+  ['set', '/reference/server/http/middlewares/set'],
+  ['splitter', '/reference/server/http/middlewares/splitter'],
+  ['strip_prefix', '/reference/server/http/middlewares/strip_prefix'],
+  ['template', '/reference/server/http/middlewares/template'],
+  ['token_pass', '/reference/server/http/middlewares/token_pass'],
+  ['try', '/reference/server/http/middlewares/try'],
+  ['url', '/reference/server/http/middlewares/url'],
+  ['view', '/reference/server/http/middlewares/view'],
+].map(([text, link]) => ({ text, link }))
+
 export default defineConfig({
-  title: "turna",
-  description: "turna documentation",
-  base: "/turna/",
+  title: 'turna',
+  description: 'turna documentation',
+  base: '/turna/',
   themeConfig: {
-    // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'Documents', link: '/introduction/getting-started.md' }
+      { text: 'Docs', link: '/introduction/getting-started' },
+      { text: 'Reference', link: '/reference/config' },
     ],
 
     sidebar: [
@@ -19,21 +66,22 @@ export default defineConfig({
           { text: 'Getting Started', link: '/introduction/getting-started' },
           { text: 'Command Line Interface', link: '/introduction/cli' },
           { text: 'Features', link: '/introduction/features' },
-        ]
+        ],
       },
       {
         text: 'Reference',
         items: [
-          { text: 'Config', link: '/reference/config.md' },
-          { text: 'Loads', link: '/reference/loads.md' },
-          { text: 'Preprocess',
+          { text: 'Config', link: '/reference/config' },
+          { text: 'Loads', link: '/reference/loads' },
+          {
+            text: 'Preprocess',
             items: [
-              {text: 'Preprocess', link: '/reference/preprocess/preprocess.md' },
+              { text: 'Preprocess', link: '/reference/preprocess/preprocess' },
               {
                 text: 'Modules',
                 collapsed: true,
                 items: [
-                  {text: 'replace', link: '/reference/preprocess/modules/replace.md' },
+                  { text: 'replace', link: '/reference/preprocess/modules/replace' },
                 ],
               },
             ],
@@ -41,86 +89,56 @@ export default defineConfig({
           {
             text: 'Server',
             items: [
-              { text: 'Server', link: '/reference/server/server.md' },
+              { text: 'Server', link: '/reference/server/server' },
               {
                 text: 'HTTP',
                 collapsed: true,
                 items: [
                   {
-                    text: "Middlewares",
+                    text: 'Middlewares',
                     collapsed: true,
-                    items: [
-                      { text: 'add_prefix', link: '/reference/server/http/middlewares/add_prefix.md' },
-                      { text: 'auth', link: '/reference/server/http/middlewares/auth.md' },
-                      { text: 'basic_auth', link: '/reference/server/http/middlewares/basic_auth.md' },
-                      { text: 'block', link: '/reference/server/http/middlewares/block.md' },
-                      { text: 'cors', link: '/reference/server/http/middlewares/cors.md' },
-                      { text: 'decompress', link: '/reference/server/http/middlewares/decompress.md' },
-                      { text: 'dns_path', link: '/reference/server/http/middlewares/dns_path.md' },
-                      { text: 'folder', link: '/reference/server/http/middlewares/folder.md' },
-                      { text: 'forward', link: '/reference/server/http/middlewares/forward.md' },
-                      { text: 'grpc_ui', link: '/reference/server/http/middlewares/grpc_ui.md' },
-                      { text: 'gzip', link: '/reference/server/http/middlewares/gzip.md' },
-                      { text: 'headers', link: '/reference/server/http/middlewares/headers.md' },
-                      { text: 'hello', link: '/reference/server/http/middlewares/hello.md' },
-                      { text: 'info', link: '/reference/server/http/middlewares/info.md' },
-                      { text: 'inject', link: '/reference/server/http/middlewares/inject.md' },
-                      { text: 'log', link: '/reference/server/http/middlewares/log.md' },
-                      { text: 'login', link: '/reference/server/http/middlewares/login.md' },
-                      { text: 'regex_path', link: '/reference/server/http/middlewares/regex_path.md' },
-                      { text: 'role', link: '/reference/server/http/middlewares/role.md' },
-                      { text: 'role_check', link: '/reference/server/http/middlewares/role_check.md' },
-                      { text: 'role_data', link: '/reference/server/http/middlewares/role_data.md' },
-                      { text: 'scope', link: '/reference/server/http/middlewares/scope.md' },
-                      { text: 'service', link: '/reference/server/http/middlewares/service.md' },
-                      { text: 'session', link: '/reference/server/http/middlewares/session.md'},
-                      { text: 'session_info', link: '/reference/server/http/middlewares/session_info.md' },
-                      { text: 'set', link: '/reference/server/http/middlewares/set.md' },
-                      { text: 'strip_prefix', link: '/reference/server/http/middlewares/strip_prefix.md' },
-                      { text: 'template', link: '/reference/server/http/middlewares/template.md' },
-                      { text: 'view', link: '/reference/server/http/middlewares/view.md' },
-                    ],
+                    items: httpMiddlewares,
                   },
                 ],
               },
               {
-                text: "TCP",
+                text: 'TCP',
                 collapsed: true,
                 items: [
                   {
-                    text: "Middlewares",
+                    text: 'Middlewares',
                     collapsed: true,
                     items: [
-                      { text: 'ip_allow_list', link: '/reference/server/tcp/middlewares/ip_allow_list.md' },
-                      { text: 'redirect', link: '/reference/server/tcp/middlewares/redirect.md' },
-                      { text: 'socks5', link: '/reference/server/tcp/middlewares/socks5.md' },
+                      { text: 'ip_allow_list', link: '/reference/server/tcp/middlewares/ip_allow_list' },
+                      { text: 'redirect', link: '/reference/server/tcp/middlewares/redirect' },
+                      { text: 'socks5', link: '/reference/server/tcp/middlewares/socks5' },
                     ],
                   },
-                ]
+                ],
               },
             ],
           },
-          { text: 'Services', link: '/reference/services.md' },
-        ]
+          { text: 'Services', link: '/reference/services' },
+        ],
       },
       {
         text: 'Examples',
         collapsed: true,
         items: [
-          { text: 'Basic Auth', link: '/examples/basic_auth.md' },
-          { text: 'Env', link: '/examples/env.md' },
-          { text: 'Folder', link: '/examples/folder.md' },
-          { text: 'Login', link: '/examples/login.md' },
-          { text: 'Oauth2', link: '/examples/oauth2.md' },
-          { text: 'Preprocess', link: '/examples/preprocess.md' },
-          { text: 'TLS', link: '/examples/tls.md' },
-          { text: 'View', link: '/examples/view.md' },
+          { text: 'Basic Auth', link: '/examples/basic_auth' },
+          { text: 'Env', link: '/examples/env' },
+          { text: 'Folder', link: '/examples/folder' },
+          { text: 'Login', link: '/examples/login' },
+          { text: 'OAuth2', link: '/examples/oauth2' },
+          { text: 'Preprocess', link: '/examples/preprocess' },
+          { text: 'TLS', link: '/examples/tls' },
+          { text: 'View', link: '/examples/view' },
         ],
-      }
+      },
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/rakunlabs/turna' }
-    ]
-  }
+      { icon: 'github', link: 'https://github.com/rakunlabs/turna' },
+    ],
+  },
 })

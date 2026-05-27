@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rakunlabs/ok"
 	httputil2 "github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/worldline-go/klient"
 )
 
 var (
@@ -43,7 +43,7 @@ type Path struct {
 	Duration           time.Duration `cfg:"duration"`
 
 	rgx      *regexp.Regexp
-	client   *klient.Client
+	client   *ok.Client
 	ipHolder *IPHolder
 
 	lastCheck time.Time
@@ -91,11 +91,12 @@ func (m *DNSPath) Middleware() (func(http.Handler) http.Handler, error) {
 			p.Schema = DefaultSchema
 		}
 
-		client, err := klient.NewPlain(
-			klient.WithInsecureSkipVerify(p.InsecureSkipVerify),
+		client, err := ok.New(
+			ok.WithDisableRetry(true),
+			ok.WithInsecureSkipVerify(p.InsecureSkipVerify),
 		)
 		if err != nil {
-			return nil, fmt.Errorf("cannot create klient: %w", err)
+			return nil, fmt.Errorf("cannot create ok client: %w", err)
 		}
 
 		p.client = client

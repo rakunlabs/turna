@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/rakunlabs/ok"
 	"github.com/rytsh/mugo/fstore"
 	"github.com/rytsh/mugo/templatex"
-	"github.com/worldline-go/klient"
 	"gopkg.in/yaml.v3"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
@@ -34,8 +34,8 @@ type TokenPass struct {
 	BodyRaw          bool   `cfg:"body_raw"`
 	BodyTemplate     string `cfg:"body"`
 
-	AdditionalValues   interface{} `cfg:"additional_values"`
-	DefaultExpDuration string      `cfg:"default_exp_duration"`
+	AdditionalValues   any    `cfg:"additional_values"`
+	DefaultExpDuration string `cfg:"default_exp_duration"`
 
 	InsecureSkipVerify bool              `cfg:"insecure_skip_verify"`
 	EnableRetry        bool              `cfg:"enable_retry"`
@@ -47,8 +47,8 @@ type TokenPass struct {
 	tpl *templatex.Template
 }
 
-func (m *TokenPass) data(r *http.Request, body []byte) (map[string]interface{}, error) {
-	var bodyMap interface{}
+func (m *TokenPass) data(r *http.Request, body []byte) (map[string]any, error) {
+	var bodyMap any
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &bodyMap); err != nil {
 			return nil, err
@@ -57,7 +57,7 @@ func (m *TokenPass) data(r *http.Request, body []byte) (map[string]interface{}, 
 	}
 
 	// get all data for the template
-	return map[string]interface{}{
+	return map[string]any{
 		"body":         bodyMap,
 		"body_raw":     body,
 		"method":       r.Method,
@@ -69,7 +69,7 @@ func (m *TokenPass) data(r *http.Request, body []byte) (map[string]interface{}, 
 	}, nil
 }
 
-func (m *TokenPass) render(data map[string]interface{}, content string) ([]byte, error) {
+func (m *TokenPass) render(data map[string]any, content string) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := m.tpl.Execute(
 		templatex.WithIO(&buf),
@@ -99,15 +99,13 @@ func (m *TokenPass) Middleware() (func(http.Handler) http.Handler, error) {
 		jwtMethod = jwt.SigningMethodHS256
 	}
 
-	client, err := klient.New(
-		klient.WithDisableBaseURLCheck(true),
-		klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
-		klient.WithDisableRetry(!m.EnableRetry),
-		klient.WithDisableEnvValues(true),
-		klient.WithLogger(slog.Default()),
+	client, err := ok.New(
+		ok.WithInsecureSkipVerify(m.InsecureSkipVerify),
+		ok.WithDisableRetry(!m.EnableRetry),
+		ok.WithLogger(slog.Default()),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create klient client: %w", err)
+		return nil, fmt.Errorf("failed to create ok client: %w", err)
 	}
 
 	if m.Method == "" {

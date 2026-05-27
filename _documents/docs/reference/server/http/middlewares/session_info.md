@@ -1,15 +1,30 @@
-# Session Info
+# session_info
 
-Return the data inside of the token.
+`session_info` returns selected claims from the access token stored by a [`session`](./session) middleware.
 
 ```yaml
-middlewares:
-  session_info:
-    session_info:
-      information:
-        values: [] # Values list to store in the cookie like "preferred_username", "given_name"...
-        custom: {} # Custom values to append
-        roles: false # If true, it will return roles as []string
-        scopes: false # If true, it will return scopes as []string
-      session_middleware: "session" # session middleware name to to parse token
+server:
+  http:
+    middlewares:
+      current_user:
+        session_info:
+          session_middleware: session
+          information:
+            values:
+              - preferred_username
+              - email
+            custom:
+              source: turna
+            roles: true
+            scopes: true
 ```
+
+| Field | Description |
+| --- | --- |
+| `session_middleware` | Session middleware instance name. |
+| `information.values` | Claim keys copied into the response. |
+| `information.custom` | Extra static values added to the response. |
+| `information.roles` | Include roles parsed from the token. |
+| `information.scopes` | Include scopes parsed from the token. |
+
+The route should usually run after the browser has already logged in, but it does not need to chain `session` in the same router because it reads the session store by middleware name.

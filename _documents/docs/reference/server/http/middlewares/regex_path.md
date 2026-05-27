@@ -1,13 +1,15 @@
 # regex_path
 
-Use regex to replace URL path.
-
-It uses golang's std regex ReplaceAllString function.
+`regex_path` rewrites `r.URL.Path` with Go's `regexp.ReplaceAllString`.
 
 ```yaml
-middlewares:
-  test:
-    regex_path:
-      regex: ^/v1/secret/data/(.*)$
-      replacement: /v1/secret/kv2/data/$1
+server:
+  http:
+    middlewares:
+      kv2_path:
+        regex_path:
+          regex: ^/v1/secret/data/(.*)$
+          replacement: /v1/secret/kv2/data/$1
 ```
+
+The rewritten path is passed to the next middleware in the chain.

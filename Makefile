@@ -18,6 +18,18 @@ build: ## Build the binary
 build-container: build ## Build the container image with test tag
 	docker build -t $(PROJECT):test -f ci/alpine.Dockerfile dist/turna_linux_amd64_v1/
 
+.PHONY: docs
+docs: ## Run documentation dev server
+	pnpm --dir _documents docs:dev
+
+.PHONY: docs-build
+docs-build: ## Build documentation site
+	pnpm --dir _documents docs:build
+
+.PHONY: docs-preview
+docs-preview: ## Preview built documentation site
+	pnpm --dir _documents docs:preview
+
 .PHONY: lint
 lint: ## Run linter
 	GOPATH="$(shell dirname $(PWD))" golangci-lint run

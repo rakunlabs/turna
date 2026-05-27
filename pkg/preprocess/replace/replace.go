@@ -36,7 +36,7 @@ type Content struct {
 	NewTemplate bool   `cfg:"new_template"`
 	new         []byte
 
-	// Value from load name, key value and type is map[string]interface{}
+	// Value from load name, key value and type is map[string]any
 	Value      string `cfg:"value"`
 	valueBytes []oldNew
 }

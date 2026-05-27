@@ -33,7 +33,7 @@ type InjectContent struct {
 	AddPrefix  string `cfg:"add_prefix"`
 	AddPostfix string `cfg:"add_postfix"`
 
-	// Value from load name, key value and type is map[string]interface{}
+	// Value from load name, key value and type is map[string]any
 	Value      string `cfg:"value"`
 	valueBytes []oldNew
 
@@ -46,9 +46,9 @@ type oldNew struct {
 }
 
 func (s *Inject) values(loadName string) ([]oldNew, error) {
-	v, ok := render.Data[loadName].(map[string]interface{})
+	v, ok := render.Data[loadName].(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("inject value %s is not map[string]interface{}", loadName)
+		return nil, fmt.Errorf("inject value %s is not map[string]any", loadName)
 	}
 
 	valuesOldNew := make([]oldNew, 0, len(v))

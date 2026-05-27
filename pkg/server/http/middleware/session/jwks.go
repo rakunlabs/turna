@@ -23,7 +23,7 @@ type InfProviderCert interface {
 }
 
 type InfKeyFunc interface {
-	Keyfunc(token *jwt.Token) (interface{}, error)
+	Keyfunc(token *jwt.Token) (any, error)
 }
 
 type InfKeyFuncParser interface {
@@ -32,10 +32,10 @@ type InfKeyFuncParser interface {
 }
 
 type JwkKeyFuncParse struct {
-	KeyFunc func(token *jwt.Token) (interface{}, error)
+	KeyFunc func(token *jwt.Token) (any, error)
 }
 
-func (j *JwkKeyFuncParse) Keyfunc(token *jwt.Token) (interface{}, error) {
+func (j *JwkKeyFuncParse) Keyfunc(token *jwt.Token) (any, error) {
 	if j.KeyFunc != nil {
 		return j.KeyFunc(token)
 	}
@@ -63,7 +63,7 @@ type KeyFuncMulti struct {
 	multiJWKS *MultipleJWKS
 }
 
-func (k *KeyFuncMulti) KeySelectorFirst(multiJWKS *MultipleJWKS, token *jwt.Token) (interface{}, error) {
+func (k *KeyFuncMulti) KeySelectorFirst(multiJWKS *MultipleJWKS, token *jwt.Token) (any, error) {
 	if k.givenJwks != nil {
 		key, err := k.givenJwks.Keyfunc(token)
 		if err == nil {
@@ -99,11 +99,11 @@ func KeySelectorFirst(multiJWKS *MultipleJWKS, token *jwt.Token) (*KeyFound, err
 }
 
 type KeyFound struct {
-	Key  interface{}
+	Key  any
 	Name string
 }
 
-func (k *KeyFuncMulti) Keyfunc(token *jwt.Token) (interface{}, error) {
+func (k *KeyFuncMulti) Keyfunc(token *jwt.Token) (any, error) {
 	return k.multiJWKS.Keyfunc(token)
 }
 
@@ -269,12 +269,12 @@ func GetMultiple(multiple map[MultipleJWKSKey]keyfunc.Options, options MultipleO
 
 // MultipleJWKS manages multiple JWKS and has a field for jwt.Keyfunc.
 type MultipleJWKS struct {
-	keySelector func(multiJWKS *MultipleJWKS, token *jwt.Token) (key interface{}, err error)
+	keySelector func(multiJWKS *MultipleJWKS, token *jwt.Token) (key any, err error)
 	sets        map[MultipleJWKSKey]*keyfunc.JWKS // No lock is required because this map is read-only after initialization.
 }
 
 // Keyfunc matches the signature of github.com/golang-jwt/jwt/v5's jwt.Keyfunc function.
-func (m *MultipleJWKS) Keyfunc(token *jwt.Token) (interface{}, error) {
+func (m *MultipleJWKS) Keyfunc(token *jwt.Token) (any, error) {
 	return m.keySelector(m, token)
 }
 
@@ -284,5 +284,5 @@ type MultipleJWKSKey struct {
 }
 
 type MultipleOptions struct {
-	KeySelector func(multiJWKS *MultipleJWKS, token *jwt.Token) (key interface{}, err error)
+	KeySelector func(multiJWKS *MultipleJWKS, token *jwt.Token) (key any, err error)
 }

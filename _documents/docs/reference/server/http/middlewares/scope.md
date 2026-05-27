@@ -1,17 +1,24 @@
 # scope
 
-Check the scopes of the token with specific http methods.
-
-This usable after the `auth` middleware.
+`scope` checks scopes in the parsed claims stored by a previous authentication middleware, usually [`session`](./session).
 
 ```yaml
-middlewares:
-  test:
-    scope:
-      methods: # default is empty checking all, []string
-        - GET
-        - POST
-      scopes: # default is empty, []string
-        - scope1
-        - scope2
+server:
+  http:
+    middlewares:
+      require_write_scope:
+        scope:
+          scopes:
+            - write:transactions
+          methods:
+            - POST
+            - PUT
 ```
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `scopes` | | Any one listed scope is enough to pass. Empty means no scope check. |
+| `methods` | all | Restrict the check to these HTTP methods. Other methods continue. |
+| `noop` | `false` | Disable the check and always continue. |
+
+Put `session` before `scope` in the router chain.

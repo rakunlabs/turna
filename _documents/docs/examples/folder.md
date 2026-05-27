@@ -1,15 +1,15 @@
 # File Server
 
-Simple browser file server.
+This example serves the current directory with directory browsing enabled.
 
 ```yaml
 server:
   entrypoints:
-    http:
+    web:
       address: ":8080"
   http:
     middlewares:
-      project:
+      files:
         folder:
           path: ./
           browse: true
@@ -19,8 +19,10 @@ server:
             - regex: .*
               cache_control: no-cache
     routers:
-      project:
+      files:
         path: /*
         middlewares:
-          - project
+          - files
 ```
+
+For a frontend SPA, set `path: ./dist`, `index: true`, and `spa: true`.

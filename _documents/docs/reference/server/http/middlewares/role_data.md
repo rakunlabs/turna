@@ -1,27 +1,30 @@
-# Role Data
+# role_data
 
-This middleware return data based on roles.
-
-It gathers data from map if roles exist in token and put in the slice after that return the slice.
+`role_data` returns JSON data selected by roles in the parsed claims.
 
 ```yaml
-middlewares:
-  role_data:
-    role_data:
-      map:
-      - roles:
-        - "admin"
-        data: # could be anything
-          admin: true
-      default: null # default data
+server:
+  http:
+    middlewares:
+      dashboard_data:
+        role_data:
+          map:
+            - roles:
+                - admin
+              data:
+                admin: true
+            - roles:
+                - auditor
+              data:
+                read_only: true
+          default:
+            authenticated: true
 ```
 
-This example result, if admin role not exist `[]` otherwise:
+| Field | Description |
+| --- | --- |
+| `map[].roles` | Roles that activate this data entry. |
+| `map[].data` | Arbitrary JSON/YAML value appended when a role matches. |
+| `default` | Value appended to every response when set. Arrays are expanded into the response array. |
 
-```json
-[
-  {
-    "admin": true
-  }
-]
-```
+`role_data` returns an array. Put `session` before `role_data` so claims are available.

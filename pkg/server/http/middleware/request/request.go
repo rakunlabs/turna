@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/worldline-go/klient"
+	"github.com/rakunlabs/ok"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/model"
 )
@@ -23,19 +23,17 @@ type Request struct {
 	InsecureSkipVerify bool `cfg:"insecure_skip_verify"`
 	EnableRetry        bool `cfg:"enable_retry"`
 
-	client *klient.Client
+	client *ok.Client
 }
 
 func (m *Request) Middleware() (func(http.Handler) http.Handler, error) {
-	client, err := klient.New(
-		klient.WithDisableBaseURLCheck(true),
-		klient.WithInsecureSkipVerify(m.InsecureSkipVerify),
-		klient.WithDisableRetry(!m.EnableRetry),
-		klient.WithDisableEnvValues(true),
-		klient.WithLogger(slog.Default()),
+	client, err := ok.New(
+		ok.WithInsecureSkipVerify(m.InsecureSkipVerify),
+		ok.WithDisableRetry(!m.EnableRetry),
+		ok.WithLogger(slog.Default()),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create klient client: %w", err)
+		return nil, fmt.Errorf("failed to create ok client: %w", err)
 	}
 
 	m.client = client

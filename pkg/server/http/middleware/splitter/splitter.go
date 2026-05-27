@@ -26,10 +26,10 @@ type Rule struct {
 	once sync.Once
 }
 
-func (m *Splitter) funcs(r *http.Request) map[string]interface{} {
+func (m *Splitter) funcs(r *http.Request) map[string]any {
 	req := &Requester{Req: r}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"Header":     req.Header,
 		"Path":       req.Path,
 		"PathPrefix": req.PathPrefix,

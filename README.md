@@ -7,14 +7,18 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/rakunlabs/turna?style=flat-square)](https://goreportcard.com/report/github.com/rakunlabs/turna)
 [![Web](https://img.shields.io/badge/web-document-blueviolet?style=flat-square)](https://rakunlabs.github.io/turna/)
 
-Turna is a swiss knife for services. It have config loader, reverse proxy and service runner.
+Turna is a small operations sidecar for applications. It can load configuration from files, environment variables, Consul, and Vault; prepare files before startup; serve HTTP/TCP traffic; and run local processes in dependency order.
 
-With _turna_, we can use third party programs directly in our systems without giving extra configuration files to them.
+Use Turna when an application needs runtime configuration, a reverse proxy, static file serving, OAuth/session helpers, or a simple process runner without adding that logic to the application itself.
 
 ## Installation
 
-Check the releases page for versions and download the binary for your system.
+Download a release binary for your platform from the [releases page](https://github.com/rakunlabs/turna/releases/latest).
 
 ```sh
 curl -fSL https://github.com/rakunlabs/turna/releases/latest/download/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
 ```
+
+## Documentation
+
+Full documentation is in [`_documents/docs`](_documents/docs) and is published at <https://rakunlabs.github.io/turna/>.

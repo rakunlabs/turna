@@ -160,7 +160,7 @@ func runRoot(ctx context.Context) error {
 	into.ShutdownAdd(into.FnWarp(runner.GlobalReg.KillAll), "runner")
 
 	// this function will be called after all configs are loaded and dynamically changes
-	call := func(_ context.Context, _ string, data map[string]interface{}) {
+	call := func(_ context.Context, _ string, data map[string]any) {
 		render.Data = data
 
 		// set service filters

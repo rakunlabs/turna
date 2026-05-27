@@ -30,7 +30,7 @@ func (l Decoder) Decode(fileType string, data io.Reader, to any) error {
 		return fmt.Errorf("unsupported file type: %s", fileType)
 	}
 
-	var mapping interface{}
+	var mapping any
 	if err := decoder.Decode(data, &mapping); err != nil {
 		return err
 	}

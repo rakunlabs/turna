@@ -1,117 +1,141 @@
 # Loads
 
-Loads can download resources from various sources and save them to a file or memory to use in other areas in configuration.
-
-It is an array of objects, each object has a export key and a list of sources.  
-Sources are divided into two groups, static and dynamic.  
-
-Static sources are loaded once at startup.
-Dynamic sources are loaded every time the configuration is updated.
-
-If not set ant `export` key, it will not exported to file, just holds in memory.
+`loads` fetch data before preprocess, server startup, and services. Loaded data is stored in memory and can be used by templates, `server.load_value`, service environment variables, service filters, preprocessors, and response templates.
 
 ```yaml
 loads:
-  - export: test.yml
-    # file_perm: "0644" # default
-    # folder_perm: "0755" # default
-    # name using to export value in map
-    name: mytest
-    # static configuration merged
-    statics: [] # check static section to see available sources
-    dynamics: [] # check dynamic section to see available sources
+  - name: app_config
+    export: app_config.yaml
+    file_perm: "0644"
+    folder_perm: "0755"
+    statics: []
+    dynamics: []
 ```
 
-## Static
+| Field | Description |
+| --- | --- |
+| `name` | Key used to expose loaded data in memory. |
+| `export` | Optional output file path. Omit it to keep data in memory only. |
+| `file_perm` | Permission used for exported files. |
+| `folder_perm` | Permission used for created export directories. |
+| `statics` | Sources loaded once at startup. |
+| `dynamics` | Sources watched or reloaded by the loader implementation. |
 
-Static sources are loaded once at startup.
+Turna delegates the loader implementation to `github.com/rytsh/liz/loader` and then consumes the resulting data through `render.Data`.
 
-Currently supported sources are `consul`, `vault`, `file` and `content`.
+## Static Sources
+
+Static sources are loaded once at startup. Supported source types are `consul`, `vault`, `file`, and `content`.
 
 ### Consul
 
-Using `github.com/hashicorp/consul/api` when loading. 
-
 ```yaml
-consul:
-  name: myconsul # name using to export value in map
-  path: test # you should set one path
-  path_prefix: finops # it can usable as folder name, default is empty
-  raw: false # raw load to without using any codec, don't mix with others merge not possible, default is false
-  codec: "YAML" # default is YAML, [toml, yaml, json] supported
-  inner_path: "test" # get the inner path, it is useful for getting a specific key with sperate '/', default is empty
-  map: "myapp/inner" # remap key to put that values inside a key, default is empty
-  template: false # run go-template (mugo functions) on the value, default is false
-  base64: false # decode base64, default is false
+loads:
+  - name: app
+    statics:
+      - consul:
+          name: consul_app
+          path: app/config
+          path_prefix: finops
+          codec: YAML
+          raw: false
+          inner_path: server
+          map: app/server
+          template: false
+          base64: false
 ```
 
 ### Vault
 
-Using `github.com/hashicorp/vault/api` when loading.
-
 ```yaml
-vault:
-  name: myvault # name using to export value in map
-  path: test/myapp # you should set one path
-  path_prefix: secret # path_prefix is must, default is empty,
-  app_role_base_path: auth/approle/login # default is auth/approle/login, not need to set
-  inner_path: "test" # get the inner path, it is useful for getting a specific key with sperate '/', default is empty
-  map: "myapp/inner" # remap key to put that values inside a key, default is empty
-  template: false # run go-template (mugo functions) on the value, default is false
-  base64: false # decode base64, default is false
+loads:
+  - name: secret
+    statics:
+      - vault:
+          name: vault_app
+          path: app
+          path_prefix: secret
+          app_role_base_path: auth/approle/login
+          inner_path: data
+          map: app/secret
+          template: false
+          base64: false
 ```
 
 ### File
 
-Load any file from the filesystem.
-
 ```yaml
-file:
-  name: myfile # name using to export value in map
-  path: load.yml # default is empty, [toml, yml, yaml, json] supported
-  raw: false # raw load to without using any codec, don't mix with others merge not possible, default is false
-  inner_path: "test" # get the inner path, it is useful for getting a specific key with sperate '/', default is empty
-  map: "myapp/inner" # remap key to put that values inside a key, default is empty
-  template: false # run go-template (mugo functions) on the value, default is false
-  base64: false # decode base64, default is false
+loads:
+  - name: local
+    statics:
+      - file:
+          name: local_file
+          path: config/app.yaml
+          codec: YAML
+          raw: false
+          inner_path: server
+          map: app/server
+          template: false
+          base64: false
 ```
 
 ### Content
 
-Load content from configuration.
-
 ```yaml
-content:
-  name: mycontent # name using to export value in map
-  codec: "YAML" # default is YAML, [toml, yaml, json] supported
-  content: |
-    test:
-      test: 1
-      test2: 2
-  raw: false
-  template: false
-  inner_path: "" 
-  map: "" # remap key
-  base64: false # decode base64
+loads:
+  - name: app_config
+    statics:
+      - content:
+          name: app_config
+          codec: YAML
+          content: |
+            entrypoints:
+              web:
+                address: ":8080"
+          raw: false
+          template: false
+          inner_path: ""
+          map: ""
+          base64: false
 ```
 
-## Dynamic
+## Dynamic Sources
 
-Dynamic sources are loaded every time the configuration is updated.  
-It can mix with static sources, in that time it hold static sources in memory and just update dynamic sources.
-
-Currently supported sources is `consul`.
-
-### Consul
+Dynamic sources are reloaded by the loader implementation. Turna updates in-memory data and service filters when dynamic data changes.
 
 ```yaml
-consul:
-  name: myconsulDynamic # name using to export value in map
-  path: test
-  path_prefix: finops # default is empty
-  raw: false
-  codec: "YAML" # default is YAML, [toml, yaml, json] supported
-  inner_path: ""
-  map: ""
-  template: false
+loads:
+  - name: dynamic_config
+    dynamics:
+      - consul:
+          name: dynamic_consul
+          path: app/dynamic
+          path_prefix: finops
+          codec: YAML
+          raw: false
+          inner_path: ""
+          map: ""
+          template: false
+```
+
+## Using Loaded Data As Server Config
+
+`server.load_value` replaces the server configuration with a loaded data key after `loads` complete.
+
+```yaml
+loads:
+  - name: server
+    statics:
+      - content:
+          codec: YAML
+          content: |
+            entrypoints:
+              web:
+                address: ":8080"
+
+server:
+  load_value: server
+  http:
+    middlewares: {}
+    routers: {}
 ```

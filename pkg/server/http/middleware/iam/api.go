@@ -123,7 +123,7 @@ func getLimitOffset(v url.Values) (limit, offset int64) {
 }
 
 func (m *Iam) UIInfo(w http.ResponseWriter, _ *http.Request) {
-	httputil.JSON(w, http.StatusOK, map[string]interface{}{
+	httputil.JSON(w, http.StatusOK, map[string]any{
 		"prefix_path": m.PrefixPath,
 	})
 }
@@ -467,10 +467,10 @@ func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
 	// download the result as CSV
 	headers := []string{"UID", "Name", "Email", "Roles", "Is Active"}
 
-	userData := make([]map[string]interface{}, 0, len(users.Payload))
+	userData := make([]map[string]any, 0, len(users.Payload))
 	for _, user := range users.Payload {
 		if user.Details == nil {
-			user.Details = map[string]interface{}{}
+			user.Details = map[string]any{}
 		}
 
 		roles := make([]string, 0, len(user.Roles))
@@ -478,7 +478,7 @@ func (m *Iam) ExportUsers(w http.ResponseWriter, r *http.Request) {
 			roles = append(roles, role.Name)
 		}
 
-		userData = append(userData, map[string]interface{}{
+		userData = append(userData, map[string]any{
 			"UID":       user.Details["uid"],
 			"Name":      user.Details["name"],
 			"Email":     user.Details["email"],
@@ -861,7 +861,7 @@ func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 	// download the result as CSV
 	headers := []string{"Name", "Permissions", "Roles", "Description", "Total Users"}
 
-	roleData := make([]map[string]interface{}, 0, len(roles.Payload))
+	roleData := make([]map[string]any, 0, len(roles.Payload))
 	for _, role := range roles.Payload {
 		permissions := make([]string, 0, len(role.Permissions))
 		for _, permission := range role.Permissions {
@@ -885,7 +885,7 @@ func (m *Iam) ExportRoles(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		roleData = append(roleData, map[string]interface{}{
+		roleData = append(roleData, map[string]any{
 			"Name":        role.Name,
 			"Permissions": string(permissionByte),
 			"Roles":       string(rolesByte),
@@ -1254,7 +1254,7 @@ func (m *Iam) ExportPermissions(w http.ResponseWriter, r *http.Request) {
 	// download the result as CSV
 	headers := []string{"Name", "Description", "Resources"}
 
-	permissionData := make([]map[string]interface{}, 0, len(permissions.Payload))
+	permissionData := make([]map[string]any, 0, len(permissions.Payload))
 	for _, permission := range permissions.Payload {
 		resourceByte, err := json.Marshal(permission.Resources)
 		if err != nil {
@@ -1262,7 +1262,7 @@ func (m *Iam) ExportPermissions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		permissionData = append(permissionData, map[string]interface{}{
+		permissionData = append(permissionData, map[string]any{
 			"Name":        permission.Name,
 			"Resources":   string(resourceByte),
 			"Description": permission.Description,

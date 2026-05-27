@@ -1,32 +1,31 @@
 # hello
 
-Multi purpose middleware that can be used to test the server with return a simple message.
+`hello` returns a static or templated response and does not call the next middleware. It is useful for health checks, mock endpoints, and simple HTML pages.
 
 ```yaml
-middlewares:
-  test:
-    hello:
-      message: "Hello World" # default is empty, string
-      status_code: 200 # default is 200, int
-      headers: {} # default is empty, map[string]string
-      type: string # default is string, it could be json, json-pretty, html, string
-      template: false # default is false, bool, use template
-      trust: false # default is false, bool, trust of the template dangerous functions
-      work_dir: "" # default is empty, string, work_dir for some of the template functions
-      delims: # default is empty, delims for the template
-        - "{{"
-        - "}}"
+server:
+  http:
+    middlewares:
+      health:
+        hello:
+          message: OK
+          status_code: 200
+          content_type: text/plain; charset=utf-8
+          headers:
+            Cache-Control: no-store
 ```
 
-When template is used, values are:
+## Fields
 
-```go
-data := map[string]interface{}{
-  "body":         body,
-  "method":       c.Request().Method,
-  "headers":      c.Request().Header,
-  "query_params": c.QueryParams(),
-  "cookies":      c.Cookies(),
-  "path":         c.Request().URL.Path,
-}
-```
+| Field | Default | Description |
+| --- | --- | --- |
+| `message` | `OK` | Response body or template. |
+| `status_code` | `200` | Response status. |
+| `headers` | | Response headers. |
+| `content_type` | `text/plain; charset=utf-8` | Response content type. |
+| `template` | `false` | Render `message` as a template. |
+| `trust` | `false` | Enable powerful template functions. |
+| `work_dir` | | Working directory for template functions that need one. |
+| `delims` | `['{{', '}}']` | Two custom template delimiters. |
+
+Template data includes `body`, `method`, `headers`, `query_params`, `cookies`, `path`, `host`, `scheme`, and `remote_addr`.

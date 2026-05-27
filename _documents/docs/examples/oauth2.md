@@ -1,6 +1,6 @@
-# oauth2 with keycloak
+# OAuth2 With IAM
 
-This example shows how to use oauth2 with keycloak.
+This example shows the shape of an IAM-backed OAuth2/OIDC issuer. Replace the RSA keys and client/provider values before using it.
 
 ```yaml
 server:
@@ -9,66 +9,68 @@ server:
       address: ":8080"
   http:
     middlewares:
-      template:
-        template:
-          headers:
-            Content-Type: "text/html; charset=utf-8"
-          template: |
-            <html>
-            <head>
-              <title>Turna</title>
-              <style>
-                body {background-color: #f7fff7;}
-                h1 {border-bottom: 2px solid #ff6b6b;}
-                .logout {float: right; color: #ff6b6b; text-decoration: none;}
-                pre {background-color: #faf0ca; overflow: auto; white-space: pre-wrap; word-wrap: break-word; }
-              </style>
-            </head>
-            <body>
-              <h1>Turna - Token Viewer <a class="logout" href="/logout">Logout</a></h1>
-              <div>
-                <p>Readed session from cookie</p>
-                <pre><code>{{ .body | toPrettyJson }}</code></pre>
-                <p>Access Token<p>
-                <pre><code>{{ .body.access_token | crypto.JwtParseUnverified | toPrettyJson }}</code></pre>
-              </div>
-            </body>
-            </html>
-      auth:
-        auth:
-          provider:
+      iam:
+        iam:
+          prefix_path: /iam
+          database:
+            path: ./data/iam
+            flatten: true
+
+      oauth2:
+        oauth2:
+          prefix_path: /oauth2
+          iam_middleware: iam
+          token:
+            kid: turna-local
+            token_lifetime: 15m
+            refresh_lifetime: 24h
+            cert:
+              rsa:
+                private_key: |
+                  -----BEGIN RSA PRIVATE KEY-----
+                  replace-with-private-key
+                  -----END RSA PRIVATE KEY-----
+                public_key: |
+                  -----BEGIN PUBLIC KEY-----
+                  replace-with-public-key
+                  -----END PUBLIC KEY-----
+          access_clients:
+            local-ui:
+              client_secret: local-secret
+              scope: [openid]
+              whitelist_urls:
+                - http://localhost:3000/callback
+          providers:
             keycloak:
-              base_url: "https://keycloak.example.com/auth" # /auth depends of your keycloak
-              realm: "master"
-              client_id: "ui"
-              scopes:
-                - openid
-          redirect:
-            cookie_name: "auth_keycloak"
-            path: "/"
-            logout:
-              url: "/logout"
-              redirect: "http://localhost:8080"
-            schema: "http"
-            session_key: "1234"
-            session_store_name: "auth_keycloak"
-            use_session: true
-            # secure: true # enable if using https
-            check_agent: true
-            refresh_token: true
-            redirect_match:
-              enabled: true
-      info:
-        info:
-          cookie: "auth_keycloak"
-          session: true
-          session_store_name: "auth_keycloak"
-          base64: true
+              client_id: local-ui
+              client_secret: local-secret
+              scopes: [openid]
+              cert_url: http://localhost:8081/realms/master/protocol/openid-connect/certs
+              auth_url: http://localhost:8081/realms/master/protocol/openid-connect/auth
+              token_url: http://localhost:8081/realms/master/protocol/openid-connect/token
+          code:
+            schema: http
+            path: /oauth2/code
+          store:
+            active: ""
+
     routers:
-      consul:
-        path: /*
+      iam:
+        path: /iam/*
         middlewares:
-          - auth
-          - template
-          - info
+          - iam
+      oauth2:
+        path: /oauth2/*
+        middlewares:
+          - oauth2
 ```
+
+Useful endpoints from this example:
+
+| Endpoint | Description |
+| --- | --- |
+| `/oauth2/auth/keycloak` | Starts upstream code flow. |
+| `/oauth2/code/keycloak` | Receives upstream callback. |
+| `/oauth2/token` | Token endpoint. |
+| `/oauth2/certs` | JWKS endpoint. |
+| `/oauth2/userinfo` | Userinfo endpoint. |

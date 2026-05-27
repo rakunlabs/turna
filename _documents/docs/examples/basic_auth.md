@@ -1,4 +1,6 @@
-# basic_auth
+# Basic Auth
+
+This example protects `/private/*` with `basic_auth` and serves the same folder publicly for every other path.
 
 ```yaml
 server:
@@ -7,26 +9,26 @@ server:
       address: ":8000"
   http:
     middlewares:
-      basic_auth:
+      private_auth:
         basic_auth:
           users:
-            - "test:$apr1$JMWtQHoL$g/5ey5x7psJM7htuB6OEy0" # pass
-            - "test2:$apr1$u4NQ6Doq$KdCzBPfjarcQ0mk4Fd/3v1" # pass
-      myfolder:
+            - "test:$apr1$JMWtQHoL$g/5ey5x7psJM7htuB6OEy0" # password: pass
+          remove_header: true
+      files:
         folder:
-          # path: ./testdata/html
-          # index: true
-          # spa: true
+          path: ./
           browse: true
           utc: true
     routers:
       private:
-        path: /pkg/server/*
+        path: /private/*
         middlewares:
-          - basic_auth
-          - myfolder
-      test:
+          - private_auth
+          - files
+      public:
         path: /*
         middlewares:
-          - myfolder
+          - files
 ```
+
+Generate htpasswd-compatible hashes with any APR1/htpasswd tool and place them in `users`.

@@ -9,7 +9,7 @@ import (
 func TestDecodeForm(t *testing.T) {
 	type args struct {
 		r io.Reader
-		v interface{}
+		v any
 	}
 	tests := []struct {
 		name    string

@@ -12,8 +12,8 @@ import (
 var defaultParser = jwt.NewParser()
 
 type JWT struct {
-	private interface{}
-	public  interface{}
+	private any
+	public  any
 	method  jwt.SigningMethod
 	kid     string
 }
@@ -36,8 +36,8 @@ func NewJWT(opts ...OptionJWT) (*JWT, error) {
 		return nil, errors.New("method is required")
 	}
 
-	var private interface{}
-	var public interface{}
+	var private any
+	var public any
 	switch o.method.(type) {
 	case *jwt.SigningMethodHMAC:
 		private = o.secretHMAC
@@ -91,7 +91,7 @@ func (t *JWT) Alg() string {
 }
 
 // Generate function get custom values and add 'exp' as expires at with expDate argument with unix format.
-func (t *JWT) Generate(mapClaims map[string]interface{}, expDate int64) (string, error) {
+func (t *JWT) Generate(mapClaims map[string]any, expDate int64) (string, error) {
 	if expDate > 0 {
 		mapClaims["exp"] = expDate
 	}
@@ -124,7 +124,7 @@ func (t *JWT) Parse(tokenStr string, claims jwt.Claims) (*jwt.Token, error) {
 	token, err := jwt.ParseWithClaims(
 		tokenStr,
 		claims,
-		func(token *jwt.Token) (interface{}, error) {
+		func(token *jwt.Token) (any, error) {
 			return t.public, nil
 		},
 		jwt.WithValidMethods([]string{t.method.Alg()}),

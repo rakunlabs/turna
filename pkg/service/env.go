@@ -8,7 +8,7 @@ import (
 	"github.com/rytsh/liz/loader"
 )
 
-func (s *Service) GetEnv(predefined map[string]interface{}, environ bool, envPaths []string) ([]string, error) {
+func (s *Service) GetEnv(predefined map[string]any, environ bool, envPaths []string) ([]string, error) {
 	v := make(map[string]string)
 	if environ {
 		for _, e := range os.Environ() {
@@ -19,7 +19,7 @@ func (s *Service) GetEnv(predefined map[string]interface{}, environ bool, envPat
 
 	// add values
 	for _, path := range envPaths {
-		if vInner, ok := loader.InnerPath(path, render.Data).(map[string]interface{}); ok {
+		if vInner, ok := loader.InnerPath(path, render.Data).(map[string]any); ok {
 			for k, val := range vInner {
 				rV, err := render.Execute(val)
 				if err != nil {

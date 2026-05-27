@@ -53,7 +53,7 @@ func (s *Service) SetFilters() {
 	filterX := s.Filters
 
 	for _, path := range s.FiltersValues {
-		if vInner, ok := loader.InnerPath(path, render.Data).([]interface{}); ok {
+		if vInner, ok := loader.InnerPath(path, render.Data).([]any); ok {
 			for _, val := range vInner {
 				rV, err := render.Execute(val)
 				if err != nil {

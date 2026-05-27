@@ -1,39 +1,16 @@
-# IP Allow List
+# ip_allow_list
 
-The IP Allow List middleware allows you to restrict access to your server to a list of IP addresses or CIDR ranges.
+`ip_allow_list` allows only TCP clients whose remote IP is inside one of the configured CIDR ranges.
 
 ```yaml
 server:
   tcp:
     middlewares:
-      ip:
-        ip_allow_list:
-          source_range: # source_range []string
-            - 127.0.0.1/32
-```
-
-Example configuration:
-
-```yaml
-server:
-  entrypoints:
-    docker:
-      address: ":2375"
-  tcp:
-    middlewares:
-      ip:
+      local_only:
         ip_allow_list:
           source_range:
             - 127.0.0.1/32
-      redirect:
-        redirect:
-          address: "/var/run/docker.sock"
-          network: "unix"
-    routers:
-      mytcprouter:
-        entrypoints:
-          - docker
-        middlewares:
-          - ip
-          - redirect
+            - 10.0.0.0/8
 ```
+
+At least one `source_range` entry is required. Put this middleware before `redirect` or `socks5` when it should protect the TCP target.

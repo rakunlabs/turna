@@ -1,20 +1,22 @@
-# PreProcess
+# Preprocess
 
-Replace all values in a file with the values from a static before serving it.
+This example replaces placeholders in `./testdata/html` with values loaded from configuration before serving the folder.
 
 ```yaml
 loads:
-  - statics:
-    - content:
-        content: |
-          Turna: XXX2
-        name: values
+  - name: frontend_env
+    statics:
+      - content:
+          name: frontend_env
+          content: |
+            __APP_NAME__: Turna
+            __API_URL__: http://localhost:8082/api
 
 preprocess:
   - replace:
       path: ./testdata/html
       contents:
-        value: values
+        - value: frontend_env
 
 server:
   entrypoints:
@@ -22,7 +24,7 @@ server:
       address: ":8082"
   http:
     middlewares:
-      project:
+      frontend:
         folder:
           path: ./testdata/html
           browse: false
@@ -32,8 +34,8 @@ server:
             - regex: .*
               cache_control: no-cache
     routers:
-      project:
+      frontend:
         path: /*
         middlewares:
-          - project
+          - frontend
 ```
