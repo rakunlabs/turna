@@ -44,6 +44,7 @@ store:
     username: ""
     password: ""
     key_prefix: session_
+    session_key: ""
     tls:
       enabled: false
       cert_file: ""

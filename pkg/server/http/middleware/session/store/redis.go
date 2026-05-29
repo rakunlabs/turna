@@ -5,13 +5,16 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/base32"
+	"encoding/json"
+	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/gorilla/sessions"
-	"github.com/rbcervilla/redisstore/v9"
+	"github.com/rakunlabs/ada/utils/securecookie"
+	"github.com/rakunlabs/ada/utils/sessions"
 	"github.com/redis/go-redis/v9"
 	"github.com/twmb/tlscfg"
 )
@@ -23,9 +26,18 @@ type Redis struct {
 	TLS      TLSConfig `cfg:"tls"`
 
 	KeyPrefix string `cfg:"key_prefix"`
+	// SessionKey signs the session ID cookie. If empty, a random key is generated.
+	SessionKey string `cfg:"session_key"`
 }
 
-func (r Redis) Store(ctx context.Context, opts sessions.Options) (*redisstore.RedisStore, error) {
+type RedisStore struct {
+	client    *redis.Client
+	keyPrefix string
+	codec     *securecookie.Codec
+	options   sessions.Options
+}
+
+func (r Redis) Store(ctx context.Context, opts sessions.Options) (*RedisStore, error) {
 	tlsConfig, err := r.TLS.Generate()
 	if err != nil {
 		return nil, err
@@ -38,8 +50,9 @@ func (r Redis) Store(ctx context.Context, opts sessions.Options) (*redisstore.Re
 		TLSConfig: tlsConfig,
 	})
 
-	rStore, err := redisstore.NewRedisStore(ctx, client)
-	if err != nil {
+	if err := client.Ping(ctx).Err(); err != nil {
+		_ = client.Close()
+
 		return nil, err
 	}
 
@@ -47,13 +60,113 @@ func (r Redis) Store(ctx context.Context, opts sessions.Options) (*redisstore.Re
 		r.KeyPrefix = "session_"
 	}
 
-	rStore.KeyPrefix(r.KeyPrefix)
+	sessionKey := []byte(r.SessionKey)
+	if len(sessionKey) == 0 {
+		sessionKey = securecookie.GenerateRandomKey(32)
+	}
 
-	rStore.Options(opts)
+	codec := securecookie.New(sessionKey, nil)
+	codec.SetMaxAge(opts.MaxAge)
 
-	rStore.KeyGen(generateRandomKey)
+	return &RedisStore{
+		client:    client,
+		keyPrefix: r.KeyPrefix,
+		codec:     codec,
+		options:   opts,
+	}, nil
+}
 
-	return rStore, nil
+func (s *RedisStore) Get(r *http.Request, name string) (*sessions.Session, error) {
+	return s.New(r, name)
+}
+
+func (s *RedisStore) New(r *http.Request, name string) (*sessions.Session, error) {
+	session := newSession(s, name, s.options)
+	cookie, err := r.Cookie(name)
+	if err != nil || cookie.Value == "" {
+		return session, nil
+	}
+
+	var sessionID string
+	if err := s.codec.Decode(name, cookie.Value, &sessionID); err != nil {
+		return session, err
+	}
+
+	values, err := s.load(r.Context(), sessionID)
+	if err != nil {
+		return session, err
+	}
+
+	session.ID = sessionID
+	session.Values = values
+	session.IsNew = false
+
+	return session, nil
+}
+
+func (s *RedisStore) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
+	if session.Options.MaxAge < 0 {
+		if session.ID != "" {
+			_ = s.client.Del(r.Context(), s.redisKey(session.ID)).Err()
+		}
+
+		setSessionCookie(w, session.Name(), "", session.Options)
+
+		return nil
+	}
+
+	if session.ID == "" {
+		sessionID, err := generateRandomKey()
+		if err != nil {
+			return fmt.Errorf("failed to generate session ID: %w", err)
+		}
+		session.ID = sessionID
+	}
+
+	if err := s.save(r.Context(), session.ID, session.Values, session.Options.MaxAge); err != nil {
+		return fmt.Errorf("failed to save session: %w", err)
+	}
+
+	cookieValue, err := s.codec.Encode(session.Name(), session.ID)
+	if err != nil {
+		return err
+	}
+
+	setSessionCookie(w, session.Name(), cookieValue, session.Options)
+
+	return nil
+}
+
+func (s *RedisStore) redisKey(sessionID string) string {
+	return s.keyPrefix + sessionID
+}
+
+func (s *RedisStore) load(ctx context.Context, sessionID string) (map[string]any, error) {
+	data, err := s.client.Get(ctx, s.redisKey(sessionID)).Bytes()
+	if err != nil {
+		return nil, err
+	}
+
+	values := make(map[string]any)
+	if err := json.Unmarshal(data, &values); err != nil {
+		return nil, err
+	}
+
+	return values, nil
+}
+
+func (s *RedisStore) save(ctx context.Context, sessionID string, values map[string]any, maxAge int) error {
+	data, err := json.Marshal(values)
+	if err != nil {
+		return err
+	}
+
+	var expiration time.Duration
+	if maxAge > 0 {
+		expiration = time.Duration(maxAge) * time.Second
+	}
+
+	return s.client.Set(ctx, s.redisKey(sessionID), data, expiration).Err()
 }
 
 // TLSConfig contains options for TLS authentication.

@@ -14,13 +14,11 @@ require (
 	github.com/fullstorydev/grpcui v1.5.0
 	github.com/go-ldap/ldap/v3 v3.4.10
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/gorilla/securecookie v1.1.2
-	github.com/gorilla/sessions v1.4.0
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/rakunlabs/ada v0.4.3
-	github.com/rakunlabs/ada/middleware/encoding v0.4.3
-	github.com/rakunlabs/ada/middleware/ratelimit v0.4.3
+	github.com/rakunlabs/ada v0.4.4
+	github.com/rakunlabs/ada/middleware/encoding v0.4.4
+	github.com/rakunlabs/ada/middleware/ratelimit v0.4.4
 	github.com/rakunlabs/cache v0.3.3
 	github.com/rakunlabs/cache/store/redis v0.1.0
 	github.com/rakunlabs/chu v0.4.7
@@ -35,7 +33,6 @@ require (
 	github.com/rakunlabs/logi v0.4.5
 	github.com/rakunlabs/ok v0.1.0
 	github.com/rakunlabs/query v0.4.6
-	github.com/rbcervilla/redisstore/v9 v9.0.0
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/rytsh/liz/loader v0.2.5
 	github.com/rytsh/mugo v0.9.2
@@ -200,12 +197,3 @@ require (
 )
 
 tool github.com/swaggo/swag/cmd/swag
-
-// Local development against the sibling ada repo. The ratelimit submodule
-// carries the LimitByIP/LimitByRealIP/LimitAll helpers that are not yet
-// published; drop these replaces once ada is tagged with them.
-replace (
-	github.com/rakunlabs/ada => ../ada
-	github.com/rakunlabs/ada/middleware/encoding => ../ada/middleware/encoding
-	github.com/rakunlabs/ada/middleware/ratelimit => ../ada/middleware/ratelimit
-)

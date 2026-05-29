@@ -260,8 +260,6 @@ github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeN
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
 github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
 github.com/google/gofuzz v1.0.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/M65Eg=
-github.com/google/gofuzz v1.2.0 h1:xRy4A+RhZaiKjJ1bPfwQ8sedCA+YS2YcCHW6ec7JMi0=
-github.com/google/gofuzz v1.2.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/M65Eg=
 github.com/google/s2a-go v0.1.9 h1:LGD7gtMgezd8a/Xak7mEWL0PjoTQFvpRudN895yqKW0=
 github.com/google/s2a-go v0.1.9/go.mod h1:YA0Ei2ZQL3acow2O62kdp9UlnvMmU7kA6Eutn0dXayM=
 github.com/google/uuid v1.1.2/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
@@ -272,11 +270,7 @@ github.com/googleapis/enterprise-certificate-proxy v0.3.14/go.mod h1:vqVt9yG9480
 github.com/googleapis/gax-go/v2 v2.20.0 h1:NIKVuLhDlIV74muWlsMM4CcQZqN6JJ20Qcxd9YMuYcs=
 github.com/googleapis/gax-go/v2 v2.20.0/go.mod h1:But/NJU6TnZsrLai/xBAQLLz+Hc7fHZJt/hsCz3Fih4=
 github.com/gorilla/securecookie v1.1.1/go.mod h1:ra0sb63/xPlUeL+yeDciTfxMRAA+MP+HVt/4epWDjd4=
-github.com/gorilla/securecookie v1.1.2 h1:YCIWL56dvtr73r6715mJs5ZvhtnY73hBvEF8kXD8ePA=
-github.com/gorilla/securecookie v1.1.2/go.mod h1:NfCASbcHqRSY+3a8tlWJwsQap2VX5pwzwo4h3eOamfo=
 github.com/gorilla/sessions v1.2.1/go.mod h1:dk2InVEVJ0sfLlnXv9EAgkf6ecYs/i80K/zI+bUmuGM=
-github.com/gorilla/sessions v1.4.0 h1:kpIYOp/oi6MG/p5PgxApU8srsSw9tuFbt46Lt7auzqQ=
-github.com/gorilla/sessions v1.4.0/go.mod h1:FLWm50oby91+hl7p/wRxDth9bWSuk0qVL2emc7lT5ik=
 github.com/hashicorp/consul/api v1.33.0 h1:MnFUzN1Bo6YDGi/EsRLbVNgA4pyCymmcswrE5j4OHBM=
 github.com/hashicorp/consul/api v1.33.0/go.mod h1:vLz2I/bqqCYiG0qRHGerComvbwSWKswc8rRFtnYBrIw=
 github.com/hashicorp/consul/sdk v0.17.0 h1:N/JigV6y1yEMfTIhXoW0DXUecM2grQnFuRpY7PcLHLI=
@@ -463,6 +457,12 @@ github.com/prometheus/common v0.9.1/go.mod h1:yhUN8i9wzaXS3w1O07YhxHEBxD+W35wd8b
 github.com/prometheus/procfs v0.0.0-20181005140218-185b4288413d/go.mod h1:c3At6R/oaqEKCNdg8wHV1ftS6bRYblBhIjjI8uT2IGk=
 github.com/prometheus/procfs v0.0.2/go.mod h1:TjEm7ze935MbeOT/UhFTIMYKhuLP4wbCsTZCD3I8kEA=
 github.com/prometheus/procfs v0.0.8/go.mod h1:7Qr8sr6344vo1JqZ6HhLceV9o3AJ1Ff+GxbHq6oeK9A=
+github.com/rakunlabs/ada v0.4.4 h1:di0s4FY8yjbhQHwgp6/pjVkJ7yz1TZWtiadpkIMQTfI=
+github.com/rakunlabs/ada v0.4.4/go.mod h1:ydvdDjaJd7d7W+JDW0n3cU2vRSlYRwdOIj0g1ZXLYn0=
+github.com/rakunlabs/ada/middleware/encoding v0.4.4 h1:/TdM6fI3k2lN1gA4hPXzT0DNDBOAYDEmHQQp5tobUpk=
+github.com/rakunlabs/ada/middleware/encoding v0.4.4/go.mod h1:ETIXDqdPOeuyprVzw4TbZqrHa5wfMDUQngqtjJqu8OQ=
+github.com/rakunlabs/ada/middleware/ratelimit v0.4.4 h1:KQVmmqvwd0FzcfMTgrSov/RIldPeb03Zr+2lc5+Niwg=
+github.com/rakunlabs/ada/middleware/ratelimit v0.4.4/go.mod h1:fjPTNkRV4s/S91nyWMCQH4PzxKQ23n+7ySH0/q3i3Ro=
 github.com/rakunlabs/cache v0.3.3 h1:+F9BxUvPDIkNl2w/vVJWbLZKBFwMzuPMIdP0Mik4TPo=
 github.com/rakunlabs/cache v0.3.3/go.mod h1:sYiqAPj7bU5ZqxOSNGjvMll9CsTxTl+QkzqQjtQE408=
 github.com/rakunlabs/cache/store/redis v0.1.0 h1:2g3KPzXS7ywkEk3fx4+5FbidBHvRZa0XKonY8i2Oym4=
@@ -493,8 +493,6 @@ github.com/rakunlabs/query v0.4.6 h1:rNbuf6BUNPwisPrtwiaof6GHCizErcEgPWKxiDwn3wk
 github.com/rakunlabs/query v0.4.6/go.mod h1:2DGX9UqBE4PaaWAZ+eR/v6lWiSJ376ar7L0jDTORcpo=
 github.com/rakunlabs/tummy v0.1.2 h1:rKKvdT/JLCZTeKwDAKWK7jwnDLETx/5hGPBv2LT6lDs=
 github.com/rakunlabs/tummy v0.1.2/go.mod h1:KEoD3yG+kC+7uR0WdFTVrfBZT/3WfqFdPCFWGmdB/Bs=
-github.com/rbcervilla/redisstore/v9 v9.0.0 h1:wOPbBaydbdxzi1gTafDftCI/Z7vnsXw0QDPCuhiMG0g=
-github.com/rbcervilla/redisstore/v9 v9.0.0/go.mod h1:q/acLpoKkTZzIsBYt0R4THDnf8W/BH6GjQYvxDSSfdI=
 github.com/redis/go-redis/v9 v9.18.0 h1:pMkxYPkEbMPwRdenAzUNyFNrDgHx9U+DrBabWNfSRQs=
 github.com/redis/go-redis/v9 v9.18.0/go.mod h1:k3ufPphLU5YXwNTUcCRXGxUoF1fqxnhFQmscfkCoDA0=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gorilla/sessions"
+	"github.com/rakunlabs/ada/utils/sessions"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session/store"
 )
 
