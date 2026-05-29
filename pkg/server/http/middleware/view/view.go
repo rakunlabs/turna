@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rakunlabs/cache"
+	"github.com/rakunlabs/cache/store/memory"
 	"github.com/rakunlabs/ok"
-	"github.com/worldline-go/cache"
-	"github.com/worldline-go/cache/store/memory"
 
 	"github.com/rakunlabs/turna/pkg/loader/decoder"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
@@ -86,23 +86,29 @@ func (m *View) Middleware(ctx context.Context, _ string) (func(http.Handler) htt
 	}
 
 	// set caches
-	cacheGrpcUI, err := cache.New[cacheKey, *grpcui.GrpcUI](ctx,
-		memory.Store,
-		cache.WithStoreConfig(memory.Config{
+	cacheGrpcUI, err := cache.New(ctx,
+		memory.Store[cacheKey, *grpcui.GrpcUI],
+		cache.WithStoreConfig(&memory.Config{
 			TTL:      30 * time.Minute,
 			MaxItems: 200,
 		}),
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	m.grpcUI.grpcUIMiddlewares = cacheGrpcUI
 
-	cachePage, err := cache.New[cacheKey, *httputil.ReverseProxy](ctx,
-		memory.Store,
-		cache.WithStoreConfig(memory.Config{
+	cachePage, err := cache.New(ctx,
+		memory.Store[cacheKey, *httputil.ReverseProxy],
+		cache.WithStoreConfig(&memory.Config{
 			TTL:      30 * time.Minute,
 			MaxItems: 200,
 		}),
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	m.pageUI.Handlers = cachePage
 

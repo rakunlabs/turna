@@ -5,46 +5,43 @@ import (
 	"io"
 
 	"github.com/rakunlabs/chu/loader"
-	"github.com/rakunlabs/chu/loader/fileloader"
-	"github.com/rakunlabs/chu/utils/decoderfile"
-	"github.com/rakunlabs/chu/utils/decodermap"
+	"github.com/rakunlabs/chu/loader/loaderfile"
+	"github.com/rakunlabs/chu/utils/decoder"
 )
 
 type Decoder struct {
-	decoders   map[string]fileloader.Decoder
-	mapDecoder *decodermap.Map
+	decoders   map[string]loaderfile.Decoder
+	mapDecoder *decoder.Map
 }
 
 func NewDecoder() *Decoder {
 	return &Decoder{
 		decoders: decoders(),
-		mapDecoder: decodermap.New(
-			decodermap.WithHooks(loader.HookTimeDuration),
+		mapDecoder: decoder.New(
+			decoder.WithHooks(loader.HookTimeDuration),
 		),
 	}
 }
 
 func (l Decoder) Decode(fileType string, data io.Reader, to any) error {
-	decoder, ok := l.decoders[fileType]
+	decode, ok := l.decoders[fileType]
 	if !ok {
 		return fmt.Errorf("unsupported file type: %s", fileType)
 	}
 
 	var mapping any
-	if err := decoder.Decode(data, &mapping); err != nil {
+	if err := decode(data, &mapping); err != nil {
 		return err
 	}
 
 	return l.mapDecoder.Decode(mapping, to)
 }
 
-func decoders() map[string]fileloader.Decoder {
-	yamlDecoder := &decoderfile.Yaml{}
-
-	return map[string]fileloader.Decoder{
-		"toml": &decoderfile.Toml{},
-		"yaml": yamlDecoder,
-		"yml":  yamlDecoder,
-		"json": &decoderfile.Json{},
+func decoders() map[string]loaderfile.Decoder {
+	return map[string]loaderfile.Decoder{
+		"toml": decoder.DecodeToml,
+		"yaml": decoder.DecodeYaml,
+		"yml":  decoder.DecodeYaml,
+		"json": decoder.DecodeJson,
 	}
 }

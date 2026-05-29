@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/worldline-go/cache"
+	"github.com/rakunlabs/cache"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/grpcui"

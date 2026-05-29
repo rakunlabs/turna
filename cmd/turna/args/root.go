@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 
+	"github.com/rakunlabs/chu"
 	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/logi"
 	"github.com/rakunlabs/turna/internal/config"
@@ -15,14 +17,32 @@ import (
 	serverReg "github.com/rakunlabs/turna/pkg/server/registry"
 	"github.com/worldline-go/struct2"
 
-	"github.com/rs/zerolog/log"
+	// External chu loaders (registered via init) so they can be selected by
+	// name when the env-provided config set enables them.
+	_ "github.com/rakunlabs/chu/loader/external/loaderawssecrets"
+	_ "github.com/rakunlabs/chu/loader/external/loaderawsssm"
+	_ "github.com/rakunlabs/chu/loader/external/loaderazurekeyvault"
+	_ "github.com/rakunlabs/chu/loader/external/loaderconsul"
+	_ "github.com/rakunlabs/chu/loader/external/loadergcpparameter"
+	_ "github.com/rakunlabs/chu/loader/external/loadergcpsecret"
+	_ "github.com/rakunlabs/chu/loader/external/loadervault"
+
 	load "github.com/rytsh/liz/loader"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/worldline-go/igconfig"
-	"github.com/worldline-go/igconfig/loader"
-	"github.com/worldline-go/logz"
 )
+
+const (
+	envAppName = "APP_NAME"
+)
+
+var AppName = "turna"
+
+func init() {
+	if v := os.Getenv(envAppName); v != "" {
+		AppName = v
+	}
+}
 
 type overrideHold struct {
 	Memory *string
@@ -72,9 +92,6 @@ func Execute(ctx context.Context) error {
 
 func setFlags() {
 	rootCmd.PersistentFlags().StringVarP(&config.Application.LogLevel, "log-level", "l", config.Application.LogLevel, "log level")
-	rootCmd.PersistentFlags().BoolVar(&config.LoadConfig.ConfigSet.Consul, "config-consul", config.LoadConfig.ConfigSet.Consul, "first config get in consul")
-	rootCmd.PersistentFlags().BoolVar(&config.LoadConfig.ConfigSet.Vault, "config-vault", config.LoadConfig.ConfigSet.Vault, "first config get in vault")
-	rootCmd.PersistentFlags().BoolVar(&config.LoadConfig.ConfigSet.File, "config-file", config.LoadConfig.ConfigSet.File, "first config get in file")
 }
 
 // override function hold first values of definitions.
@@ -87,38 +104,7 @@ func loadConfig(ctx context.Context, visit func(fn func(*pflag.Flag))) error {
 	overrideValues := make(map[string]overrideHold)
 	override(overrideValues)
 
-	logConfig := log.With().Str("component", "config").Logger()
-	ctxConfig := logConfig.WithContext(ctx)
-
-	loaders := []loader.Loader{}
-
-	envLoader := &loader.Env{}
-
-	if err := igconfig.LoadWithLoadersWithContext(ctxConfig, "", &config.LoadConfig, envLoader); err != nil {
-		return fmt.Errorf("unable to load prefix settings: %w", err)
-	}
-
-	slog.Info("config loading from", "config", config.LoadConfig)
-
-	loader.ConsulConfigPathPrefix = config.LoadConfig.Prefix.Consul
-	loader.VaultSecretBasePath = config.LoadConfig.Prefix.Vault
-	loader.VaultSecretAdditionalPaths = nil
-
-	if config.LoadConfig.ConfigSet.Consul {
-		loaders = append(loaders, &loader.Consul{})
-	}
-
-	if config.LoadConfig.ConfigSet.Vault && config.LoadConfig.Prefix.Vault != "" {
-		loaders = append(loaders, &loader.Vault{})
-	}
-
-	if config.LoadConfig.ConfigSet.File {
-		loaders = append(loaders, &loader.File{})
-	}
-
-	loaders = append(loaders, envLoader)
-
-	if err := igconfig.LoadWithLoadersWithContext(ctxConfig, config.LoadConfig.AppName, &config.Application, loaders...); err != nil {
+	if err := chu.Load(ctx, AppName, &config.Application); err != nil {
 		return fmt.Errorf("unable to load configuration settings: %w", err)
 	}
 
@@ -148,7 +134,7 @@ func runRoot(ctx context.Context) error {
 	// appname and version
 	logi.Log(fmt.Sprintf(
 		"TURNA [%s] [%s] buildCommit=[%s] buildDate=[%s]",
-		config.LoadConfig.AppName, config.BuildVars.Version,
+		AppName, config.BuildVars.Version,
 		config.BuildVars.Commit, config.BuildVars.Date,
 	))
 
@@ -173,7 +159,7 @@ func runRoot(ctx context.Context) error {
 	}
 
 	// load configurations
-	if err := config.Application.Loads.Load(load.SetLogToCtx(ctx, logz.AdapterKV{Log: log.Logger}), wg, nil, call); err != nil {
+	if err := config.Application.Loads.Load(load.SetLogToCtx(ctx, slog.Default()), wg, nil, call); err != nil {
 		return err
 	}
 

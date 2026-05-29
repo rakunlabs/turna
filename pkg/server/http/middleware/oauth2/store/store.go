@@ -5,10 +5,10 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/rakunlabs/cache"
+	"github.com/rakunlabs/cache/store/memory"
+	storeredis "github.com/rakunlabs/cache/store/redis"
 	redis "github.com/redis/go-redis/v9"
-	"github.com/worldline-go/cache"
-	"github.com/worldline-go/cache/store/memory"
-	storeredis "github.com/worldline-go/cache/store/redis"
 	"github.com/worldline-go/conn/connredis"
 )
 
@@ -55,14 +55,14 @@ func (m *Store) Init(ctx context.Context) (*StoreCache, error) {
 		}
 	} else {
 		var err error
-		storeCache.Code, err = cache.New[string, string](ctx, memory.Store, cache.WithStoreConfig(memory.Config{
+		storeCache.Code, err = cache.New(ctx, memory.Store[string, string], cache.WithStoreConfig(&memory.Config{
 			TTL: DefaultCodeTimeout,
 		}))
 		if err != nil {
 			return nil, err
 		}
 
-		storeCache.State, err = cache.New[string, string](ctx, memory.Store, cache.WithStoreConfig(memory.Config{
+		storeCache.State, err = cache.New(ctx, memory.Store[string, string], cache.WithStoreConfig(&memory.Config{
 			TTL: DefaultStateTimeout,
 		}))
 		if err != nil {

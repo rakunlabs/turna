@@ -11,9 +11,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/oklog/ulid/v2"
+	"github.com/rakunlabs/ada"
 	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
@@ -24,16 +24,16 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/model"
 )
 
-func (m *Oauth2) MuxSet(prefix string) *chi.Mux {
-	mux := chi.NewMux()
+func (m *Oauth2) MuxSet(prefix string) *ada.Mux {
+	mux := ada.NewMux()
 
-	mux.Get(prefix+"/auth/{provider}", m.APIAuth)
-	mux.Get(prefix+"/code/{provider}", m.APICodeAuth)
-	mux.Post(prefix+"/token", m.APIToken)
-	mux.Get(prefix+"/certs", m.APICerts)
-	mux.Get(prefix+"/openid/{custom}/.well-known/openid-configuration", m.APIWellKnown)
-	mux.Get(prefix+"/userinfo", m.APIUserInfo)
-	mux.Get(prefix+"/userinfo/{custom}", m.APIUserInfo)
+	mux.GET(prefix+"/auth/{provider}", m.APIAuth)
+	mux.GET(prefix+"/code/{provider}", m.APICodeAuth)
+	mux.POST(prefix+"/token", m.APIToken)
+	mux.GET(prefix+"/certs", m.APICerts)
+	mux.GET(prefix+"/openid/{custom}/.well-known/openid-configuration", m.APIWellKnown)
+	mux.GET(prefix+"/userinfo", m.APIUserInfo)
+	mux.GET(prefix+"/userinfo/{custom}", m.APIUserInfo)
 
 	return mux
 }
@@ -123,7 +123,7 @@ func (m *Oauth2) APIUserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// apply custom info
-	if customName := chi.URLParam(r, "custom"); customName != "" {
+	if customName := r.PathValue("custom"); customName != "" {
 		if customUserInfo, ok := m.CustomInfo[customName]; ok {
 			for k, v := range customUserInfo {
 				if d, ok := claimsRet[k]; ok {
@@ -147,7 +147,7 @@ func (m *Oauth2) APIUserInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Oauth2) APIWellKnown(w http.ResponseWriter, r *http.Request) {
-	customWell := chi.URLParam(r, "custom")
+	customWell := r.PathValue("custom")
 	if customWell != "" {
 		if well, ok := m.WellKnown[customWell]; ok {
 			httputil.JSON(w, http.StatusOK, well)
@@ -229,7 +229,7 @@ func (m *Oauth2) APIAuth(w http.ResponseWriter, r *http.Request) {
 
 	m.storeCache.State.Set(r.Context(), state, stateValue)
 
-	providerName := chi.URLParam(r, "provider")
+	providerName := r.PathValue("provider")
 
 	provider := m.Providers[providerName]
 	if provider == nil {
@@ -256,7 +256,7 @@ func (m *Oauth2) APIAuth(w http.ResponseWriter, r *http.Request) {
 
 // APICodeAuth will receive callback and generate new token and respond to redirection.
 func (m *Oauth2) APICodeAuth(w http.ResponseWriter, r *http.Request) {
-	providerName := chi.URLParam(r, "provider")
+	providerName := r.PathValue("provider")
 
 	provider := m.Providers[providerName]
 	if provider == nil {

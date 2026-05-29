@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/httprate"
+	adaratelimit "github.com/rakunlabs/ada/middleware/ratelimit"
 )
 
 type RateLimit struct {
@@ -20,11 +20,11 @@ func (m *RateLimit) Middleware() func(http.Handler) http.Handler {
 
 	switch strings.ToLower(strings.TrimSpace(m.LimitType)) {
 	case "ip":
-		handler = httprate.LimitByIP(m.Requests, m.Duration)
+		handler = adaratelimit.LimitByIP(m.Requests, m.Duration)
 	case "realip":
-		handler = httprate.LimitByRealIP(m.Requests, m.Duration)
+		handler = adaratelimit.LimitByRealIP(m.Requests, m.Duration)
 	default: // all
-		handler = httprate.LimitAll(m.Requests, m.Duration)
+		handler = adaratelimit.LimitAll(m.Requests, m.Duration)
 	}
 
 	return handler

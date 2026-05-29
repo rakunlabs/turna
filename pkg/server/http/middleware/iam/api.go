@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/go-chi/chi/v5"
+	"github.com/rakunlabs/ada"
 	"github.com/spf13/cast"
 
 	"github.com/rakunlabs/logi"
@@ -26,80 +26,80 @@ import (
 // @description Identity and Access Management API
 //
 //go:generate go tool swag init -pd -d ./ -g api.go --ot json -o ./files
-func (m *Iam) MuxSet(prefix string) *chi.Mux {
-	mux := chi.NewMux()
+func (m *Iam) MuxSet(prefix string) *ada.Mux {
+	mux := ada.NewMux()
 
-	mux.Get(prefix+"/v1/users", m.GetUsers)
-	mux.Post(prefix+"/v1/users", m.CreateUser) // trigger
-	mux.Get(prefix+"/v1/users/export", m.ExportUsers)
-	mux.Get(prefix+"/v1/users/{id}", m.GetUser)
-	mux.Patch(prefix+"/v1/users/{id}", m.PatchUser)        // trigger
-	mux.Put(prefix+"/v1/users/{id}", m.PutUser)            // trigger
-	mux.Delete(prefix+"/v1/users/{id}", m.DeleteUser)      // trigger
-	mux.Post(prefix+"/v1/users/{id}/access", m.AccessUser) // trigger
+	mux.GET(prefix+"/v1/users", m.GetUsers)
+	mux.POST(prefix+"/v1/users", m.CreateUser) // trigger
+	mux.GET(prefix+"/v1/users/export", m.ExportUsers)
+	mux.GET(prefix+"/v1/users/{id}", m.GetUser)
+	mux.PATCH(prefix+"/v1/users/{id}", m.PatchUser)        // trigger
+	mux.PUT(prefix+"/v1/users/{id}", m.PutUser)            // trigger
+	mux.DELETE(prefix+"/v1/users/{id}", m.DeleteUser)      // trigger
+	mux.POST(prefix+"/v1/users/{id}/access", m.AccessUser) // trigger
 
-	mux.Get(prefix+"/v1/service-accounts", m.GetServiceAccounts)
-	mux.Post(prefix+"/v1/service-accounts", m.CreateServiceAccount) // trigger
-	mux.Get(prefix+"/v1/service-accounts/export", m.ExportServiceAccounts)
-	mux.Get(prefix+"/v1/service-accounts/{id}", m.GetServiceAccount)
-	mux.Patch(prefix+"/v1/service-accounts/{id}", m.PatchServiceAccount)        // trigger
-	mux.Put(prefix+"/v1/service-accounts/{id}", m.PutServiceAccount)            // trigger
-	mux.Delete(prefix+"/v1/service-accounts/{id}", m.DeleteServiceAccount)      // trigger
-	mux.Post(prefix+"/v1/service-accounts/{id}/access", m.AccessServiceAccount) // trigger
+	mux.GET(prefix+"/v1/service-accounts", m.GetServiceAccounts)
+	mux.POST(prefix+"/v1/service-accounts", m.CreateServiceAccount) // trigger
+	mux.GET(prefix+"/v1/service-accounts/export", m.ExportServiceAccounts)
+	mux.GET(prefix+"/v1/service-accounts/{id}", m.GetServiceAccount)
+	mux.PATCH(prefix+"/v1/service-accounts/{id}", m.PatchServiceAccount)        // trigger
+	mux.PUT(prefix+"/v1/service-accounts/{id}", m.PutServiceAccount)            // trigger
+	mux.DELETE(prefix+"/v1/service-accounts/{id}", m.DeleteServiceAccount)      // trigger
+	mux.POST(prefix+"/v1/service-accounts/{id}/access", m.AccessServiceAccount) // trigger
 
-	mux.Get(prefix+"/v1/roles", m.GetRoles)
-	mux.Post(prefix+"/v1/roles", m.CreateRole)              // trigger
-	mux.Put(prefix+"/v1/roles/relation", m.PutRoleRelation) // trigger
-	mux.Get(prefix+"/v1/roles/relation", m.GetRoleRelation)
-	mux.Get(prefix+"/v1/roles/export", m.ExportRoles)
-	mux.Get(prefix+"/v1/roles/{id}", m.GetRole)
-	mux.Patch(prefix+"/v1/roles/{id}", m.PatchRole)   // trigger
-	mux.Put(prefix+"/v1/roles/{id}", m.PutRole)       // trigger
-	mux.Delete(prefix+"/v1/roles/{id}", m.DeleteRole) // trigger
+	mux.GET(prefix+"/v1/roles", m.GetRoles)
+	mux.POST(prefix+"/v1/roles", m.CreateRole)              // trigger
+	mux.PUT(prefix+"/v1/roles/relation", m.PutRoleRelation) // trigger
+	mux.GET(prefix+"/v1/roles/relation", m.GetRoleRelation)
+	mux.GET(prefix+"/v1/roles/export", m.ExportRoles)
+	mux.GET(prefix+"/v1/roles/{id}", m.GetRole)
+	mux.PATCH(prefix+"/v1/roles/{id}", m.PatchRole)   // trigger
+	mux.PUT(prefix+"/v1/roles/{id}", m.PutRole)       // trigger
+	mux.DELETE(prefix+"/v1/roles/{id}", m.DeleteRole) // trigger
 
-	mux.Get(prefix+"/v1/permissions", m.GetPermissions)
-	mux.Post(prefix+"/v1/permissions", m.CreatePermission)          // trigger
-	mux.Post(prefix+"/v1/permissions/bulk", m.CreatePermissionBulk) // trigger
-	mux.Get(prefix+"/v1/permissions/export", m.ExportPermissions)
-	mux.Post(prefix+"/v1/permissions/keep", m.KeepPermissionBulk) // trigger
-	mux.Get(prefix+"/v1/permissions/{id}", m.GetPermission)
-	mux.Patch(prefix+"/v1/permissions/{id}", m.PatchPermission)   // trigger
-	mux.Put(prefix+"/v1/permissions/{id}", m.PutPermission)       // trigger
-	mux.Delete(prefix+"/v1/permissions/{id}", m.DeletePermission) // trigger
+	mux.GET(prefix+"/v1/permissions", m.GetPermissions)
+	mux.POST(prefix+"/v1/permissions", m.CreatePermission)          // trigger
+	mux.POST(prefix+"/v1/permissions/bulk", m.CreatePermissionBulk) // trigger
+	mux.GET(prefix+"/v1/permissions/export", m.ExportPermissions)
+	mux.POST(prefix+"/v1/permissions/keep", m.KeepPermissionBulk) // trigger
+	mux.GET(prefix+"/v1/permissions/{id}", m.GetPermission)
+	mux.PATCH(prefix+"/v1/permissions/{id}", m.PatchPermission)   // trigger
+	mux.PUT(prefix+"/v1/permissions/{id}", m.PutPermission)       // trigger
+	mux.DELETE(prefix+"/v1/permissions/{id}", m.DeletePermission) // trigger
 
-	// mux.Get(prefix+"/v1/tokens", m.GetTokens)
-	// mux.Post(prefix+"/v1/tokens", m.CreateToken) // trigger
-	// mux.Get(prefix+"/v1/tokens/{id}", m.GetToken)
-	// mux.Patch(prefix+"/v1/tokens/{id}", m.PatchToken)   // trigger
-	// mux.Put(prefix+"/v1/tokens/{id}", m.PutToken)       // trigger
-	// mux.Delete(prefix+"/v1/tokens/{id}", m.DeleteToken) // trigger
+	// mux.GET(prefix+"/v1/tokens", m.GetTokens)
+	// mux.POST(prefix+"/v1/tokens", m.CreateToken) // trigger
+	// mux.GET(prefix+"/v1/tokens/{id}", m.GetToken)
+	// mux.PATCH(prefix+"/v1/tokens/{id}", m.PatchToken)   // trigger
+	// mux.PUT(prefix+"/v1/tokens/{id}", m.PutToken)       // trigger
+	// mux.DELETE(prefix+"/v1/tokens/{id}", m.DeleteToken) // trigger
 
-	mux.Get(prefix+"/v1/ldap/users/{uid}", m.LdapGetUsers)      // trigger
-	mux.Get(prefix+"/v1/ldap/groups", m.LdapGetGroups)          // trigger
-	mux.Post(prefix+"/v1/ldap/sync", m.LdapSyncGroups)          // trigger
-	mux.Post(prefix+"/v1/ldap/sync/{uid}", m.LdapSyncGroupsUID) // trigger
+	mux.GET(prefix+"/v1/ldap/users/{uid}", m.LdapGetUsers)      // trigger
+	mux.GET(prefix+"/v1/ldap/groups", m.LdapGetGroups)          // trigger
+	mux.POST(prefix+"/v1/ldap/sync", m.LdapSyncGroups)          // trigger
+	mux.POST(prefix+"/v1/ldap/sync/{uid}", m.LdapSyncGroupsUID) // trigger
 
-	mux.Get(prefix+"/v1/ldap/maps", m.LdapGetGroupMaps)              // trigger
-	mux.Post(prefix+"/v1/ldap/maps", m.LdapCreateGroupMaps)          // trigger
-	mux.Get(prefix+"/v1/ldap/maps/{name}", m.LdapGetGroupMap)        // trigger
-	mux.Put(prefix+"/v1/ldap/maps/{name}", m.LdapPutGroupMaps)       // trigger
-	mux.Delete(prefix+"/v1/ldap/maps/{name}", m.LdapDeleteGroupMaps) // trigger
+	mux.GET(prefix+"/v1/ldap/maps", m.LdapGetGroupMaps)              // trigger
+	mux.POST(prefix+"/v1/ldap/maps", m.LdapCreateGroupMaps)          // trigger
+	mux.GET(prefix+"/v1/ldap/maps/{name}", m.LdapGetGroupMap)        // trigger
+	mux.PUT(prefix+"/v1/ldap/maps/{name}", m.LdapPutGroupMaps)       // trigger
+	mux.DELETE(prefix+"/v1/ldap/maps/{name}", m.LdapDeleteGroupMaps) // trigger
 
-	mux.Get(prefix+"/v1/dashboard", m.Dashboard)
+	mux.GET(prefix+"/v1/dashboard", m.Dashboard)
 
-	mux.Post(prefix+"/v1/check", m.PostCheck)
-	mux.Get(prefix+"/v1/info", m.Info)
+	mux.POST(prefix+"/v1/check", m.PostCheck)
+	mux.GET(prefix+"/v1/info", m.Info)
 
-	mux.Post(prefix+"/check", m.PostCheckUser)
-	mux.Get(prefix+"/info", m.InfoUser)
+	mux.POST(prefix+"/check", m.PostCheckUser)
+	mux.GET(prefix+"/info", m.InfoUser)
 
-	mux.Get(prefix+"/v1/backup", m.Backup)
-	mux.Get(prefix+"/v1/backup/until", m.BackupUntil)
-	mux.Post(prefix+"/v1/restore", m.Restore) // trigger
-	mux.Get(prefix+"/v1/version", m.Version)
-	mux.Post(prefix+"/v1/sync", m.Sync)
+	mux.GET(prefix+"/v1/backup", m.Backup)
+	mux.GET(prefix+"/v1/backup/until", m.BackupUntil)
+	mux.POST(prefix+"/v1/restore", m.Restore) // trigger
+	mux.GET(prefix+"/v1/version", m.Version)
+	mux.POST(prefix+"/v1/sync", m.Sync)
 
-	mux.Get(prefix+"/ui/info", m.UIInfo)
+	mux.GET(prefix+"/ui/info", m.UIInfo)
 	mux.Handle(prefix+"/swagger/*", m.swaggerFS)
 	mux.Handle(prefix+"/ui/*", m.uiFS)
 
@@ -517,7 +517,7 @@ func (m *Iam) GetUser(w http.ResponseWriter, r *http.Request) {
 		ServiceAccount: isServiceAccountPtr(r),
 	}
 
-	id := chi.URLParam(r, "id")
+	id := r.PathValue("id")
 	if id == "" {
 		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
@@ -561,7 +561,7 @@ func (m *Iam) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := chi.URLParam(r, "id")
+	id := r.PathValue("id")
 	if id == "" {
 		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
@@ -603,7 +603,7 @@ func (m *Iam) PatchUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := chi.URLParam(r, "id")
+	id := r.PathValue("id")
 	if id == "" {
 		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
@@ -652,7 +652,7 @@ func (m *Iam) AccessUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := chi.URLParam(r, "id")
+	id := r.PathValue("id")
 	if id == "" {
 		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
@@ -705,7 +705,7 @@ func (m *Iam) PutUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := chi.URLParam(r, "id")
+	id := r.PathValue("id")
 	if id == "" {
 		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
@@ -969,7 +969,7 @@ func (m *Iam) GetRole(w http.ResponseWriter, r *http.Request) {
 		AddTotalUsers:  true,
 	}
 
-	id := chi.URLParam(r, "id")
+	id := r.PathValue("id")
 	if id == "" {
 		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
@@ -1056,7 +1056,7 @@ func (m *Iam) PatchRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := chi.URLParam(r, "id")
+	id := r.PathValue("id")
 	if id == "" {
 		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
@@ -1103,7 +1103,7 @@ func (m *Iam) PutRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := chi.URLParam(r, "id")
+	id := r.PathValue("id")
 	if id == "" {
 		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
@@ -1152,7 +1152,7 @@ func (m *Iam) DeleteRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := chi.URLParam(r, "id")
+	id := r.PathValue("id")
 	if id == "" {
 		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
@@ -1368,7 +1368,7 @@ func (m *Iam) CreatePermissionBulk(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} httputil.Error
 // @Router /v1/permissions/{id} [GET]
 func (m *Iam) GetPermission(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id := r.PathValue("id")
 	if id == "" {
 		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
@@ -1414,7 +1414,7 @@ func (m *Iam) PatchPermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := chi.URLParam(r, "id")
+	id := r.PathValue("id")
 	if id == "" {
 		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
@@ -1462,7 +1462,7 @@ func (m *Iam) PutPermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := chi.URLParam(r, "id")
+	id := r.PathValue("id")
 	if id == "" {
 		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
@@ -1506,7 +1506,7 @@ func (m *Iam) DeletePermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := chi.URLParam(r, "id")
+	id := r.PathValue("id")
 	if id == "" {
 		httputil.HandleError(w, httputil.NewError("id is required", nil, http.StatusBadRequest))
 		return
@@ -1713,7 +1713,7 @@ func (m *Iam) LdapGetGroupMap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := chi.URLParam(r, "name")
+	name := r.PathValue("name")
 	if name == "" {
 		httputil.HandleError(w, httputil.NewError("name is required", nil, http.StatusBadRequest))
 		return
@@ -1747,7 +1747,7 @@ func (m *Iam) LdapPutGroupMaps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := chi.URLParam(r, "name")
+	name := r.PathValue("name")
 	if name == "" {
 		httputil.HandleError(w, httputil.NewError("name is required", nil, http.StatusBadRequest))
 		return
@@ -1791,7 +1791,7 @@ func (m *Iam) LdapDeleteGroupMaps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := chi.URLParam(r, "name")
+	name := r.PathValue("name")
 	if name == "" {
 		httputil.HandleError(w, httputil.NewError("name is required", nil, http.StatusBadRequest))
 		return

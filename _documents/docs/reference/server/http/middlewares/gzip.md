@@ -1,16 +1,15 @@
 # gzip
 
-`gzip` compresses HTTP responses using chi's compression middleware.
+`gzip` compresses HTTP responses using `github.com/rakunlabs/ada/middleware/encoding`.
 
 ```yaml
 server:
   http:
     middlewares:
       compress:
-        gzip:
-          level: 5
+        gzip: {}
 ```
 
 | Field | Default | Description |
 | --- | --- | --- |
-| `level` | `5` | Compression level. |
+| `level` | `5` | Deprecated/no-op. Kept for backward compatibility; the encoding middleware always uses the default gzip level. |

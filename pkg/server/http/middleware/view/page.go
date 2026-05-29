@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/rakunlabs/cache"
 	okclient "github.com/rakunlabs/ok"
-	"github.com/worldline-go/cache"
 
 	httputil2 "github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/model"

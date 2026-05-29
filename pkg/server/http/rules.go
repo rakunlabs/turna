@@ -4,11 +4,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/rakunlabs/ada"
 )
 
 type RouterHandler interface {
-	Handle(pattern string, handler http.Handler)
+	Handle(pattern string, handler http.Handler, middlewares ...func(http.Handler) http.Handler)
 	ServeHTTP(w http.ResponseWriter, r *http.Request)
 }
 
@@ -54,7 +54,7 @@ func (s *RuleRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *RuleRouter) SetRule(selection RuleSelection) {
 	if _, ok := s.ruleMux[selection]; !ok {
-		s.ruleMux[selection] = chi.NewRouter()
+		s.ruleMux[selection] = ada.NewMux()
 	}
 }
 

@@ -184,6 +184,4 @@ func (m *View) InformationUI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.JSON(w, http.StatusOK, info)
-
-	return
 }

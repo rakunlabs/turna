@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/go-chi/chi/v5"
 
 	"github.com/rakunlabs/logi"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
@@ -80,7 +79,7 @@ func (m *Iam) LdapGetUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uid := chi.URLParam(r, "uid")
+	uid := r.PathValue("uid")
 	if uid == "" {
 		httputil.HandleError(w, httputil.NewError("uid is required", nil, http.StatusBadRequest))
 		return
@@ -328,7 +327,7 @@ func (m *Iam) LdapSyncGroupsUID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uid := chi.URLParam(r, "uid")
+	uid := r.PathValue("uid")
 
 	if uid == "" {
 		httputil.HandleError(w, httputil.NewError("uid is required", nil, http.StatusBadRequest))
