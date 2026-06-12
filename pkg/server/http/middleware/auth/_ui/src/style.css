@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --color-crt: 10 10 10;
+  --color-panel: 14 14 14;
+  --color-line: 38 38 38;
+  --color-fg: 234 234 234;
+  --color-dim: 138 138 138;
+  --color-alert: 255 42 42;
+  --color-phosphor: 74 246 38;
+  --grain-opacity: 0.045;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-crt: 246 244 239;
+  --color-panel: 255 253 247;
+  --color-line: 120 110 96;
+  --color-fg: 25 24 22;
+  --color-dim: 105 99 90;
+  --color-alert: 199 35 35;
+  --color-phosphor: 22 141 73;
+  --grain-opacity: 0.018;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: rgb(var(--color-crt));
+  color: rgb(var(--color-fg));
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New",
+    monospace;
+}
+
+/* mechanical noise — unified physical grain */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 61;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='128' height='128'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='128' height='128' filter='url(%23n)'/></svg>");
+}
+
+/* mechanical rigidity: no rounded corners, no smooth transitions */
+* {
+  border-radius: 0 !important;
+}
+
+textarea,
+input,
+button,
+select {
+  font: inherit;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  position: relative;
+  z-index: 70;
+}
+
+::selection {
+  background: rgb(var(--color-alert));
+  color: #fff;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: rgb(var(--color-crt));
+  border-left: 1px solid rgb(var(--color-line));
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--color-line));
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--color-dim));
+}
+
+@layer components {
+  /* micro-typography label */
+  .t-label {
+    @apply text-[10px] font-medium uppercase tracking-[0.2em] text-dim;
+  }
+
+  /* terminal button */
+  .btn-t {
+    @apply inline-flex select-none items-center justify-center gap-2 border border-line bg-transparent px-4 py-2 text-xs font-medium uppercase tracking-[0.15em] text-fg hover:bg-fg hover:text-crt disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg;
+  }
+
+  .btn-t-solid {
+    @apply btn-t border-fg bg-fg text-crt hover:bg-crt hover:text-fg;
+  }
+
+  .btn-t-alert {
+    @apply btn-t border-alert text-alert hover:bg-alert hover:text-white;
+  }
+
+  /* terminal field */
+  .field-t {
+    @apply w-full border border-line bg-crt px-3 py-2 text-sm text-fg outline-none placeholder:text-dim focus:border-fg;
+  }
+}

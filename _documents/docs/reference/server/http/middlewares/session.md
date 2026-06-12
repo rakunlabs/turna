@@ -100,6 +100,63 @@ provider:
 
 `session` sets `X-User` from the first available claim in `x_user`, defaulting to `email`, `preferred_username`, then `name`. It also sets `X-User-Id` from `preferred_username` when present.
 
+### In-process auth provider
+
+A provider can be backed by an in-process [`auth`](./auth) middleware instead of remote URLs. Token validation uses the auth signing key directly and refresh runs in-process, so `cert_url`/`token_url` are not needed:
+
+```yaml
+provider:
+  turna:
+    auth_middleware: "auth"   # middleware key of the auth instance
+    password_flow: true
+    passkey: true             # advertise WebAuthn login on the login page
+    api_key: true             # accept static X-API-Key credentials
+    oauth2:
+      client_id: "ui"         # OAuth client registered in auth
+      scopes: [openid]
+```
+
+| Field | Description |
+| --- | --- |
+| `auth_middleware` | Name of the auth middleware instance to use as token issuer. |
+| `passkey` | Show a passkey button on the login page for this provider. Requires `auth_middleware` (in-process) or `oauth2.passkey_url` (remote). |
+| `api_key` | Accept static API keys on protected routes. The key is validated directly against the auth middleware database on every request; no token exchange. Downstream services receive the key principal's claims and `X-User: api-key:<id>`. |
+| `api_key_header` | Header carrying the raw API key. Defaults to `X-API-Key`. |
+
+### Remote auth provider
+
+When the auth middleware runs in another turna instance, point the provider at it over HTTP like any other OAuth2 IdP — no `auth_middleware` needed:
+
+```yaml
+provider:
+  turna:
+    password_flow: true
+    passkey: true
+    api_key: true
+    oauth2:
+      client_id: "ui"
+      scopes: [openid]
+      cert_url: https://auth.example.com/auth/oauth2/certs
+      token_url: https://auth.example.com/auth/oauth2/token
+      passkey_url: https://auth.example.com/auth/oauth2/passkey
+      api_key_url: https://auth.example.com/auth/oauth2/api-key
+```
+
+| Field | Description |
+| --- | --- |
+| `oauth2.passkey_url` | Remote auth middleware's WebAuthn begin/finish endpoint. The login middleware forwards the original host/scheme as `X-Forwarded-Host`/`X-Forwarded-Proto` so the relying party is derived from the login page, not the auth host. |
+| `oauth2.api_key_url` | Remote auth middleware's static API key validation endpoint. Required for `api_key: true` on remote providers; in-process `auth_middleware` providers don't need it. |
+| `oauth2.signup_url` | Remote auth middleware's self-registration endpoint (e.g. `https://auth.example.com/auth/oauth2/signup`); the verify endpoint is derived as `signup_url + "/verify"`. Lets the login page offer "Create account" for remote providers; in-process providers detect it automatically. |
+| `oauth2.password_reset_url` | Remote auth middleware's forgot-password endpoint; the confirm endpoint is derived as `password_reset_url + "/confirm"`. |
+
+On the auth instance, set the `passkey` runtime settings (`rp_id`, `origins`) explicitly when the login page is served from a different domain than the auth host, and keep `/auth/oauth2/*` publicly routable (don't chain `session` in front of the token/JWKS/passkey endpoints).
+
+### API key requests
+
+When `api_key: true` is set on a provider, `session` checks the configured API key header after bearer-token validation and before cookie redirects. If present, the static key is validated directly — in-process via `auth_middleware`, or with a request to `oauth2.api_key_url` on a remote auth instance. On success the raw key header is deleted and the key principal's claims and `X-User: api-key:<id>` headers are set; no JWT is involved.
+
+Validation hits the auth database on every request, so deleting or disabling a key (or its owner) cuts access immediately.
+
 ## Token Action
 
 ```yaml

@@ -10,7 +10,6 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/claims"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
-	"github.com/rakunlabs/turna/pkg/server/model"
 )
 
 type Redirect struct {
@@ -130,7 +129,7 @@ func (m *Login) AuthCodeReturn(w http.ResponseWriter, r *http.Request, customCla
 
 	// check redirect uri whitelist
 	if !m.IsValidRedirectURI(redirectURI) {
-		httputil.JSON(w, http.StatusForbidden, model.MetaData{Message: "redirect_uri is not allowed"})
+		writeError(w, http.StatusForbidden, "redirect_uri is not allowed")
 
 		return
 	}
@@ -146,14 +145,14 @@ func (m *Login) AuthCodeReturn(w http.ResponseWriter, r *http.Request, customCla
 	}
 
 	if alias == "" {
-		httputil.JSON(w, http.StatusForbidden, model.MetaData{Message: "alias is empty"})
+		writeError(w, http.StatusForbidden, "alias is empty")
 
 		return
 	}
 
 	code, err := m.store.CodeGen(r.Context(), alias, strings.Split(scope, " "))
 	if err != nil {
-		httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: "failed to generate code"})
+		writeError(w, http.StatusInternalServerError, "failed to generate code")
 
 		return
 	}
@@ -161,7 +160,7 @@ func (m *Login) AuthCodeReturn(w http.ResponseWriter, r *http.Request, customCla
 	// redirect to the redirect uri
 	urlParsed, err := url.Parse(redirectURI)
 	if err != nil {
-		httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: "failed to parse redirect uri"})
+		writeError(w, http.StatusInternalServerError, "failed to parse redirect uri")
 
 		return
 	}

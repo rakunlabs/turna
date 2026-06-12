@@ -4,108 +4,80 @@ server:
       address: ":8082"
   http:
     middlewares:
-      test:
-        addprefix:
-          prefix: "/middleware"
-      set:
-        set:
-          values:
-          - "auth_redirect"
-      role:
-        role:
-          roles:
-          - "transaction"
-          methods:
-          - "POST"
-      scope:
-        scope:
-          scopes:
-          - "email"
-      info:
-        info:
-          cookie: "auth_test"
-          base64: true
-      merhaba:
-        hello:
-          message: "merhaba 👋"
-      block:
-        block:
-          methods: ["GET"]
-      cors:
-        cors:
-          allow_origins: ["*"]
-          allow_methods: ["GET", "HEAD", "OPTIONS", "POST", "PUT", "DELETE"]
-      x-header:
-        headers:
-          custom_response_headers:
-            "X-Say-My-Name": "Heisenberg"
-          custom_request_headers:
-            "X-Tell": "me"
       auth:
         auth:
-          redirect:
-            # cookie_name: "auth_test"
-            # max_age: 3600
-            # path: "/"
-            callback: "/ui/"
-            callback_set: true
-            callback_modify:
-              - regex: "(^/$)"
-                replacement: "/ui/"
-            # base_url: "http://my-url-to-return:8080"
-            schema: "http"
+          database:
+            dsn: postgres://postgres@localhost:5432/postgres?sslmode=disable
+          encryption:
+            key: test-encryption-key
+      session:
+        session:
+          store:
+            active: file
+            file:
+              session_key: "my_secret_key"
+          options:
+            http_only: true
             secure: false
-            check_agent: true
-            # check_value: "auth_redirect"
-            # token_header: true
-            refresh_token: true
-            # use_session: true
+            same_site: 2
           provider:
-            # active: "generic"
-            # generic:
-            #   client_id: oktaID
-            #   client_secret: oktaSecret
-            #   cert_url: https://okta-example.com/oauth2/v1/keys
-            #   auth_url: https://okta-example.com/oauth2/v1/authorize
-            #   token_url: https://okta-example.com/oauth2/v1/token
-            #   introspect_url: https://okta-example.com/oauth2/v1/introspect
-            #   scopes:
-            #     - openid
-            #     - email
-            #     - profile
-            keycloak:
-              base_url: "http://localhost:8080"
-              realm: "master"
-              client_id: "ui"
-              # client_secret: "----"
-      whoami:
-        service:
-          loadbalancer:
-            servers:
-              - url: "http://localhost:9090"
+            # turna provider is backed by the in-process auth middleware;
+            # no cert_url/token_url needed, tokens are validated and
+            # refreshed directly against the "auth" middleware instance.
+            turna:
+              name: turna
+              auth_middleware: "auth"
+              password_flow: true
+              passkey: true
+              oauth2:
+                client_id: "ui"
+                client_secret: ""
+                scopes:
+                  - "openid"
+          action:
+            token:
+              login_path: "/login/"
+      login:
+        login:
+          path:
+            base: "/login/"
+          info:
+            title: "Turna Login"
+          session_middleware: "session"
+      logout:
+        set:
+          values:
+            - logout
+      main:
+        hello:
+          headers:
+            Content-Type: "text/html; charset=utf-8"
+          message: |
+            <!DOCTYPE html>
+            <head><title>Turna</title></head>
+            <body>
+              <h1>Turna - Auth Test <a href="/logout/">Logout</a></h1>
+            </body>
+            </html>
     routers:
-      test:
+      login:
+        path: /login/*
+        middlewares:
+          - login
+      logout:
+        path: /logout/*
+        middlewares:
+          - logout
+          - login
+      # the auth UI/API is protected by the session middleware which sets
+      # X-User from the validated token claims.
+      auth:
+        path: /auth/*
+        middlewares:
+          - session
+          - auth
+      main:
         path: /*
         middlewares:
-          - auth
-          # - role
-          # - scope
-          # - test
-          # - info
-          # - x-header
-          # - cors
-          - whoami
-      merhaba:
-        path: /merhaba
-        middlewares:
-          - x-header
-          - cors
-          # - block
-          - merhaba
-
-# declare commands to run
-# services:
-#   # service name just for information purpose
-#   - name: echo
-#     # command to run
-#     command: echo "hello world"
+          - session
+          - main

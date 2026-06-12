@@ -13,12 +13,18 @@ type State struct {
 	OrgState    string   `json:"org_state"`
 	Scope       []string `json:"scope"`
 	Nonce       string   `json:"nonce"`
+	// PKCE (RFC 7636) challenge carried from the authorization request.
+	CodeChallenge       string `json:"code_challenge,omitempty"`
+	CodeChallengeMethod string `json:"code_challenge_method,omitempty"`
 }
 
 type Code struct {
 	Alias string   `json:"alias"`
 	Scope []string `json:"scope"`
 	Nonce string   `json:"nonce"`
+	// PKCE (RFC 7636) challenge to verify at the token endpoint.
+	CodeChallenge       string `json:"code_challenge,omitempty"`
+	CodeChallengeMethod string `json:"code_challenge_method,omitempty"`
 }
 
 func Encode[T any](state T) (string, error) {

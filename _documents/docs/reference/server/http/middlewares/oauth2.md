@@ -2,6 +2,8 @@
 
 `oauth2` exposes OAuth2/OIDC-compatible endpoints backed by a registered [`iam`](./iam) middleware. It can redirect users to external providers, mint Turna-signed RS256 tokens, serve JWKS, and return userinfo.
 
+> Deprecated: use [`auth`](./auth) for new PostgreSQL-backed IAM/OAuth2 setups. `oauth2` remains available for existing `iam` deployments during migration.
+
 ```yaml
 server:
   http:

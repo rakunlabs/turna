@@ -32,6 +32,7 @@ A single named middleware can hold only one middleware type. If you need both he
 | --- | --- |
 | `access_log` | Structured request/response logging. |
 | `add_prefix` | Add a path prefix before the next middleware. |
+| `auth` | PostgreSQL-backed unified IAM/OAuth2 middleware. |
 | `basic_auth` | HTTP Basic authentication with htpasswd hashes. |
 | `block` | Block methods or paths. |
 | `cors` | CORS headers and preflight handling. |
@@ -43,14 +44,14 @@ A single named middleware can hold only one middleware type. If you need both he
 | `gzip` | Compress responses. |
 | `headers` | Set or delete request/response headers. |
 | `hello` | Return a static or templated response. |
-| `iam` | Embedded IAM API/UI and permission store. |
+| `iam` | Deprecated Badger-backed IAM API/UI and permission store. |
 | `iam_check` | Check request authorization through an IAM API. |
 | `iam_forward_auth` | Forward-auth endpoint for external proxies. |
 | `info` | Return cookie or session value content. |
 | `inject` | Rewrite response bodies by path. |
 | `log` | Lightweight request log line. |
 | `login` | Login UI and OAuth2 code/password flows backed by `session`. |
-| `oauth2` | OAuth2/OIDC-compatible endpoints backed by IAM. |
+| `oauth2` | Deprecated OAuth2/OIDC-compatible endpoints backed by IAM. |
 | `path` | Replace the request path and optionally set request headers. |
 | `print` | Print POST bodies to stderr for debugging. |
 | `rate_limit` | Limit requests by all traffic, IP, or real IP. |

@@ -13,12 +13,10 @@ import (
 	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/ok"
 
-	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
-	"github.com/rakunlabs/turna/pkg/server/model"
 )
 
 // Login middleware gives a login page.
@@ -51,17 +49,23 @@ type Path struct {
 	// BaseURL for adding prefix like https://example.com
 	BaseURL string `cfg:"base_url"`
 
-	Code   string `cfg:"code"`
-	Token  string `cfg:"token"`
-	InfoUI string `cfg:"info_ui"`
-	Status string `cfg:"status"`
+	Code    string `cfg:"code"`
+	Token   string `cfg:"token"`
+	Passkey string `cfg:"passkey"`
+	InfoUI  string `cfg:"info_ui"`
+	Status  string `cfg:"status"`
 }
 
 type PathFixed struct {
-	Code   string
-	InfoUI string
-	Token  string
-	Status string
+	Code         string
+	InfoUI       string
+	Token        string
+	Passkey      string
+	Status       string
+	Signup       string
+	SignupVerify string
+	Reset        string
+	ResetConfirm string
 }
 
 type Request struct {
@@ -128,6 +132,12 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 		m.pathFixed.Token = path.Join(m.Path.Base, "auth/token")
 	}
 
+	if m.Path.Passkey != "" {
+		m.pathFixed.Passkey = m.Path.Passkey
+	} else {
+		m.pathFixed.Passkey = path.Join(m.Path.Base, "auth/passkey")
+	}
+
 	if m.Path.InfoUI != "" {
 		m.pathFixed.InfoUI = m.Path.InfoUI
 	} else {
@@ -139,6 +149,12 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 	} else {
 		m.pathFixed.Status = path.Join(m.Path.Base, "auth/status")
 	}
+
+	// signup / password reset proxies to the auth middleware
+	m.pathFixed.Signup = path.Join(m.Path.Base, "auth/signup")
+	m.pathFixed.SignupVerify = path.Join(m.Path.Base, "auth/signup/verify")
+	m.pathFixed.Reset = path.Join(m.Path.Base, "auth/reset")
+	m.pathFixed.ResetConfirm = path.Join(m.Path.Base, "auth/reset/confirm")
 
 	// state cookie settings
 	if m.StateCookie.CookieName == "" {
@@ -254,10 +270,41 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 
 					return
 				}
+
+				if strings.HasPrefix(urlPath, m.pathFixed.Passkey) {
+					m.PasskeyFlow(w, r)
+
+					return
+				}
+
+				// more specific prefixes first
+				if strings.HasPrefix(urlPath, m.pathFixed.SignupVerify) {
+					m.SignupFlow(w, r, session.SignupActionVerify)
+
+					return
+				}
+
+				if strings.HasPrefix(urlPath, m.pathFixed.Signup) {
+					m.SignupFlow(w, r, session.SignupActionSignup)
+
+					return
+				}
+
+				if strings.HasPrefix(urlPath, m.pathFixed.ResetConfirm) {
+					m.SignupFlow(w, r, session.SignupActionResetConfirm)
+
+					return
+				}
+
+				if strings.HasPrefix(urlPath, m.pathFixed.Reset) {
+					m.SignupFlow(w, r, session.SignupActionReset)
+
+					return
+				}
 			}
 
 			// not found
-			httputil.JSON(w, http.StatusNotFound, model.MetaData{Message: http.StatusText(http.StatusNotFound)})
+			writeError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
 
 			return
 		})

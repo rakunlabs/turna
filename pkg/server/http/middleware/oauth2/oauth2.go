@@ -15,6 +15,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
 
+// Deprecated: use the auth middleware for new PostgreSQL-backed IAM/OAuth2 setups.
 type Oauth2 struct {
 	PrefixPath    string `cfg:"prefix_path"`
 	Token         Token  `cfg:"token"`

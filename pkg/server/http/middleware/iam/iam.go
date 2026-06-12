@@ -17,6 +17,7 @@ import (
 	"github.com/worldline-go/conn/connredis"
 )
 
+// Deprecated: use the auth middleware for new PostgreSQL-backed IAM/OAuth2 setups.
 type Iam struct {
 	PrefixPath string    `cfg:"prefix_path"`
 	Ldap       ldap.Ldap `cfg:"ldap"`

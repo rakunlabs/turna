@@ -34,6 +34,24 @@ type Oauth2 struct {
 	// TokenURL is the resource server's token endpoint URL.
 	TokenURL  string `cfg:"token_url"`
 	LogoutURL string `cfg:"logout_url"`
+	// PasskeyURL is the WebAuthn begin/finish endpoint of a remote auth
+	// middleware (e.g. https://auth.example.com/auth/oauth2/passkey).
+	// Not needed when the provider uses auth_middleware (in-process).
+	PasskeyURL string `cfg:"passkey_url"`
+	// APIKeyURL is the static API key validation endpoint of a remote auth
+	// middleware (e.g. https://auth.example.com/auth/oauth2/api-key).
+	// Not needed when the provider uses auth_middleware (in-process).
+	APIKeyURL string `cfg:"api_key_url"`
+	// SignupURL is the self-registration endpoint of a remote auth middleware
+	// (e.g. https://auth.example.com/auth/oauth2/signup); the verify endpoint
+	// is derived as SignupURL + "/verify".
+	// Not needed when the provider uses auth_middleware (in-process).
+	SignupURL string `cfg:"signup_url"`
+	// PasswordResetURL is the forgot-password endpoint of a remote auth
+	// middleware (e.g. https://auth.example.com/auth/oauth2/password-reset);
+	// the confirm endpoint is derived as PasswordResetURL + "/confirm".
+	// Not needed when the provider uses auth_middleware (in-process).
+	PasswordResetURL string `cfg:"password_reset_url"`
 	// AuthHeaderStyle is optional. If not set, AuthHeaderStyleBasic will be used.
 	AuthHeaderStyle AuthHeaderStyle
 }

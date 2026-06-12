@@ -2,6 +2,8 @@
 
 `iam` serves Turna's embedded identity and access management API/UI. It stores users, service accounts, roles, permissions, LDAP mappings, and access-check data.
 
+> Deprecated: use [`auth`](./auth) for new PostgreSQL-backed IAM/OAuth2 setups. `iam` remains available for existing Badger-backed deployments during migration.
+
 ```yaml
 server:
   http:

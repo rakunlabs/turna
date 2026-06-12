@@ -62,7 +62,7 @@ dragonfly: ## Run dragonfly server
 
 .PHONY: postgres
 postgres: ## Run postgres server
-	docker run --rm -it -p 5432:5432 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:14
+	docker run --rm -it -p 5432:5432 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:15
 
 .PHONY: test
 test: ## Run unit tests

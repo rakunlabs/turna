@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/rakunlabs/turna/pkg/server/model"
 	"golang.org/x/exp/slog"
 )
 
@@ -18,7 +16,7 @@ func (m *Login) Logout(w http.ResponseWriter, r *http.Request) {
 		} else {
 			logoutURL, err := url.Parse(oauth2.LogoutURL)
 			if err != nil {
-				httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: "failed to parse logout URL"})
+				writeError(w, http.StatusInternalServerError, "failed to parse logout URL")
 
 				return
 			}

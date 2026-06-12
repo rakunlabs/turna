@@ -6,7 +6,8 @@ require (
 	github.com/MicahParks/keyfunc/v2 v2.0.3
 	github.com/abbot/go-http-auth v0.4.1-0.20220112235402-e1cee1c72f2f
 	github.com/ajg/form v1.5.1
-	github.com/bmatcuk/doublestar/v4 v4.7.1
+	github.com/bmatcuk/doublestar/v4 v4.9.2
+	github.com/crewjam/saml v0.5.1
 	github.com/dgraph-io/badger/v4 v4.5.0
 	github.com/dgraph-io/ristretto/v2 v2.0.0
 	github.com/dustin/go-humanize v1.0.1
@@ -14,9 +15,13 @@ require (
 	github.com/fullstorydev/grpcui v1.5.0
 	github.com/go-ldap/ldap/v3 v3.4.10
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/jackc/pgx/v5 v5.10.0
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
+	github.com/lib/pq v1.12.3
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/rakunlabs/ada v0.4.4
+	github.com/rakunlabs/ada/handler/swagger v0.4.4
+	github.com/rakunlabs/ada/middleware/auth v0.4.4
 	github.com/rakunlabs/ada/middleware/encoding v0.4.4
 	github.com/rakunlabs/ada/middleware/ratelimit v0.4.4
 	github.com/rakunlabs/cache v0.3.3
@@ -31,14 +36,17 @@ require (
 	github.com/rakunlabs/chu/loader/external/loadervault v0.0.0-20260529203529-25beb0ba3ee7
 	github.com/rakunlabs/into v0.5.3
 	github.com/rakunlabs/logi v0.4.5
+	github.com/rakunlabs/muz v0.2.5
 	github.com/rakunlabs/ok v0.1.0
 	github.com/rakunlabs/query v0.4.6
 	github.com/redis/go-redis/v9 v9.18.0
+	github.com/russellhaering/goxmldsig v1.4.0
 	github.com/rytsh/liz/loader v0.2.5
 	github.com/rytsh/mugo v0.9.2
 	github.com/spf13/cast v1.10.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/pflag v1.0.10
+	github.com/swaggo/http-swagger/v2 v2.0.2
 	github.com/things-go/go-socks5 v0.0.5
 	github.com/timshannon/badgerhold/v4 v4.0.3
 	github.com/twmb/tlscfg v1.3.0
@@ -74,8 +82,6 @@ require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
-	github.com/PuerkitoBio/purell v1.1.1 // indirect
-	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.41.8 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.32.19 // indirect
@@ -93,6 +99,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.42.2 // indirect
 	github.com/aws/smithy-go v1.25.1 // indirect
+	github.com/beevik/etree v1.5.0 // indirect
 	github.com/bufbuild/protocompile v0.10.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -110,11 +117,12 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
-	github.com/go-openapi/jsonreference v0.19.6 // indirect
-	github.com/go-openapi/spec v0.20.4 // indirect
+	github.com/go-openapi/jsonreference v0.20.0 // indirect
+	github.com/go-openapi/spec v0.20.6 // indirect
 	github.com/go-openapi/swag v0.19.15 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
+	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/gomarkdown/markdown v0.0.0-20250810172220-2e2c11897d1a // indirect
@@ -141,13 +149,18 @@ require (
 	github.com/hashicorp/vault/api v1.22.0 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jaswdr/faker v1.19.1 // indirect
 	github.com/jhump/protoreflect v1.16.0 // indirect
+	github.com/jonboulle/clockwork v0.2.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
-	github.com/klauspost/compress v1.17.11 // indirect
+	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lmittmann/tint v1.1.2 // indirect
 	github.com/mailru/easyjson v0.7.6 // indirect
+	github.com/mattermost/xml-roundtrip-validator v0.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
@@ -170,7 +183,8 @@ require (
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
-	github.com/swaggo/swag v1.16.4 // indirect
+	github.com/swaggo/files/v2 v2.0.0 // indirect
+	github.com/swaggo/swag v1.16.6 // indirect
 	github.com/tdewolff/minify/v2 v2.24.3 // indirect
 	github.com/tdewolff/parse/v2 v2.8.3 // indirect
 	github.com/urfave/cli/v2 v2.3.0 // indirect
@@ -182,6 +196,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.42.0 // indirect
 	go.opentelemetry.io/otel/trace v1.42.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
+	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect

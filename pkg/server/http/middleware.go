@@ -6,6 +6,7 @@ import (
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/accesslog"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/addprefix"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/basicauth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/block"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/cors"
@@ -99,6 +100,7 @@ type HTTPMiddleware struct {
 	AccessLogMiddleware        *accesslog.AccessLog                  `cfg:"access_log"`
 	URL                        *url.URL                              `cfg:"url"`
 	RateLimit                  *ratelimit.RateLimit                  `cfg:"rate_limit"`
+	Auth                       *auth.Auth                            `cfg:"auth"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
@@ -229,6 +231,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 	case h.RateLimit != nil:
 		m := h.RateLimit.Middleware()
 		return []MiddlewareFunc{m}, nil
+	case h.Auth != nil:
+		m, err := h.Auth.Middleware(ctx, name)
+		return []MiddlewareFunc{m}, err
 	}
 
 	return nil, nil

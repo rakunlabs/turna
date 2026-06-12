@@ -1,10 +1,13 @@
 package session
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/rakunlabs/ok"
@@ -39,6 +42,14 @@ func (t *Token) GetKeyFunc() InfKeyFuncParser {
 type Provider struct {
 	Name   string  `cfg:"name"`
 	Oauth2 *Oauth2 `cfg:"oauth2"`
+	// AuthMiddleware is the name of an in-process auth middleware instance.
+	// When set, token validation and refresh go directly to that middleware
+	// instead of cert_url/token_url over HTTP. oauth2.client_id should match
+	// an OAuth client registered in the auth middleware.
+	AuthMiddleware string `cfg:"auth_middleware"`
+	// Passkey advertises WebAuthn login on the login page for this provider.
+	// Requires auth_middleware (in-process) or oauth2.passkey_url (remote).
+	Passkey bool `cfg:"passkey"`
 	// XUser header set from token claims. Default is email and preferred_username.
 	// It set first found value.
 	XUser []string `cfg:"x_user"`
@@ -50,6 +61,13 @@ type Provider struct {
 	EmailVerifyCheck bool              `cfg:"email_verify_check"`
 	// PasswordFlow is use password flow to get token.
 	PasswordFlow bool `cfg:"password_flow"`
+	// APIKey enables static X-API-Key authentication at the session layer.
+	// The key is validated directly (in-process via auth_middleware or over
+	// oauth2.api_key_url); no token exchange happens and downstream services
+	// receive the key principal's claims/X-User.
+	APIKey bool `cfg:"api_key"`
+	// APIKeyHeader is the header carrying the raw API key. Default X-API-Key.
+	APIKeyHeader string `cfg:"api_key_header"`
 	// Priority is use to sort provider.
 	Priority int `cfg:"priority"`
 	// Hide is use to hide provider.
@@ -84,7 +102,15 @@ func (m *Session) SetAction() error {
 		m.Action.Token.auth.Client = client.HTTP
 
 		providerList := make([]InfProviderCert, 0, len(m.Provider))
+		issuerProviders := make(map[string]string)
 		for k, v := range m.Provider {
+			// issuer-backed providers validate tokens in-process; no cert_url needed
+			if v.AuthMiddleware != "" {
+				issuerProviders[k] = v.AuthMiddleware
+
+				continue
+			}
+
 			if v.Oauth2 == nil {
 				continue
 			}
@@ -97,7 +123,12 @@ func (m *Session) SetAction() error {
 			})
 		}
 
-		jwksMulti, err := MultiJWTKeyFunc(providerList)
+		opts := []OptionJWK{}
+		if len(issuerProviders) > 0 {
+			opts = append(opts, WithKeyFunc(&issuerKeyFunc{providers: issuerProviders}))
+		}
+
+		jwksMulti, err := MultiJWTKeyFunc(providerList, opts...)
 		if err != nil {
 			return fmt.Errorf("cannot create keyfunc: %w", err)
 		}
@@ -187,6 +218,175 @@ func addXUserHeader(r *http.Request, claim *claims.Custom, xUser []string, email
 	}
 }
 
+func apiKeyHeader(provider Provider) string {
+	if provider.APIKeyHeader != "" {
+		return provider.APIKeyHeader
+	}
+
+	return "X-API-Key"
+}
+
+func (m *Session) apiKeyRequest(r *http.Request) (providerName string, provider Provider, headerName string, key string, ok bool) {
+	if m.SetProvider != "" {
+		p, exists := m.Provider[m.SetProvider]
+		if !exists || !p.APIKey {
+			return "", Provider{}, "", "", false
+		}
+
+		header := apiKeyHeader(p)
+		key := r.Header.Get(header)
+
+		return m.SetProvider, p, header, key, key != ""
+	}
+
+	names := make([]string, 0, len(m.Provider))
+	for name, provider := range m.Provider {
+		if provider.APIKey {
+			names = append(names, name)
+		}
+	}
+	sort.Slice(names, func(i, j int) bool {
+		left := m.Provider[names[i]]
+		right := m.Provider[names[j]]
+		if left.Priority == right.Priority {
+			return names[i] < names[j]
+		}
+
+		return left.Priority > right.Priority
+	})
+
+	for _, name := range names {
+		provider := m.Provider[name]
+		header := apiKeyHeader(provider)
+		key := r.Header.Get(header)
+		if key != "" {
+			return name, provider, header, key, true
+		}
+	}
+
+	return "", Provider{}, "", "", false
+}
+
+// apiKeyClaimsData validates a raw static api key and returns claim-shaped
+// identity JSON; no token exchange happens. In-process issuers check their
+// database directly, remote providers are called over oauth2.api_key_url.
+func (m *Session) apiKeyClaimsData(ctx context.Context, providerName string, provider Provider, key string) ([]byte, error) {
+	if provider.AuthMiddleware != "" {
+		issuer := IssuerRegistry.Get(provider.AuthMiddleware)
+		if issuer == nil {
+			return nil, fmt.Errorf("issuer %q not found", provider.AuthMiddleware)
+		}
+
+		validator, ok := issuer.(InfAPIKey)
+		if !ok {
+			return nil, fmt.Errorf("issuer %q does not support api keys", provider.AuthMiddleware)
+		}
+
+		return validator.APIKeyData(ctx, key)
+	}
+
+	if provider.Oauth2 == nil || provider.Oauth2.APIKeyURL == "" {
+		return nil, fmt.Errorf("provider %q has no api_key_url", providerName)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, provider.Oauth2.APIKeyURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("X-API-Key", key)
+	req.Header.Set("Accept", "application/json")
+
+	return m.Action.Token.auth.RawRequest(req)
+}
+
+// serveAPIKey authenticates the request with a static api key: the key is
+// validated, the raw key header is removed, and downstream sees the usual
+// claims context and X-User headers.
+func (m *Session) serveAPIKey(next http.Handler, w http.ResponseWriter, r *http.Request, providerName string, provider Provider, headerName, key string) {
+	body, err := m.apiKeyClaimsData(r.Context(), providerName, provider, key)
+	if err != nil {
+		slog.Debug("api key validation failed", "error", err.Error())
+		httputil.JSON(w, http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+
+		return
+	}
+
+	customClaims := &claims.Custom{}
+	if err := json.Unmarshal(body, customClaims); err != nil {
+		slog.Debug("cannot parse api key claims", "error", err.Error())
+		httputil.JSON(w, http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+
+		return
+	}
+
+	r.Header.Del(headerName)
+
+	tcontext.Set(r, "claims", customClaims)
+	tcontext.Set(r, "provider", providerName)
+	addXUserHeader(r, customClaims, provider.XUser, provider.EmailVerifyCheck, provider.ClaimHeader)
+
+	next.ServeHTTP(w, r)
+}
+
+// refreshTokenData refreshes the access token of the provider, either
+// in-process through a registered issuer (auth_middleware) or over HTTP
+// against the provider's token_url.
+func (m *Session) refreshTokenData(ctx context.Context, providerName string, token *TokenData) ([]byte, error) {
+	provider, ok := m.Provider[providerName]
+	if !ok {
+		return nil, fmt.Errorf("cannot find provider %q", providerName)
+	}
+
+	if provider.AuthMiddleware != "" {
+		issuer := IssuerRegistry.Get(provider.AuthMiddleware)
+		if issuer == nil {
+			return nil, fmt.Errorf("issuer %q not found", provider.AuthMiddleware)
+		}
+
+		form := url.Values{
+			"grant_type":    {"refresh_token"},
+			"refresh_token": {token.RefreshToken},
+		}
+		if provider.Oauth2 != nil {
+			form.Set("client_id", provider.Oauth2.ClientID)
+			if provider.Oauth2.ClientSecret != "" {
+				form.Set("client_secret", provider.Oauth2.ClientSecret)
+			}
+		}
+		if token.Scope != "" {
+			form.Set("scope", token.Scope)
+		}
+
+		body, statusCode, err := issuer.IssueToken(ctx, form)
+		if err != nil {
+			return nil, err
+		}
+		if statusCode < 200 || statusCode > 299 {
+			return nil, fmt.Errorf("refresh token failed: %s", string(body))
+		}
+
+		return body, nil
+	}
+
+	if provider.Oauth2 == nil {
+		return nil, fmt.Errorf("cannot find provider %q", providerName)
+	}
+
+	requestConfig := request.AuthRequestConfig{
+		TokenURL:     provider.Oauth2.TokenURL,
+		ClientID:     provider.Oauth2.ClientID,
+		ClientSecret: provider.Oauth2.ClientSecret,
+	}
+
+	requestConfig.Scopes = strings.Fields(token.Scope)
+
+	return m.Action.Token.auth.RefreshToken(ctx, request.RefreshTokenConfig{
+		RefreshToken:      token.RefreshToken,
+		AuthRequestConfig: requestConfig,
+	})
+}
+
 func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) {
 	if m.Action.Active == actionToken {
 		if authorizationHeader := r.Header.Get("Authorization"); authorizationHeader != "" {
@@ -241,6 +441,12 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 			}
 		}
 
+		if providerName, provider, headerName, key, ok := m.apiKeyRequest(r); ok {
+			m.serveAPIKey(next, w, r, providerName, provider, headerName, key)
+
+			return
+		}
+
 		// get token from store
 		// if not exist, redirect to login page with redirect url
 		// set token to the header and continue
@@ -287,26 +493,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 			}
 
 			if v {
-				provider, ok := m.Provider[providerName]
-				if !ok || provider.Oauth2 == nil {
-					slog.Error("cannot find provider", "provider", providerName)
-					m.RedirectToLogin(w, r, true, true)
-
-					return
-				}
-
-				requestConfig := request.AuthRequestConfig{
-					TokenURL:     provider.Oauth2.TokenURL,
-					ClientID:     provider.Oauth2.ClientID,
-					ClientSecret: provider.Oauth2.ClientSecret,
-				}
-
-				requestConfig.Scopes = strings.Fields(token.Scope)
-
-				refreshData, err := m.Action.Token.auth.RefreshToken(r.Context(), request.RefreshTokenConfig{
-					RefreshToken:      token.RefreshToken,
-					AuthRequestConfig: requestConfig,
-				})
+				refreshData, err := m.refreshTokenData(r.Context(), providerName, token)
 				if err != nil {
 					slog.Error("cannot refresh token", "error", err.Error())
 					m.RedirectToLogin(w, r, true, true)
@@ -484,24 +671,7 @@ func (m *Session) IsLogged(w http.ResponseWriter, r *http.Request) (*claims.Cust
 		}
 
 		if v {
-			provider, ok := m.Provider[providerName]
-			if !ok || provider.Oauth2 == nil {
-				slog.Error("cannot find provider", "provider", providerName)
-				return nil, false, fmt.Errorf("cannot find provider %q", providerName)
-			}
-
-			requestConfig := request.AuthRequestConfig{
-				TokenURL:     provider.Oauth2.TokenURL,
-				ClientID:     provider.Oauth2.ClientID,
-				ClientSecret: provider.Oauth2.ClientSecret,
-			}
-
-			requestConfig.Scopes = strings.Fields(token.Scope)
-
-			refreshData, err := m.Action.Token.auth.RefreshToken(r.Context(), request.RefreshTokenConfig{
-				RefreshToken:      token.RefreshToken,
-				AuthRequestConfig: requestConfig,
-			})
+			refreshData, err := m.refreshTokenData(r.Context(), providerName, token)
 			if err != nil {
 				slog.Error("cannot refresh token", "error", err.Error())
 				return nil, false, err
