@@ -1,0 +1,30 @@
+server:
+  entrypoints:
+    # TLS-ALPN-01 validation connects to the TLS entrypoint, so it must be
+    # reachable from the public internet (usually :443).
+    websecure:
+      address: ":443"
+  http:
+    tls:
+      acme:
+        enabled: true
+        email: admin@example.com
+        domains:
+          - app.example.com
+        # Persists the ACME account key and issued certificates.
+        cache_dir: ./acme-cache
+        # Use the Let's Encrypt staging CA while testing to avoid rate limits.
+        # Remove this line (or leave empty) to use the production CA.
+        directory_url: "https://acme-staging-v02.api.letsencrypt.org/directory"
+    middlewares:
+      merhaba:
+        hello:
+          message: "merhaba 👋"
+    routers:
+      merhaba:
+        tls: {}
+        entrypoints:
+          - websecure
+        path: /
+        middlewares:
+          - merhaba

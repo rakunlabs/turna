@@ -1,0 +1,79 @@
+# Turna in front of an HTTP + WebSocket backend.
+#
+# Flow:
+#   client --(HTTPS/WSS :443, ACME cert)--> turna --(HTTP/WS)--> your backend
+#
+# - TLS is terminated by turna using an automatically provisioned Let's Encrypt
+#   certificate (ACME, TLS-ALPN-01 challenge).
+# - The `service` middleware reverse-proxies to your backend and forwards
+#   WebSocket (Connection: Upgrade) requests transparently — no extra flag.
+
+log_level: info
+
+server:
+  entrypoints:
+    # :443 must be publicly reachable so the ACME TLS-ALPN-01 challenge works.
+    websecure:
+      address: ":443"
+    # Optional plain-HTTP entrypoint (e.g. for an HTTP->HTTPS redirect router).
+    web:
+      address: ":80"
+
+  http:
+    tls:
+      acme:
+        enabled: true
+        email: you@example.com
+        domains:
+          # Only host names listed here receive certificates.
+          - app.example.com
+        cache_dir: ./acme-cache
+        # Use the staging CA while testing to avoid Let's Encrypt rate limits.
+        # Remove this line (or leave empty) to switch to the production CA.
+        directory_url: "https://acme-staging-v02.api.letsencrypt.org/directory"
+
+    middlewares:
+      # Reverse proxy to your backend. WebSocket upgrades are handled
+      # automatically over the same upstream connection.
+      backend:
+        service:
+          # Forwards the original Host header by default. Set to false only if
+          # your backend should receive the upstream host instead.
+          # pass_host_header: true
+          #
+          # Set true only when the upstream uses https/wss with a self-signed cert.
+          # insecure_skip_verify: false
+          loadbalancer:
+            servers:
+              # Your HTTP + WebSocket backend. For multiple instances add more
+              # `- url:` entries and turna round-robins between them.
+              - url: "http://localhost:3000"
+              # - url: "http://localhost:3001"
+
+      # Optional: redirect plain HTTP to HTTPS, preserving path and query.
+      to-https:
+        redirectcontinue:
+          permanent: false
+          redirects:
+            - regex: "^(.*)$"
+              replacement: "https://app.example.com$1"
+
+    routers:
+      # HTTPS + WSS traffic -> backend
+      backend:
+        tls: {} # terminate TLS here (uses the ACME certificate)
+        entrypoints:
+          - websecure
+        host: app.example.com # match by Host/SNI (optional)
+        path: /* # catch-all; WS upgrades on any path are proxied
+        middlewares:
+          - backend
+
+      # Optional: send all plain HTTP to HTTPS.
+      http-redirect:
+        entrypoints:
+          - web
+        host: app.example.com
+        path: /*
+        middlewares:
+          - to-https

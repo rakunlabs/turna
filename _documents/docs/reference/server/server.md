@@ -140,6 +140,7 @@ server:
 | `store.<host>` | | Certificate(s) served for the SNI host name `<host>`. |
 | `store.default` | | Fallback certificate used when no SNI host matches or the client sends no SNI. |
 | `self_signed` | | Customizes the generated certificate (see below). |
+| `acme` | | Automatic certificate provisioning from an ACME CA such as Let's Encrypt (see below). |
 
 ### SNI (multiple certificates)
 
@@ -147,8 +148,48 @@ server:
 
 1. exact host match (e.g. `app.example.com`),
 2. wildcard match by replacing the first label (e.g. `api.internal.example.com` matches `*.internal.example.com`),
-3. the `default` host key,
-4. a generated self-signed certificate when nothing else matches.
+3. an ACME-provisioned certificate when `acme` is enabled and the host is allowed,
+4. the `default` host key,
+5. a generated self-signed certificate when nothing else matches.
+
+### ACME (Let's Encrypt)
+
+Enable `acme` to automatically obtain and renew certificates from an ACME CA (Let's Encrypt by default) using the **TLS-ALPN-01** challenge. The challenge is answered over the existing TLS entrypoint, so no extra HTTP port is required, but the TLS entrypoint (usually `:443`) must be reachable from the public internet for validation to succeed.
+
+```yaml
+server:
+  entrypoints:
+    websecure:
+      address: ":443"
+  http:
+    tls:
+      acme:
+        enabled: true
+        email: admin@example.com
+        domains:
+          - app.example.com
+        cache_dir: ./acme-cache
+        # Use the staging CA while testing to avoid rate limits.
+        directory_url: "https://acme-staging-v02.api.letsencrypt.org/directory"
+    routers:
+      secure:
+        entrypoints:
+          - websecure
+        path: /*
+        tls: {}
+        middlewares:
+          - app
+```
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `enabled` | `false` | Turns on ACME certificate provisioning. |
+| `email` | | Contact address registered with the ACME account. |
+| `domains` | | Allow-list of host names certificates may be issued for. A request for a host outside this list is rejected. |
+| `cache_dir` | `acme-cache` | Directory used to persist the account key and issued certificates. |
+| `directory_url` | Let's Encrypt production | ACME directory endpoint. Leave empty for the Let's Encrypt production CA, or set the staging URL while testing. |
+
+Certificates are issued on first request and renewed automatically. Use the Let's Encrypt **staging** directory (`https://acme-staging-v02.api.letsencrypt.org/directory`) during testing; the production CA enforces strict rate limits. Wildcard certificates are not supported by the TLS-ALPN-01 challenge — list each host explicitly under `domains`. Entries configured in `store` still take precedence for their exact/wildcard host names.
 
 ### Self-signed certificate
 
