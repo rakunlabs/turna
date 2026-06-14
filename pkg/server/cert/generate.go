@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"net"
 	"time"
 )
 
@@ -19,9 +20,9 @@ type Certificate struct {
 
 var cache *Certificate
 
-func GenerateCertificateCache() (*Certificate, error) {
+func GenerateCertificateCache(opts ...Options) (*Certificate, error) {
 	if cache == nil {
-		cert, err := GenerateCertificate()
+		cert, err := GenerateCertificate(opts...)
 		if err != nil {
 			return nil, err
 		}
@@ -36,6 +37,7 @@ func GenerateCertificate(opts ...Options) (*Certificate, error) {
 	o := &options{
 		Organization: []string{"turna"},
 		DNSNames:     []string{"localhost"},
+		IPs:          []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
 		NotAfter:     365 * 24 * time.Hour,
 	}
 	for _, opt := range opts {

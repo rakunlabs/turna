@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,12 +22,143 @@ type HTTP struct {
 }
 
 type TLS struct {
+	// Store maps an SNI host name to its certificate(s). The special key
+	// "default" is used as the fallback when the client sends no SNI server
+	// name or no host entry matches.
 	Store map[string][]Certificate `cfg:"store"`
+	// MinVersion is the minimum accepted TLS version: "1.2" or "1.3".
+	// Defaults to "1.3".
+	MinVersion string `cfg:"min_version"`
+	// SelfSigned customizes the auto-generated certificate used when no
+	// certificate is configured in Store.
+	SelfSigned SelfSigned `cfg:"self_signed"`
+}
+
+type SelfSigned struct {
+	Organization []string `cfg:"organization"`
+	DNSNames     []string `cfg:"dns_names"`
+	IPs          []string `cfg:"ips"`
 }
 
 type Certificate struct {
 	CertFile string `cfg:"cert_file"`
 	KeyFile  string `cfg:"key_file"`
+}
+
+// minVersion converts the configured MinVersion string to a tls constant.
+// Default is TLS 1.3.
+func (t TLS) minVersion() (uint16, error) {
+	switch t.MinVersion {
+	case "", "1.3", "13", "tls1.3":
+		return tls.VersionTLS13, nil
+	case "1.2", "12", "tls1.2":
+		return tls.VersionTLS12, nil
+	default:
+		return 0, fmt.Errorf("unsupported tls min_version %q (use \"1.2\" or \"1.3\")", t.MinVersion)
+	}
+}
+
+// buildTLSConfig builds an SNI-aware *tls.Config from the configured Store.
+// Every Store host key is loaded, and GetCertificate selects a certificate by
+// the client's SNI server name (exact, then wildcard), falling back to the
+// "default" host key and finally to a generated self-signed certificate.
+func (h *HTTP) buildTLSConfig() (*tls.Config, error) {
+	minVersion, err := h.TLS.minVersion()
+	if err != nil {
+		return nil, err
+	}
+
+	byHost := make(map[string]tls.Certificate, len(h.TLS.Store))
+	allCerts := make([]tls.Certificate, 0, len(h.TLS.Store))
+
+	for host, certList := range h.TLS.Store {
+		for _, c := range certList {
+			certificate, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
+			if err != nil {
+				return nil, fmt.Errorf("cannot load certificate for host %q: %w, certFile: %s, keyFile: %s", host, err, c.CertFile, c.KeyFile)
+			}
+
+			// first certificate wins per host key
+			if _, ok := byHost[host]; !ok {
+				byHost[host] = certificate
+			}
+			allCerts = append(allCerts, certificate)
+		}
+	}
+
+	// Determine the fallback certificate.
+	var fallback tls.Certificate
+	switch {
+	case len(byHost["default"].Certificate) > 0:
+		fallback = byHost["default"]
+	case len(allCerts) > 0:
+		fallback = allCerts[0]
+	default:
+		generated, err := h.generateSelfSigned()
+		if err != nil {
+			return nil, err
+		}
+		fallback = generated
+		allCerts = append(allCerts, generated)
+	}
+
+	cfg := &tls.Config{
+		MinVersion:   minVersion,
+		Certificates: allCerts,
+		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			if hello.ServerName != "" {
+				if certificate, ok := byHost[hello.ServerName]; ok {
+					return &certificate, nil
+				}
+				if certificate, ok := wildcardCert(byHost, hello.ServerName); ok {
+					return certificate, nil
+				}
+			}
+
+			return &fallback, nil
+		},
+	}
+
+	return cfg, nil
+}
+
+// wildcardCert looks up a certificate for serverName by replacing its first
+// label with "*" (e.g. "api.example.com" -> "*.example.com").
+func wildcardCert(byHost map[string]tls.Certificate, serverName string) (*tls.Certificate, bool) {
+	if i := strings.IndexByte(serverName, '.'); i > 0 {
+		if certificate, ok := byHost["*"+serverName[i:]]; ok {
+			return &certificate, true
+		}
+	}
+
+	return nil, false
+}
+
+// generateSelfSigned builds a cached self-signed certificate, honoring the
+// optional SelfSigned config.
+func (h *HTTP) generateSelfSigned() (tls.Certificate, error) {
+	opts := make([]cert.Options, 0, 3)
+	if len(h.TLS.SelfSigned.Organization) > 0 {
+		opts = append(opts, cert.WithOrganization(h.TLS.SelfSigned.Organization...))
+	}
+	if len(h.TLS.SelfSigned.DNSNames) > 0 {
+		opts = append(opts, cert.WithDNSNames(h.TLS.SelfSigned.DNSNames...))
+	}
+	if len(h.TLS.SelfSigned.IPs) > 0 {
+		opts = append(opts, cert.WithIPs(h.TLS.SelfSigned.IPs...))
+	}
+
+	generated, err := cert.GenerateCertificateCache(opts...)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("cannot generate self-signed certificate: %w", err)
+	}
+
+	certificate, err := tls.X509KeyPair(generated.Certificate, generated.PrivateKey)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("cannot load generated certificate: %w", err)
+	}
+
+	return certificate, nil
 }
 
 var ReadHeaderTimeout = 10 * time.Second
@@ -64,43 +196,23 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 		}
 	}
 
+	// build a shared, SNI-aware TLS config once when any TLS entrypoint exists
+	var tlsConfig *tls.Config
+	if len(selectedEntriesTLS) > 0 {
+		c, err := h.buildTLSConfig()
+		if err != nil {
+			return err
+		}
+
+		tlsConfig = c
+	}
+
 	// entrypoints for TLS
 	for entrypoint := range selectedEntriesTLS {
-		certs := []tls.Certificate{}
-		// get default keypair
-		if defaultCert, ok := h.TLS.Store["default"]; ok {
-			for _, cert := range defaultCert {
-				certificate, err := tls.LoadX509KeyPair(cert.CertFile, cert.KeyFile)
-				if err != nil {
-					return fmt.Errorf("cannot load default certificate: %w, certFile: %s, keyFile: %s", err, cert.CertFile, cert.KeyFile)
-				}
-
-				certs = append(certs, certificate)
-			}
-		}
-
-		if len(certs) == 0 {
-			// generate and add self-signed certificate
-			generated, err := cert.GenerateCertificateCache()
-			if err != nil {
-				return fmt.Errorf("cannot generate self-signed certificate: %w", err)
-			}
-
-			certificate, err := tls.X509KeyPair(generated.Certificate, generated.PrivateKey)
-			if err != nil {
-				return fmt.Errorf("cannot load generated certificate: %w", err)
-			}
-
-			certs = append(certs, certificate)
-		}
-
 		s := http.Server{
 			ReadHeaderTimeout: ReadHeaderTimeout,
 			Handler:           ruleRouter.Serve(entrypoint),
-			TLSConfig: &tls.Config{
-				MinVersion:   tls.VersionTLS13,
-				Certificates: certs,
-			},
+			TLSConfig:         tlsConfig.Clone(),
 		}
 
 		listener, err := registry.GlobalReg.GetListener(entrypoint)

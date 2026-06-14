@@ -1,11 +1,10 @@
 package service
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"net/url"
-
-	"github.com/rakunlabs/ok"
 )
 
 type Service struct {
@@ -82,15 +81,24 @@ func (m *Service) Middleware() ([]func(http.Handler) http.Handler, error) {
 
 	cfg.Balancer = balancer
 
-	client, err := ok.New(
-		ok.WithDisableRetry(true),
-		ok.WithInsecureSkipVerify(m.InsecureSkipVerify),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("cannot create ok client: %w", err)
+	// Dedicated transport for the reverse proxy. A plain *http.Transport is
+	// required so that httputil.ReverseProxy can natively proxy WebSocket /
+	// Upgrade requests (the 101 response body is returned as an
+	// io.ReadWriteCloser) and so that upstream TLS (https/wss) is handled here.
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil, fmt.Errorf("default transport is not *http.Transport")
 	}
 
-	cfg.Transport = client.HTTP.Transport
+	transport = transport.Clone()
+	if m.InsecureSkipVerify {
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = &tls.Config{} //nolint:gosec // opt-in skip verify
+		}
+		transport.TLSClientConfig.InsecureSkipVerify = true
+	}
+
+	cfg.Transport = transport
 
 	checkHost := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

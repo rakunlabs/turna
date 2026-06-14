@@ -26,6 +26,12 @@ server:
 | `prefixbalancer.prefixes` | | Path-prefix-specific upstream lists. |
 | `prefixbalancer.default_servers` | | Default upstreams when no prefix matches. |
 
+## WebSockets and streaming
+
+`service` proxies WebSocket (`Connection: Upgrade`) and streaming responses (SSE) transparently. WebSocket upgrades are forwarded over the same transport as regular requests, so `wss://`/`https://` upstreams work, honoring `insecure_skip_verify`. Path rewrites and the `pass_host_header` setting apply to upgrades too.
+
+WebSocket upgrades use HTTP/1.1 to the upstream; backends that only speak HTTP/2 cannot accept them.
+
 ## Prefix Balancer
 
 ```yaml

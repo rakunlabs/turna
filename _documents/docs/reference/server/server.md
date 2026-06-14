@@ -113,10 +113,17 @@ server:
       address: ":8443"
   http:
     tls:
+      min_version: "1.3"
       store:
         default:
           - cert_file: ./cert.pem
             key_file: ./key.pem
+        app.example.com:
+          - cert_file: ./app.pem
+            key_file: ./app-key.pem
+        "*.internal.example.com":
+          - cert_file: ./internal.pem
+            key_file: ./internal-key.pem
     routers:
       secure:
         entrypoints:
@@ -127,7 +134,38 @@ server:
           - app
 ```
 
-If no default certificate is configured, Turna generates a self-signed TLS 1.3 certificate for the TLS entrypoint.
+| Field | Default | Description |
+| --- | --- | --- |
+| `min_version` | `1.3` | Minimum accepted TLS version: `1.2` or `1.3`. |
+| `store.<host>` | | Certificate(s) served for the SNI host name `<host>`. |
+| `store.default` | | Fallback certificate used when no SNI host matches or the client sends no SNI. |
+| `self_signed` | | Customizes the generated certificate (see below). |
+
+### SNI (multiple certificates)
+
+`store` keys are SNI host names. On each TLS handshake the certificate is selected by the client's SNI server name:
+
+1. exact host match (e.g. `app.example.com`),
+2. wildcard match by replacing the first label (e.g. `api.internal.example.com` matches `*.internal.example.com`),
+3. the `default` host key,
+4. a generated self-signed certificate when nothing else matches.
+
+### Self-signed certificate
+
+If no certificate is configured for a matched host, Turna generates a self-signed certificate. By default it is valid for `localhost`, `127.0.0.1`, and `::1`. Extend it with `self_signed`:
+
+```yaml
+server:
+  http:
+    tls:
+      self_signed:
+        organization:
+          - turna
+        dns_names:
+          - dev.local
+        ips:
+          - 192.168.1.10
+```
 
 ## TCP Routers
 

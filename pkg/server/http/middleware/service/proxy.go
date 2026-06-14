@@ -3,8 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"io"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"regexp"
@@ -91,48 +89,6 @@ var (
 	}
 )
 
-func proxyRaw(t *ProxyTarget, errHolder *httputil2.Error, hijacked *bool) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		in, _, err := w.(http.Hijacker).Hijack()
-		if err != nil {
-			errHolder.Err = fmt.Errorf("proxy raw, hijack error=%w, url=%s", err, t.URL)
-			return
-		}
-		*hijacked = true
-		defer in.Close()
-
-		out, err := net.Dial("tcp", t.URL.Host)
-		if err != nil {
-			errHolder.Err = fmt.Errorf("proxy raw, dial error=%w, url=%s", err, t.URL)
-			errHolder.Code = http.StatusBadGateway
-			return
-		}
-		defer out.Close()
-
-		// Write header
-		err = r.Write(out)
-		if err != nil {
-			errHolder.Err = fmt.Errorf("proxy raw, request header copy error=%w, url=%s", err, t.URL)
-			errHolder.Code = http.StatusBadGateway
-			return
-		}
-
-		errCh := make(chan error, 2)
-		cp := func(dst io.Writer, src io.Reader) {
-			_, err = io.Copy(dst, src)
-			errCh <- err
-		}
-
-		go cp(out, in)
-		go cp(in, out)
-		err = <-errCh
-		if err != nil && err != io.EOF {
-			errHolder.Err = fmt.Errorf("proxy raw, copy error=%w, url=%s", err, t.URL)
-			errHolder.Code = http.StatusBadGateway
-		}
-	})
-}
-
 // Proxy returns a Proxy middleware.
 //
 // Proxy middleware forwards the request to upstream server using a configured load balancing technique.
@@ -202,9 +158,8 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 			if r.Header.Get(httputil2.HeaderXForwardedProto) == "" {
 				r.Header.Set(httputil2.HeaderXForwardedProto, httputil2.Scheme(r))
 			}
-			if httputil2.IsWebSocket(r) && r.Header.Get(httputil2.HeaderXForwardedFor) == "" { // For HTTP, it is automatically set by Go HTTP reverse proxy.
-				r.Header.Set(httputil2.HeaderXForwardedFor, httputil2.RealIP(r))
-			}
+			// X-Forwarded-For is set by httputil.ReverseProxy automatically, including
+			// for WebSocket/Upgrade requests which it proxies natively over the transport.
 
 			retries := config.RetryCount
 			errHolder := httputil2.Error{}
@@ -235,23 +190,12 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 				// This is needed for ProxyConfig.ModifyResponse and/or ProxyConfig.Transport to be able to process the Request
 				// that Balancer may have replaced with c.SetRequest.
 
-				// Track if connection was hijacked (for WebSocket)
-				hijacked := false
-
-				// Proxy
-				switch {
-				case httputil2.IsWebSocket(r):
-					proxyRaw(tgt, &errHolder, &hijacked).ServeHTTP(w, r)
-				default:
-					proxyHTTP(tgt, &errHolder, config).ServeHTTP(w, r)
-				}
+				// Proxy. httputil.ReverseProxy natively handles WebSocket/Upgrade
+				// requests over the configured Transport, so TLS (wss), Host header
+				// and path rewrites all work the same as for regular HTTP.
+				proxyHTTP(tgt, &errHolder, config).ServeHTTP(w, r)
 
 				if errHolder.Err == nil {
-					return
-				}
-
-				// If connection was hijacked, we cannot write error response
-				if hijacked {
 					return
 				}
 
