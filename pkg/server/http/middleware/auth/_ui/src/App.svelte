@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { fly } from "svelte/transition";
   import AppHeader from "./components/AppHeader.svelte";
   import NavRail from "./components/NavRail.svelte";
   import OverviewTab from "./components/OverviewTab.svelte";
@@ -1076,20 +1077,6 @@
           </p>
         </div>
       {:else}
-        {#if error}
-          <div class="flex items-center gap-3 border-b border-line bg-panel px-4 py-2">
-            <span class="bg-alert px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-white">FAULT</span>
-            <span class="text-xs uppercase tracking-[0.05em] text-alert">{error}</span>
-          </div>
-        {/if}
-
-        {#if notice}
-          <div class="flex items-center gap-3 border-b border-line bg-panel px-4 py-2">
-            <span class="bg-fg px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-crt">OK</span>
-            <span class="text-xs uppercase tracking-[0.05em]">{notice}</span>
-          </div>
-        {/if}
-
         {#if capabilities?.anonymous_admin}
           <div class="flex items-center gap-3 border-b border-line bg-panel px-4 py-2">
             <span class="bg-alert px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-white">BREAK-GLASS</span>
@@ -1341,5 +1328,32 @@
         {/if}
       {/if}
     </section>
+  </div>
+
+  <!-- transient toasts (FAULT / OK) float over the canvas instead of pushing content -->
+  <div class="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-[min(360px,calc(100vw-2rem))] flex-col gap-2">
+    {#if error}
+      <div
+        class="pointer-events-auto flex items-start gap-3 border border-line border-l-2 border-l-alert bg-panel px-3 py-2 shadow-[0_8px_30px_rgb(0_0_0_/_0.45)]"
+        role="alert"
+        transition:fly={{ x: 16, duration: 160 }}
+      >
+        <span class="mt-px shrink-0 bg-alert px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-white">FAULT</span>
+        <span class="min-w-0 flex-1 break-words text-xs uppercase leading-4 tracking-[0.05em] text-alert">{error}</span>
+        <button class="shrink-0 text-sm leading-none text-dim hover:text-fg" on:click={() => (error = "")} aria-label="dismiss fault">×</button>
+      </div>
+    {/if}
+
+    {#if notice}
+      <div
+        class="pointer-events-auto flex items-start gap-3 border border-line border-l-2 border-l-phosphor bg-panel px-3 py-2 shadow-[0_8px_30px_rgb(0_0_0_/_0.45)]"
+        role="status"
+        transition:fly={{ x: 16, duration: 160 }}
+      >
+        <span class="mt-px shrink-0 bg-phosphor px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-crt">OK</span>
+        <span class="min-w-0 flex-1 break-words text-xs uppercase leading-4 tracking-[0.05em]">{notice}</span>
+        <button class="shrink-0 text-sm leading-none text-dim hover:text-fg" on:click={() => (notice = "")} aria-label="dismiss notice">×</button>
+      </div>
+    {/if}
   </div>
 </main>

@@ -12,8 +12,8 @@
 
 <div class="border-b border-line p-6 md:p-8">
   <p class="t-label">[ AUTH CONTROL PLANE ]</p>
-  <h2 class="mt-3 font-display uppercase leading-[0.9] tracking-[-0.03em]" style="font-size: clamp(2.5rem, 6vw, 6.5rem);">
-    AUTH<span class="text-alert">.</span>
+  <h2 class="mt-3 font-mono font-bold uppercase leading-[0.9] tracking-[-0.02em]" style="font-size: clamp(2.5rem, 6vw, 6.5rem);">
+    <span class="crt-text">AUTH</span>
   </h2>
   <p class="mt-4 max-w-2xl text-xs leading-5 text-dim">
     Manage IAM records, LDAP sync, OAuth2 clients, providers, and runtime settings from PostgreSQL.
@@ -49,3 +49,45 @@
     </div>
   </div>
 </div>
+
+<style>
+  /* CRT monitor scanline text — horizontal raster lines cut across the glyphs */
+  .crt-text {
+    position: relative;
+    display: inline-block;
+    text-shadow:
+      0 0 1px rgb(var(--color-fg) / 0.35),
+      0 0 18px rgb(var(--color-primary) / 0.2);
+  }
+
+  .crt-text::after {
+    content: "";
+    position: absolute;
+    inset: -0.04em 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgb(var(--color-crt) / 0) 0,
+      rgb(var(--color-crt) / 0) 2px,
+      rgb(var(--color-crt) / 0.55) 2px,
+      rgb(var(--color-crt) / 0.55) 4px
+    );
+    animation: crt-flicker 4s ease-in-out infinite;
+  }
+
+  @keyframes crt-flicker {
+    0%,
+    100% {
+      opacity: 0.82;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .crt-text::after {
+      animation: none;
+    }
+  }
+</style>

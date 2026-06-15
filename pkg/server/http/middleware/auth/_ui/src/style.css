@@ -2,28 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Meridian Capital Portfolio — dark, terminal-inspired, high-density financial UI. */
 :root {
   color-scheme: dark;
-  --color-crt: 10 10 10;
-  --color-panel: 14 14 14;
-  --color-line: 38 38 38;
-  --color-fg: 234 234 234;
-  --color-dim: 138 138 138;
-  --color-alert: 255 42 42;
-  --color-phosphor: 74 246 38;
-  --grain-opacity: 0.045;
+  --color-crt: 11 12 15; /* background  #0b0c0f */
+  --color-surface: 16 19 24; /* surface     #101318 */
+  --color-panel: 22 25 32; /* panel       #161920 */
+  --color-panel-hover: 27 31 40; /* panel-hover #1b1f28 */
+  --color-line: 31 35 48; /* border      #1f2330 */
+  --color-line-subtle: 39 45 60; /* border-subtle #272d3c */
+  --color-fg: 237 240 244; /* text-bright #edf0f4 */
+  --color-dim: 136 145 160; /* text-sub    #8891a0 */
+  --color-primary: 61 130 255; /* primary     #3d82ff */
+  --color-phosphor: 32 192 92; /* success     #20c05c */
+  --color-alert: 240 64 64; /* error       #f04040 */
+  --color-warning: 240 160 32; /* warning     #f0a020 */
 }
 
+/* Light variant keeps the same semantic accents for theme switching. */
 :root[data-theme="light"] {
   color-scheme: light;
-  --color-crt: 246 244 239;
-  --color-panel: 255 253 247;
-  --color-line: 120 110 96;
-  --color-fg: 25 24 22;
-  --color-dim: 105 99 90;
-  --color-alert: 199 35 35;
+  --color-crt: 244 245 247;
+  --color-surface: 255 255 255;
+  --color-panel: 248 249 251;
+  --color-panel-hover: 240 242 245;
+  --color-line: 214 218 226;
+  --color-line-subtle: 224 228 235;
+  --color-fg: 24 28 36;
+  --color-dim: 90 98 112;
+  --color-primary: 45 110 235;
   --color-phosphor: 22 141 73;
-  --grain-opacity: 0.018;
+  --color-alert: 208 44 44;
+  --color-warning: 176 110 16;
 }
 
 html,
@@ -37,24 +47,12 @@ body {
   overflow: hidden;
   background: rgb(var(--color-crt));
   color: rgb(var(--color-fg));
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New",
+  /* IBM Plex Mono is the dominant face: monospaced digits keep tables, order
+     books and risk grids vertically aligned. */
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New",
     monospace;
-}
-
-/* mechanical noise — unified physical grain */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 61;
-  pointer-events: none;
-  opacity: var(--grain-opacity);
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='128' height='128'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='128' height='128' filter='url(%23n)'/></svg>");
-}
-
-/* mechanical rigidity: no rounded corners, no smooth transitions */
-* {
-  border-radius: 0 !important;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 textarea,
@@ -73,8 +71,22 @@ textarea {
   z-index: 70;
 }
 
+/* Micro-radii: 3px softens controls without breaking the hairline panel grids. */
+input,
+select,
+textarea,
+pre,
+code {
+  border-radius: 3px;
+}
+
+/* Headings on the IBM Plex superfamily lean on weight for hierarchy. */
+.font-display {
+  font-weight: 700;
+}
+
 ::selection {
-  background: rgb(var(--color-alert));
+  background: rgb(var(--color-primary));
   color: #fff;
 }
 
@@ -87,7 +99,7 @@ textarea {
   border-left: 1px solid rgb(var(--color-line));
 }
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--color-line));
+  background: rgb(var(--color-line-subtle));
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgb(var(--color-dim));
@@ -96,24 +108,25 @@ textarea {
 @layer components {
   /* micro-typography label */
   .t-label {
-    @apply text-[10px] font-medium uppercase tracking-[0.2em] text-dim;
+    @apply text-[10px] font-medium uppercase tracking-[0.18em] text-dim;
   }
 
-  /* terminal button */
+  /* compact, tab-like action button */
   .btn-t {
-    @apply inline-flex select-none items-center justify-center gap-2 border border-line bg-transparent px-4 py-2 text-xs font-medium uppercase tracking-[0.15em] text-fg hover:bg-fg hover:text-crt disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg;
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-md border border-line bg-transparent px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-fg transition-colors hover:border-line-subtle hover:bg-panel-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:bg-transparent disabled:hover:text-fg;
   }
 
+  /* primary action — Meridian vivid blue */
   .btn-t-solid {
-    @apply btn-t border-fg bg-fg text-crt hover:bg-crt hover:text-fg;
+    @apply btn-t border-primary bg-primary text-white hover:border-primary hover:bg-transparent hover:text-primary;
   }
 
   .btn-t-alert {
-    @apply btn-t border-alert text-alert hover:bg-alert hover:text-white;
+    @apply btn-t border-alert text-alert hover:border-alert hover:bg-alert hover:text-white;
   }
 
   /* terminal field */
   .field-t {
-    @apply w-full border border-line bg-crt px-3 py-2 text-sm text-fg outline-none placeholder:text-dim focus:border-fg;
+    @apply w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-dim focus:border-primary;
   }
 }

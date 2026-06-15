@@ -33,6 +33,13 @@ The code expires in {{.ExpiresIn}}.`;
   let previewBusy = false;
   let previewError = "";
 
+  type Section = "connection" | "template";
+  let section: Section = "connection";
+  const sections: { id: Section; label: string }[] = [
+    { id: "connection", label: "Connection" },
+    { id: "template", label: "Template & preview" },
+  ];
+
   $: disabled = settingBool(settingsRevision, ["disabled"]);
   $: magicLink = settingBool(settingsRevision, ["magic_link"], true);
   $: from = settingString(settingsRevision, ["from"]);
@@ -125,7 +132,18 @@ The code expires in {{.ExpiresIn}}.`;
     {/if}
   </div>
 
-  <div class="grid gap-px bg-line xl:grid-cols-[minmax(0,1fr),minmax(0,1fr)]">
+  <div class="flex flex-wrap gap-px bg-line">
+    {#each sections as item}
+      <button
+        class={`px-4 py-2 text-[11px] font-bold uppercase tracking-[0.15em] ${section === item.id ? "bg-alert text-white" : "bg-panel text-dim hover:text-fg"}`}
+        on:click={() => (section = item.id)}
+      >
+        {item.label}
+      </button>
+    {/each}
+  </div>
+
+  {#if section === "connection"}
     <div class="grid content-start gap-px bg-line">
       <div class="bg-panel px-3 py-2">
         <span class="t-label text-fg">[ DELIVERY SETTINGS ]</span>
@@ -179,7 +197,7 @@ The code expires in {{.ExpiresIn}}.`;
         </label>
       </div>
     </div>
-
+  {:else if section === "template"}
     <div class="grid content-start gap-px bg-line">
       <div class="bg-panel px-3 py-2">
         <span class="t-label text-fg">[ CODE MAIL TEMPLATE ]</span>
@@ -200,44 +218,44 @@ The code expires in {{.ExpiresIn}}.`;
         Variables: <code class="text-fg">{"{{.Email}}"}</code>, <code class="text-fg">{"{{.Code}}"}</code>, <code class="text-fg">{"{{.ExpiresIn}}"}</code>, <code class="text-fg">{"{{.ClientID}}"}</code>, <code class="text-fg">{"{{.RedirectURI}}"}</code>, <code class="text-fg">{"{{.UserID}}"}</code>, <code class="text-fg">{"{{.UserAlias}}"}</code>.
       </div>
     </div>
-  </div>
 
-  <div class="grid gap-px bg-line lg:grid-cols-[360px,minmax(0,1fr)]">
-    <div class="grid content-start gap-px bg-line">
-      <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">[ CODE MAIL PREVIEW ]</span>
-      </div>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">EMAIL</span>
-        <input bind:value={previewEmail} class="field-t" placeholder="user@example.com" />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">CODE</span>
-        <input bind:value={previewCode} class="field-t" placeholder="123456" />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">CLIENT ID</span>
-        <input bind:value={previewClientID} class="field-t" placeholder="ui" />
-      </label>
-      <div class="bg-panel p-3">
-        <button class="btn-t-solid w-full" disabled={previewBusy} on:click={renderPreview}>[ RENDER PREVIEW ]</button>
-      </div>
-    </div>
-
-    <div class="grid content-start gap-px bg-line">
-      <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">[ RENDERED MAIL ]</span>
-      </div>
-      {#if previewError}
-        <div class="bg-panel p-3 text-xs text-alert">{previewError}</div>
-      {:else if preview}
-        <div class="grid gap-3 bg-panel p-4">
-          <p class="break-all text-xs"><span class="t-label">SUBJECT</span> <span class="text-fg">{preview.subject}</span></p>
-          <pre class="overflow-auto whitespace-pre-wrap border border-line bg-crt p-3 text-[11px] leading-5 text-fg">{preview.body}</pre>
+    <div class="grid gap-px bg-line lg:grid-cols-[360px,minmax(0,1fr)]">
+      <div class="grid content-start gap-px bg-line">
+        <div class="bg-panel px-3 py-2">
+          <span class="t-label text-fg">[ CODE MAIL PREVIEW ]</span>
         </div>
-      {:else}
-        <div class="bg-panel p-4 text-[11px] leading-4 text-dim">Render a preview to validate the Go template before saving.</div>
-      {/if}
+        <label class="grid gap-1 bg-panel p-3">
+          <span class="t-label">EMAIL</span>
+          <input bind:value={previewEmail} class="field-t" placeholder="user@example.com" />
+        </label>
+        <label class="grid gap-1 bg-panel p-3">
+          <span class="t-label">CODE</span>
+          <input bind:value={previewCode} class="field-t" placeholder="123456" />
+        </label>
+        <label class="grid gap-1 bg-panel p-3">
+          <span class="t-label">CLIENT ID</span>
+          <input bind:value={previewClientID} class="field-t" placeholder="ui" />
+        </label>
+        <div class="bg-panel p-3">
+          <button class="btn-t-solid w-full" disabled={previewBusy} on:click={renderPreview}>[ RENDER PREVIEW ]</button>
+        </div>
+      </div>
+
+      <div class="grid content-start gap-px bg-line">
+        <div class="bg-panel px-3 py-2">
+          <span class="t-label text-fg">[ RENDERED MAIL ]</span>
+        </div>
+        {#if previewError}
+          <div class="bg-panel p-3 text-xs text-alert">{previewError}</div>
+        {:else if preview}
+          <div class="grid gap-3 bg-panel p-4">
+            <p class="break-all text-xs"><span class="t-label">SUBJECT</span> <span class="text-fg">{preview.subject}</span></p>
+            <pre class="overflow-auto whitespace-pre-wrap border border-line bg-crt p-3 text-[11px] leading-5 text-fg">{preview.body}</pre>
+          </div>
+        {:else}
+          <div class="bg-panel p-4 text-[11px] leading-4 text-dim">Render a preview to validate the Go template before saving.</div>
+        {/if}
+      </div>
     </div>
-  </div>
+  {/if}
 </div>
