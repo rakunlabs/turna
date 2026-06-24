@@ -91,7 +91,7 @@ dockers:
   - image_templates:
       - "ghcr.io/rakunlabs/turna:{{ .Tag }}"
       - "ghcr.io/rakunlabs/turna:{{ .Tag }}-alpine"
-      - "ghcr.io/rakunlabs/turna:{{ .Tag }}-alpine3.23.3"
+      - "ghcr.io/rakunlabs/turna:{{ .Tag }}-alpine3.24.1"
       - "ghcr.io/rakunlabs/turna:latest"
     dockerfile: ci/alpine.Dockerfile
     build_flag_templates:
