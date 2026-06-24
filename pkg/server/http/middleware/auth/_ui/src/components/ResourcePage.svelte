@@ -63,7 +63,7 @@
         <div class="grid gap-2 px-4 py-3 md:grid-cols-[1fr,110px,210px,130px] md:items-center md:gap-4">
           <div class="min-w-0">
             <p class="truncate text-sm font-bold text-fg">
-              <span class="mr-2 text-[10px] font-medium text-dim">{String(i + 1).padStart(2, "0")}</span
+              <span class="mr-2 select-none text-[10px] font-medium text-dim">{String(i + 1).padStart(2, "0")}</span
               >{row.id}
             </p>
             {#if row.sub}

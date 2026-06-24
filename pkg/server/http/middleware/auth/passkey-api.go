@@ -147,6 +147,9 @@ func (m *Auth) passkeyExcludeList(ctx context.Context, userID string) []passkey.
 // registration (X-User authenticated management plane)
 
 type PasskeyRegisterRequest struct {
+	// UserID, when set, registers the passkey for that user instead of the
+	// X-User identity. Targeting another user requires admin capability.
+	UserID    string `json:"user_id"`
 	SessionID string `json:"session_id"`
 	// Name is a user-facing label for the credential.
 	Name string `json:"name"`
@@ -154,22 +157,52 @@ type PasskeyRegisterRequest struct {
 	Credential json.RawMessage `json:"credential"`
 }
 
+// passkeyRegisterTarget resolves the user a passkey is being registered for.
+// An explicit userID requires admin capability unless it is the caller's own
+// X-User identity; without one it falls back to the X-User self-service plane.
+// It writes the error response and returns nil when resolution/authorization
+// fails.
+func (m *Auth) passkeyRegisterTarget(w http.ResponseWriter, r *http.Request, userID string) *data.UserExtended {
+	if userID == "" {
+		return m.xUser(w, r)
+	}
+
+	if alias := r.Header.Get("X-User"); alias != "" {
+		if self, err := m.cache.GetUser(data.GetUserRequest{Alias: alias}); err == nil && self.ID == userID {
+			return self
+		}
+	}
+
+	if !m.requireAdmin(w, r) {
+		return nil
+	}
+
+	user, err := m.cache.GetUser(data.GetUserRequest{ID: userID})
+	if err != nil {
+		httputil.HandleError(w, httputil.NewError("user not found", err, http.StatusNotFound))
+		return nil
+	}
+
+	return user
+}
+
 type PasskeyBeginResponse struct {
 	SessionID string `json:"session_id"`
 	Options   any    `json:"options"`
 }
 
-// PasskeyRegisterAPI begins/finishes passkey registration for the X-User.
+// PasskeyRegisterAPI begins/finishes passkey registration. Without user_id it
+// targets the X-User identity (self-service); with user_id it registers for
+// that user and requires admin capability.
 func (m *Auth) PasskeyRegisterAPI(w http.ResponseWriter, r *http.Request) {
-	alias := r.Header.Get("X-User")
-	if alias == "" {
-		httputil.HandleError(w, httputil.NewError("X-User header is required", nil, http.StatusUnauthorized))
+	var req PasskeyRegisterRequest
+	if err := httputil.Decode(r, &req); err != nil {
+		httputil.HandleError(w, httputil.NewError("cannot decode request", err, http.StatusBadRequest))
 		return
 	}
 
-	user, err := m.cache.GetUser(data.GetUserRequest{Alias: alias})
-	if err != nil {
-		httputil.HandleError(w, httputil.NewError("user not found", err, http.StatusNotFound))
+	user := m.passkeyRegisterTarget(w, r, req.UserID)
+	if user == nil {
 		return
 	}
 
@@ -179,22 +212,21 @@ func (m *Auth) PasskeyRegisterAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req PasskeyRegisterRequest
-	if err := httputil.Decode(r, &req); err != nil {
-		httputil.HandleError(w, httputil.NewError("cannot decode request", err, http.StatusBadRequest))
-		return
+	username := user.ID
+	if len(user.Alias) > 0 && user.Alias[0] != "" {
+		username = user.Alias[0]
 	}
 
 	// begin
 	if len(req.Credential) == 0 {
 		name, _ := user.Details["name"].(string)
 		if name == "" {
-			name = alias
+			name = username
 		}
 
 		options, session, err := engine.BeginRegistration(passkey.User{
 			Handle:      []byte(user.ID),
-			Name:        alias,
+			Name:        username,
 			DisplayName: name,
 		}, m.passkeyExcludeList(r.Context(), user.ID))
 		if err != nil {

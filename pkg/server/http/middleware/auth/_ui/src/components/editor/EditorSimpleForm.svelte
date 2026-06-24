@@ -39,13 +39,31 @@
   export let setPathNumber: (path: string[], value: string) => void = () => {};
   export let getPathList: (path: string[]) => string = () => "";
   export let setPathList: (path: string[], value: string) => void = () => {};
-  export let permissionResources: () => AnyRecord[] = () => [];
   export let addPermissionResource: () => void = () => {};
   export let removePermissionResource: (index: number) => void = () => {};
   export let getResourceList: (index: number, key: string) => string = () => "";
   export let setResourceList: (index: number, key: string, value: string) => void = () => {};
   export let temporaryAccessItems: (key: "tmp_role_ids" | "tmp_permission_ids", json: string) => AnyRecord[] = () => [];
   export let patchTemporaryAccess: (remove?: boolean) => void | Promise<void> = () => {};
+
+  // Derive the resource list straight from editorJSON (a reactive prop) so
+  // ADD/REMOVE/edit re-render it, including down to zero. permissionResources()
+  // reads editorJSON through a prop function whose dependency Svelte cannot see,
+  // so binding the list to it never updated after the first render.
+  $: resources = parseResources(editorJSON);
+
+  function parseResources(json: string): AnyRecord[] {
+    try {
+      const parsed = JSON.parse(json) as AnyRecord;
+      const list = parsed?.resources;
+      if (!Array.isArray(list)) return [];
+      return list.map((item) =>
+        item && typeof item === "object" && !Array.isArray(item) ? { ...(item as AnyRecord) } : ({} as AnyRecord),
+      );
+    } catch {
+      return [];
+    }
+  }
 
   function inputValue(event: Event) {
     return (event.currentTarget as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value;
@@ -531,12 +549,12 @@
         <span class="t-label text-fg">RESOURCES</span>
         <button class="btn-t border-0 bg-crt" on:click={addPermissionResource}>ADD RESOURCE</button>
       </div>
-      {#if permissionResources().length === 0}
-        <p class="text-[11px] leading-4 text-dim">No resources yet. Add at least one host/path/method matcher before committing.</p>
+      {#if resources.length === 0}
+        <p class="text-[11px] leading-4 text-dim">No resources yet. A permission with no resources matches nothing.</p>
       {/if}
     </div>
 
-    {#each permissionResources() as resource, i}
+    {#each resources as resource, i}
       <div class="grid gap-px bg-line p-px md:col-span-2 xl:col-span-3">
         <div class="flex flex-wrap items-center justify-between gap-2 bg-panel px-3 py-2">
           <span class="t-label text-fg">RESOURCE {String(i + 1).padStart(2, "0")}</span>

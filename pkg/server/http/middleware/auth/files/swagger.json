@@ -166,39 +166,31 @@
     "tags": [
      "info"
     ],
-    "summary": "Get current user's info",
-    "parameters": [
-     {
-      "type": "string",
-      "description": "User alias",
-      "name": "alias",
-      "in": "query",
-      "required": true
-     },
-     {
-      "type": "boolean",
-      "description": "add role data",
-      "name": "data",
-      "in": "query"
-     }
+    "summary": "Get auth instance info (prefix path, storage backend, current version)",
+    "produces": [
+     "application/json"
     ],
     "responses": {
      "200": {
       "description": "OK",
       "schema": {
-       "$ref": "#/definitions/data.Response-data_UserInfo"
-      }
-     },
-     "400": {
-      "description": "Bad Request",
-      "schema": {
-       "$ref": "#/definitions/httputil.Error"
-      }
-     },
-     "404": {
-      "description": "Not Found",
-      "schema": {
-       "$ref": "#/definitions/httputil.Error"
+       "type": "object",
+       "properties": {
+        "payload": {
+         "type": "object",
+         "properties": {
+          "prefix_path": {
+           "type": "string"
+          },
+          "storage": {
+           "type": "string"
+          },
+          "version": {
+           "type": "integer"
+          }
+         }
+        }
+       }
       }
      },
      "500": {
@@ -3420,30 +3412,30 @@
     "tags": [
      "passkey"
     ],
-    "summary": "Begin/finish passkey registration for the X-User identity",
-    "description": "Begin without credential; finish with session_id + credential (browser RegistrationResponseJSON).",
-    "consumes": [
-     "application/json"
-    ],
-    "produces": [
-     "application/json"
-    ],
-    "parameters": [
-     {
-      "type": "string",
-      "name": "X-User",
-      "in": "header",
-      "required": true
-     },
-     {
-      "name": "body",
-      "in": "body",
-      "description": "{session_id?, name?, credential?}",
-      "schema": {
-       "type": "object"
+     "summary": "Begin/finish passkey registration for a user",
+     "description": "Without user_id targets the X-User identity (self-service); with user_id registers for that user and requires admin capability. Begin without credential; finish with session_id + credential (browser RegistrationResponseJSON).",
+     "consumes": [
+      "application/json"
+     ],
+     "produces": [
+      "application/json"
+     ],
+     "parameters": [
+      {
+       "type": "string",
+       "name": "X-User",
+       "in": "header",
+       "required": false
+      },
+      {
+       "name": "body",
+       "in": "body",
+       "description": "{user_id?, session_id?, name?, credential?}",
+       "schema": {
+        "type": "object"
+       }
       }
-     }
-    ],
+     ],
     "responses": {
      "200": {
       "description": "OK",

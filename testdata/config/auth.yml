@@ -74,7 +74,7 @@ server:
       auth:
         path: /auth/*
         middlewares:
-          # - session
+          - session
           - auth
       main:
         path: /*

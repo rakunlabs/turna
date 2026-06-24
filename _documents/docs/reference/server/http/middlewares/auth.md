@@ -324,12 +324,12 @@ Passkey support uses the dependency-free engine from `github.com/rakunlabs/ada/m
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| `POST` | `/auth/v1/passkey/register` | Begin/finish registration for the `X-User` identity (begin without `credential`, finish with `session_id` + `credential`). |
+| `POST` | `/auth/v1/passkey/register` | Begin/finish registration (begin without `credential`, finish with `session_id` + `credential`). Without `user_id` targets the `X-User` identity (self-service); with `user_id` registers for that user and requires admin capability. |
 | `GET` | `/auth/v1/passkey/credentials` | List passkeys for the `X-User` identity. Listing another `user_id` requires admin capability. |
 | `DELETE` | `/auth/v1/passkey/credentials/{id}` | Delete a stored passkey. |
 | `POST` | `/auth/oauth2/passkey` | Public login ceremony; finish responds with the standard token JSON. |
 
-Login requests carry `client_id`/`client_secret` like the password grant; `username` scopes `allowCredentials` to a known user, empty uses the discoverable (passwordless) flow. The management UI shows registered passkeys on the user page and can enroll a passkey for the operator's own account.
+Login requests carry `client_id`/`client_secret` like the password grant; `username` scopes `allowCredentials` to a known user, empty uses the discoverable (passwordless) flow. The management UI shows registered passkeys on the user page; admins can enroll a passkey for the selected user, which binds the authenticator present in the operator's browser to that user's account. The self-service Account page enrolls for the signed-in user.
 
 ## Session/login integration
 

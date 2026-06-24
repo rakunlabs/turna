@@ -691,6 +691,40 @@
     rowsByKind = rowsByKind;
   }
 
+  async function loadCore() {
+    const [infoRes, dashboardRes] = await Promise.all([
+      request<InfoPayload>("info"),
+      request<Dashboard>("dashboard"),
+    ]);
+
+    info = infoRes.payload;
+    dashboard = dashboardRes.payload;
+  }
+
+  // loadAdminData fetches the resource lists and every runtime settings
+  // namespace. It is deferred until a tab that needs them is opened so the
+  // landing view stays quiet instead of firing every request at startup.
+  async function loadAdminData() {
+    await Promise.all((Object.keys(kindSpecs) as ResourceKind[]).map((kind) => loadKind(kind)));
+    await Promise.all([loadRuntimeSettings(), loadJWKS()]);
+    adminLoaded = true;
+  }
+
+  // ensureAdminData loads the bulk admin data once, on demand.
+  async function ensureAdminData() {
+    if (adminLoaded || busy) return;
+
+    busy = true;
+    error = "";
+    try {
+      await loadAdminData();
+    } catch (err) {
+      error = err instanceof Error ? err.message : "UNKNOWN ERROR";
+    } finally {
+      busy = false;
+    }
+  }
+
   async function refresh() {
     busy = true;
     error = "";
@@ -701,17 +735,13 @@
         return;
       }
 
-      const [infoRes, dashboardRes] = await Promise.all([
-        request<InfoPayload>("info"),
-        request<Dashboard>("dashboard"),
-      ]);
+      await loadCore();
 
-      info = infoRes.payload;
-      dashboard = dashboardRes.payload;
-
-      await Promise.all((Object.keys(kindSpecs) as ResourceKind[]).map((kind) => loadKind(kind)));
-      await Promise.all([loadRuntimeSettings(), loadJWKS()]);
-      adminLoaded = true;
+      // reload the bulk admin data only when it is already in use or the active
+      // tab needs it, so a manual refresh on a light tab stays light.
+      if (adminLoaded || tabNeedsAdminData(activeTab)) {
+        await loadAdminData();
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : "UNKNOWN ERROR";
     } finally {
@@ -948,6 +978,14 @@
     return capabilities?.is_admin === true;
   }
 
+  // tabs that render from core data (info/dashboard) alone and must not trigger
+  // the bulk admin load (resource lists + every runtime settings namespace).
+  const coreOnlyTabs = new Set<Tab>(["overview", "docs", "encryption"]);
+
+  function tabNeedsAdminData(tab: Tab) {
+    return currentIsAdmin() && !isSelfServiceTab(tab) && !coreOnlyTabs.has(tab);
+  }
+
   function canUseTab(tab: Tab) {
     return currentIsAdmin() || isSelfServiceTab(tab);
   }
@@ -1008,9 +1046,9 @@
       resetEditor(tab);
     }
 
-    // admin data is skipped when landing on a self-service tab; load it on demand
-    if (currentIsAdmin() && !isSelfServiceTab(tab) && !adminLoaded && !busy) {
-      void refresh();
+    // load the bulk admin data on demand the first time a tab needs it
+    if (tabNeedsAdminData(tab)) {
+      void ensureAdminData();
     }
 
     window.location.hash = tab === "overview" ? "" : tab;
@@ -1043,11 +1081,20 @@
       resetEditor(activeTab);
     }
 
-    if (currentIsAdmin() && !isSelfServiceTab(activeTab)) {
-      await refresh();
-    } else {
-      loading = false;
+    // load core data (header info + dashboard) for admins, then the bulk admin
+    // data only when the landing tab actually needs it.
+    if (currentIsAdmin()) {
+      try {
+        await loadCore();
+        if (tabNeedsAdminData(activeTab)) {
+          await loadAdminData();
+        }
+      } catch (err) {
+        error = err instanceof Error ? err.message : "UNKNOWN ERROR";
+      }
     }
+
+    loading = false;
   }
 
   onMount(() => {
@@ -1325,7 +1372,6 @@
               {setPathNumber}
               {getPathList}
               {setPathList}
-              {permissionResources}
               {addPermissionResource}
               {removePermissionResource}
               {getResourceList}

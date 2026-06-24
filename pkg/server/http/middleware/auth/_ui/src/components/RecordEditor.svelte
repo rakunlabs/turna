@@ -55,7 +55,6 @@
   export let setPathNumber: (path: string[], value: string) => void = () => {};
   export let getPathList: (path: string[]) => string = () => "";
   export let setPathList: (path: string[], value: string) => void = () => {};
-  export let permissionResources: () => AnyRecord[] = () => [];
   export let addPermissionResource: () => void = () => {};
   export let removePermissionResource: (index: number) => void = () => {};
   export let getResourceList: (index: number, key: string) => string = () => "";
@@ -236,7 +235,6 @@
         {setPathNumber}
         {getPathList}
         {setPathList}
-        {permissionResources}
         {addPermissionResource}
         {removePermissionResource}
         {getResourceList}

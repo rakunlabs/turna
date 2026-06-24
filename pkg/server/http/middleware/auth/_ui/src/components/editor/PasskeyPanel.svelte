@@ -57,7 +57,7 @@
       const beginRes = await fetch(`${apiBase}/passkey/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ user_id: userID }),
       });
       const beginBody = await beginRes.json();
       if (!beginRes.ok) throw new Error(beginBody?.message ?? `begin failed: ${beginRes.status}`);
@@ -69,6 +69,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          user_id: userID,
           session_id: beginBody.payload.session_id,
           name: label.trim(),
           credential,
@@ -95,7 +96,7 @@
     <div>
       <span class="t-label text-fg">[ PASSKEYS ]</span>
       <p class="mt-1 text-[11px] leading-4 text-dim">
-        WebAuthn credentials stored for this user. Registration enrolls a passkey for <span class="text-fg">your own account</span> in this browser.
+        WebAuthn credentials stored for <span class="text-fg">this user</span>. Registration binds the authenticator present in this browser to their account.
       </p>
     </div>
     <span class="t-label">{credentials.length} REGISTERED</span>
