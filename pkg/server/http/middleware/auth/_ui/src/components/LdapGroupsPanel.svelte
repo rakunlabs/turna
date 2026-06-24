@@ -22,6 +22,7 @@
   let ldapConfigured = true;
   let loading = true;
   let syncing = false;
+  let forceSync = false;
 
   async function fetchJSON(path: string) {
     const res = await fetch(`${apiBase}/${path}`);
@@ -87,12 +88,12 @@
       const res = await fetch(`${apiBase}/ldap/sync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force: false }),
+        body: JSON.stringify({ force: forceSync }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.message ?? `sync failed: ${res.status}`);
 
-      panelNotice = "LDAP SYNC COMPLETE";
+      panelNotice = forceSync ? "LDAP FORCE SYNC COMPLETE" : "LDAP SYNC COMPLETE";
       await load();
     } catch (err) {
       panelError = err instanceof Error ? err.message : String(err);
@@ -107,15 +108,27 @@
 <div class="bg-panel">
   <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2">
     <span class="t-label text-fg">[ LIVE LDAP GROUPS ]</span>
-    <button class="btn-t-solid" disabled={syncing || !ldapConfigured} on:click={syncNow}>
-      {syncing ? "SYNCING..." : "RUN LDAP SYNC"}
-    </button>
+    <div class="flex flex-wrap items-center gap-3">
+      <label class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] {forceSync ? 'text-alert' : 'text-dim'}">
+        <input type="checkbox" bind:checked={forceSync} disabled={syncing || !ldapConfigured} />
+        FORCE
+      </label>
+      <button class="btn-t-solid" disabled={syncing || !ldapConfigured} on:click={syncNow}>
+        {syncing ? "SYNCING..." : forceSync ? "RUN FORCE SYNC" : "RUN LDAP SYNC"}
+      </button>
+    </div>
   </div>
 
   <div class="grid gap-px bg-line p-px">
     <p class="bg-panel p-3 text-[11px] leading-4 text-dim">
       Automatic mapping: on every sync each LDAP group gets a <span class="text-fg">role with the same name</span> (created when missing) and a group map pointing to it. Group members receive the mapped roles as <span class="text-fg">sync roles</span>; users that leave all groups have their sync roles cleared. Edit a group map below to attach more roles to an LDAP group.
     </p>
+
+    {#if forceSync}
+      <p class="bg-panel p-3 text-[11px] leading-4 text-alert">
+        FORCE re-fetches every existing user from LDAP and <span class="font-bold">overwrites their profile details</span> (email, uid, name, given/family name) and aliases. A normal sync only updates sync roles and creates new users. Use force when LDAP profile fields changed.
+      </p>
+    {/if}
 
     {#if panelError}
       <p class="bg-panel px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-alert">{panelError}</p>

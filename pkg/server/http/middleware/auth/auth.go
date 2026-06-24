@@ -353,6 +353,8 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 	mux.POST(prefix+"/oauth2/email", m.APIEmailCode)
 	// email template preview uses unsaved settings from the management UI.
 	mux.POST(prefix+"/v1/email/preview", admin(m.EmailPreviewAPI))
+	// custom_info userinfo template preview uses unsaved settings from the UI.
+	mux.POST(prefix+"/v1/custom-info/preview", admin(m.CustomInfoPreviewAPI))
 	// self-registration and password reset (public, client-authenticated)
 	mux.POST(prefix+"/oauth2/signup", m.APISignup)
 	mux.POST(prefix+"/oauth2/signup/verify", m.APISignupVerify)
@@ -362,7 +364,9 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 	mux.GET(prefix+"/oauth2/api-key", m.APIKeyAuthAPI)
 	mux.GET(prefix+"/oauth2/certs", m.APICerts)
 	mux.GET(prefix+"/oauth2/userinfo", m.APIUserInfo)
+	mux.GET(prefix+"/oauth2/userinfo/{custom}", m.APIUserInfo)
 	mux.GET(prefix+"/oauth2/.well-known/openid-configuration", m.APIWellKnown)
+	mux.GET(prefix+"/oauth2/openid/{custom}/.well-known/openid-configuration", m.APIWellKnown)
 
 	// saml runtime
 	mux.GET(prefix+"/saml/{provider}/metadata", m.SAMLMetadata)

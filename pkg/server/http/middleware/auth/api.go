@@ -168,6 +168,18 @@ func (m *Auth) PutSetting(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if namespace == "custom_info" {
+		var setting CustomInfoSettings
+		if err := json.Unmarshal(req.Value, &setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("cannot decode custom_info setting", err, http.StatusBadRequest))
+			return
+		}
+		if err := validateCustomInfoTemplates(setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("invalid custom_info template", err, http.StatusBadRequest))
+			return
+		}
+	}
+
 	version, err := m.store.PutSetting(r.Context(), namespace, req.Value, getUserName(r))
 	if err != nil {
 		httputil.HandleError(w, httputil.NewError("cannot save auth setting", err, http.StatusInternalServerError))

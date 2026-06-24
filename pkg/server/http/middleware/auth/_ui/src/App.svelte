@@ -23,6 +23,7 @@
   import DeviceSettingsTab from "./components/DeviceSettingsTab.svelte";
   import TokenExchangeTab from "./components/TokenExchangeTab.svelte";
   import TotpTab from "./components/TotpTab.svelte";
+  import CustomInfoTab from "./components/CustomInfoTab.svelte";
   import FlowsTab from "./components/FlowsTab.svelte";
   import { editableSettingNamespaces, kindSpecs, permissionPresets, rowFromItem, settingTemplates } from "./lib/api";
   import { isResourceTab, nav, navGroups } from "./lib/navigation";
@@ -1211,6 +1212,15 @@
             {setSettingString}
             {getSettingNumber}
             {setSettingNumber}
+            {saveSetting}
+          />
+        {:else if activeTab === "custom-info"}
+          <CustomInfoTab
+            {apiBase}
+            {busy}
+            {settingsRevision}
+            {settingRecord}
+            {setSettingRecord}
             {saveSetting}
           />
         {:else if activeTab === "flows"}

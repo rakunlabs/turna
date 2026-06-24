@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/oklog/ulid/v2"
+	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	oauth2store "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
@@ -785,7 +787,111 @@ func (m *Auth) APIUserInfo(w http.ResponseWriter, r *http.Request) {
 		claimsRet["given_name"] = v
 	}
 
+	// apply custom userinfo templates selected by the {custom} path segment.
+	if customName := r.PathValue("custom"); customName != "" {
+		snap := m.cache.Snapshot()
+		if !snap.CustomInfo.Disabled {
+			if set, ok := snap.CustomInfo.Sets[customName]; ok {
+				// render against a copy of the base claims so iteration order
+				// never affects the result; templates may add or overwrite claims.
+				base := make(map[string]any, len(claimsRet))
+				for k, v := range claimsRet {
+					base[k] = v
+				}
+
+				tmplData := map[string]any{"claims": base, "user": user}
+				for k, tmpl := range set.Claims {
+					result, err := render.ExecuteWithData(tmpl, tmplData)
+					if err != nil {
+						slog.Error("failed to render custom info", "error", err, "custom", customName, "key", k)
+
+						continue
+					}
+
+					// an empty render result removes the claim from the response;
+					// this lets a set drop default claims (use {{- -}} to trim).
+					if len(result) == 0 {
+						delete(claimsRet, k)
+
+						continue
+					}
+
+					claimsRet[k] = string(result)
+				}
+			}
+		}
+	}
+
 	httputil.JSON(w, http.StatusOK, claimsRet)
+}
+
+// validateCustomInfoTemplates parses every custom_info template so syntax errors
+// are rejected on save. It deliberately does NOT execute the templates: which
+// claim/user fields exist depends on the deployment (LDAP attribute mapping,
+// edited user details), so validating against fixed sample data would wrongly
+// reject valid templates that reference deployment-specific fields. Use the
+// preview endpoint to test rendering against real-shaped sample data.
+func validateCustomInfoTemplates(cfg CustomInfoSettings) error {
+	for name, set := range cfg.Sets {
+		for k, tmpl := range set.Claims {
+			if err := render.Validate(tmpl); err != nil {
+				return fmt.Errorf("set %q claim %q: %w", name, k, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// customInfoPreviewRequest renders a custom_info set against sample data so the
+// management UI can preview unsaved templates.
+type customInfoPreviewRequest struct {
+	Claims map[string]any `json:"claims"`
+	User   *data.User     `json:"user"`
+	Set    CustomInfoSet  `json:"set"`
+}
+
+// CustomInfoPreviewAPI applies an inline custom_info set to sample claims and
+// returns the resulting claims, mirroring the templating in APIUserInfo
+// (add, overwrite, or remove on empty render).
+func (m *Auth) CustomInfoPreviewAPI(w http.ResponseWriter, r *http.Request) {
+	var req customInfoPreviewRequest
+	if err := httputil.Decode(r, &req); err != nil {
+		httputil.HandleError(w, httputil.NewError("cannot decode custom_info preview", err, http.StatusBadRequest))
+		return
+	}
+
+	user := req.User
+	if user == nil {
+		user = &data.User{}
+	}
+
+	// base is the immutable template input; result is what we mutate/return.
+	base := make(map[string]any, len(req.Claims))
+	result := make(map[string]any, len(req.Claims))
+	for k, v := range req.Claims {
+		base[k] = v
+		result[k] = v
+	}
+
+	tmplData := map[string]any{"claims": base, "user": user}
+	for k, tmpl := range req.Set.Claims {
+		out, err := render.ExecuteWithData(tmpl, tmplData)
+		if err != nil {
+			httputil.HandleError(w, httputil.NewError(fmt.Sprintf("claim %q: %s", k, err.Error()), err, http.StatusBadRequest))
+			return
+		}
+
+		if len(out) == 0 {
+			delete(result, k)
+
+			continue
+		}
+
+		result[k] = string(out)
+	}
+
+	httputil.JSON(w, http.StatusOK, Response[map[string]any]{Payload: result})
 }
 
 // APIWellKnown returns the OpenID configuration for this issuer.
@@ -797,11 +903,19 @@ func (m *Auth) APIWellKnown(w http.ResponseWriter, r *http.Request) {
 		alg = signer.JWT.Alg()
 	}
 
+	// issuer stays the shared /oauth2 value (matches the id_token iss); a
+	// {custom} segment only points userinfo at the per-name custom_info route
+	// so discovery-driven clients pick up the tailored claims automatically.
+	userinfoEndpoint := issuer + "/userinfo"
+	if custom := r.PathValue("custom"); custom != "" {
+		userinfoEndpoint = issuer + "/userinfo/" + url.PathEscape(custom)
+	}
+
 	httputil.JSON(w, http.StatusOK, map[string]any{
 		"issuer":                        issuer,
 		"authorization_endpoint":        issuer + "/auth",
 		"token_endpoint":                issuer + "/token",
-		"userinfo_endpoint":             issuer + "/userinfo",
+		"userinfo_endpoint":             userinfoEndpoint,
 		"jwks_uri":                      issuer + "/certs",
 		"device_authorization_endpoint": issuer + "/device_authorization",
 		"response_types_supported":      []string{"code"},

@@ -164,6 +164,17 @@ export const settingTemplates = {
     enabled: false,
     cert_header: "",
   },
+  custom_info: {
+    disabled: false,
+    sets: {
+      example: {
+        claims: {
+          preferred_username: "{{ .claims.email }}",
+          full_name: "{{ .claims.given_name }} {{ .claims.family_name }}",
+        },
+      },
+    },
+  },
 } as const;
 
 // settings namespaces listed and editable on the Settings tab

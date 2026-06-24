@@ -19,6 +19,37 @@ import (
 
 var DefaultLDAPSyncDuration = 10 * time.Minute
 
+// ldapAliases builds the alias list from LDAP attributes, skipping empty
+// values (e.g. a user without a mail attribute, which would otherwise add an
+// empty-string alias that collides across users) and de-duplicating. The
+// looked-up identifier is kept as a fallback so the user stays findable.
+func ldapAliases(u ldap.LdapUser, fallback string) []string {
+	aliases := make([]string, 0, 2)
+
+	add := func(v string) {
+		if v == "" {
+			return
+		}
+
+		for _, existing := range aliases {
+			if existing == v {
+				return
+			}
+		}
+
+		aliases = append(aliases, v)
+	}
+
+	add(u.Email)
+	add(u.UID)
+
+	if len(aliases) == 0 {
+		add(fallback)
+	}
+
+	return aliases
+}
+
 type ldapManager struct {
 	m       sync.Mutex
 	version uint64
@@ -203,7 +234,7 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 				userPut.Details = map[string]any{}
 			}
 
-			userPut.Alias = []string{u.Email, u.UID}
+			userPut.Alias = ldapAliases(u, member)
 			userPut.Details["email"] = u.Email
 			userPut.Details["uid"] = u.UID
 			userPut.Details["name"] = u.Name
@@ -228,7 +259,7 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 
 		if _, err := m.store.CreateUser(ctx, data.User{
 			SyncRoleIDs: roleIDs,
-			Alias:       []string{u.Email, u.UID},
+			Alias:       ldapAliases(u, member),
 			Details: map[string]any{
 				"email":       u.Email,
 				"uid":         u.UID,

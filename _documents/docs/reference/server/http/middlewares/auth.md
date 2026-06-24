@@ -58,6 +58,7 @@ Everything else is a settings namespace under `/auth/v1/settings/{namespace}` an
 | `signup` | `enabled`, `email_verification`, `password_reset`, `default_role_ids`, `code_lifetime`, `verify_subject`, `verify_body_template`, `reset_subject`, `reset_body_template` | Self-registration and forgot-password flows (UI: *Signup*). Off by default. `email_verification` defaults to `true`; verification/reset mails use the `email` SMTP relay. Codes live `1h` by default. Templates are Go `text/template` strings validated on save. |
 | `mtls` | `enabled`, `cert_header` | Certificate based client authentication (RFC 8705 style). `cert_header` names a trusted proxy header carrying the client certificate (e.g. nginx `$ssl_client_escaped_cert`); only set it behind a trusted proxy. Off by default. |
 | `saml` | `certificate`, `private_key` | SAML SP signing key pair; auto-generated (self-signed, 10 years) on first SAML use. |
+| `custom_info` | `disabled`, `sets` | Per-name userinfo claim templates served at `/oauth2/userinfo/{custom}` (and advertised by `/oauth2/openid/{custom}/.well-known/openid-configuration`). `sets.<name>.claims` maps an output claim to a Go `text/template`; templates receive `{{ .claims }}` (the base userinfo claims) and `{{ .user }}` (the full user record). A template whose key is new adds a claim, an existing key overwrites it, and a template that renders empty (e.g. `""` or trimmed with `{{- -}}`) removes the claim. Templates are validated on save. Managed in the UI under *Custom Info*. |
 
 Example:
 
@@ -72,7 +73,7 @@ curl -X PUT /auth/v1/settings/cache -d '{"value":{"poll_interval":"5s","code_sto
 Migrations are embedded and run through `github.com/rakunlabs/muz` with a PostgreSQL advisory lock. The schema includes:
 
 - `auth_versions`, `auth_events` — monotonic change version and durable event log.
-- `auth_settings` — encrypted JSON settings namespaces. Reserved: `admin`, `jwt`, `token`, `oauth2`, `check`, `cache`, `api_key`, `device`, `token_exchange`, `totp`, `email`, `signup`, `mtls`, `saml` (see [Runtime settings](#runtime-settings-stored-in-postgresql)).
+- `auth_settings` — encrypted JSON settings namespaces. Reserved: `admin`, `jwt`, `token`, `oauth2`, `check`, `cache`, `api_key`, `device`, `token_exchange`, `totp`, `email`, `signup`, `mtls`, `saml`, `custom_info` (see [Runtime settings](#runtime-settings-stored-in-postgresql)).
 - `auth_oauth_clients`, `auth_oauth_providers`, `auth_ldap_configs`, `auth_saml_providers` — encrypted config records.
 - `auth_users` — IAM users; the `details` map is encrypted at rest, passwords are bcrypt hashed.
 - `auth_roles`, `auth_permissions`, `auth_lmaps` — IAM model.
@@ -96,6 +97,7 @@ With `prefix_path: /auth`:
 | `/auth/ui/#signup` | Self-registration settings: signup/verification/password-reset toggles, default roles, code lifetime, mail template editors with preview. |
 | `/auth/ui/device?user_code=XXXX-XXXX` | RFC 8628 device approval/deny page; `user_code` is optional and pre-fills the form when present. |
 | `/auth/ui/#mtls` | Global mTLS settings and workflow guide; certificate bindings live on service account records. |
+| `/auth/ui/#custom-info` | Custom userinfo template sets: per-name claim template editor (add/overwrite/remove claims) with a live preview against sample claims and user details. |
 | `/auth/swagger/*` | Swagger UI for the auth API (served with the ada swagger handler; spec at `/auth/swagger/swagger.json`). |
 
 ### IAM
@@ -158,7 +160,9 @@ Attach more roles to an LDAP group by editing its group map. The management UI s
 | `POST`/`GET` | `/auth/oauth2/api-key` | Validate a static API key (`X-API-Key` header or `api_key` form value) and return identity claims for its principal; no token is issued. |
 | `GET` | `/auth/oauth2/certs` | JWKS for the auto-generated RS256 signing key. |
 | `GET` | `/auth/oauth2/userinfo` | Userinfo for a bearer access token. |
+| `GET` | `/auth/oauth2/userinfo/{custom}` | Userinfo with the named `custom_info` claim templates applied (add or overwrite claims). |
 | `GET` | `/auth/oauth2/.well-known/openid-configuration` | OpenID configuration built from the request host. |
+| `GET` | `/auth/oauth2/openid/{custom}/.well-known/openid-configuration` | Same OpenID configuration, but `userinfo_endpoint` points to `/auth/oauth2/userinfo/{custom}` so discovery-driven clients pick up that set's `custom_info` claims. `issuer` and the other endpoints stay shared (the `issuer` matches the `id_token` `iss`). |
 
 Token notes:
 
@@ -295,6 +299,7 @@ Session integration is token based: mTLS authenticates the token request, not th
 | `GET` | `/auth/v1/info` | Prefix, storage type, and current auth version. |
 | `GET` | `/auth/v1/capabilities` | Current request capabilities (`is_admin`, `anonymous_admin`, configured admin permission). The UI uses this to hide admin pages from normal users. |
 | `GET/PUT/DELETE` | `/auth/v1/settings`, `/auth/v1/settings/{namespace}` | Encrypted JSON settings. Writes apply immediately on the handling instance; the `jwt` namespace is validated (parseable private key + kid) before saving. |
+| `POST` | `/auth/v1/custom-info/preview` | Render an unsaved `custom_info` set against sample claims and user details; returns the resulting claims and validates the templates (used by the UI). |
 | `POST` | `/auth/v1/jwt/rotate` | Generate and activate a fresh RSA signing key (new `kid`); outstanding tokens become invalid. |
 | `GET/PUT/DELETE` | `/auth/v1/oauth/clients`, `/auth/v1/oauth/clients/{id}` | OAuth client records. |
 | `GET/PUT/DELETE` | `/auth/v1/oauth/providers`, `/auth/v1/oauth/providers/{id}` | OAuth provider records. |

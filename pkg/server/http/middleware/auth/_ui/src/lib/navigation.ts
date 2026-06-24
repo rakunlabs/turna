@@ -1,6 +1,6 @@
 import type { ResourceKind } from "./api";
 
-export type Tab = "overview" | "check" | "flows" | "oauth2-overview" | "docs" | "account" | "api-keys" | "device" | "email" | "magic-link" | "signup" | "mtls" | "encryption" | "admin" | "cache" | "device-settings" | "token-exchange" | "totp" | ResourceKind;
+export type Tab = "overview" | "check" | "flows" | "oauth2-overview" | "docs" | "account" | "api-keys" | "device" | "email" | "magic-link" | "signup" | "mtls" | "encryption" | "admin" | "cache" | "device-settings" | "token-exchange" | "totp" | "custom-info" | ResourceKind;
 
 export type NavItem = { id: Tab; label: string };
 
@@ -56,6 +56,7 @@ export const navGroups: NavGroup[] = [
       { id: "signup", label: "SIGNUP" },
       { id: "mtls", label: "MTLS" },
       { id: "totp", label: "TOTP" },
+      { id: "custom-info", label: "CUSTOM INFO" },
       { id: "device-settings", label: "DEVICE FLOW" },
       { id: "token-exchange", label: "TOKEN EXCHANGE" },
     ],
@@ -74,5 +75,5 @@ export const navGroups: NavGroup[] = [
 export const nav = navGroups.flatMap((group) => group.items);
 
 export function isResourceTab(tab: Tab): tab is ResourceKind {
-  return !["overview", "check", "flows", "oauth2-overview", "docs", "account", "api-keys", "device", "email", "magic-link", "signup", "mtls", "encryption", "admin", "cache", "device-settings", "token-exchange", "totp"].includes(tab);
+  return !["overview", "check", "flows", "oauth2-overview", "docs", "account", "api-keys", "device", "email", "magic-link", "signup", "mtls", "encryption", "admin", "cache", "device-settings", "token-exchange", "totp", "custom-info"].includes(tab);
 }

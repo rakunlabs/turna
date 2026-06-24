@@ -85,6 +85,25 @@ type OAuth2Settings struct {
 	InsecureSkipVerify bool `json:"insecure_skip_verify"`
 }
 
+// CustomInfoSettings is the decoded "custom_info" setting namespace.
+// Each named set maps an output claim name to a mugo/Go template rendered
+// against the user's base claims and full profile. A template whose key is
+// not already a claim ADDS a new claim; an existing key OVERWRITES it.
+// The set is selected by the {custom} path segment of /oauth2/userinfo/{custom}.
+type CustomInfoSettings struct {
+	// Disabled turns off custom userinfo templating entirely.
+	Disabled bool `json:"disabled"`
+	// Sets maps a custom name (the {custom} path value) to its claim templates.
+	Sets map[string]CustomInfoSet `json:"sets"`
+}
+
+// CustomInfoSet is a single named group of userinfo claim templates.
+type CustomInfoSet struct {
+	// Claims maps an output claim name to a mugo/Go template string. Templates
+	// receive {"claims": <base claims>, "user": <full user record>} as data.
+	Claims map[string]string `json:"claims"`
+}
+
 // CheckSettings is the decoded "check" setting namespace.
 type CheckSettings struct {
 	// DefaultHosts used when a permission resource has no hosts.
@@ -458,6 +477,7 @@ type Snapshot struct {
 	Signup        SignupSettings
 	MTLS          MTLSSettings
 	SAMLKey       samlSetting
+	CustomInfo    CustomInfoSettings
 }
 
 // Cache keeps the snapshot up to date with polling and explicit reloads.
@@ -601,6 +621,11 @@ func (c *Cache) Reload(ctx context.Context) error {
 	samlKeyRaw, err := c.store.GetSettingValue(ctx, samlSettingNamespace)
 	if err != nil {
 		return fmt.Errorf("load saml settings: %w", err)
+	}
+
+	customInfoRaw, err := c.store.GetSettingValue(ctx, "custom_info")
+	if err != nil {
+		return fmt.Errorf("load custom_info settings: %w", err)
 	}
 
 	samlProvidersRaw, err := c.store.LoadConfigResources(ctx, samlProviderKind)
@@ -823,6 +848,12 @@ func (c *Cache) Reload(ctx context.Context) error {
 	if samlKeyRaw != nil {
 		if err := json.Unmarshal(samlKeyRaw, &snap.SAMLKey); err != nil {
 			slog.Warn("invalid saml settings", slog.String("error", err.Error()))
+		}
+	}
+
+	if customInfoRaw != nil {
+		if err := json.Unmarshal(customInfoRaw, &snap.CustomInfo); err != nil {
+			slog.Warn("invalid custom_info settings", slog.String("error", err.Error()))
 		}
 	}
 
