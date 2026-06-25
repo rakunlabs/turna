@@ -126,7 +126,8 @@ func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.
 		return
 	}
 
-	tokenCfg := m.cache.Snapshot().Token
+	sn := m.cache.Snapshot()
+	tokenCfg := sn.Token
 
 	claimsAccess := map[string]any{
 		"aud":                "turna-auth",
@@ -184,9 +185,12 @@ func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.
 	}
 
 	if len(rolesList) > 0 {
-		claimsAccess["realm_access"] = map[string]any{
-			"roles": rolesList,
+		rolesClaim := tokenCfg.GetRolesClaim()
+		if client, ok := sn.OAuthClients[clientID]; ok && client.RolesClaim != "" {
+			rolesClaim = client.RolesClaim
 		}
+
+		setClaimByPath(claimsAccess, rolesClaim, rolesList)
 	}
 
 	accessToken, err := signer.JWT.Generate(claimsAccess, nowAdd(tokenCfg.GetTokenLifetime()))

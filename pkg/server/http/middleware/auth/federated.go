@@ -67,6 +67,30 @@ func claimValues(claims map[string]any, path string) []string {
 	}
 }
 
+// setClaimByPath writes value at a dot path into a claims map, creating the
+// intermediate map[string]any nodes as needed. The inverse of claimValues.
+// A non-map value blocking the path is overwritten so the leaf is always set.
+// An empty path is a no-op.
+func setClaimByPath(claims map[string]any, path string, value any) {
+	if path == "" || claims == nil {
+		return
+	}
+
+	parts := strings.Split(path, ".")
+	node := claims
+	for _, part := range parts[:len(parts)-1] {
+		child, ok := node[part].(map[string]any)
+		if !ok {
+			child = map[string]any{}
+			node[part] = child
+		}
+
+		node = child
+	}
+
+	node[parts[len(parts)-1]] = value
+}
+
 // rolesFromClaimValues resolves claim values to role IDs through lmaps
 // and the inline role map.
 func (m *Auth) rolesFromClaimValues(values []string, mapping ClaimMapping) []string {
