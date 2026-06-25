@@ -21,7 +21,7 @@ loads:
 | `statics` | Sources loaded once at startup. |
 | `dynamics` | Sources watched or reloaded by the loader implementation. |
 
-Turna delegates the loader implementation to `github.com/rytsh/liz/loader` and then consumes the resulting data through `render.Data`.
+Turna implements the loader in `internal/loader` and then consumes the resulting data through `render.Data`. Sources that set `template: true` are rendered with Turna's mugo engine, the same one used by `print`, service env/command, filters, and server config.
 
 ## Static Sources
 

@@ -116,6 +116,21 @@ export default defineConfig({
                   },
                 ],
               },
+              {
+                text: 'UDP',
+                collapsed: true,
+                items: [
+                  {
+                    text: 'Middlewares',
+                    collapsed: true,
+                    items: [
+                      { text: 'dns', link: '/reference/server/udp/middlewares/dns' },
+                      { text: 'ip_allow_list', link: '/reference/server/udp/middlewares/ip_allow_list' },
+                      { text: 'redirect', link: '/reference/server/udp/middlewares/redirect' },
+                    ],
+                  },
+                ],
+              },
             ],
           },
           { text: 'Services', link: '/reference/services' },

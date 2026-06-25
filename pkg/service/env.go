@@ -4,8 +4,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/rakunlabs/turna/internal/loader"
 	"github.com/rakunlabs/turna/pkg/render"
-	"github.com/rytsh/liz/loader"
 )
 
 func (s *Service) GetEnv(predefined map[string]any, environ bool, envPaths []string) ([]string, error) {

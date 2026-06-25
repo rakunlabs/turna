@@ -15,18 +15,22 @@ var ShutdownTimeout = 5 * time.Second
 
 var GlobalReg = Registry{
 	listeners:      make(map[string]net.Listener),
+	udpListeners:   make(map[string]net.PacketConn),
 	server:         make(map[string]*http.Server),
 	httpMiddleware: make(map[string][]func(http.Handler) http.Handler),
 	tcpMiddleware:  make(map[string][]func(lconn *net.TCPConn) error),
+	udpMiddleware:  make(map[string][]func(conn net.PacketConn, addr net.Addr, data []byte) error),
 	shutdownFuncs:  make(map[string]func()),
 	httpInitFuncs:  make(map[string]func() error),
 }
 
 type Registry struct {
 	listeners      map[string]net.Listener
+	udpListeners   map[string]net.PacketConn
 	server         map[string]*http.Server
 	httpMiddleware map[string][]func(http.Handler) http.Handler
 	tcpMiddleware  map[string][]func(lconn *net.TCPConn) error
+	udpMiddleware  map[string][]func(conn net.PacketConn, addr net.Addr, data []byte) error
 	shutdownFuncs  map[string]func()
 	httpInitFuncs  map[string]func() error
 	mutex          sync.RWMutex
@@ -79,6 +83,25 @@ func (r *Registry) GetTcpMiddleware(name string) ([]func(lconn *net.TCPConn) err
 	defer r.mutex.RUnlock()
 
 	m, ok := r.tcpMiddleware[name]
+	if !ok {
+		return nil, fmt.Errorf("middleware %s not found", name)
+	}
+
+	return m, nil
+}
+
+func (r *Registry) AddUDPMiddleware(name string, m []func(conn net.PacketConn, addr net.Addr, data []byte) error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	r.udpMiddleware[name] = m
+}
+
+func (r *Registry) GetUDPMiddleware(name string) ([]func(conn net.PacketConn, addr net.Addr, data []byte) error, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	m, ok := r.udpMiddleware[name]
 	if !ok {
 		return nil, fmt.Errorf("middleware %s not found", name)
 	}
@@ -199,6 +222,56 @@ func (r *Registry) GetListenerNamesList() []string {
 	return names
 }
 
+func (r *Registry) AddUDPListener(name string, l net.PacketConn) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	r.udpListeners[name] = l
+}
+
+func (r *Registry) GetUDPListener(name string) (net.PacketConn, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	l, ok := r.udpListeners[name]
+	if !ok {
+		return nil, fmt.Errorf("udp listener %s not found", name)
+	}
+
+	return l, nil
+}
+
+func (r *Registry) GetUDPListenerNames() map[string]struct{} {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	names := make(map[string]struct{}, len(r.udpListeners))
+
+	for name := range r.udpListeners {
+		names[name] = struct{}{}
+	}
+
+	return names
+}
+
+func (r *Registry) ClearUDPListener(name string) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	l, ok := r.udpListeners[name]
+	if !ok {
+		return nil
+	}
+
+	if err := l.Close(); err != nil {
+		return fmt.Errorf("udp listener %s closed with error: %w", name, err)
+	}
+
+	delete(r.udpListeners, name)
+
+	return nil
+}
+
 func (r *Registry) ClearListener(name string) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -231,6 +304,14 @@ func (r *Registry) Shutdown() {
 			slog.Error(fmt.Sprintf("listener [%s] shutdown error", name), "err", err.Error())
 		} else {
 			slog.Warn(fmt.Sprintf("listener [%s] shutdown", name))
+		}
+	}
+
+	for name := range r.udpListeners {
+		if err := r.ClearUDPListener(name); err != nil && !errors.Is(err, net.ErrClosed) {
+			slog.Error(fmt.Sprintf("udp listener [%s] shutdown error", name), "err", err.Error())
+		} else {
+			slog.Warn(fmt.Sprintf("udp listener [%s] shutdown", name))
 		}
 	}
 }

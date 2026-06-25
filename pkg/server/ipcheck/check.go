@@ -1,4 +1,6 @@
-package ipallowlist
+// Package ipcheck provides a protocol-agnostic allow-list checker shared by
+// the TCP and UDP ip_allow_list middlewares.
+package ipcheck
 
 import (
 	"errors"

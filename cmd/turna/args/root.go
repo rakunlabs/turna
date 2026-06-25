@@ -27,7 +27,6 @@ import (
 	_ "github.com/rakunlabs/chu/loader/external/loadergcpsecret"
 	_ "github.com/rakunlabs/chu/loader/external/loadervault"
 
-	load "github.com/rytsh/liz/loader"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -159,7 +158,7 @@ func runRoot(ctx context.Context) error {
 	}
 
 	// load configurations
-	if err := config.Application.Loads.Load(load.SetLogToCtx(ctx, slog.Default()), wg, nil, call); err != nil {
+	if err := config.Application.Loads.Load(ctx, wg, call); err != nil {
 		return err
 	}
 

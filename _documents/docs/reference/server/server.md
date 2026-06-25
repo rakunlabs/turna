@@ -37,7 +37,7 @@ server:
 | Field | Default | Description |
 | --- | --- | --- |
 | `address` | | Address passed to `net.Listen`, such as `:8080` or `/var/run/app.sock`. |
-| `network` | `tcp` | Network passed to `net.Listen`. |
+| `network` | `tcp` | Network passed to `net.Listen`. Use `udp`, `udp4`, or `udp6` for a UDP entrypoint, which is bound with `net.ListenPacket` and consumed by `server.udp` routers. |
 
 ## HTTP Routers
 
@@ -237,3 +237,41 @@ server:
 ```
 
 TCP middleware runs sequentially for each accepted connection. If a middleware returns an error, the chain stops and the connection is closed.
+
+## UDP Routers
+
+UDP routers attach UDP middleware chains to UDP entrypoints (`network: udp`). UDP is connectionless, so the chain runs per received datagram instead of per connection.
+
+```yaml
+server:
+  entrypoints:
+    dns:
+      address: ":5353"
+      network: udp
+  udp:
+    middlewares:
+      local_only:
+        ip_allow_list:
+          source_range:
+            - 127.0.0.1/32
+      resolver:
+        dns:
+          origin: example.com
+          records:
+            - "@ IN A 10.0.0.1"
+            - "www IN A 10.0.0.2"
+            - "*.dev IN A 10.0.0.9"
+          upstream:
+            - 1.1.1.1:53
+    routers:
+      dns:
+        entrypoints:
+          - dns
+        middlewares:
+          - local_only
+          - resolver
+```
+
+UDP middleware runs sequentially for each datagram. A pre-filter such as `ip_allow_list` returns an error to drop the packet; a terminal middleware such as `dns` or `redirect` writes the response back to the peer. Datagrams are handled concurrently with a bounded worker pool.
+
+See the [UDP middleware reference](./udp/middlewares/) for all supported keys.

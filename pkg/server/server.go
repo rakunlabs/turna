@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strings"
 	"sync"
 
 	"github.com/rakunlabs/turna/pkg/server/http"
 	"github.com/rakunlabs/turna/pkg/server/registry"
 	"github.com/rakunlabs/turna/pkg/server/tcp"
+	"github.com/rakunlabs/turna/pkg/server/udp"
 )
 
 type Server struct {
@@ -17,6 +19,7 @@ type Server struct {
 	EntryPoints map[string]EntryPoint `cfg:"entrypoints"`
 	HTTP        http.HTTP             `cfg:"http"`
 	TCP         tcp.TCP               `cfg:"tcp"`
+	UDP         udp.UDP               `cfg:"udp"`
 }
 
 type EntryPoint struct {
@@ -28,6 +31,20 @@ func (e *EntryPoint) Serve(ctx context.Context, name string) error {
 	network := e.Network
 	if network == "" {
 		network = "tcp"
+	}
+
+	// UDP is connectionless, it needs a packet connection instead of a listener.
+	if strings.HasPrefix(network, "udp") {
+		conn, err := net.ListenPacket(network, e.Address)
+		if err != nil {
+			return fmt.Errorf("address cannot listen %s: %w", e.Address, err)
+		}
+
+		slog.Info(fmt.Sprintf("entrypoint %s is listening on %s with %s", name, e.Address, network))
+
+		registry.GlobalReg.AddUDPListener(name, conn)
+
+		return nil
 	}
 
 	listener, err := net.Listen(network, e.Address)
@@ -59,6 +76,10 @@ func (s *Server) Run(ctx context.Context, wg *sync.WaitGroup) error {
 
 	if err := s.TCP.Set(ctx, wg); err != nil {
 		return fmt.Errorf("tcp cannot set: %w", err)
+	}
+
+	if err := s.UDP.Set(ctx, wg); err != nil {
+		return fmt.Errorf("udp cannot set: %w", err)
 	}
 
 	return nil

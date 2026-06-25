@@ -8,9 +8,9 @@ import (
 	"sync"
 
 	"github.com/kballard/go-shellquote"
+	"github.com/rakunlabs/turna/internal/loader"
 	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/runner"
-	"github.com/rytsh/liz/loader"
 )
 
 type Service struct {

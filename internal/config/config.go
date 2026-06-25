@@ -3,10 +3,10 @@ package config
 import (
 	"time"
 
+	"github.com/rakunlabs/turna/internal/loader"
 	"github.com/rakunlabs/turna/pkg/preprocess"
 	"github.com/rakunlabs/turna/pkg/server"
 	"github.com/rakunlabs/turna/pkg/service"
-	"github.com/rytsh/liz/loader"
 )
 
 var (
