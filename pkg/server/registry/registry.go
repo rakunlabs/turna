@@ -37,9 +37,23 @@ type Registry struct {
 }
 
 func (r *Registry) RunHTTPInitFuncs() error {
+	// Snapshot the init funcs under the read lock. The funcs themselves may
+	// call back into the registry (e.g. AddShutdownFunc), which takes the
+	// write lock, so they must not run while the lock is held.
+	r.mutex.RLock()
+	type initFunc struct {
+		name string
+		f    func() error
+	}
+	funcs := make([]initFunc, 0, len(r.httpInitFuncs))
 	for name, f := range r.httpInitFuncs {
-		if err := f(); err != nil {
-			return fmt.Errorf("http init func %s error: %w", name, err)
+		funcs = append(funcs, initFunc{name: name, f: f})
+	}
+	r.mutex.RUnlock()
+
+	for _, fn := range funcs {
+		if err := fn.f(); err != nil {
+			return fmt.Errorf("http init func %s error: %w", fn.name, err)
 		}
 	}
 
@@ -291,15 +305,48 @@ func (r *Registry) ClearListener(name string) error {
 }
 
 func (r *Registry) Shutdown() {
-	for name := range r.shutdownFuncs {
+	// Snapshot all names under the read lock before iterating. The Clear*
+	// helpers below take the write lock and delete from these maps, so we must
+	// not range over them directly to avoid "concurrent map iteration and map
+	// write" if a dynamic config reload mutates the registry concurrently.
+	shutdownNames := r.snapshotKeys(func() []string {
+		names := make([]string, 0, len(r.shutdownFuncs))
+		for name := range r.shutdownFuncs {
+			names = append(names, name)
+		}
+		return names
+	})
+	serverNames := r.snapshotKeys(func() []string {
+		names := make([]string, 0, len(r.server))
+		for name := range r.server {
+			names = append(names, name)
+		}
+		return names
+	})
+	listenerNames := r.snapshotKeys(func() []string {
+		names := make([]string, 0, len(r.listeners))
+		for name := range r.listeners {
+			names = append(names, name)
+		}
+		return names
+	})
+	udpListenerNames := r.snapshotKeys(func() []string {
+		names := make([]string, 0, len(r.udpListeners))
+		for name := range r.udpListeners {
+			names = append(names, name)
+		}
+		return names
+	})
+
+	for _, name := range shutdownNames {
 		r.ClearShutdownFunc(name)
 	}
 
-	for name := range r.server {
+	for _, name := range serverNames {
 		r.ClearHttpServer(name)
 	}
 
-	for name := range r.listeners {
+	for _, name := range listenerNames {
 		if err := r.ClearListener(name); err != nil && !errors.Is(err, net.ErrClosed) {
 			slog.Error(fmt.Sprintf("listener [%s] shutdown error", name), "err", err.Error())
 		} else {
@@ -307,11 +354,21 @@ func (r *Registry) Shutdown() {
 		}
 	}
 
-	for name := range r.udpListeners {
+	for _, name := range udpListenerNames {
 		if err := r.ClearUDPListener(name); err != nil && !errors.Is(err, net.ErrClosed) {
 			slog.Error(fmt.Sprintf("udp listener [%s] shutdown error", name), "err", err.Error())
 		} else {
 			slog.Warn(fmt.Sprintf("udp listener [%s] shutdown", name))
 		}
 	}
+}
+
+// snapshotKeys runs collect under the read lock and returns its result. It lets
+// Shutdown capture a stable list of map keys before mutating the maps via the
+// write-locking Clear* helpers.
+func (r *Registry) snapshotKeys(collect func() []string) []string {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return collect()
 }

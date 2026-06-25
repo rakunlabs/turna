@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/accesslog"
@@ -236,7 +237,7 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	}
 
-	return nil, nil
+	return nil, fmt.Errorf("middleware %q has no recognized type; check for a typo or empty middleware block", name)
 }
 
 func (h *HTTPMiddleware) Set(ctx context.Context, name string) error {

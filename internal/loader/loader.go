@@ -18,6 +18,7 @@ type Call func(context.Context, string, map[string]interface{})
 type clients struct {
 	consul *consulClient
 	vault  *vaultClient
+	http   *httpClient
 }
 
 // Load loads all configs to their export location and in memory.
@@ -31,6 +32,7 @@ func (c Configs) Load(ctx context.Context, wg *sync.WaitGroup, call Call) error 
 	cl := &clients{
 		consul: &consulClient{},
 		vault:  &vaultClient{},
+		http:   &httpClient{},
 	}
 
 	for _, config := range c {
@@ -107,6 +109,12 @@ func (c ConfigStatic) load(ctx context.Context, to *Data, cl *clients) error {
 
 	if c.File != nil {
 		if err := c.loadFile(to); err != nil {
+			return err
+		}
+	}
+
+	if c.HTTP != nil {
+		if err := c.loadHTTP(ctx, to, cl); err != nil {
 			return err
 		}
 	}
@@ -278,6 +286,66 @@ func (c ConfigStatic) loadFile(to *Data) error {
 	}
 
 	to.AddHold(c.File.Name, dataProcessed)
+
+	return nil
+}
+
+func (c ConfigStatic) loadHTTP(ctx context.Context, to *Data, cl *clients) error {
+	data, contentType, err := cl.http.loadRaw(ctx, c.HTTP)
+	if err != nil {
+		return err
+	}
+
+	if c.HTTP.Template {
+		v, err := renderTemplate(string(data), to.Hold)
+		if err != nil {
+			return err
+		}
+
+		data = v
+	}
+
+	var dataProcessed interface{}
+
+	if c.HTTP.Raw {
+		if c.HTTP.Map != "" {
+			vMap := MapPath(c.HTTP.Map, data).(map[string]interface{})
+			to.Merge(vMap)
+			dataProcessed = vMap
+		} else {
+			to.Raw = data
+			dataProcessed = data
+		}
+	} else {
+		codecName := c.HTTP.Codec
+		if codecName == "" {
+			codecName = codecNameByContentType(contentType)
+		}
+
+		var vMap map[string]interface{}
+		if err := decodeContent(codecName, data, &vMap); err != nil {
+			return err
+		}
+
+		innerValue := MapPath(c.HTTP.Map, InnerPath(c.HTTP.InnerPath, vMap))
+		if m, ok := innerValue.(map[string]interface{}); ok {
+			to.Merge(m)
+			dataProcessed = innerValue
+		} else {
+			to.Raw = []byte(fmt.Sprint(innerValue))
+			dataProcessed = to.Raw
+		}
+	}
+
+	if c.HTTP.Base64 && to.Raw != nil {
+		if to.Raw, err = base64.StdEncoding.DecodeString(string(to.Raw)); err != nil {
+			return fmt.Errorf("http decode base64 error: %w", err)
+		}
+
+		dataProcessed = to.Raw
+	}
+
+	to.AddHold(c.HTTP.Name, dataProcessed)
 
 	return nil
 }

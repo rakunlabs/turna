@@ -25,7 +25,7 @@ Turna implements the loader in `internal/loader` and then consumes the resulting
 
 ## Static Sources
 
-Static sources are loaded once at startup. Supported source types are `consul`, `vault`, `file`, and `content`.
+Static sources are loaded once at startup. Supported source types are `consul`, `vault`, `file`, `http`, and `content`.
 
 ### Consul
 
@@ -72,6 +72,35 @@ loads:
           name: local_file
           path: config/app.yaml
           codec: YAML
+          raw: false
+          inner_path: server
+          map: app/server
+          template: false
+          base64: false
+```
+
+### HTTP
+
+Fetches configuration from an HTTP endpoint. When `codec` is empty, the codec is
+detected from the response `Content-Type` header (`application/json`,
+`application/x-toml`, `application/yaml`, ...) and falls back to YAML.
+
+```yaml
+loads:
+  - name: remote
+    statics:
+      - http:
+          name: remote_http
+          url: https://config.example.com/app
+          method: GET
+          headers:
+            Authorization: Bearer token
+          query:
+            version: v1
+          body: ""
+          timeout: 5s
+          codec: ""
+          insecure_skip_verify: false
           raw: false
           inner_path: server
           map: app/server

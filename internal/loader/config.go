@@ -1,5 +1,7 @@
 package loader
 
+import "time"
+
 // Configs is a list of load configurations.
 type Configs []Config
 
@@ -20,6 +22,7 @@ type ConfigStatic struct {
 	Vault   *ConfigVault   `cfg:"vault"`
 	File    *ConfigFile    `cfg:"file"`
 	Content *ConfigContent `cfg:"content"`
+	HTTP    *ConfigHTTP    `cfg:"http"`
 }
 
 // ConfigDynamic is a source watched/reloaded while running.
@@ -72,6 +75,39 @@ type ConfigFile struct {
 	Name string `cfg:"name"`
 	// Path is the file location, [toml, yml, yaml, json] supported.
 	Path string `cfg:"path"`
+	// Raw to load as raw, don't mix with other loaders.
+	Raw bool `cfg:"raw"`
+	// InnerPath is get the inner path from response, / separated as db/settings.
+	// Cannot work with Raw.
+	InnerPath string `cfg:"inner_path"`
+	// Map is the wrapper map, / separated as db/settings.
+	Map string `cfg:"map"`
+	// Template to run go template after the load.
+	Template bool `cfg:"template"`
+	// Base64 to decode the content.
+	Base64 bool `cfg:"base64"`
+}
+
+type ConfigHTTP struct {
+	// Name for export, default is empty.
+	Name string `cfg:"name"`
+	// URL is the endpoint to fetch the configuration from.
+	URL string `cfg:"url"`
+	// Method is the HTTP method, default is GET.
+	Method string `cfg:"method"`
+	// Headers to set on the request.
+	Headers map[string]string `cfg:"headers"`
+	// Query parameters added to the URL.
+	Query map[string]string `cfg:"query"`
+	// Body is the optional request body.
+	Body string `cfg:"body"`
+	// Timeout for the request, default is no timeout.
+	Timeout time.Duration `cfg:"timeout"`
+	// Codec YAML,JSON,TOML default detects from the response Content-Type
+	// and falls back to YAML.
+	Codec string `cfg:"codec"`
+	// InsecureSkipVerify disables TLS certificate verification.
+	InsecureSkipVerify bool `cfg:"insecure_skip_verify"`
 	// Raw to load as raw, don't mix with other loaders.
 	Raw bool `cfg:"raw"`
 	// InnerPath is get the inner path from response, / separated as db/settings.

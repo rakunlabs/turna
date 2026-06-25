@@ -331,7 +331,7 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 
 			slog.Info(fmt.Sprintf("http tls-server [%s] is listening on %s", n, listener.Addr().String()))
 			// certificates are loaded from TLSConfig
-			if err := s.ServeTLS(listener, "", ""); err != nil && errors.Is(err, http.ErrServerClosed) {
+			if err := s.ServeTLS(listener, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				slog.Error(fmt.Sprintf("cannot serve tls listener [%s]", n), "err", err.Error())
 			}
 		}(entrypoint)
@@ -361,7 +361,7 @@ func (h *HTTP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 
 			slog.Info(fmt.Sprintf("http server [%s] is listening on %s", n, listener.Addr().String()))
 			// certificates are loaded from TLSConfig
-			if err := s.Serve(listener); err != nil && errors.Is(err, http.ErrServerClosed) {
+			if err := s.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				slog.Error(fmt.Sprintf("cannot serve listener [%s]", n), "err", err.Error())
 
 				registry.GlobalReg.DeleteHttpServer(n)

@@ -102,6 +102,23 @@ func codecByExt(ext string) (codec, error) {
 	}
 }
 
+// codecNameByContentType maps an HTTP Content-Type to a codec name.
+// Unknown or empty types default to YAML.
+func codecNameByContentType(contentType string) string {
+	contentType = strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
+
+	switch contentType {
+	case "application/json", "text/json":
+		return "JSON"
+	case "application/toml", "application/x-toml", "text/toml":
+		return "TOML"
+	case "application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml":
+		return "YAML"
+	default:
+		return "YAML"
+	}
+}
+
 // decodeContent decodes raw bytes into v using the named codec.
 func decodeContent(name string, data []byte, v any) error {
 	c, err := codecByName(name)
