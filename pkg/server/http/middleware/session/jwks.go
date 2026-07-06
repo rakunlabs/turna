@@ -8,12 +8,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/MicahParks/keyfunc/v2"
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/rakunlabs/turna/pkg/utils/jwks"
 )
 
 var (
-	ErrKIDNotFound  = keyfunc.ErrKIDNotFound
+	ErrKIDNotFound  = jwks.ErrKIDNotFound
 	ErrTokenInvalid = fmt.Errorf("token is invalid")
 )
 
@@ -107,14 +108,14 @@ func (k *KeyFuncMulti) Keyfunc(token *jwt.Token) (any, error) {
 	return k.multiJWKS.Keyfunc(token)
 }
 
-// MultiJWTKeyFunc returns a jwt.Keyfunc with multiple keyfunc.
+// MultiJWTKeyFunc returns a jwt.Keyfunc with multiple JWK Sets.
 //
 // Doesn't support introspect and noops, it will ignore them.
 func MultiJWTKeyFunc(providers []InfProviderCert, opts ...OptionJWK) (*JwkKeyFuncParse, error) {
 	opt := GetOptionJWK(opts...)
-	keyFuncOpt := MapOptionKeyfunc(opt)
+	keyFuncOpt := MapOptionJWKS(opt)
 
-	multi := map[MultipleJWKSKey]keyfunc.Options{}
+	multi := map[MultipleJWKSKey]jwks.Options{}
 	for _, provider := range providers {
 		certURL := provider.GetCertURL()
 		if certURL == "" {
@@ -166,13 +167,12 @@ func GetOptionJWK(opts ...OptionJWK) optionsJWK {
 	return option
 }
 
-func MapOptionKeyfunc(opt optionsJWK) keyfunc.Options {
-	return keyfunc.Options{
+func MapOptionJWKS(opt optionsJWK) jwks.Options {
+	return jwks.Options{
 		Ctx:                 opt.Ctx,
 		RefreshErrorHandler: opt.RefreshErrorHandler,
-		// RefreshRateLimit:    time.Minute * 5,
-		RefreshInterval: opt.RefreshInterval,
-		Client:          opt.Client,
+		RefreshInterval:     opt.RefreshInterval,
+		Client:              opt.Client,
 	}
 }
 
@@ -187,17 +187,11 @@ type optionsJWK struct {
 
 type OptionJWK func(options *optionsJWK)
 
-// WithGivenKeys is used to set the given keys used to verify the token.
+// WithKeyFunc is used to set the given key function used to verify the token
+// before checking the remote JWK Sets.
 //
-// Return ErrKIDNotFound if the kid is not found.
-//
-// Example:
-//
-//	// Create the JWKS from the given keys.
-//	givenKeys := map[string]keyfunc.GivenKey{
-//		"my-key-id": keyfunc.NewGivenHMAC(...),
-//	}
-//	jwks := keyfunc.NewGiven(givenKeys)
+// The key function must return ErrKIDNotFound if the kid is not found so the
+// lookup falls through to the remote JWK Sets.
 func WithKeyFunc(keyFunc InfKeyFunc) OptionJWK {
 	return func(options *optionsJWK) {
 		options.KeyFunc = keyFunc
@@ -238,30 +232,29 @@ func WithContext(ctx context.Context) OptionJWK {
 	}
 }
 
+// ErrMultipleJWKSSize is returned when GetMultiple is called without any remote JWK Set resource.
+var ErrMultipleJWKSSize = errors.New("multiple JWKS must have one or more remote JWK Set resources")
+
 // GetMultiple creates a new MultipleJWKS. A map of length one or more JWKS URLs to Options is required.
-//
-// Be careful when choosing Options for each JWKS in the map. If RefreshUnknownKID is set to true for all JWKS in the
-// map then many refresh requests would take place each time a JWT is processed, this should be rate limited by
-// RefreshRateLimit.
-func GetMultiple(multiple map[MultipleJWKSKey]keyfunc.Options, options MultipleOptions) (multiJWKS *MultipleJWKS, err error) {
+func GetMultiple(multiple map[MultipleJWKSKey]jwks.Options, options MultipleOptions) (multiJWKS *MultipleJWKS, err error) {
 	if len(multiple) < 1 {
-		return nil, fmt.Errorf("multiple JWKS must have one or more remote JWK Set resources: %w", keyfunc.ErrMultipleJWKSSize)
+		return nil, ErrMultipleJWKSSize
 	}
 
 	multiJWKS = &MultipleJWKS{
-		sets:        make(map[MultipleJWKSKey]*keyfunc.JWKS, len(multiple)),
+		sets:        make(map[MultipleJWKSKey]*jwks.JWKS, len(multiple)),
 		keySelector: options.KeySelector,
 	}
 
 	for u, opts := range multiple {
-		jwks, err := keyfunc.Get(u.URL, opts)
+		set, err := jwks.Get(u.URL, opts)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get JWKS from %q: %w", u, err)
 		}
 		multiJWKS.sets[MultipleJWKSKey{
 			URL:  u.URL,
 			Name: u.Name,
-		}] = jwks
+		}] = set
 	}
 
 	return multiJWKS, nil
@@ -270,7 +263,7 @@ func GetMultiple(multiple map[MultipleJWKSKey]keyfunc.Options, options MultipleO
 // MultipleJWKS manages multiple JWKS and has a field for jwt.Keyfunc.
 type MultipleJWKS struct {
 	keySelector func(multiJWKS *MultipleJWKS, token *jwt.Token) (key any, err error)
-	sets        map[MultipleJWKSKey]*keyfunc.JWKS // No lock is required because this map is read-only after initialization.
+	sets        map[MultipleJWKSKey]*jwks.JWKS // No lock is required because this map is read-only after initialization.
 }
 
 // Keyfunc matches the signature of github.com/golang-jwt/jwt/v5's jwt.Keyfunc function.

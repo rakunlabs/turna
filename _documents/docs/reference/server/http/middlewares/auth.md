@@ -333,7 +333,7 @@ Login requests carry `client_id`/`client_secret` like the password grant; `usern
 
 ## Session/login integration
 
-The middleware registers itself as an in-process token issuer under its middleware name. A [`session`](./session) provider can reference it with `auth_middleware` so JWT validation (keyfunc) and refresh happen in-process — no `cert_url`/`token_url` self-calls:
+The middleware registers itself as an in-process token issuer under its middleware name. A [`session`](./session) provider can reference it with `auth_middleware` so JWT validation (key lookup) and refresh happen in-process — no `cert_url`/`token_url` self-calls:
 
 ```yaml
 middlewares:

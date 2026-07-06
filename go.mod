@@ -4,7 +4,6 @@ go 1.26
 
 require (
 	github.com/BurntSushi/toml v1.5.0
-	github.com/MicahParks/keyfunc/v2 v2.0.3
 	github.com/abbot/go-http-auth v0.4.1-0.20220112235402-e1cee1c72f2f
 	github.com/ajg/form v1.5.1
 	github.com/bmatcuk/doublestar/v4 v4.9.2
