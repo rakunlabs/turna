@@ -9,10 +9,10 @@ server:
       session:
         session:
           cookie_name: auth_session
+          session_key: my-secret-key
           store:
             active: file
             file:
-              session_key: my-secret-key
               path: ./sessions
           options:
             path: /
@@ -37,6 +37,7 @@ server:
 ## Store
 
 ```yaml
+session_key: my-secret-key
 store:
   active: redis # redis or file
   redis:
@@ -44,18 +45,18 @@ store:
     username: ""
     password: ""
     key_prefix: session_
-    session_key: ""
+    session_key: "" # optional store-specific override
     tls:
       enabled: false
       cert_file: ""
       key_file: ""
       ca_file: ""
   file:
-    session_key: ""
+    session_key: "" # optional store-specific override
     path: ""
 ```
 
-If `active` is empty, Turna uses `redis` when configured, otherwise `file` when configured. A store is required.
+If `active` is empty, Turna uses `redis` when configured, otherwise `file` when configured. A store is required. The top-level `session_key` is used by both Redis and file stores unless that store defines its own `session_key`.
 
 ## Cookie Options
 

@@ -30,6 +30,15 @@ func (m *Session) GetStore() StoreInf {
 }
 
 func (m *Session) SetStore(ctx context.Context) error {
+	if m.SessionKey != "" {
+		if m.Store.Redis != nil && m.Store.Redis.SessionKey == "" {
+			m.Store.Redis.SessionKey = m.SessionKey
+		}
+		if m.Store.File != nil && m.Store.File.SessionKey == "" {
+			m.Store.File.SessionKey = m.SessionKey
+		}
+	}
+
 	sessionOpts := sessions.Options{
 		Path:   "/",
 		MaxAge: 86400,

@@ -15,7 +15,10 @@ const (
 )
 
 type Session struct {
-	Store Store `cfg:"store"`
+	// SessionKey is the default signing key for configured session stores.
+	// A store-specific session_key takes precedence when set.
+	SessionKey string `cfg:"session_key"`
+	Store      Store  `cfg:"store"`
 	// Options for main cookie.
 	Options Options `cfg:"options"`
 
