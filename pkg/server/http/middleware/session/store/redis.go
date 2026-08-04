@@ -28,6 +28,9 @@ type Redis struct {
 	KeyPrefix string `cfg:"key_prefix"`
 	// SessionKey signs the session ID cookie. If empty, a random key is generated.
 	SessionKey string `cfg:"session_key"`
+	// Compat selects the storage format. Empty is the current format, "v1" is
+	// the v0.8.x format, "mixed" reads both and writes the current one.
+	Compat string `cfg:"compat"`
 }
 
 type RedisStore struct {
@@ -35,9 +38,15 @@ type RedisStore struct {
 	keyPrefix string
 	codec     *securecookie.Codec
 	options   sessions.Options
+	compat    string
 }
 
 func (r Redis) Store(ctx context.Context, opts sessions.Options) (*RedisStore, error) {
+	// Validate before dialing so a bad value fails fast at startup.
+	if !ValidCompat(r.Compat) {
+		return nil, fmt.Errorf("redis store compat %q is unknown, expected one of %q, %q, %q", r.Compat, CompatNone, CompatV1, CompatMixed)
+	}
+
 	tlsConfig, err := r.TLS.Generate()
 	if err != nil {
 		return nil, err
@@ -73,6 +82,7 @@ func (r Redis) Store(ctx context.Context, opts sessions.Options) (*RedisStore, e
 		keyPrefix: r.KeyPrefix,
 		codec:     codec,
 		options:   opts,
+		compat:    r.Compat,
 	}, nil
 }
 
@@ -87,9 +97,17 @@ func (s *RedisStore) New(r *http.Request, name string) (*sessions.Session, error
 		return session, nil
 	}
 
-	var sessionID string
-	if err := s.codec.Decode(name, cookie.Value, &sessionID); err != nil {
+	sessionID, err := s.sessionID(name, cookie.Value)
+	if err != nil {
 		return session, err
+	}
+
+	// In v1 the ID is kept even when nothing is stored yet, so Save reuses it
+	// instead of rotating the cookie. An older turna sharing this cookie would
+	// otherwise adopt the rotated value and both sides would keep invalidating
+	// each other's session.
+	if s.compat == CompatV1 {
+		session.ID = sessionID
 	}
 
 	values, err := s.load(r.Context(), sessionID)
@@ -102,6 +120,35 @@ func (s *RedisStore) New(r *http.Request, name string) (*sessions.Session, error
 	session.IsNew = false
 
 	return session, nil
+}
+
+// sessionID resolves the session ID carried by the cookie for the configured
+// compatibility mode. A legacy cookie holds the raw ID and has no signature.
+func (s *RedisStore) sessionID(name, value string) (string, error) {
+	if s.compat == CompatV1 {
+		return value, nil
+	}
+
+	var sessionID string
+	if err := s.codec.Decode(name, value, &sessionID); err != nil {
+		if s.compat == CompatMixed {
+			return value, nil
+		}
+
+		return "", err
+	}
+
+	return sessionID, nil
+}
+
+// cookieValue renders the cookie payload for the session ID. The v1 format
+// stores the raw ID so an older turna can read it.
+func (s *RedisStore) cookieValue(name, sessionID string) (string, error) {
+	if s.compat == CompatV1 {
+		return sessionID, nil
+	}
+
+	return s.codec.Encode(name, sessionID)
 }
 
 func (s *RedisStore) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
@@ -127,7 +174,7 @@ func (s *RedisStore) Save(r *http.Request, w http.ResponseWriter, session *sessi
 		return fmt.Errorf("failed to save session: %w", err)
 	}
 
-	cookieValue, err := s.codec.Encode(session.Name(), session.ID)
+	cookieValue, err := s.cookieValue(session.Name(), session.ID)
 	if err != nil {
 		return err
 	}
@@ -147,16 +194,28 @@ func (s *RedisStore) load(ctx context.Context, sessionID string) (map[string]any
 		return nil, err
 	}
 
-	values := make(map[string]any)
-	if err := json.Unmarshal(data, &values); err != nil {
-		return nil, err
+	switch s.compat {
+	case CompatV1:
+		return decodeLegacyValues(data)
+	case CompatMixed:
+		return decodeAnyValues(data)
+	default:
+		return decodeJSONValues(data)
 	}
-
-	return values, nil
 }
 
 func (s *RedisStore) save(ctx context.Context, sessionID string, values map[string]any, maxAge int) error {
-	data, err := json.Marshal(values)
+	var (
+		data []byte
+		err  error
+	)
+
+	if s.compat == CompatV1 {
+		data, err = encodeLegacyValues(values)
+	} else {
+		data, err = json.Marshal(values)
+	}
+
 	if err != nil {
 		return err
 	}

@@ -46,6 +46,7 @@ store:
     password: ""
     key_prefix: session_
     session_key: "" # optional store-specific override
+    compat: ""      # "", v1 or mixed
     tls:
       enabled: false
       cert_file: ""
@@ -57,6 +58,42 @@ store:
 ```
 
 If `active` is empty, Turna uses `redis` when configured, otherwise `file` when configured. A store is required. The top-level `session_key` is used by both Redis and file stores unless that store defines its own `session_key`.
+
+## Redis Compatibility Mode
+
+Turna v0.8.x stored the raw session ID in an unsigned cookie and the session values as gob. The current format signs the cookie and stores the values as JSON. The two are not interchangeable: if both versions serve the same cookie name, each one keeps invalidating the other's session and the browser ends up in a redirect loop.
+
+`store.redis.compat` lets a newer Turna speak the older format so both versions can share one session.
+
+| Mode | Reads | Writes | Use when |
+| --- | --- | --- | --- |
+| `""` (default) | JSON, signed cookie | JSON, signed cookie | Only the current version runs. |
+| `v1` | gob, unsigned cookie | gob, unsigned cookie | A Turna v0.8.x shares the same cookie name and key prefix. |
+| `mixed` | both | JSON, signed cookie | The older Turna is retired and sessions should migrate without a logout. |
+
+Sharing a session requires `cookie_name` and `store.redis.key_prefix` to be identical in both versions.
+
+```yaml
+session:
+  session:
+    cookie_name: app_auth
+    store:
+      active: redis
+      redis:
+        address: localhost:6379
+        key_prefix: app_auth_
+        session_key: "a-32-byte-or-longer-random-value"
+        compat: v1
+```
+
+Suggested rollout:
+
+1. Deploy the new Turna with `compat: v1`. Both versions now share one session, so users log in once.
+2. Retire the old Turna.
+3. Switch to `compat: mixed`. Existing sessions move to the signed cookie as they are used, with no logout.
+4. Remove `compat` once traffic has rolled over.
+
+In `v1` the cookie is unsigned, so `session_key` has no effect and a client can choose its own session ID. This matches how v0.8.x already behaves, so it is not a regression, but it is a reason to keep the compatibility window short. Signing becomes effective in step 3.
 
 ## Cookie Options
 
