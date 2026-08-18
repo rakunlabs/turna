@@ -6,15 +6,16 @@ Turna runs from a single configuration file. A configuration can load external d
 
 Download the latest release binary for your platform.
 
+Linux x86_64:
+
 ```sh
 curl -fSL https://github.com/rakunlabs/turna/releases/latest/download/turna_Linux_x86_64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
 ```
 
-Homebrew is also supported.
+macOS Apple Silicon:
 
 ```sh
-brew tap brew-tools/tap
-brew install turna
+curl -fSL https://github.com/rakunlabs/turna/releases/latest/download/turna_Darwin_arm64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
 ```
 
 ## First Config

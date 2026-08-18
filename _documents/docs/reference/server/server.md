@@ -274,4 +274,4 @@ server:
 
 UDP middleware runs sequentially for each datagram. A pre-filter such as `ip_allow_list` returns an error to drop the packet; a terminal middleware such as `dns` or `redirect` writes the response back to the peer. Datagrams are handled concurrently with a bounded worker pool.
 
-See the [UDP middleware reference](./udp/middlewares/) for all supported keys.
+See the UDP middleware references for [`dns`](./udp/middlewares/dns), [`ip_allow_list`](./udp/middlewares/ip_allow_list), and [`redirect`](./udp/middlewares/redirect).
