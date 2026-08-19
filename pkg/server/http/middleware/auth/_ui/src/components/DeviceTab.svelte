@@ -46,7 +46,7 @@
     try {
       info = await api<DeviceInfo>(`device/${encodeURIComponent(normalize(userCode))}`);
     } catch (err) {
-      error = err instanceof Error ? err.message : "DEVICE CODE NOT FOUND";
+      error = err instanceof Error ? err.message : "Device code not found";
     } finally {
       busy = false;
     }
@@ -61,11 +61,11 @@
         body: JSON.stringify({ user_code: normalize(userCode), action }),
       });
 
-      done = action === "approve" ? "DEVICE APPROVED — RETURN TO YOUR DEVICE" : "DEVICE DENIED";
+      done = action === "approve" ? "Device approved — return to your device" : "Device denied";
       info = null;
       userCode = "";
     } catch (err) {
-      error = err instanceof Error ? err.message : "OPERATION FAILED";
+      error = err instanceof Error ? err.message : "Operation failed";
     } finally {
       busy = false;
     }
@@ -81,59 +81,59 @@
 
 <div class="grid gap-px bg-line p-px">
   <div class="grid gap-3 bg-panel p-4">
-    <span class="t-label text-fg">[ DEVICE LOGIN ]</span>
-    <p class="max-w-2xl text-[11px] leading-4 text-dim">
+    <span class="t-label text-fg">Device login</span>
+    <p class="max-w-2xl text-xs leading-4 text-dim">
       A device (CLI, TV, ...) showed you a code. Enter it here to approve or deny the login.
       Approval signs the device in <span class="text-fg">as your account</span>.
     </p>
 
     {#if error}
-      <p class="text-[11px] font-bold uppercase tracking-[0.12em] text-alert">{error}</p>
+      <p class="text-xs font-bold text-alert">{error}</p>
     {/if}
     {#if done}
-      <p class="text-[11px] font-bold uppercase tracking-[0.12em] text-fg">{done}</p>
+      <p class="text-xs font-bold text-fg">{done}</p>
     {/if}
 
     <div class="grid gap-px bg-line md:grid-cols-[minmax(0,1fr),auto]">
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">USER CODE</span>
+        <span class="t-label">User code</span>
         <input
           bind:value={userCode}
-          class="field-t text-center text-lg tracking-[0.3em]"
+          class="field-t text-center text-lg"
           placeholder="XXXX-XXXX"
           maxlength="9"
           on:keydown={(event) => event.key === "Enter" && lookup()}
         />
       </label>
       <div class="flex items-end bg-panel p-3">
-        <button class="btn-t-solid w-full" disabled={busy || userCode.replace(/[\s-]+/g, "").length !== 8} on:click={lookup}>
-          [ LOOK UP ]
+        <button class="btn-t-solid w-full" disabled={busy || userCode.replace(/[\s-]+/g,"").length !== 8} on:click={lookup}>
+          Look up
         </button>
       </div>
     </div>
 
     {#if info}
       <div class="grid gap-2 border border-line p-3">
-        <span class="t-label">PENDING REQUEST</span>
-        <div class="grid gap-1 text-[11px] leading-5">
-          <p><span class="text-dim">CLIENT</span> <span class="font-bold text-fg">{info.client_id}</span></p>
-          {#if info.scope}<p><span class="text-dim">SCOPE</span> {info.scope}</p>{/if}
-          <p><span class="text-dim">STATUS</span> {info.status.toUpperCase()}</p>
+        <span class="t-label">Pending request</span>
+        <div class="grid gap-1 text-xs leading-5">
+          <p><span class="text-dim">Client</span> <span class="font-bold text-fg">{info.client_id}</span></p>
+          {#if info.scope}<p><span class="text-dim">Scope</span> {info.scope}</p>{/if}
+          <p><span class="text-dim">Status</span> {info.status.toUpperCase()}</p>
         </div>
 
         {#if info.status === "pending"}
           <div class="flex flex-wrap gap-2">
-            <button class="btn-t-solid" disabled={busy} on:click={() => decide("approve")}>[ APPROVE ]</button>
+            <button class="btn-t-solid" disabled={busy} on:click={() => decide("approve")}>Approve</button>
             <button
-              class="border border-line px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-alert hover:bg-alert hover:text-white"
+              class="border border-line px-2.5 py-1 text-xs font-bold text-alert hover:bg-alert hover:text-white"
               disabled={busy}
               on:click={() => decide("deny")}
             >
-              DENY
+              Deny
             </button>
           </div>
         {:else}
-          <p class="text-[11px] text-dim">This code has already been handled.</p>
+          <p class="text-xs text-dim">This code has already been handled.</p>
         {/if}
       </div>
     {/if}

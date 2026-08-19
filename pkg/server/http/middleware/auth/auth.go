@@ -368,6 +368,32 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 	mux.GET(prefix+"/oauth2/.well-known/openid-configuration", m.APIWellKnown)
 	mux.GET(prefix+"/oauth2/openid/{custom}/.well-known/openid-configuration", m.APIWellKnown)
 
+	// local authorization code flow with consent (browser plane; the consent
+	// page relies on X-User set by an upstream session middleware)
+	mux.GET(prefix+"/oauth2/authorize", m.APIAuthorize)
+	mux.GET(prefix+"/oauth2/consent", m.ConsentAPI)
+	mux.POST(prefix+"/oauth2/consent", m.ConsentDecisionAPI)
+
+	// token revocation (RFC 7009) and introspection (RFC 7662)
+	mux.POST(prefix+"/oauth2/revoke", m.APIRevoke)
+	mux.POST(prefix+"/oauth2/introspect", m.APIIntrospect)
+
+	// dynamic client registration (RFC 7591) and management (RFC 7592)
+	mux.POST(prefix+"/oauth2/register", m.APIRegister)
+	mux.GET(prefix+"/oauth2/register/{client_id}", m.APIRegisterGet)
+	mux.PUT(prefix+"/oauth2/register/{client_id}", m.APIRegisterUpdate)
+	mux.DELETE(prefix+"/oauth2/register/{client_id}", m.APIRegisterDelete)
+
+	// authorization server metadata (RFC 8414): path-suffix variant under the
+	// issuer plus the RFC-style root path-insertion variants. The root routes
+	// only take effect when the router forwards /.well-known/* to this
+	// middleware (MCP and other RFC 8414 clients resolve metadata there).
+	mux.GET(prefix+"/oauth2/.well-known/oauth-authorization-server", m.APIAuthServerMetadata)
+	mux.GET("/.well-known/oauth-authorization-server", m.APIAuthServerMetadata)
+	mux.GET("/.well-known/oauth-authorization-server/*", m.APIAuthServerMetadata)
+	mux.GET("/.well-known/openid-configuration", m.APIWellKnown)
+	mux.GET("/.well-known/openid-configuration/*", m.APIWellKnown)
+
 	// saml runtime
 	mux.GET(prefix+"/saml/{provider}/metadata", m.SAMLMetadata)
 	mux.GET(prefix+"/saml/{provider}/login", m.SAMLLogin)

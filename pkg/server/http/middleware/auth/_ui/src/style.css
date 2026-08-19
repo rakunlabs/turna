@@ -2,38 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Meridian Capital Portfolio — dark, terminal-inspired, high-density financial UI. */
+/* Clean, calm admin UI. Sans-serif first; mono only for code and identifiers.
+   Token names (crt/panel/line/fg/dim/...) are kept so components re-skin
+   without edits. */
 :root {
   color-scheme: dark;
-  --color-crt: 11 12 15; /* background  #0b0c0f */
-  --color-surface: 16 19 24; /* surface     #101318 */
-  --color-panel: 22 25 32; /* panel       #161920 */
-  --color-panel-hover: 27 31 40; /* panel-hover #1b1f28 */
-  --color-line: 31 35 48; /* border      #1f2330 */
-  --color-line-subtle: 39 45 60; /* border-subtle #272d3c */
-  --color-fg: 237 240 244; /* text-bright #edf0f4 */
-  --color-dim: 136 145 160; /* text-sub    #8891a0 */
-  --color-primary: 61 130 255; /* primary     #3d82ff */
-  --color-phosphor: 32 192 92; /* success     #20c05c */
-  --color-alert: 240 64 64; /* error       #f04040 */
-  --color-warning: 240 160 32; /* warning     #f0a020 */
+  --color-crt: 17 19 23; /* background   #111317 */
+  --color-surface: 22 25 30; /* surface      #16191e */
+  --color-panel: 28 31 38; /* panel        #1c1f26 */
+  --color-panel-hover: 35 39 47; /* panel-hover  #23272f */
+  --color-line: 44 49 58; /* border       #2c313a */
+  --color-line-subtle: 55 61 72; /* border-subtle #373d48 */
+  --color-fg: 233 236 240; /* text         #e9ecf0 */
+  --color-dim: 148 155 168; /* muted text   #949ba8 */
+  --color-primary: 84 141 255; /* primary      #548dff */
+  --color-phosphor: 52 190 110; /* success      #34be6e */
+  --color-alert: 235 90 90; /* error        #eb5a5a */
+  --color-warning: 235 165 60; /* warning      #eba53c */
 }
 
-/* Light variant keeps the same semantic accents for theme switching. */
 :root[data-theme="light"] {
   color-scheme: light;
-  --color-crt: 244 245 247;
+  --color-crt: 246 247 249;
   --color-surface: 255 255 255;
-  --color-panel: 248 249 251;
-  --color-panel-hover: 240 242 245;
-  --color-line: 214 218 226;
-  --color-line-subtle: 224 228 235;
-  --color-fg: 24 28 36;
-  --color-dim: 90 98 112;
-  --color-primary: 45 110 235;
+  --color-panel: 255 255 255;
+  --color-panel-hover: 243 245 248;
+  --color-line: 226 229 235;
+  --color-line-subtle: 214 218 226;
+  --color-fg: 28 32 40;
+  --color-dim: 105 113 128;
+  --color-primary: 43 108 233;
   --color-phosphor: 22 141 73;
-  --color-alert: 208 44 44;
-  --color-warning: 176 110 16;
+  --color-alert: 208 55 55;
+  --color-warning: 168 106 20;
 }
 
 html,
@@ -47,10 +48,7 @@ body {
   overflow: hidden;
   background: rgb(var(--color-crt));
   color: rgb(var(--color-fg));
-  /* IBM Plex Mono is the dominant face: monospaced digits keep tables, order
-     books and risk grids vertically aligned. */
-  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New",
-    monospace;
+  font-family: "IBM Plex Sans", Inter, system-ui, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -71,18 +69,16 @@ textarea {
   z-index: 70;
 }
 
-/* Micro-radii: 3px softens controls without breaking the hairline panel grids. */
 input,
 select,
 textarea,
 pre,
 code {
-  border-radius: 3px;
+  border-radius: 8px;
 }
 
-/* Headings on the IBM Plex superfamily lean on weight for hierarchy. */
 .font-display {
-  font-weight: 700;
+  font-weight: 600;
 }
 
 ::selection {
@@ -95,38 +91,38 @@ code {
   height: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: rgb(var(--color-crt));
-  border-left: 1px solid rgb(var(--color-line));
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: rgb(var(--color-line-subtle));
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgb(var(--color-dim));
 }
 
 @layer components {
-  /* micro-typography label */
+  /* small muted label */
   .t-label {
-    @apply text-[10px] font-medium uppercase tracking-[0.18em] text-dim;
+    @apply text-xs font-medium text-dim;
   }
 
-  /* compact, tab-like action button */
+  /* standard action button */
   .btn-t {
-    @apply inline-flex select-none items-center justify-center gap-2 rounded-md border border-line bg-transparent px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-fg transition-colors hover:border-line-subtle hover:bg-panel-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:bg-transparent disabled:hover:text-fg;
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3.5 py-2 text-[13px] font-medium text-fg shadow-sm transition-colors hover:border-line-subtle hover:bg-panel-hover disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:bg-surface;
   }
 
-  /* primary action — Meridian vivid blue */
+  /* primary action */
   .btn-t-solid {
-    @apply btn-t border-primary bg-primary text-white hover:border-primary hover:bg-transparent hover:text-primary;
+    @apply btn-t border-primary bg-primary text-white hover:border-primary hover:bg-primary/85 hover:text-white;
   }
 
   .btn-t-alert {
-    @apply btn-t border-alert text-alert hover:border-alert hover:bg-alert hover:text-white;
+    @apply btn-t border-alert/40 text-alert hover:border-alert hover:bg-alert hover:text-white;
   }
 
-  /* terminal field */
+  /* form field */
   .field-t {
-    @apply w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-dim focus:border-primary;
+    @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg outline-none transition-shadow placeholder:text-dim focus:border-primary focus:ring-2 focus:ring-primary/25;
   }
 }

@@ -16,6 +16,11 @@ type State struct {
 	// PKCE (RFC 7636) challenge carried from the authorization request.
 	CodeChallenge       string `json:"code_challenge,omitempty"`
 	CodeChallengeMethod string `json:"code_challenge_method,omitempty"`
+	// ClientID of the original authorization request; carried into the
+	// issued code so the token endpoint can bind the redemption.
+	ClientID string `json:"client_id,omitempty"`
+	// Resources are RFC 8707 resource indicators from the authorization request.
+	Resources []string `json:"resources,omitempty"`
 }
 
 type Code struct {
@@ -25,6 +30,15 @@ type Code struct {
 	// PKCE (RFC 7636) challenge to verify at the token endpoint.
 	CodeChallenge       string `json:"code_challenge,omitempty"`
 	CodeChallengeMethod string `json:"code_challenge_method,omitempty"`
+	// ClientID binds the code to the requesting client; when set the token
+	// endpoint rejects redemption by any other client.
+	ClientID string `json:"client_id,omitempty"`
+	// RedirectURI binds the code to the redirect target of the authorization
+	// request; when set the token endpoint requires the same redirect_uri.
+	RedirectURI string `json:"redirect_uri,omitempty"`
+	// Resources are RFC 8707 resource indicators requested during
+	// authorization; they end up in the access token audience.
+	Resources []string `json:"resources,omitempty"`
 }
 
 func Encode[T any](state T) (string, error) {

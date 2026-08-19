@@ -91,6 +91,17 @@ func (m *Auth) tokenExchangeGrant(w http.ResponseWriter, r *http.Request, req Ac
 		return
 	}
 
+	// revoked subject tokens must not be exchangeable
+	if jti, _ := claims["jti"].(string); m.isTokenRevoked(r.Context(), jti) {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_grant",
+			ErrorDescription: "token revoked",
+			code:             http.StatusUnauthorized,
+		})
+
+		return
+	}
+
 	userID, _ := claims["sub"].(string)
 	user, err := m.cache.GetUser(data.GetUserRequest{ID: userID, AddScopeRoles: true})
 	if err != nil {
@@ -110,5 +121,32 @@ func (m *Auth) tokenExchangeGrant(w http.ResponseWriter, r *http.Request, req Ac
 		scope = splitFields(subjectScope)
 	}
 
-	m.writeTokenExt(w, r, user, clientID, scope, accessClient.Scope, tokenTypeAccessToken, "")
+	// RFC 8707: an explicit resource wins, otherwise the subject token's
+	// resource audiences carry over to the issued token
+	resources := audienceResources(claims["aud"])
+	if req.Resource != "" {
+		if err := validateResource(req.Resource); err != nil {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_target",
+				ErrorDescription: err.Error(),
+				code:             http.StatusBadRequest,
+			})
+
+			return
+		}
+
+		if !resourcesAllowed([]string{req.Resource}, accessClient.Resources) {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_target",
+				ErrorDescription: "requested resource not allowed",
+				code:             http.StatusBadRequest,
+			})
+
+			return
+		}
+
+		resources = []string{req.Resource}
+	}
+
+	m.writeTokenExt(w, r, user, clientID, scope, accessClient.Scope, tokenTypeAccessToken, "", resources)
 }

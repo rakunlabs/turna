@@ -78,7 +78,7 @@
       const finishBody = await finishRes.json();
       if (!finishRes.ok) throw new Error(finishBody?.message ?? `finish failed: ${finishRes.status}`);
 
-      panelNotice = "PASSKEY REGISTERED";
+      panelNotice = "Passkey registered";
       label = "";
       await load();
     } catch (err) {
@@ -94,37 +94,37 @@
 <div class="grid gap-3 bg-panel p-3 md:col-span-2 xl:col-span-3">
   <div class="flex flex-wrap items-center justify-between gap-2">
     <div>
-      <span class="t-label text-fg">[ PASSKEYS ]</span>
-      <p class="mt-1 text-[11px] leading-4 text-dim">
+      <span class="t-label text-fg">Passkeys</span>
+      <p class="mt-1 text-xs leading-4 text-dim">
         WebAuthn credentials stored for <span class="text-fg">this user</span>. Registration binds the authenticator present in this browser to their account.
       </p>
     </div>
-    <span class="t-label">{credentials.length} REGISTERED</span>
+    <span class="t-label">{credentials.length} registered</span>
   </div>
 
   {#if panelError}
-    <p class="text-[11px] font-bold uppercase tracking-[0.12em] text-alert">{panelError}</p>
+    <p class="text-xs font-bold text-alert">{panelError}</p>
   {/if}
   {#if panelNotice}
-    <p class="text-[11px] font-bold uppercase tracking-[0.12em] text-fg">{panelNotice}</p>
+    <p class="text-xs font-bold text-fg">{panelNotice}</p>
   {/if}
 
   {#if credentials.length === 0}
-    <p class="text-[11px] leading-4 text-dim">No passkeys registered for this user.</p>
+    <p class="text-xs leading-4 text-dim">No passkeys registered for this user.</p>
   {:else}
     <div class="grid gap-px bg-line">
       {#each credentials as credential}
-        <div class="flex flex-wrap items-center justify-between gap-2 bg-crt p-2 text-[11px] leading-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 bg-crt p-2 text-xs leading-4">
           <div class="grid gap-1">
             <span class="break-all font-bold text-fg">{credential.name || credential.id}</span>
-            <span class="text-dim">CREATED {credential.created_at} / SIGN.COUNT {credential.sign_count}</span>
+            <span class="text-dim">Created {credential.created_at} / SIGN.COUNT {credential.sign_count}</span>
           </div>
           <button
-            class="border border-line px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-alert hover:bg-alert hover:text-white"
+            class="border border-line px-2.5 py-1 text-xs font-bold text-alert hover:bg-alert hover:text-white"
             disabled={busyLocal}
             on:click={() => removeCredential(credential.id)}
           >
-            REMOVE
+            Remove
           </button>
         </div>
       {/each}
@@ -134,16 +134,16 @@
   {#if isWebAuthnSupported()}
     <div class="grid gap-px bg-line md:grid-cols-[minmax(0,1fr),auto]">
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">PASSKEY LABEL</span>
+        <span class="t-label">Passkey label</span>
         <input bind:value={label} class="field-t" placeholder="my laptop" />
       </label>
       <div class="flex items-end bg-panel p-3">
         <button class="btn-t-solid w-full" disabled={busyLocal} on:click={register}>
-          {busyLocal ? "WAITING FOR AUTHENTICATOR..." : "[ REGISTER PASSKEY ]"}
+          {busyLocal ? "Waiting for authenticator..." : "Register passkey"}
         </button>
       </div>
     </div>
   {:else}
-    <p class="text-[11px] leading-4 text-dim">WebAuthn is not supported in this browser.</p>
+    <p class="text-xs leading-4 text-dim">WebAuthn is not supported in this browser.</p>
   {/if}
 </div>

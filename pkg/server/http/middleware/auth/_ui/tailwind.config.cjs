@@ -24,7 +24,7 @@ module.exports = {
         alert: "rgb(var(--color-alert) / <alpha-value>)", // alias of error
       },
       fontFamily: {
-        sans: ['"IBM Plex Sans"', "Inter", '"Helvetica Neue"', "Arial", "sans-serif"],
+        sans: ['"IBM Plex Sans"', "Inter", "system-ui", '"Helvetica Neue"', "Arial", "sans-serif"],
         mono: [
           '"IBM Plex Mono"',
           "ui-monospace",
@@ -34,16 +34,22 @@ module.exports = {
           '"Courier New"',
           "monospace",
         ],
-        // headings remain on the IBM Plex superfamily (weight carries the hierarchy)
-        display: ['"IBM Plex Sans"', "Inter", '"Helvetica Neue"', "Arial", "sans-serif"],
+        // headings share the sans face; weight carries the hierarchy
+        display: ['"IBM Plex Sans"', "Inter", "system-ui", '"Helvetica Neue"', "Arial", "sans-serif"],
       },
       borderRadius: {
         none: "0",
-        sm: "2px",
-        DEFAULT: "3px",
-        md: "3px",
-        lg: "3px",
+        sm: "6px",
+        DEFAULT: "8px",
+        md: "8px",
+        lg: "10px",
+        xl: "12px",
         full: "9999px",
+      },
+      boxShadow: {
+        sm: "0 1px 2px 0 rgb(0 0 0 / 0.08)",
+        DEFAULT: "0 1px 3px 0 rgb(0 0 0 / 0.10), 0 1px 2px -1px rgb(0 0 0 / 0.10)",
+        md: "0 4px 10px -2px rgb(0 0 0 / 0.12), 0 2px 4px -2px rgb(0 0 0 / 0.08)",
       },
     },
   },

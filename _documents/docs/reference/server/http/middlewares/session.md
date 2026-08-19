@@ -204,9 +204,33 @@ action:
     login_path: /login/
     disable_refresh: false
     insecure_skip_verify: false
+    legacy_proxy_auth: false
 ```
 
 Bearer access tokens are validated directly. Session-stored access tokens are refreshed when they are within 10 seconds of expiry unless `disable_refresh` is true.
+
+Authentication failures on API-style requests (invalid bearer token, invalid API key, or `disable_redirect` routes) answer **`401 Unauthorized`** with a `WWW-Authenticate: Bearer` header. Set `legacy_proxy_auth: true` to restore the historic `407 Proxy Authentication Required` of the legacy `iam` stack for old deployments whose clients still expect 407.
+
+## Skip paths
+
+`skip_paths` lists request path patterns ([doublestar](https://github.com/bmatcuk/doublestar) globs) that never *require* authentication:
+
+```yaml
+session:
+  skip_paths:
+    - /auth/oauth2/**
+    - /.well-known/**
+  action:
+    token:
+      login_path: /login/
+```
+
+Behavior on a matched path:
+
+- Credentials are still honored: a valid bearer token, API key, or session cookie authenticates the request as usual (claims context and `X-User` are set). This makes routes like the auth middleware's `/oauth2/consent` work — logged-in browsers get their identity, anonymous ones fall through to the page's own login redirect.
+- Anonymous requests (or failed credentials) pass through **with all identity headers stripped** (`X-User`, `X-User-Id`, configured `claim_header`s) instead of being redirected or rejected — spoofing is not possible.
+
+This keeps a single `[session, auth]` router while leaving the public OAuth2/MCP endpoints (`/oauth2/token`, `/oauth2/register`, `/oauth2/certs`, discovery documents, ...) reachable for machine clients.
 
 ## Context Flags
 
@@ -216,5 +240,5 @@ Use [`set`](./set) before `session` to change behavior for selected routes.
 | --- | --- |
 | `token_header` | For cookie-backed sessions, add `Authorization: Bearer <access_token>` before proxying. For direct bearer-token requests, remove the original header after validation. |
 | `token_header_delete` | Delete the `Authorization` header before proxying. |
-| `disable_redirect` | Return `407 Proxy Authentication Required` instead of redirecting to `login_path`. |
+| `disable_redirect` | Return `401 Unauthorized` (or `407` with `legacy_proxy_auth`) instead of redirecting to `login_path`. |
 | `cookie_name` | Override the session cookie name for this request. |

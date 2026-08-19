@@ -24,10 +24,10 @@
   <div class="grid gap-3 bg-panel p-4">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <span class="t-label text-fg">[ TOKEN EXCHANGE ]</span>
-        <h3 class="mt-2 font-display text-3xl uppercase leading-none tracking-tight md:text-4xl">RFC 8693</h3>
+        <span class="t-label text-fg">Token exchange</span>
+        <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Rfc 8693</h3>
       </div>
-      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting(ns)}>[ SAVE TOKEN EXCHANGE ]</button>
+      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting(ns)}>Save token exchange</button>
     </div>
     <p class="max-w-3xl text-xs leading-5 text-dim">
       The RFC 8693 token exchange grant (<span class="text-fg">grant_type=urn:ietf:params:oauth:grant-type:token-exchange</span>) lets a client swap one token for another at <span class="text-fg">/oauth2/token</span>.
@@ -35,9 +35,9 @@
   </div>
 
   <div class="grid gap-px bg-line">
-    <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold uppercase tracking-[0.15em]">
+    <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
       <input type="checkbox" checked={disabled} class="h-3.5 w-3.5 appearance-none border border-line bg-crt checked:bg-alert" on:change={(event) => setSettingBool(ns, ["disabled"], checkedValue(event))} />
-      <span class={disabled ? "text-alert" : "text-dim"}>DISABLE TOKEN EXCHANGE</span>
+      <span class={disabled ?"text-alert" :"text-dim"}>Disable token exchange</span>
     </label>
   </div>
 </div>

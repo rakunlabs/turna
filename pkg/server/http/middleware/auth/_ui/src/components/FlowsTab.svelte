@@ -35,8 +35,8 @@
 
 <div class="grid gap-px bg-line p-px">
   <div class="bg-panel p-4">
-    <p class="t-label text-fg">[ FLOWS ]</p>
-    <h3 class="mt-2 font-display text-3xl uppercase leading-none tracking-tight md:text-4xl">What Happens Now</h3>
+    <p class="t-label text-fg">Flows</p>
+    <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">What Happens Now</h3>
     <p class="mt-3 max-w-3xl text-xs leading-5 text-dim">
       Live walkthrough of each authentication path based on the <span class="text-fg">current</span> settings. Change a
       toggle on its page and this view updates after the next refresh.
@@ -47,14 +47,14 @@
     <!-- PASSWORD LOGIN -->
     <div class="grid content-start gap-px bg-line">
       <div class="flex items-center justify-between bg-panel px-3 py-2">
-        <span class="t-label text-fg">[ PASSWORD LOGIN ]</span>
+        <span class="t-label text-fg">Password login</span>
         {#if passwordDisabled}
-          <span class="text-[10px] font-bold uppercase tracking-[0.15em] text-alert">OFF</span>
+          <span class="text-xs font-bold text-alert">Off</span>
         {:else}
-          <span class="text-[10px] font-bold uppercase tracking-[0.15em] text-fg">ON</span>
+          <span class="text-xs font-bold text-fg">On</span>
         {/if}
       </div>
-      <div class="bg-panel p-4 text-[11px] leading-5 text-dim">
+      <div class="bg-panel p-4 text-xs leading-5 text-dim">
         {#if passwordDisabled}
           <p class="text-alert">The <span class="text-fg">password</span> grant is disabled; username/password logins are rejected.</p>
         {:else}
@@ -88,14 +88,14 @@
     <!-- SELF REGISTRATION -->
     <div class="grid content-start gap-px bg-line">
       <div class="flex items-center justify-between bg-panel px-3 py-2">
-        <span class="t-label text-fg">[ SELF REGISTRATION ]</span>
+        <span class="t-label text-fg">Self registration</span>
         {#if signupEnabled}
-          <span class="text-[10px] font-bold uppercase tracking-[0.15em] text-fg">ON</span>
+          <span class="text-xs font-bold text-fg">On</span>
         {:else}
-          <span class="text-[10px] font-bold uppercase tracking-[0.15em] text-alert">OFF</span>
+          <span class="text-xs font-bold text-alert">Off</span>
         {/if}
       </div>
-      <div class="bg-panel p-4 text-[11px] leading-5 text-dim">
+      <div class="bg-panel p-4 text-xs leading-5 text-dim">
         {#if !signupEnabled}
           <p class="text-alert">Self-registration is disabled; <span class="text-fg">Create account</span> is hidden on the login page.</p>
         {:else}
@@ -106,7 +106,7 @@
             {:else}
               <li>The <span class="text-fg">local</span> account is created immediately; duplicate addresses answer 409.</li>
             {/if}
-            <li>Forgot-password over email is <span class={passwordReset ? "text-fg" : "text-alert"}>{passwordReset ? "enabled" : "disabled"}</span>.</li>
+            <li>Forgot-password over email is <span class={passwordReset ?"text-fg" :"text-alert"}>{passwordReset ?"enabled" :"disabled"}</span>.</li>
           </ol>
           <p class="mt-2">New accounts are <span class="text-fg">local</span> users and verify against the stored bcrypt password.</p>
         {/if}
@@ -116,12 +116,12 @@
     <!-- OAUTH2 / OIDC -->
     <div class="grid content-start gap-px bg-line">
       <div class="flex items-center justify-between bg-panel px-3 py-2">
-        <span class="t-label text-fg">[ OAUTH2 / OIDC PROVIDER ]</span>
-        <span class="text-[10px] font-bold uppercase tracking-[0.15em] {providerCount ? 'text-fg' : 'text-dim'}">{providerCount} CONFIGURED</span>
+        <span class="t-label text-fg">OAuth2 / OIDC provider</span>
+        <span class="text-xs font-bold {providerCount ? 'text-fg' : 'text-dim'}">{providerCount} configured</span>
       </div>
-      <div class="bg-panel p-4 text-[11px] leading-5 text-dim">
+      <div class="bg-panel p-4 text-xs leading-5 text-dim">
         {#if providerCount === 0}
-          <p>No upstream OAuth providers configured. Add one under <span class="text-fg">OAUTH PROVIDERS</span>.</p>
+          <p>No upstream OAuth providers configured. Add one under <span class="text-fg">OAuth providers</span>.</p>
         {:else}
           <ol class="grid list-decimal gap-1 pl-4">
             <li>User is redirected to the provider at <span class="text-fg">/oauth2/auth/&lbrace;provider&rbrace;</span> and returns with a code.</li>
@@ -150,11 +150,11 @@
           { label: "LDAP", on: ldapActive },
         ] as item}
           <div class="flex items-center justify-between gap-2 bg-panel p-3">
-            <span class="text-[11px] text-dim">{item.label}</span>
+            <span class="text-xs text-dim">{item.label}</span>
             {#if item.on}
-              <span class="text-[10px] font-bold uppercase tracking-[0.12em] text-fg">[ ON ]</span>
+              <span class="text-xs font-bold text-fg">On</span>
             {:else}
-              <span class="text-[10px] font-bold uppercase tracking-[0.12em] text-alert">[ OFF ]</span>
+              <span class="text-xs font-bold text-alert">Off</span>
             {/if}
           </div>
         {/each}

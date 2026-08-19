@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/rakunlabs/ok"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
@@ -30,6 +32,12 @@ type Token struct {
 	LoginPath          string `cfg:"login_path"`
 	DisableRefresh     bool   `cfg:"disable_refresh"`
 	InsecureSkipVerify bool   `cfg:"insecure_skip_verify"`
+
+	// LegacyProxyAuth answers authentication failures with the historic
+	// 407 Proxy Authentication Required of the legacy iam stack instead of
+	// the standard 401 Unauthorized. Enable it for old deployments whose
+	// clients still expect 407.
+	LegacyProxyAuth bool `cfg:"legacy_proxy_auth"`
 
 	auth    request.Auth     `cfg:"-"`
 	keyFunc InfKeyFuncParser `cfg:"-"`
@@ -307,7 +315,7 @@ func (m *Session) serveAPIKey(next http.Handler, w http.ResponseWriter, r *http.
 	body, err := m.apiKeyClaimsData(r.Context(), providerName, provider, key)
 	if err != nil {
 		slog.Debug("api key validation failed", "error", err.Error())
-		httputil.JSON(w, http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+		m.unauthorized(w)
 
 		return
 	}
@@ -315,7 +323,7 @@ func (m *Session) serveAPIKey(next http.Handler, w http.ResponseWriter, r *http.
 	customClaims := &claims.Custom{}
 	if err := json.Unmarshal(body, customClaims); err != nil {
 		slog.Debug("cannot parse api key claims", "error", err.Error())
-		httputil.JSON(w, http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+		m.unauthorized(w)
 
 		return
 	}
@@ -387,7 +395,221 @@ func (m *Session) refreshTokenData(ctx context.Context, providerName string, tok
 	})
 }
 
+// unauthorized answers an authentication failure: standard 401 with a
+// Bearer challenge by default, or the historic 407 Proxy Authentication
+// Required when legacy_proxy_auth is enabled.
+func (m *Session) unauthorized(w http.ResponseWriter) {
+	status := http.StatusUnauthorized
+
+	if m.Action.Token != nil && m.Action.Token.LegacyProxyAuth {
+		status = http.StatusProxyAuthRequired
+	} else {
+		w.Header().Set("WWW-Authenticate", "Bearer")
+	}
+
+	httputil.JSON(w, status, MetaData{Error: http.StatusText(status)})
+}
+
+// skipPath reports whether the request path matches a skip_paths pattern.
+func (m *Session) skipPath(path string) bool {
+	for _, pattern := range m.SkipPaths {
+		if ok, _ := doublestar.Match(pattern, path); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// stripIdentityHeaders removes every header the session middleware would set
+// from claims, so anonymous pass-through requests cannot spoof identity.
+func (m *Session) stripIdentityHeaders(r *http.Request) {
+	r.Header.Del("X-User")
+	r.Header.Del("X-User-Id")
+
+	for _, provider := range m.Provider {
+		for k := range provider.ClaimHeader {
+			r.Header.Del(k)
+		}
+	}
+}
+
+var errNoSession = errors.New("session cookie not found")
+
+// cookieClaims validates the session cookie (refreshing the token when
+// needed) and returns the claims with the provider name and token. It never
+// writes an error response; callers decide between redirect and anonymous
+// pass-through.
+func (m *Session) cookieClaims(w http.ResponseWriter, r *http.Request) (*claims.Custom, string, *TokenData, error) {
+	token64 := ""
+	providerName := ""
+	if v, err := m.store.Get(r, m.GetCookieName(r)); !v.IsNew && err == nil {
+		token64, _ = v.Values[TokenKey].(string)
+		if m.SetProvider != "" {
+			providerName = m.SetProvider
+		} else {
+			providerName, _ = v.Values[ProviderKey].(string)
+		}
+	} else {
+		if err != nil {
+			return nil, "", nil, err
+		}
+
+		return nil, "", nil, errNoSession
+	}
+
+	token, err := ParseToken64(token64)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	if !m.Action.Token.DisableRefresh {
+		v, err := IsRefreshNeed(token.AccessToken)
+		if err != nil {
+			return nil, "", nil, err
+		}
+
+		if v {
+			refreshData, err := m.refreshTokenData(r.Context(), providerName, token)
+			if err != nil {
+				return nil, "", nil, err
+			}
+
+			if err := m.SetToken(w, r, refreshData, providerName); err != nil {
+				return nil, "", nil, err
+			}
+
+			token, err = ParseToken(refreshData)
+			if err != nil {
+				return nil, "", nil, err
+			}
+		}
+	}
+
+	customClaims := &claims.Custom{}
+	jwtToken, err := m.Action.Token.keyFunc.ParseWithClaims(token.AccessToken, customClaims)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	if m.SetProvider != "" {
+		providerName = m.SetProvider
+	} else {
+		providerName, _ = jwtToken.Header["provider_name"].(string)
+	}
+
+	return customClaims, providerName, token, nil
+}
+
+// doOptional handles skip_paths requests: authentication is attempted with
+// the usual sources (bearer, api key, cookie) and applied when it succeeds,
+// but failures and anonymous requests pass through with identity headers
+// stripped instead of a redirect or 407.
+func (m *Session) doOptional(next http.Handler, w http.ResponseWriter, r *http.Request) {
+	anonymous := func() {
+		m.stripIdentityHeaders(r)
+		next.ServeHTTP(w, r)
+	}
+
+	if authorizationHeader := r.Header.Get("Authorization"); authorizationHeader != "" {
+		token := strings.TrimPrefix(authorizationHeader, "Bearer ")
+		if token == "" {
+			anonymous()
+
+			return
+		}
+
+		customClaims := &claims.Custom{}
+		jwtToken, err := m.Action.Token.keyFunc.ParseWithClaims(token, customClaims)
+		if err != nil {
+			anonymous()
+
+			return
+		}
+
+		if typ, _ := customClaims.Map["typ"].(string); typ == "Refresh" || typ == "ID" {
+			anonymous()
+
+			return
+		}
+
+		providerName := m.SetProvider
+		if providerName == "" {
+			providerName, _ = jwtToken.Header["provider_name"].(string)
+		}
+
+		tcontext.Set(r, "claims", customClaims)
+		tcontext.Set(r, "provider", providerName)
+		addXUserHeader(r, customClaims, m.Provider[providerName].XUser, m.Provider[providerName].EmailVerifyCheck, m.Provider[providerName].ClaimHeader)
+
+		if v, _ := tcontext.Get(r, CtxTokenHeaderKey).(bool); v {
+			r.Header.Del("Authorization")
+		}
+
+		next.ServeHTTP(w, r)
+
+		return
+	}
+
+	if providerName, provider, headerName, key, ok := m.apiKeyRequest(r); ok {
+		body, err := m.apiKeyClaimsData(r.Context(), providerName, provider, key)
+		if err != nil {
+			anonymous()
+
+			return
+		}
+
+		customClaims := &claims.Custom{}
+		if err := json.Unmarshal(body, customClaims); err != nil {
+			anonymous()
+
+			return
+		}
+
+		r.Header.Del(headerName)
+
+		tcontext.Set(r, "claims", customClaims)
+		tcontext.Set(r, "provider", providerName)
+		addXUserHeader(r, customClaims, provider.XUser, provider.EmailVerifyCheck, provider.ClaimHeader)
+
+		next.ServeHTTP(w, r)
+
+		return
+	}
+
+	customClaims, providerName, token, err := m.cookieClaims(w, r)
+	if err != nil {
+		if !errors.Is(err, errNoSession) {
+			slog.Debug("session skip path: cookie auth failed", "error", err.Error())
+		}
+
+		anonymous()
+
+		return
+	}
+
+	tcontext.Set(r, "claims", customClaims)
+	tcontext.Set(r, "provider", providerName)
+	addXUserHeader(r, customClaims, m.Provider[providerName].XUser, m.Provider[providerName].EmailVerifyCheck, m.Provider[providerName].ClaimHeader)
+
+	if v, _ := tcontext.Get(r, CtxTokenHeaderKey).(bool); v {
+		r.Header.Set("Authorization", "Bearer "+token.AccessToken)
+	}
+
+	if v, _ := tcontext.Get(r, CtxTokenHeaderDelKey).(bool); v {
+		r.Header.Del("Authorization")
+	}
+
+	next.ServeHTTP(w, r)
+}
+
 func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) {
+	if m.Action.Active == actionToken && m.skipPath(r.URL.Path) {
+		m.doOptional(next, w, r)
+
+		return
+	}
+
 	if m.Action.Active == actionToken {
 		if authorizationHeader := r.Header.Get("Authorization"); authorizationHeader != "" {
 			// get token from header
@@ -398,7 +620,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 				if err != nil {
 					slog.Debug("token is not valid", "error", err.Error())
 
-					httputil.JSON(w, http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+					m.unauthorized(w)
 
 					return
 				}
@@ -406,14 +628,14 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 				if typ, _ := customClaims.Map["typ"].(string); typ != "" {
 					if typ == "Refresh" {
 						slog.Debug("token is refresh token")
-						httputil.JSON(w, http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+						m.unauthorized(w)
 
 						return
 					}
 
 					if typ == "ID" {
 						slog.Debug("token is id token")
-						httputil.JSON(w, http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+						m.unauthorized(w)
 
 						return
 					}
@@ -562,7 +784,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 func (m *Session) RedirectToLogin(w http.ResponseWriter, r *http.Request, addRedirectPath bool, removeSession bool) {
 	// check redirection is disabled
 	if v, _ := tcontext.Get(r, CtxDisableRedirectKey).(bool); v {
-		httputil.JSON(w, http.StatusProxyAuthRequired, MetaData{Error: http.StatusText(http.StatusProxyAuthRequired)})
+		m.unauthorized(w)
 
 		return
 	}
@@ -631,6 +853,32 @@ func (m *Session) GetToken(r *http.Request) (*TokenData, *Oauth2, error) {
 	}
 
 	return token, provider.Oauth2, nil
+}
+
+// GetTokenData returns the stored token with its provider name. Unlike
+// GetToken it does not require the provider to have an oauth2 block, so it
+// also works for issuer-backed (auth_middleware) providers.
+func (m *Session) GetTokenData(r *http.Request) (*TokenData, string, error) {
+	v, err := m.store.Get(r, m.GetCookieName(r))
+	if err != nil {
+		return nil, "", err
+	}
+	if v.IsNew {
+		return nil, "", errNoSession
+	}
+
+	v64, _ := v.Values[TokenKey].(string)
+	providerName, _ := v.Values[ProviderKey].(string)
+	if m.SetProvider != "" {
+		providerName = m.SetProvider
+	}
+
+	token, err := ParseToken64(v64)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return token, providerName, nil
 }
 
 // IsLogged check token is exist and valid.

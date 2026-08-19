@@ -80,7 +80,7 @@
       me = await api<Me>("me");
     } catch (err) {
       me = null;
-      loadError = err instanceof Error ? err.message : "CANNOT LOAD ACCOUNT";
+      loadError = err instanceof Error ? err.message : "Cannot load account";
     }
   }
 
@@ -102,7 +102,7 @@
 
   async function changePassword() {
     if (newPassword !== confirmPassword) {
-      error = "NEW PASSWORDS DO NOT MATCH";
+      error = "New passwords do not match";
       return;
     }
 
@@ -116,9 +116,9 @@
       currentPassword = "";
       newPassword = "";
       confirmPassword = "";
-      flash("PASSWORD UPDATED");
+      flash("Password updated");
     } catch (err) {
-      fail(err, "PASSWORD UPDATE FAILED");
+      fail(err, "Password update failed");
     } finally {
       busy = false;
     }
@@ -134,9 +134,9 @@
       totpSecret = payload.secret;
       totpURL = payload.url;
       recoveryCodes = [];
-      flash("SCAN THE SECRET, THEN CONFIRM WITH A CODE");
+      flash("Scan the secret, then confirm with a code");
     } catch (err) {
-      fail(err, "TOTP REGISTER FAILED");
+      fail(err, "TOTP register failed");
     } finally {
       busy = false;
     }
@@ -155,24 +155,24 @@
       totpURL = "";
       totpCode = "";
       await loadMe();
-      flash("TOTP ENABLED — SAVE YOUR RECOVERY CODES");
+      flash("TOTP enabled — save your recovery codes");
     } catch (err) {
-      fail(err, "TOTP CONFIRM FAILED");
+      fail(err, "TOTP confirm failed");
     } finally {
       busy = false;
     }
   }
 
   async function totpRecovery() {
-    if (!confirm("REGENERATE RECOVERY CODES? The old set becomes invalid.")) return;
+    if (!confirm("Regenerate recovery codes? The old set becomes invalid.")) return;
 
     busy = true;
     try {
       const payload = await api<{ recovery_codes?: string[] }>("totp/recovery", { method: "POST", body: "{}" });
       recoveryCodes = payload.recovery_codes ?? [];
-      flash("RECOVERY CODES REGENERATED — SAVE THEM NOW");
+      flash("Recovery codes regenerated — save them now");
     } catch (err) {
-      fail(err, "RECOVERY REGENERATE FAILED");
+      fail(err, "Recovery regenerate failed");
     } finally {
       busy = false;
     }
@@ -188,9 +188,9 @@
       totpURL = "";
       recoveryCodes = [];
       await loadMe();
-      flash("TOTP DISABLED");
+      flash("TOTP disabled");
     } catch (err) {
-      fail(err, "TOTP DISABLE FAILED");
+      fail(err, "TOTP disable failed");
     } finally {
       busy = false;
     }
@@ -216,9 +216,9 @@
 
       passkeyLabel = "";
       await Promise.all([loadPasskeys(), loadMe()]);
-      flash("PASSKEY REGISTERED");
+      flash("Passkey registered");
     } catch (err) {
-      fail(err, "PASSKEY REGISTER FAILED");
+      fail(err, "Passkey register failed");
     } finally {
       busy = false;
     }
@@ -231,9 +231,9 @@
     try {
       await api(`passkey/credentials/${encodeURIComponent(id)}`, { method: "DELETE" });
       await Promise.all([loadPasskeys(), loadMe()]);
-      flash("PASSKEY DELETED");
+      flash("Passkey deleted");
     } catch (err) {
-      fail(err, "PASSKEY DELETE FAILED");
+      fail(err, "Passkey delete failed");
     } finally {
       busy = false;
     }
@@ -242,9 +242,9 @@
   async function copyText(value: string) {
     try {
       await navigator.clipboard.writeText(value);
-      flash("COPIED TO CLIPBOARD");
+      flash("Copied to clipboard");
     } catch {
-      error = "CLIPBOARD UNAVAILABLE";
+      error = "Clipboard unavailable";
     }
   }
 
@@ -256,24 +256,24 @@
 <div class="grid gap-px bg-line p-px">
   {#if error}
     <div class="flex items-center gap-3 bg-panel px-4 py-2">
-      <span class="bg-alert px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-white">FAULT</span>
-      <span class="text-xs uppercase tracking-[0.05em] text-alert">{error}</span>
+      <span class="bg-alert px-2 py-0.5 text-xs font-bold text-white">Fault</span>
+      <span class="text-xs text-alert">{error}</span>
     </div>
   {/if}
   {#if notice}
     <div class="flex items-center gap-3 bg-panel px-4 py-2">
-      <span class="bg-fg px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-crt">OK</span>
-      <span class="text-xs uppercase tracking-[0.05em]">{notice}</span>
+      <span class="bg-fg px-2 py-0.5 text-xs font-bold text-crt">Ok</span>
+      <span class="text-xs">{notice}</span>
     </div>
   {/if}
 
   {#if !me}
     <div class="grid gap-2 bg-panel p-4">
-      <span class="t-label text-fg">[ MY ACCOUNT ]</span>
-      <p class="text-[11px] leading-4 text-dim">
-        {loadError ? loadError : "LOADING..."}
+      <span class="t-label text-fg">My account</span>
+      <p class="text-xs leading-4 text-dim">
+        {loadError ? loadError : "Loading..."}
       </p>
-      <p class="text-[11px] leading-4 text-dim">
+      <p class="text-xs leading-4 text-dim">
         This page needs an authenticated session (the X-User header). Put a session middleware in front of the auth routes.
       </p>
     </div>
@@ -281,26 +281,26 @@
     <!-- identity -->
     <div class="grid gap-3 bg-panel p-4">
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <span class="t-label text-fg">[ IDENTITY ]</span>
-        <span class="t-label">{me.is_active ? "ACTIVE" : "DISABLED"} / {me.local ? "LOCAL" : "FEDERATED"}</span>
+        <span class="t-label text-fg">Identity</span>
+        <span class="t-label">{me.is_active ?"Active" :"Disabled"} / {me.local ?"Local" :"Federated"}</span>
       </div>
 
-      <div class="grid gap-1 text-[11px] leading-5">
+      <div class="grid gap-1 text-xs leading-5">
         <p><span class="text-dim">ID</span> <span class="break-all font-bold text-fg">{me.id}</span></p>
-        <p><span class="text-dim">ALIAS</span> <span class="break-all">{me.alias.join(", ")}</span></p>
-        {#if me.details?.name}<p><span class="text-dim">NAME</span> {me.details.name}</p>{/if}
-        {#if me.details?.email}<p><span class="text-dim">EMAIL</span> {me.details.email}</p>{/if}
+        <p><span class="text-dim">Alias</span> <span class="break-all">{me.alias.join(",")}</span></p>
+        {#if me.details?.name}<p><span class="text-dim">Name</span> {me.details.name}</p>{/if}
+        {#if me.details?.email}<p><span class="text-dim">Email</span> {me.details.email}</p>{/if}
       </div>
 
       <div class="grid gap-2 md:grid-cols-2">
         <div class="grid content-start gap-1 border border-line p-2">
           <span class="t-label">ROLES ({me.roles.length})</span>
           {#if me.roles.length === 0}
-            <span class="text-[11px] text-dim">NO ROLES</span>
+            <span class="text-xs text-dim">No roles</span>
           {:else}
             <div class="flex flex-wrap gap-1">
               {#each me.roles as role}
-                <span class="border border-line px-1.5 py-0.5 text-[10px] uppercase tracking-[0.08em]">{role}</span>
+                <span class="border border-line px-1.5 py-0.5 text-xs">{role}</span>
               {/each}
             </div>
           {/if}
@@ -308,11 +308,11 @@
         <div class="grid content-start gap-1 border border-line p-2">
           <span class="t-label">PERMISSIONS ({me.permissions.length})</span>
           {#if me.permissions.length === 0}
-            <span class="text-[11px] text-dim">NO PERMISSIONS</span>
+            <span class="text-xs text-dim">No permissions</span>
           {:else}
             <div class="flex flex-wrap gap-1">
               {#each me.permissions as permission}
-                <span class="border border-line px-1.5 py-0.5 text-[10px] uppercase tracking-[0.08em]">{permission}</span>
+                <span class="border border-line px-1.5 py-0.5 text-xs">{permission}</span>
               {/each}
             </div>
           {/if}
@@ -323,10 +323,10 @@
     <!-- password -->
     {#if me.local}
       <div class="grid gap-3 bg-panel p-4">
-        <span class="t-label text-fg">[ CHANGE PASSWORD ]</span>
+        <span class="t-label text-fg">Change password</span>
         <div class="grid gap-2 md:grid-cols-3">
           <label class="grid gap-1">
-            <span class="t-label">CURRENT PASSWORD</span>
+            <span class="t-label">Current password</span>
             <input type="password" bind:value={currentPassword} class="field-t" autocomplete="current-password" />
           </label>
           <label class="grid gap-1">
@@ -334,7 +334,7 @@
             <input type="password" bind:value={newPassword} class="field-t" autocomplete="new-password" />
           </label>
           <label class="grid gap-1">
-            <span class="t-label">CONFIRM NEW PASSWORD</span>
+            <span class="t-label">Confirm new password</span>
             <input type="password" bind:value={confirmPassword} class="field-t" autocomplete="new-password" />
           </label>
         </div>
@@ -344,7 +344,7 @@
             disabled={busy || !currentPassword || newPassword.length < 8 || newPassword !== confirmPassword}
             on:click={changePassword}
           >
-            [ UPDATE PASSWORD ]
+            Update password
           </button>
         </div>
       </div>
@@ -353,8 +353,8 @@
     <!-- totp -->
     <div class="grid gap-3 bg-panel p-4">
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <span class="t-label text-fg">[ TWO-FACTOR / TOTP ]</span>
-        <span class="t-label">{me.totp_enabled ? "ENABLED" : "DISABLED"}</span>
+        <span class="t-label text-fg">Two-factor / TOTP</span>
+        <span class="t-label">{me.totp_enabled ?"Enabled" :"Disabled"}</span>
       </div>
 
       {#if recoveryCodes.length > 0}
@@ -362,11 +362,11 @@
           <span class="t-label text-alert">RECOVERY CODES — SHOWN ONCE, STORE THEM SAFELY</span>
           <div class="grid grid-cols-2 gap-1 md:grid-cols-4">
             {#each recoveryCodes as code}
-              <span class="break-all border border-line px-1.5 py-1 text-[11px]">{code}</span>
+              <span class="break-all border border-line px-1.5 py-1 text-xs">{code}</span>
             {/each}
           </div>
           <div>
-            <button class="btn-t-solid" on:click={() => copyText(recoveryCodes.join("\n"))}>[ COPY ALL ]</button>
+            <button class="btn-t-solid" on:click={() => copyText(recoveryCodes.join("\n"))}>Copy all</button>
           </div>
         </div>
       {/if}
@@ -374,11 +374,11 @@
       {#if totpSecret}
         <div class="grid gap-2 border border-line p-3">
           <span class="t-label">1. ADD THE SECRET TO YOUR AUTHENTICATOR APP</span>
-          <p class="break-all text-[12px] font-bold text-fg">{totpSecret}</p>
-          <p class="break-all text-[10px] leading-4 text-dim">{totpURL}</p>
+          <p class="break-all text-xs font-bold text-fg">{totpSecret}</p>
+          <p class="break-all text-xs leading-4 text-dim">{totpURL}</p>
           <div class="flex flex-wrap gap-2">
-            <button class="btn-t-solid" on:click={() => copyText(totpSecret)}>[ COPY SECRET ]</button>
-            <button class="btn-t-solid" on:click={() => copyText(totpURL)}>[ COPY OTPAUTH URL ]</button>
+            <button class="btn-t-solid" on:click={() => copyText(totpSecret)}>Copy secret</button>
+            <button class="btn-t-solid" on:click={() => copyText(totpURL)}>Copy otpauth URL</button>
           </div>
           <label class="grid max-w-xs gap-1">
             <span class="t-label">2. CONFIRM WITH A 6-DIGIT CODE</span>
@@ -386,30 +386,30 @@
           </label>
           <div>
             <button class="btn-t-solid" disabled={busy || totpCode.trim().length !== 6} on:click={totpConfirm}>
-              [ CONFIRM & ENABLE ]
+              Confirm & enable
             </button>
           </div>
         </div>
       {:else if me.totp_enabled}
-        <p class="text-[11px] leading-4 text-dim">
+        <p class="text-xs leading-4 text-dim">
           Password logins require a TOTP code (or a single-use recovery code) from your authenticator app.
         </p>
         <div class="flex flex-wrap gap-2">
-          <button class="btn-t-solid" disabled={busy} on:click={totpRecovery}>[ REGENERATE RECOVERY CODES ]</button>
+          <button class="btn-t-solid" disabled={busy} on:click={totpRecovery}>Regenerate recovery codes</button>
           <button
-            class="border border-line px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-alert hover:bg-alert hover:text-white"
+            class="border border-line px-2.5 py-1 text-xs font-bold text-alert hover:bg-alert hover:text-white"
             disabled={busy}
             on:click={totpDisable}
           >
-            DISABLE TOTP
+            Disable TOTP
           </button>
         </div>
       {:else}
-        <p class="text-[11px] leading-4 text-dim">
+        <p class="text-xs leading-4 text-dim">
           Add a second factor: scan a secret with Google Authenticator (or compatible) and confirm with a code.
         </p>
         <div>
-          <button class="btn-t-solid" disabled={busy} on:click={totpRegister}>[ SET UP TOTP ]</button>
+          <button class="btn-t-solid" disabled={busy} on:click={totpRegister}>Set up TOTP</button>
         </div>
       {/if}
     </div>
@@ -417,26 +417,26 @@
     <!-- passkeys -->
     <div class="grid gap-3 bg-panel p-4">
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <span class="t-label text-fg">[ PASSKEYS ]</span>
-        <span class="t-label">{passkeys.length} REGISTERED</span>
+        <span class="t-label text-fg">Passkeys</span>
+        <span class="t-label">{passkeys.length} registered</span>
       </div>
 
       {#if passkeys.length === 0}
-        <p class="text-[11px] leading-4 text-dim">No passkeys registered. Passkeys enable passwordless login.</p>
+        <p class="text-xs leading-4 text-dim">No passkeys registered. Passkeys enable passwordless login.</p>
       {:else}
         <div class="grid gap-px bg-line">
           {#each passkeys as passkey}
-            <div class="flex flex-wrap items-center justify-between gap-2 bg-crt p-2 text-[11px] leading-4">
+            <div class="flex flex-wrap items-center justify-between gap-2 bg-crt p-2 text-xs leading-4">
               <div class="grid gap-1">
                 <span class="break-all font-bold text-fg">{passkey.name || passkey.id}</span>
-                <span class="text-dim">CREATED {passkey.created_at}</span>
+                <span class="text-dim">Created {passkey.created_at}</span>
               </div>
               <button
-                class="border border-line px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-alert hover:bg-alert hover:text-white"
+                class="border border-line px-2.5 py-1 text-xs font-bold text-alert hover:bg-alert hover:text-white"
                 disabled={busy}
                 on:click={() => passkeyDelete(passkey.id)}
               >
-                REMOVE
+                Remove
               </button>
             </div>
           {/each}
@@ -446,17 +446,17 @@
       {#if isWebAuthnSupported()}
         <div class="grid gap-px bg-line md:grid-cols-[minmax(0,1fr),auto]">
           <label class="grid gap-1 bg-panel p-3">
-            <span class="t-label">PASSKEY LABEL</span>
+            <span class="t-label">Passkey label</span>
             <input bind:value={passkeyLabel} class="field-t" placeholder="my laptop" />
           </label>
           <div class="flex items-end bg-panel p-3">
             <button class="btn-t-solid w-full" disabled={busy} on:click={passkeyRegister}>
-              {busy ? "WAITING FOR AUTHENTICATOR..." : "[ REGISTER PASSKEY ]"}
+              {busy ? "Waiting for authenticator..." : "Register passkey"}
             </button>
           </div>
         </div>
       {:else}
-        <p class="text-[11px] leading-4 text-dim">WebAuthn is not supported in this browser.</p>
+        <p class="text-xs leading-4 text-dim">WebAuthn is not supported in this browser.</p>
       {/if}
     </div>
 

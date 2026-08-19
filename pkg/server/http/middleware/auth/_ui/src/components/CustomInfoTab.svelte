@@ -144,12 +144,12 @@
       try {
         claims = JSON.parse(previewClaims || "{}");
       } catch (err) {
-        throw new Error(`SAMPLE CLAIMS: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(`Sample claims: ${err instanceof Error ? err.message : String(err)}`);
       }
       try {
         details = JSON.parse(previewUserDetails || "{}");
       } catch (err) {
-        throw new Error(`USER DETAILS: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(`User details: ${err instanceof Error ? err.message : String(err)}`);
       }
 
       const set = sets.find((item) => item.id === previewSetID);
@@ -182,10 +182,10 @@
   <div class="grid gap-3 bg-panel p-4">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <span class="t-label text-fg">[ CUSTOM INFO ]</span>
-        <h3 class="mt-2 font-display text-3xl uppercase leading-none tracking-tight md:text-4xl">Userinfo Claim Templates</h3>
+        <span class="t-label text-fg">Custom info</span>
+        <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Userinfo Claim Templates</h3>
       </div>
-      <button class="btn-t-solid" disabled={busy} on:click={save}>[ SAVE CUSTOM INFO ]</button>
+      <button class="btn-t-solid" disabled={busy} on:click={save}>Save custom info</button>
     </div>
     <p class="max-w-3xl text-xs leading-5 text-dim">
       Named template sets rewrite the response of <span class="text-fg">GET /auth/oauth2/userinfo/&#123;name&#125;</span>. Each claim template is a Go
@@ -194,20 +194,20 @@
       <span class="text-fg">overwrites</span> it, and a template that renders <span class="text-alert">empty</span> <span class="text-fg">removes</span> it
       (use <code class="text-fg">{"{{- -}}"}</code> to trim whitespace). The plain <span class="text-fg">/userinfo</span> endpoint is never affected.
     </p>
-    <label class="flex w-fit items-center gap-3 text-xs font-bold uppercase tracking-[0.15em]">
+    <label class="flex w-fit items-center gap-3 text-xs font-bold">
       <input type="checkbox" bind:checked={disabled} class="h-3.5 w-3.5 appearance-none border border-line bg-crt checked:bg-alert" />
-      <span class={disabled ? "text-alert" : "text-fg"}>{disabled ? "CUSTOM INFO DISABLED" : "CUSTOM INFO ENABLED"}</span>
+      <span class={disabled ?"text-alert" :"text-fg"}>{disabled ?"Custom info disabled" :"Custom info enabled"}</span>
     </label>
   </div>
 
   <div class="grid gap-px bg-line">
     <div class="flex flex-wrap items-center justify-between gap-3 bg-panel px-3 py-2">
-      <span class="t-label text-fg">[ TEMPLATE SETS ]</span>
+      <span class="t-label text-fg">Template sets</span>
       <button class="btn-t-solid" disabled={busy} on:click={addSet}>[ + ADD SET ]</button>
     </div>
 
     {#if sets.length === 0}
-      <p class="bg-panel p-4 text-[11px] leading-4 text-dim">No template sets yet. Add a set; its name becomes the <span class="text-fg">&#123;name&#125;</span> path segment, e.g. <span class="text-fg">/auth/oauth2/userinfo/myapp</span>.</p>
+      <p class="bg-panel p-4 text-xs leading-4 text-dim">No template sets yet. Add a set; its name becomes the <span class="text-fg">&#123;name&#125;</span> path segment, e.g. <span class="text-fg">/auth/oauth2/userinfo/myapp</span>.</p>
     {:else}
       {#each sets as set (set.id)}
         <div class="grid gap-px bg-line">
@@ -216,39 +216,39 @@
               <span class="t-label">SET NAME (URL SEGMENT)</span>
               <input class="field-t" bind:value={set.name} placeholder="myapp" />
             </label>
-            <button class="btn-t border border-line text-alert hover:border-alert" disabled={busy} on:click={() => removeSet(set.id)}>[ REMOVE SET ]</button>
+            <button class="btn-t border border-line text-alert hover:border-alert" disabled={busy} on:click={() => removeSet(set.id)}>Remove set</button>
           </div>
 
           {#if set.name.trim()}
             <div class="grid gap-px bg-line lg:grid-cols-2">
               <div class="grid gap-1 bg-panel p-3">
-                <span class="t-label">USERINFO URL</span>
+                <span class="t-label">Userinfo URL</span>
                 <div class="flex items-center gap-2">
-                  <input class="field-t min-w-0 flex-1 font-mono text-[11px]" readonly value={userinfoURL(set.name)} />
-                  <button class="btn-t border border-line text-dim hover:border-fg hover:text-fg" on:click={() => copyText(userinfoURL(set.name))}>[ COPY ]</button>
+                  <input class="field-t min-w-0 flex-1 font-mono text-xs" readonly value={userinfoURL(set.name)} />
+                  <button class="btn-t border border-line text-dim hover:border-fg hover:text-fg" on:click={() => copyText(userinfoURL(set.name))}>Copy</button>
                 </div>
               </div>
               <div class="grid gap-1 bg-panel p-3">
                 <span class="t-label">DISCOVERY URL (.well-known)</span>
                 <div class="flex items-center gap-2">
-                  <input class="field-t min-w-0 flex-1 font-mono text-[11px]" readonly value={discoveryURL(set.name)} />
-                  <button class="btn-t border border-line text-dim hover:border-fg hover:text-fg" on:click={() => copyText(discoveryURL(set.name))}>[ COPY ]</button>
+                  <input class="field-t min-w-0 flex-1 font-mono text-xs" readonly value={discoveryURL(set.name)} />
+                  <button class="btn-t border border-line text-dim hover:border-fg hover:text-fg" on:click={() => copyText(discoveryURL(set.name))}>Copy</button>
                 </div>
-                <span class="text-[10px] leading-4 text-dim">Point the app's OIDC discovery here; its <code class="text-fg">userinfo_endpoint</code> resolves to the URL above (other endpoints and issuer stay shared).</span>
+                <span class="text-xs leading-4 text-dim">Point the app's OIDC discovery here; its <code class="text-fg">userinfo_endpoint</code> resolves to the URL above (other endpoints and issuer stay shared).</span>
               </div>
             </div>
           {/if}
 
           <div class="hidden grid-cols-[minmax(0,1fr),minmax(0,2fr),auto] gap-3 bg-panel px-3 py-2 md:grid">
-            <span class="t-label text-fg">CLAIM</span>
-            <span class="t-label text-fg">TEMPLATE</span>
+            <span class="t-label text-fg">Claim</span>
+            <span class="t-label text-fg">Template</span>
             <span class="t-label text-fg">&nbsp;</span>
           </div>
 
           {#each set.claims as claim (claim.id)}
             <div class="grid gap-2 bg-crt px-3 py-2 md:grid-cols-[minmax(0,1fr),minmax(0,2fr),auto] md:items-center md:gap-3">
               <input class="field-t" bind:value={claim.key} placeholder="full_name" />
-              <input class="field-t font-mono text-[12px]" bind:value={claim.tmpl} placeholder={"{{ .claims.given_name }} {{ .claims.family_name }}"} />
+              <input class="field-t font-mono text-xs" bind:value={claim.tmpl} placeholder={"{{ .claims.given_name }} {{ .claims.family_name }}"} />
               <button class="btn-t border border-line text-alert hover:border-alert" disabled={busy} on:click={() => removeClaim(set.id, claim.id)} aria-label="remove claim">[ x ]</button>
             </div>
           {/each}
@@ -264,10 +264,10 @@
   <div class="grid gap-px bg-line lg:grid-cols-[360px,minmax(0,1fr)]">
     <div class="grid content-start gap-px bg-line">
       <div class="flex items-center justify-between gap-2 bg-panel px-3 py-2">
-        <span class="t-label text-fg">[ PREVIEW INPUT ]</span>
+        <span class="t-label text-fg">Preview input</span>
       </div>
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">SET</span>
+        <span class="t-label">Set</span>
         <select class="field-t" bind:value={previewSetID}>
           {#if sets.length === 0}
             <option value="">— no sets —</option>
@@ -279,28 +279,28 @@
       </label>
       <label class="grid gap-1 bg-panel p-3">
         <span class="t-label">SAMPLE BASE CLAIMS (JSON)</span>
-        <textarea class="field-t min-h-32 font-mono text-[11px] leading-4" bind:value={previewClaims} spellcheck="false"></textarea>
+        <textarea class="field-t min-h-32 font-mono text-xs leading-4" bind:value={previewClaims} spellcheck="false"></textarea>
       </label>
       <label class="grid gap-1 bg-panel p-3">
         <span class="t-label">SAMPLE USER DETAILS (JSON)</span>
-        <textarea class="field-t min-h-24 font-mono text-[11px] leading-4" bind:value={previewUserDetails} spellcheck="false"></textarea>
-        <span class="text-[10px] leading-4 text-dim">Reachable as <code class="text-fg">{"{{ .user.Details.<key> }}"}</code> in templates.</span>
+        <textarea class="field-t min-h-24 font-mono text-xs leading-4" bind:value={previewUserDetails} spellcheck="false"></textarea>
+        <span class="text-xs leading-4 text-dim">Reachable as <code class="text-fg">{"{{ .user.Details.<key> }}"}</code> in templates.</span>
       </label>
       <div class="bg-panel p-3">
-        <button class="btn-t-solid w-full" disabled={previewBusy || sets.length === 0} on:click={renderPreview}>[ RENDER PREVIEW ]</button>
+        <button class="btn-t-solid w-full" disabled={previewBusy || sets.length === 0} on:click={renderPreview}>Render preview</button>
       </div>
     </div>
 
     <div class="grid content-start gap-px bg-line">
       <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">[ RESULTING CLAIMS ]</span>
+        <span class="t-label text-fg">Resulting claims</span>
       </div>
       {#if previewError}
         <div class="bg-panel p-3 text-xs text-alert">{previewError}</div>
       {:else if preview}
-        <pre class="overflow-auto whitespace-pre-wrap border border-line bg-crt p-3 text-[11px] leading-5 text-fg">{prettyJSON(preview)}</pre>
+        <pre class="overflow-auto whitespace-pre-wrap border border-line bg-crt p-3 text-xs leading-5 text-fg">{prettyJSON(preview)}</pre>
       {:else}
-        <div class="bg-panel p-4 text-[11px] leading-4 text-dim">Render a preview to apply the selected set to the sample claims before saving. Validates the templates too.</div>
+        <div class="bg-panel p-4 text-xs leading-4 text-dim">Render a preview to apply the selected set to the sample claims before saving. Validates the templates too.</div>
       {/if}
     </div>
   </div>

@@ -106,7 +106,7 @@
       JSON.parse(value);
       return "";
     } catch (err) {
-      const message = err instanceof Error ? err.message : "INVALID JSON";
+      const message = err instanceof Error ? err.message : "Invalid JSON";
       return `INVALID JSON: ${message}`;
     }
   }
@@ -154,16 +154,16 @@
     const details = detailsValue && typeof detailsValue === "object" && !Array.isArray(detailsValue) ? (detailsValue as AnyRecord) : ({} as AnyRecord);
 
     if (kind === "users") {
-      if (fieldList(record.alias).length === 0) return "ALIAS IS REQUIRED FOR LOGIN";
-      if (record.local !== false && fieldText(details.name) === "") return "NAME IS REQUIRED FOR LOCAL USERS";
-      if (record.local !== false && fieldText(details.password) === "") return "PASSWORD IS REQUIRED FOR LOCAL USERS";
+      if (fieldList(record.alias).length === 0) return "Alias is required for login";
+      if (record.local !== false && fieldText(details.name) === "") return "Name is required for local users";
+      if (record.local !== false && fieldText(details.password) === "") return "Password is required for local users";
     }
 
     if (kind === "service-accounts") {
-      if (fieldList(record.alias).length === 0) return "CLIENT ID ALIAS IS REQUIRED";
-      if (fieldText(details.name) === "") return "NAME IS REQUIRED FOR SERVICE ACCOUNTS";
+      if (fieldList(record.alias).length === 0) return "Client ID alias is required";
+      if (fieldText(details.name) === "") return "Name is required for service accounts";
       if (fieldText(details.secret) === "" && fieldText(details.cert_fingerprint) === "" && fieldText(details.cert_subject) === "") {
-        return "CLIENT SECRET OR MTLS CERTIFICATE IS REQUIRED";
+        return "Client secret or mTLS certificate is required";
       }
     }
 
@@ -546,7 +546,7 @@
       editorJSON = pretty(JSON.parse(editorJSON));
       error = "";
     } catch (err) {
-      error = err instanceof Error ? `INVALID JSON: ${err.message}` : "INVALID JSON";
+      error = err instanceof Error ? `INVALID JSON: ${err.message}` : "Invalid JSON";
     }
   }
 
@@ -652,9 +652,9 @@
       if (namespace === "jwt") {
         await loadJWKS();
       }
-      flash(`${namespace.toUpperCase()} SETTING SAVED`);
+      flash(`${namespace} setting saved`);
     } catch (err) {
-      error = err instanceof Error ? err.message : "UNKNOWN ERROR";
+      error = err instanceof Error ? err.message : "Unknown error";
     } finally {
       busy = false;
     }
@@ -669,9 +669,9 @@
       await request("jwt/rotate", { method: "POST", body: "{}" });
 
       await Promise.all([loadSetting("jwt"), loadJWKS(), loadKind("settings")]);
-      flash("JWT SIGNING KEY ROTATED");
+      flash("JWT signing key rotated");
     } catch (err) {
-      error = err instanceof Error ? err.message : "UNKNOWN ERROR";
+      error = err instanceof Error ? err.message : "Unknown error";
     } finally {
       busy = false;
     }
@@ -719,7 +719,7 @@
     try {
       await loadAdminData();
     } catch (err) {
-      error = err instanceof Error ? err.message : "UNKNOWN ERROR";
+      error = err instanceof Error ? err.message : "Unknown error";
     } finally {
       busy = false;
     }
@@ -743,7 +743,7 @@
         await loadAdminData();
       }
     } catch (err) {
-      error = err instanceof Error ? err.message : "UNKNOWN ERROR";
+      error = err instanceof Error ? err.message : "Unknown error";
     } finally {
       busy = false;
       loading = false;
@@ -824,7 +824,7 @@
 
       editorOpen = true;
     } catch (err) {
-      error = err instanceof Error ? err.message : "UNKNOWN ERROR";
+      error = err instanceof Error ? err.message : "Unknown error";
     } finally {
       busy = false;
     }
@@ -837,7 +837,7 @@
     try {
       parsed = JSON.parse(editorJSON);
     } catch (err) {
-      error = err instanceof Error ? err.message : "INVALID JSON";
+      error = err instanceof Error ? err.message : "Invalid JSON";
       return;
     }
 
@@ -863,13 +863,13 @@
         }
       } else {
         if (!editorID.trim()) {
-          error = "ID IS REQUIRED";
+          error = "ID is required";
           busy = false;
           return;
         }
 
         if (editorKind === "settings" && !editorLoadedID && !isReservedSettingsNamespace(editorID)) {
-          error = "SETTINGS NAMESPACE MUST BE RESERVED";
+          error = "Settings namespace must be reserved";
           busy = false;
           return;
         }
@@ -883,9 +883,9 @@
 
       await refresh();
       editorOpen = false;
-      flash("RECORD COMMITTED");
+      flash("Record committed");
     } catch (err) {
-      error = err instanceof Error ? err.message : "UNKNOWN ERROR";
+      error = err instanceof Error ? err.message : "Unknown error";
     } finally {
       busy = false;
     }
@@ -897,12 +897,12 @@
     const roleIDs = splitValues(tempAccessRoleIDs);
     const permissionIDs = splitValues(tempAccessPermissionIDs);
     if (roleIDs.length === 0 && permissionIDs.length === 0) {
-      error = "ROLE IDS OR PERMISSION IDS ARE REQUIRED";
+      error = "Role IDs or permission IDs are required";
       return;
     }
 
     if (!remove && !tempAccessExpiresIn.trim() && !tempAccessExpiresAt.trim()) {
-      error = "EXPIRES IN OR EXPIRES AT IS REQUIRED";
+      error = "Expires in or expires at is required";
       return;
     }
 
@@ -930,16 +930,16 @@
 
       await loadKind(editorKind);
       await editResource(editorKind, editorLoadedID);
-      flash(remove ? "TEMPORARY ACCESS REMOVED" : "TEMPORARY ACCESS UPDATED");
+      flash(remove ? "Temporary access removed" : "Temporary access updated");
     } catch (err) {
-      error = err instanceof Error ? err.message : "UNKNOWN ERROR";
+      error = err instanceof Error ? err.message : "Unknown error";
     } finally {
       busy = false;
     }
   }
 
   async function deleteResource(kind: ResourceKind, id: string) {
-    if (!confirm(`DELETE ${id}?`)) return;
+    if (!confirm(`Delete ${id}?`)) return;
 
     busy = true;
     error = "";
@@ -948,9 +948,9 @@
       await request(`${spec.listPath}/${encodeURIComponent(id)}`, { method: "DELETE" });
 
       await refresh();
-      flash("RECORD PURGED");
+      flash("Record purged");
     } catch (err) {
-      error = err instanceof Error ? err.message : "UNKNOWN ERROR";
+      error = err instanceof Error ? err.message : "Unknown error";
     } finally {
       busy = false;
     }
@@ -962,9 +962,9 @@
     try {
       await request("ldap/sync", { method: "POST", body: JSON.stringify({ force: false }) });
       await refresh();
-      flash("LDAP SYNC COMPLETE");
+      flash("LDAP sync complete");
     } catch (err) {
-      error = err instanceof Error ? err.message : "UNKNOWN ERROR";
+      error = err instanceof Error ? err.message : "Unknown error";
     } finally {
       busy = false;
     }
@@ -1070,7 +1070,7 @@
     try {
       await loadCapabilities();
     } catch (err) {
-      error = err instanceof Error ? err.message : "UNKNOWN ERROR";
+      error = err instanceof Error ? err.message : "Unknown error";
       loading = false;
       return;
     }
@@ -1090,7 +1090,7 @@
           await loadAdminData();
         }
       } catch (err) {
-        error = err instanceof Error ? err.message : "UNKNOWN ERROR";
+        error = err instanceof Error ? err.message : "Unknown error";
       }
     }
 
@@ -1108,32 +1108,32 @@
 </script>
 
 <svelte:head>
-  <title>TURNA // AUTH</title>
+  <title>Turna // auth</title>
 </svelte:head>
 
-<main class="grid h-screen grid-rows-[auto,1fr] overflow-hidden bg-crt font-mono text-fg">
+<main class="grid h-screen grid-rows-[auto,1fr] overflow-hidden bg-crt font-sans text-fg">
   <AppHeader {info} {busy} {themeMode} onRefresh={refresh} onThemeMode={setThemeMode} />
 
   <div class="grid min-h-0 grid-rows-[auto,1fr] overflow-hidden lg:grid-cols-[230px,1fr] lg:grid-rows-1">
-    <NavRail {activeTab} navGroups={visibleNavGroups} nav={visibleNav} {info} {busy} onSelect={selectTab} onRefresh={refresh} />
+    <NavRail {activeTab} navGroups={visibleNavGroups} {info} {busy} onSelect={selectTab} onRefresh={refresh} />
 
     <section class="min-h-0 min-w-0 overflow-y-auto overscroll-contain">
       {#if loading}
         <div class="grid min-h-[60vh] place-items-center">
-          <p class="text-sm uppercase tracking-[0.3em] text-dim">
-            ESTABLISHING LINK <span class="animate-pulse text-fg">&#9608;</span>
+          <p class="text-sm text-dim">
+            Establishing link <span class="animate-pulse text-fg">&#9608;</span>
           </p>
         </div>
       {:else}
         {#if capabilities?.anonymous_admin}
           <div class="flex items-center gap-3 border-b border-line bg-panel px-4 py-2">
-            <span class="bg-alert px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-white">BREAK-GLASS</span>
-            <span class="text-xs uppercase tracking-[0.05em] text-alert">X-USER MISSING; ADMIN ACCESS ALLOWED</span>
+            <span class="bg-alert px-2 py-0.5 text-xs font-bold text-white">Break-glass</span>
+            <span class="text-xs text-alert">X-USER MISSING; ADMIN ACCESS ALLOWED</span>
           </div>
         {:else if capabilities?.bootstrap_admin}
           <div class="flex items-center gap-3 border-b border-line bg-panel px-4 py-2">
-            <span class="bg-alert px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-white">BOOTSTRAP</span>
-            <span class="text-xs uppercase tracking-[0.05em] text-alert">ADMIN PERMISSION NOT CONFIGURED</span>
+            <span class="bg-alert px-2 py-0.5 text-xs font-bold text-white">Bootstrap</span>
+            <span class="text-xs text-alert">Admin permission not configured</span>
           </div>
         {/if}
 
@@ -1386,29 +1386,29 @@
     </section>
   </div>
 
-  <!-- transient toasts (FAULT / OK) float over the canvas instead of pushing content -->
+  <!-- transient toasts float over the canvas instead of pushing content -->
   <div class="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-[min(360px,calc(100vw-2rem))] flex-col gap-2">
     {#if error}
       <div
-        class="pointer-events-auto flex items-start gap-3 border border-line border-l-2 border-l-alert bg-panel px-3 py-2 shadow-[0_8px_30px_rgb(0_0_0_/_0.45)]"
+        class="pointer-events-auto flex items-start gap-3 rounded-lg border border-alert/30 bg-panel px-3 py-2.5 shadow-md"
         role="alert"
         transition:fly={{ x: 16, duration: 160 }}
       >
-        <span class="mt-px shrink-0 bg-alert px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-white">FAULT</span>
-        <span class="min-w-0 flex-1 break-words text-xs uppercase leading-4 tracking-[0.05em] text-alert">{error}</span>
-        <button class="shrink-0 text-sm leading-none text-dim hover:text-fg" on:click={() => (error = "")} aria-label="dismiss fault">×</button>
+        <span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-alert"></span>
+        <span class="min-w-0 flex-1 break-words text-xs leading-5 text-fg">{error}</span>
+        <button class="shrink-0 text-sm leading-none text-dim hover:text-fg" on:click={() => (error ="")} aria-label="dismiss error">×</button>
       </div>
     {/if}
 
     {#if notice}
       <div
-        class="pointer-events-auto flex items-start gap-3 border border-line border-l-2 border-l-phosphor bg-panel px-3 py-2 shadow-[0_8px_30px_rgb(0_0_0_/_0.45)]"
+        class="pointer-events-auto flex items-start gap-3 rounded-lg border border-phosphor/30 bg-panel px-3 py-2.5 shadow-md"
         role="status"
         transition:fly={{ x: 16, duration: 160 }}
       >
-        <span class="mt-px shrink-0 bg-phosphor px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-crt">OK</span>
-        <span class="min-w-0 flex-1 break-words text-xs uppercase leading-4 tracking-[0.05em]">{notice}</span>
-        <button class="shrink-0 text-sm leading-none text-dim hover:text-fg" on:click={() => (notice = "")} aria-label="dismiss notice">×</button>
+        <span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-phosphor"></span>
+        <span class="min-w-0 flex-1 break-words text-xs leading-5 text-fg">{notice}</span>
+        <button class="shrink-0 text-sm leading-none text-dim hover:text-fg" on:click={() => (notice ="")} aria-label="dismiss notice">×</button>
       </div>
     {/if}
   </div>

@@ -40,10 +40,10 @@
   <div class="grid gap-3 bg-panel p-4">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <span class="t-label text-fg">[ ADMIN ]</span>
-        <h3 class="mt-2 font-display text-3xl uppercase leading-none tracking-tight md:text-4xl">Admin Access</h3>
+        <span class="t-label text-fg">Admin</span>
+        <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Admin Access</h3>
       </div>
-      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting(ns)}>[ SAVE ADMIN ]</button>
+      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting(ns)}>Save admin</button>
     </div>
     <p class="max-w-3xl text-xs leading-5 text-dim">
       Controls who may administer this auth instance. The permission is matched against the permission ID or name carried by <span class="text-fg">X-User</span>.
@@ -52,15 +52,15 @@
 
   <div class="grid gap-px bg-line md:grid-cols-2">
     <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-      <span class="t-label">ADMIN PERMISSION</span>
+      <span class="t-label">Admin permission</span>
       <input class="field-t" value={permission} placeholder="turna.auth.admin; empty = bootstrap open" on:input={(event) => setSettingString(ns, ["permission"], inputValue(event))} />
-      <span class="text-[10px] leading-4 text-dim">Matched against permission ID or name on X-User. Empty keeps bootstrap compatibility.</span>
+      <span class="text-xs leading-4 text-dim">Matched against permission ID or name on X-User. Empty keeps bootstrap compatibility.</span>
     </label>
-    <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold uppercase tracking-[0.15em]">
+    <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
       <input type="checkbox" checked={allowMissing} class={checkboxClass(true)} on:change={(event) => setSettingBool(ns, ["allow_missing_x_user"], checkedValue(event))} />
-      <span class={allowMissing ? "text-alert" : "text-dim"}>ALLOW MISSING X-USER BREAK-GLASS ADMIN</span>
+      <span class={allowMissing ?"text-alert" :"text-dim"}>Allow missing X-User break-glass admin</span>
     </label>
-    <p class="bg-panel p-3 text-[11px] leading-4 text-dim md:col-span-2">
+    <p class="bg-panel p-3 text-xs leading-4 text-dim md:col-span-2">
       Use break-glass only when the auth route is not publicly exposed. If enabled, removing the session chain lets direct requests administer auth.
     </p>
   </div>

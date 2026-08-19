@@ -1,0 +1,94 @@
+# MCP-ready setup: the auth middleware acts as the OAuth2 authorization server
+# (RFC 8414 discovery, RFC 7591 dynamic client registration, PKCE consent flow)
+# and the oauth2_resource middleware protects the MCP endpoint (RFC 9728).
+#
+# Enable dynamic registration once:
+#   curl -X PUT localhost:8082/auth/v1/settings/registration \
+#     -d '{"value":{"enabled":true,"client_lifetime":"720h"}}'
+
+server:
+  entrypoints:
+    web:
+      address: ":8082"
+  http:
+    middlewares:
+      auth:
+        auth:
+          database:
+            dsn: postgres://postgres@localhost:5432/postgres?sslmode=disable
+          encryption:
+            key: test-encryption-key
+      session:
+        session:
+          store:
+            active: file
+            file:
+              session_key: "my_secret_key"
+          options:
+            http_only: true
+            secure: false
+            same_site: 2
+          # machine endpoints (token, register, certs, discovery) stay public;
+          # cookie-carrying browsers are still authenticated on these paths,
+          # so the /auth/oauth2/consent page keeps working.
+          skip_paths:
+            - /auth/oauth2/**
+            - /.well-known/**
+          provider:
+            turna:
+              name: turna
+              auth_middleware: "auth"
+              password_flow: true
+          action:
+            token:
+              login_path: "/login/"
+      login:
+        login:
+          path:
+            base: "/login/"
+          info:
+            title: "Turna Login"
+          session_middleware: "session"
+      # RFC 9728 resource server in front of the MCP upstream
+      mcp-guard:
+        oauth2_resource:
+          auth_middleware: "auth"
+          # resource/authorization_servers are derived from the request host
+          # when omitted; pin them explicitly for production:
+          # resource: "https://example.com/mcp"
+          # authorization_servers: ["https://example.com/auth/oauth2"]
+          scopes_supported: ["openid"]
+      mcp-upstream:
+        service:
+          loadbalancer:
+            servers:
+              - url: "http://localhost:9090"
+    routers:
+      login:
+        path: /login/*
+        middlewares:
+          - login
+      # MCP endpoint protected as an OAuth2 resource
+      mcp:
+        path: /mcp/*
+        middlewares:
+          - mcp-guard
+          - mcp-upstream
+      # RFC 9728 protected resource metadata
+      mcp-wellknown:
+        path: /.well-known/oauth-protected-resource*
+        middlewares:
+          - mcp-guard
+      # RFC 8414 / OIDC discovery from the issuer root
+      auth-wellknown:
+        path: /.well-known/*
+        middlewares:
+          - session
+          - auth
+      # single chain: session skip_paths keeps /auth/oauth2/* public for
+      # machine clients while the management API/UI stays protected.
+      auth:
+        path: /auth/*
+        middlewares:
+          - session
+          - auth

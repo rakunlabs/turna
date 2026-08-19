@@ -93,7 +93,7 @@
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.message ?? `sync failed: ${res.status}`);
 
-      panelNotice = forceSync ? "LDAP FORCE SYNC COMPLETE" : "LDAP SYNC COMPLETE";
+      panelNotice = forceSync ? "LDAP force sync complete" : "LDAP sync complete";
       await load();
     } catch (err) {
       panelError = err instanceof Error ? err.message : String(err);
@@ -107,53 +107,53 @@
 
 <div class="bg-panel">
   <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2">
-    <span class="t-label text-fg">[ LIVE LDAP GROUPS ]</span>
+    <span class="t-label text-fg">Live LDAP groups</span>
     <div class="flex flex-wrap items-center gap-3">
-      <label class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] {forceSync ? 'text-alert' : 'text-dim'}">
+      <label class="flex items-center gap-2 text-xs font-bold {forceSync ? 'text-alert' : 'text-dim'}">
         <input type="checkbox" bind:checked={forceSync} disabled={syncing || !ldapConfigured} />
-        FORCE
+        Force
       </label>
       <button class="btn-t-solid" disabled={syncing || !ldapConfigured} on:click={syncNow}>
-        {syncing ? "SYNCING..." : forceSync ? "RUN FORCE SYNC" : "RUN LDAP SYNC"}
+        {syncing ? "Syncing..." : forceSync ? "Run force sync" : "Run LDAP sync"}
       </button>
     </div>
   </div>
 
   <div class="grid gap-px bg-line p-px">
-    <p class="bg-panel p-3 text-[11px] leading-4 text-dim">
+    <p class="bg-panel p-3 text-xs leading-4 text-dim">
       Automatic mapping: on every sync each LDAP group gets a <span class="text-fg">role with the same name</span> (created when missing) and a group map pointing to it. Group members receive the mapped roles as <span class="text-fg">sync roles</span>; users that leave all groups have their sync roles cleared. Edit a group map below to attach more roles to an LDAP group.
     </p>
 
     {#if forceSync}
-      <p class="bg-panel p-3 text-[11px] leading-4 text-alert">
+      <p class="bg-panel p-3 text-xs leading-4 text-alert">
         FORCE re-fetches every existing user from LDAP and <span class="font-bold">overwrites their profile details</span> (email, uid, name, given/family name) and aliases. A normal sync only updates sync roles and creates new users. Use force when LDAP profile fields changed.
       </p>
     {/if}
 
     {#if panelError}
-      <p class="bg-panel px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-alert">{panelError}</p>
+      <p class="bg-panel px-3 py-2 text-xs font-bold text-alert">{panelError}</p>
     {/if}
     {#if panelNotice}
-      <p class="bg-panel px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-fg">{panelNotice}</p>
+      <p class="bg-panel px-3 py-2 text-xs font-bold text-fg">{panelNotice}</p>
     {/if}
 
     {#if loading}
-      <p class="bg-panel p-3 text-[11px] uppercase tracking-[0.2em] text-dim">QUERYING LDAP...</p>
+      <p class="bg-panel p-3 text-xs text-dim">QUERYING LDAP...</p>
     {:else if !ldapConfigured}
-      <p class="bg-panel p-3 text-[11px] leading-4 text-dim">
-        No enabled LDAP configuration. Add one under <span class="text-fg">LDAP / LDAP CONFIGS</span> to see live groups here.
+      <p class="bg-panel p-3 text-xs leading-4 text-dim">
+        No enabled LDAP configuration. Add one under <span class="text-fg">LDAP / LDAP configs</span> to see live groups here.
       </p>
     {:else if groups.length === 0}
-      <p class="bg-panel p-3 text-[11px] leading-4 text-dim">LDAP returned no groups for the configured filters.</p>
+      <p class="bg-panel p-3 text-xs leading-4 text-dim">LDAP returned no groups for the configured filters.</p>
     {:else}
       <div class="hidden grid-cols-[minmax(0,1fr),90px,minmax(0,1.2fr)] gap-4 bg-panel px-3 py-2 md:grid">
-        <span class="t-label text-fg">LDAP GROUP</span>
-        <span class="t-label text-fg">MEMBERS</span>
-        <span class="t-label text-fg">MAPPED ROLES</span>
+        <span class="t-label text-fg">LDAP group</span>
+        <span class="t-label text-fg">Members</span>
+        <span class="t-label text-fg">Mapped roles</span>
       </div>
       <div class="grid gap-px bg-line">
         {#each groups as group}
-          <div class="grid gap-2 bg-crt px-3 py-2 text-[11px] leading-4 md:grid-cols-[minmax(0,1fr),90px,minmax(0,1.2fr)] md:items-center md:gap-4">
+          <div class="grid gap-2 bg-crt px-3 py-2 text-xs leading-4 md:grid-cols-[minmax(0,1fr),90px,minmax(0,1.2fr)] md:items-center md:gap-4">
             <div class="min-w-0">
               <p class="truncate font-bold text-fg">{group.name}</p>
               {#if group.description}
@@ -163,7 +163,7 @@
             <span class="text-dim">{(group.members ?? []).length}</span>
             <div class="min-w-0">
               {#if lmapByName[group.name]}
-                <p class="truncate text-fg">{mappedRoles(group.name).join(", ") || "—"}</p>
+                <p class="truncate text-fg">{mappedRoles(group.name).join(",") ||"—"}</p>
               {:else}
                 <p class="text-dim">NOT MAPPED — role + map auto-created on next sync</p>
               {/if}

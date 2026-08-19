@@ -86,6 +86,8 @@ The login middleware proxies these requests and injects the provider's client cr
 
 Set the `logout` context value before `login` to delete the session and redirect through the login middleware.
 
+Before the session is deleted, the stored refresh and access tokens are best-effort **revoked at the issuer** so they cannot be replayed: in-process when the provider uses `auth_middleware` (the [`auth`](./auth) middleware's RFC 7009 denylist), or over `oauth2.revocation_url` for remote providers. When the provider has an `oauth2.logout_url` (OIDC RP-initiated logout), it is called with `id_token_hint` as before.
+
 ```yaml
 server:
   http:

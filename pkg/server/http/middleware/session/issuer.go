@@ -23,6 +23,13 @@ type InfIssuer interface {
 	IssueToken(ctx context.Context, form url.Values) ([]byte, int, error)
 }
 
+// InfRevoker is implemented by issuers that keep a token revocation list
+// (RFC 7009). The login middleware revokes session tokens on logout when the
+// provider's issuer supports it.
+type InfRevoker interface {
+	RevokeToken(ctx context.Context, token string) error
+}
+
 // InfAPIKey is implemented by issuers that can validate static API keys
 // directly. It returns claim-shaped identity JSON for the key principal;
 // no token exchange is involved and validation hits the issuer's database

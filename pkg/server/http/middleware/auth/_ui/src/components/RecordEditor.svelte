@@ -74,41 +74,41 @@
       <button class="btn-t border-0 bg-crt" disabled={busy} on:click={closeEditor}>[ &lt; BACK ]</button>
       <span class="t-label text-fg">
         {#if editorLoadedID}
-          EDIT {editorSpec.title} / <span class="text-dim">{editorLoadedID}</span>
+          edit {editorSpec.title} / <span class="text-dim">{editorLoadedID}</span>
         {:else}
-          NEW {editorSpec.title} / <span class="text-alert">DRAFT</span>
+          new {editorSpec.title} / <span class="text-alert">Draft</span>
         {/if}
       </span>
     </div>
     <div class="flex flex-wrap gap-px">
-      <button class={`btn-t border-0 ${advancedMode ? "bg-alert text-white hover:bg-alert hover:text-white" : "bg-crt"}`} disabled={busy} on:click={() => setAdvancedMode(!advancedMode)}>
-        {advancedMode ? "SIMPLE FORM" : "ADVANCED JSON"}
+      <button class={`btn-t border-0 ${advancedMode ?"bg-alert text-white hover:bg-alert hover:text-white" :"bg-crt"}`} disabled={busy} on:click={() => setAdvancedMode(!advancedMode)}>
+        {advancedMode ? "Simple form" : "Advanced JSON"}
       </button>
       {#if advancedMode}
-        <button class="btn-t border-0 bg-crt" disabled={busy} on:click={formatEditorJSON}>FORMAT JSON</button>
+        <button class="btn-t border-0 bg-crt" disabled={busy} on:click={formatEditorJSON}>Format JSON</button>
       {/if}
       {#if !editorLoadedID}
-        <button class="btn-t border-0 bg-crt" disabled={busy} on:click={loadEditorTemplate}>LOAD TEMPLATE</button>
+        <button class="btn-t border-0 bg-crt" disabled={busy} on:click={loadEditorTemplate}>Load template</button>
       {/if}
-      <button class="btn-t-solid" disabled={!canCommit} on:click={saveResource}>[ COMMIT ]</button>
+      <button class="btn-t-solid" disabled={!canCommit} on:click={saveResource}>Commit</button>
     </div>
   </div>
 
   {#if editorRequirementError}
-    <p class="border-b border-line bg-panel px-4 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-alert">{editorRequirementError}</p>
+    <p class="border-b border-line bg-panel px-4 py-2 text-xs font-bold text-alert">{editorRequirementError}</p>
   {/if}
 
   <div class="grid gap-px bg-line p-px">
     <div class="grid gap-px bg-line lg:grid-cols-[minmax(220px,1fr),minmax(220px,1fr),auto]">
       <div class="grid gap-1 bg-panel p-3 lg:col-span-1">
-        <span class="t-label">FORM</span>
-        <p class="text-sm font-bold uppercase tracking-[0.08em] text-fg">{editorSpec.title}</p>
+        <span class="t-label">Form</span>
+        <p class="text-sm font-bold text-fg">{editorSpec.title}</p>
       </div>
 
       {#if editorSpec.body !== "raw" && editorKind === "settings"}
         <div class="grid gap-1 bg-panel p-3 lg:col-span-1">
-          <span class="t-label">NAMESPACE</span>
-          <p class="text-sm font-bold uppercase tracking-[0.08em] text-fg">{editorID || "SELECT RESERVED"}</p>
+          <span class="t-label">Namespace</span>
+          <p class="text-sm font-bold text-fg">{editorID ||"Select reserved"}</p>
         </div>
       {:else if editorSpec.body !== "raw"}
         <label class="grid gap-1 bg-panel p-3 lg:col-span-1">
@@ -118,33 +118,33 @@
       {/if}
 
       {#if editorSpec.body === "config"}
-        <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold uppercase tracking-[0.15em]">
+        <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
           <input bind:checked={editorEnabled} type="checkbox" class={checkboxClass(editorEnabled)} />
-          <span class={editorEnabled ? "text-fg" : "text-alert"}>{editorEnabled ? "ENABLED" : "DISABLED"}</span>
+          <span class={editorEnabled ?"text-fg" :"text-alert"}>{editorEnabled ?"Enabled" :"Disabled"}</span>
         </label>
       {/if}
     </div>
 
     {#if editorKind === "permissions" && !editorLoadedID}
       <div class="grid gap-2 bg-panel p-3">
-        <span class="t-label">QUICK TEMPLATES</span>
+        <span class="t-label">Quick templates</span>
         <div class="flex flex-wrap gap-px">
           <button
-            class="border border-line px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-dim hover:border-fg hover:text-fg"
+            class="border border-line px-2.5 py-1 text-xs font-bold text-dim hover:border-fg hover:text-fg"
             disabled={busy}
             on:click={() => applyPermissionPreset("auth_admin")}
           >
             auth_admin
           </button>
           <button
-            class="border border-line px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-dim hover:border-fg hover:text-fg"
+            class="border border-line px-2.5 py-1 text-xs font-bold text-dim hover:border-fg hover:text-fg"
             disabled={busy}
             on:click={() => applyPermissionPreset("auth_user")}
           >
             auth_user
           </button>
         </div>
-        <span class="text-[10px] leading-4 text-dim">
+        <span class="text-xs leading-4 text-dim">
           Pre-fill resources for an admin (full /v1 access) or a normal self-service user. Paths use the current auth prefix — review before committing, then set this permission's name on the admin user (and Admin → permission = auth_admin).
         </span>
       </div>
@@ -152,11 +152,11 @@
 
     {#if editorSpec.namespaceExamples && !editorLoadedID}
       <div class="grid gap-2 bg-panel p-3">
-        <span class="t-label">RESERVED NAMESPACES</span>
+        <span class="t-label">Reserved namespaces</span>
         <div class="flex flex-wrap gap-px">
           {#each Object.keys(editorSpec.namespaceExamples ?? {}) as ns}
             <button
-              class={`border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] ${
+              class={`border px-2.5 py-1 text-xs font-bold ${
                 editorID.trim() === ns
                   ? "border-alert bg-alert text-white"
                   : "border-line text-dim hover:border-fg hover:text-fg"
@@ -176,13 +176,13 @@
     {#if advancedMode}
       <div class="grid min-w-0 content-start gap-px bg-line">
         <div class="flex flex-wrap items-center justify-between gap-2 bg-panel px-3 py-2">
-          <span class="t-label text-fg">PAYLOAD JSON</span>
-          <span class={`text-[10px] font-bold uppercase tracking-[0.15em] ${editorJSONError ? "text-alert" : "text-phosphor"}`}>
-            {editorJSONError ? "INVALID" : "VALID"}
+          <span class="t-label text-fg">Payload JSON</span>
+          <span class={`text-xs font-bold ${editorJSONError ?"text-alert" :"text-phosphor"}`}>
+            {editorJSONError ? "Invalid" : "Valid"}
           </span>
         </div>
         {#if editorJSONError}
-          <p class="bg-panel px-3 py-2 text-[11px] leading-4 text-alert">{editorJSONError}</p>
+          <p class="bg-panel px-3 py-2 text-xs leading-4 text-alert">{editorJSONError}</p>
         {/if}
         <textarea
           bind:value={editorJSON}
@@ -193,9 +193,9 @@
       </div>
     {:else if !simpleFormAvailable}
       <div class="grid gap-3 bg-panel p-4">
-        <p class="text-sm font-bold uppercase tracking-[0.12em] text-fg">No simple form for this namespace yet.</p>
+        <p class="text-sm font-bold text-fg">No simple form for this namespace yet.</p>
         <p class="max-w-2xl text-xs leading-5 text-dim">Reserved settings namespaces use field-based forms. Existing unsupported namespaces can still be reviewed in Advanced JSON.</p>
-        <button class="btn-t-solid w-fit" on:click={() => setAdvancedMode(true)}>OPEN ADVANCED JSON</button>
+        <button class="btn-t-solid w-fit" on:click={() => setAdvancedMode(true)}>Open advanced JSON</button>
       </div>
     {:else}
       <EditorSimpleForm
@@ -245,7 +245,7 @@
     {/if}
 
     {#if editorSpec.body === "raw" && !editorLoadedID}
-      <p class="bg-panel p-3 text-[10px] leading-4 tracking-[0.05em] text-dim">
+      <p class="bg-panel p-3 text-xs leading-4 text-dim">
         NEW RECORDS GET A GENERATED ID ON COMMIT WHEN THE API OWNS THE ID FIELD.
       </p>
     {/if}

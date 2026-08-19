@@ -19,6 +19,8 @@ const (
 	flowKindSAMLRelay     = "saml_relay"     // id: relay state, payload: samlRelay
 	flowKindSignup        = "signup"         // id: sha256(code), payload: signupFlow
 	flowKindPasswordReset = "password_reset" // id: sha256(code), payload: resetFlow
+	flowKindAuthorize     = "authorize"      // id: flow id, payload: authorizeFlow
+	flowKindRevoked       = "revoked"        // id: jti, payload: revokedToken
 )
 
 // CreateFlowCode stores a short-lived flow payload with an absolute expiry.

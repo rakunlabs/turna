@@ -45,11 +45,11 @@
   async function rotate() {
     const key = newKey.trim();
     if (!key) {
-      error = "NEW KEY IS REQUIRED";
+      error = "New key is required";
       return;
     }
 
-    if (!confirm("ROTATE THE RECORD ENCRYPTION KEY? All encrypted rows are re-encrypted now. You MUST set this key in the config before the next restart, or startup will fail.")) {
+    if (!confirm("Rotate the record encryption key? All encrypted rows are re-encrypted now. You MUST set this key in the config before the next restart, or startup will fail.")) {
       return;
     }
 
@@ -64,9 +64,9 @@
       rotatedKey = key;
       newKey = "";
       confirmUpdate = false;
-      flash(payload?.message ?? "ENCRYPTION KEY ROTATED");
+      flash(payload?.message ?? "Encryption key rotated");
     } catch (err) {
-      error = err instanceof Error ? err.message : "ENCRYPTION KEY ROTATION FAILED";
+      error = err instanceof Error ? err.message : "Encryption key rotation failed";
     } finally {
       apiBusy = false;
     }
@@ -75,9 +75,9 @@
   async function copyText(value: string) {
     try {
       await navigator.clipboard.writeText(value);
-      flash("COPIED TO CLIPBOARD");
+      flash("Copied to clipboard");
     } catch {
-      error = "CLIPBOARD UNAVAILABLE";
+      error = "Clipboard unavailable";
     }
   }
 </script>
@@ -85,20 +85,20 @@
 <div class="grid gap-px bg-line p-px">
   {#if error}
     <div class="flex items-center gap-3 bg-panel px-4 py-2">
-      <span class="bg-alert px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-white">FAULT</span>
-      <span class="text-xs uppercase tracking-[0.05em] text-alert">{error}</span>
+      <span class="bg-alert px-2 py-0.5 text-xs font-bold text-white">Fault</span>
+      <span class="text-xs text-alert">{error}</span>
     </div>
   {/if}
   {#if notice}
     <div class="flex items-center gap-3 bg-panel px-4 py-2">
-      <span class="bg-fg px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-crt">OK</span>
-      <span class="text-xs uppercase tracking-[0.05em]">{notice}</span>
+      <span class="bg-fg px-2 py-0.5 text-xs font-bold text-crt">Ok</span>
+      <span class="text-xs">{notice}</span>
     </div>
   {/if}
 
   <div class="bg-panel p-4">
-    <p class="t-label text-fg">[ ENCRYPTION ]</p>
-    <h3 class="mt-2 font-display text-3xl uppercase leading-none tracking-tight md:text-4xl">Record Encryption Key</h3>
+    <p class="t-label text-fg">Encryption</p>
+    <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Record Encryption Key</h3>
     <p class="mt-3 max-w-3xl text-xs leading-5 text-dim">
       User details, runtime settings, OAuth/SAML/LDAP configs and TOTP secrets are sealed at rest with AES-256-GCM
       using the static <span class="text-fg">encryption.key</span>. Rotating re-encrypts every encrypted row with a new
@@ -109,28 +109,28 @@
 
   {#if rotatedKey}
     <div class="grid gap-2 border-l-2 border-alert bg-panel p-4">
-      <span class="t-label text-alert">ROTATED — UPDATE CONFIG BEFORE RESTART</span>
-      <p class="max-w-3xl text-[11px] leading-5 text-dim">
+      <span class="t-label text-alert">Rotated — update config before restart</span>
+      <p class="max-w-3xl text-xs leading-5 text-dim">
         Set <span class="text-fg">encryption.key</span> to the value below in your static config. The next restart will
-        FAIL the startup canary check until you do. Other running instances must also be restarted with the new key.
+        fail the startup canary check until you do. Other running instances must also be restarted with the new key.
       </p>
-      <p class="break-all border border-line bg-crt p-3 text-[12px] font-bold text-fg">{rotatedKey}</p>
+      <p class="break-all border border-line bg-crt p-3 text-xs font-bold text-fg">{rotatedKey}</p>
       <div class="flex flex-wrap gap-2">
-        <button class="btn-t-solid" on:click={() => copyText(rotatedKey)}>[ COPY KEY ]</button>
-        <button class="btn-t" on:click={() => (rotatedKey = "")}>DISMISS</button>
+        <button class="btn-t-solid" on:click={() => copyText(rotatedKey)}>Copy key</button>
+        <button class="btn-t" on:click={() => (rotatedKey ="")}>Dismiss</button>
       </div>
     </div>
   {/if}
 
   <div class="border border-line bg-panel">
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2">
-      <span class="t-label text-fg">[ ROTATE ENCRYPTION KEY ]</span>
-      <button class="btn-t-solid" disabled={!canRotate} on:click={rotate}>[ ROTATE ]</button>
+      <span class="t-label text-fg">Rotate encryption key</span>
+      <button class="btn-t-solid" disabled={!canRotate} on:click={rotate}>Rotate</button>
     </div>
 
     <div class="grid gap-px bg-line p-px">
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">NEW ENCRYPTION KEY</span>
+        <span class="t-label">New encryption key</span>
         <input
           bind:value={newKey}
           class="field-t"
@@ -138,22 +138,22 @@
           spellcheck="false"
           placeholder="any text; base64 16/24/32-byte values are used as-is, anything else is SHA-256 derived"
         />
-        <span class="text-[10px] leading-4 text-dim">
+        <span class="text-xs leading-4 text-dim">
           Pick a strong secret you can store in your config/secret manager. This value is what you must put in
           <span class="text-fg">encryption.key</span>.
         </span>
       </label>
 
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold uppercase tracking-[0.15em]">
+      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
         <input
           bind:checked={confirmUpdate}
           type="checkbox"
-          class={`h-3.5 w-3.5 appearance-none border bg-crt checked:bg-alert ${confirmUpdate ? "border-line" : "border-alert"}`}
+          class={`h-3.5 w-3.5 appearance-none border bg-crt checked:bg-alert ${confirmUpdate ?"border-line" :"border-alert"}`}
         />
-        <span class={confirmUpdate ? "text-fg" : "text-alert"}>I WILL UPDATE encryption.key IN THE CONFIG BEFORE RESTART</span>
+        <span class={confirmUpdate ?"text-fg" :"text-alert"}>I WILL UPDATE encryption.key IN THE CONFIG BEFORE RESTART</span>
       </label>
 
-      <p class="bg-panel p-3 text-[11px] leading-4 text-dim">
+      <p class="bg-panel p-3 text-xs leading-4 text-dim">
         Rotation runs in a single transaction; if any row fails to re-encrypt it rolls back and the current key stays
         active. A no-op is reported when the new key matches the current one.
       </p>

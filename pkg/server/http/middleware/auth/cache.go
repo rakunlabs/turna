@@ -26,6 +26,48 @@ type AccessClient struct {
 	// RolesClaim overrides the global token roles_claim dot path for tokens
 	// issued to this client. Empty falls back to TokenSettings.GetRolesClaim().
 	RolesClaim string `json:"roles_claim"`
+
+	// ClientName is a human readable name shown on the consent page.
+	ClientName string `json:"client_name,omitempty"`
+	// RedirectURIs are exact-match redirect targets (RFC 7591 registration).
+	// When set they take precedence over the prefix-matched WhitelistURLs.
+	RedirectURIs []string `json:"redirect_uris,omitempty"`
+	// Public marks a client that authenticates without a secret; the
+	// authorization code flow then requires PKCE.
+	Public bool `json:"public,omitempty"`
+	// Dynamic marks a client created through RFC 7591 dynamic registration.
+	Dynamic bool `json:"dynamic,omitempty"`
+	// SkipConsent auto-approves the consent step for trusted first-party
+	// clients; the user still has to be logged in.
+	SkipConsent bool `json:"skip_consent,omitempty"`
+	// Resources are the RFC 8707 resource indicators this client may request.
+	// Empty allows any requested resource.
+	Resources []string `json:"resources,omitempty"`
+	// RegistrationToken is the sha256 hex of the RFC 7592 registration access
+	// token for dynamically registered clients.
+	RegistrationToken string `json:"registration_token,omitempty"`
+	// CreatedAt unix seconds; used to expire dynamic registrations.
+	CreatedAt int64 `json:"created_at,omitempty"`
+}
+
+// redirectURIAllowedForClient checks a redirect target against the client's
+// registration: exact RedirectURIs first, prefix WhitelistURLs otherwise.
+func (c AccessClient) redirectURIAllowedForClient(redirectURI string) bool {
+	if redirectURI == "" {
+		return false
+	}
+
+	if len(c.RedirectURIs) > 0 {
+		for _, uri := range c.RedirectURIs {
+			if uri == redirectURI {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	return redirectAllowed(redirectURI, c.WhitelistURLs)
 }
 
 // ProviderConfig is the decoded OAuth provider config stored in auth_oauth_providers.
@@ -214,6 +256,69 @@ func (d DeviceSettings) GetInterval() int {
 	}
 
 	return 5
+}
+
+// AuthorizeSettings is the decoded "authorize" setting namespace. It controls
+// the local browser-based authorization code flow (consent screen).
+type AuthorizeSettings struct {
+	// Disabled turns off the local /oauth2/authorize endpoint.
+	Disabled bool `json:"disabled"`
+	// FlowLifetime of a pending consent. Default 10m.
+	FlowLifetime string `json:"flow_lifetime"`
+	// LoginURL is where anonymous browsers are sent (with a ?redirect_path=
+	// back reference, matching the login middleware convention). Empty shows
+	// an error asking the user to log in first.
+	LoginURL string `json:"login_url"`
+
+	flowLifetime time.Duration
+}
+
+// validateDuration checks an optional duration string setting.
+func validateDuration(v string) error {
+	if v == "" {
+		return nil
+	}
+
+	_, err := str2duration.ParseDuration(v)
+
+	return err
+}
+
+func (a AuthorizeSettings) GetFlowLifetime() time.Duration {
+	if a.flowLifetime > 0 {
+		return a.flowLifetime
+	}
+
+	return 10 * time.Minute
+}
+
+// RegistrationSettings is the decoded "registration" setting namespace
+// (RFC 7591 dynamic client registration). Registration is anonymous, so it
+// is off by default and must be enabled explicitly.
+type RegistrationSettings struct {
+	// Enabled allows dynamic client registration through /oauth2/register.
+	Enabled bool `json:"enabled"`
+	// ClientLifetime expires dynamic clients after this duration.
+	// Empty keeps them forever.
+	ClientLifetime string `json:"client_lifetime"`
+	// DefaultScope granted to dynamic clients when they do not request one.
+	DefaultScope []string `json:"default_scope"`
+	// MaxClients caps the number of stored dynamic clients. Default 1000.
+	MaxClients int `json:"max_clients"`
+
+	clientLifetime time.Duration
+}
+
+func (r RegistrationSettings) GetClientLifetime() time.Duration {
+	return r.clientLifetime
+}
+
+func (r RegistrationSettings) GetMaxClients() int {
+	if r.MaxClients > 0 {
+		return r.MaxClients
+	}
+
+	return 1000
 }
 
 // TokenExchangeSettings is the decoded "token_exchange" setting namespace (RFC 8693).
@@ -497,6 +602,8 @@ type Snapshot struct {
 	MTLS          MTLSSettings
 	SAMLKey       samlSetting
 	CustomInfo    CustomInfoSettings
+	Authorize     AuthorizeSettings
+	Registration  RegistrationSettings
 }
 
 // Cache keeps the snapshot up to date with polling and explicit reloads.
@@ -645,6 +752,16 @@ func (c *Cache) Reload(ctx context.Context) error {
 	customInfoRaw, err := c.store.GetSettingValue(ctx, "custom_info")
 	if err != nil {
 		return fmt.Errorf("load custom_info settings: %w", err)
+	}
+
+	authorizeRaw, err := c.store.GetSettingValue(ctx, "authorize")
+	if err != nil {
+		return fmt.Errorf("load authorize settings: %w", err)
+	}
+
+	registrationRaw, err := c.store.GetSettingValue(ctx, "registration")
+	if err != nil {
+		return fmt.Errorf("load registration settings: %w", err)
 	}
 
 	samlProvidersRaw, err := c.store.LoadConfigResources(ctx, samlProviderKind)
@@ -873,6 +990,28 @@ func (c *Cache) Reload(ctx context.Context) error {
 	if customInfoRaw != nil {
 		if err := json.Unmarshal(customInfoRaw, &snap.CustomInfo); err != nil {
 			slog.Warn("invalid custom_info settings", slog.String("error", err.Error()))
+		}
+	}
+
+	if authorizeRaw != nil {
+		if err := json.Unmarshal(authorizeRaw, &snap.Authorize); err != nil {
+			slog.Warn("invalid authorize settings", slog.String("error", err.Error()))
+		}
+	}
+	if snap.Authorize.FlowLifetime != "" {
+		if d, err := str2duration.ParseDuration(snap.Authorize.FlowLifetime); err == nil {
+			snap.Authorize.flowLifetime = d
+		}
+	}
+
+	if registrationRaw != nil {
+		if err := json.Unmarshal(registrationRaw, &snap.Registration); err != nil {
+			slog.Warn("invalid registration settings", slog.String("error", err.Error()))
+		}
+	}
+	if snap.Registration.ClientLifetime != "" {
+		if d, err := str2duration.ParseDuration(snap.Registration.ClientLifetime); err == nil {
+			snap.Registration.clientLifetime = d
 		}
 	}
 

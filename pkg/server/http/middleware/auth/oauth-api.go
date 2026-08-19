@@ -40,6 +40,9 @@ type AccessTokenRequest struct {
 	SubjectTokenType string `form:"subject_token_type" json:"subject_token_type"`
 	// CodeVerifier for PKCE (RFC 7636) on the authorization_code grant.
 	CodeVerifier string `form:"code_verifier" json:"code_verifier"`
+	// Resource is an RFC 8707 resource indicator; it lands in the access
+	// token audience so resource servers can check it.
+	Resource string `form:"resource" json:"resource"`
 }
 
 type AccessTokenResponse struct {
@@ -105,15 +108,46 @@ func clientCredentials(r *http.Request, req AccessTokenRequest) (string, string)
 	return req.ClientID, req.ClientSecret
 }
 
+// tokenAudience builds the aud claim: the fixed local audience plus any
+// RFC 8707 resource indicators granted with the token.
+func tokenAudience(resources []string) any {
+	if len(resources) == 0 {
+		return "turna-auth"
+	}
+
+	aud := make([]string, 0, len(resources)+1)
+	aud = append(aud, "turna-auth")
+	aud = append(aud, resources...)
+
+	return aud
+}
+
+// audienceResources extracts the RFC 8707 resources back out of an aud claim.
+func audienceResources(aud any) []string {
+	list, ok := aud.([]any)
+	if !ok {
+		return nil
+	}
+
+	resources := make([]string, 0, len(list))
+	for _, v := range list {
+		if s, ok := v.(string); ok && s != "" && s != "turna-auth" {
+			resources = append(resources, s)
+		}
+	}
+
+	return resources
+}
+
 // writeToken issues access+refresh tokens for the user.
 func (m *Auth) writeToken(w http.ResponseWriter, r *http.Request, user *data.UserExtended, clientID string, scope, defScope []string) {
-	m.writeTokenExt(w, r, user, clientID, scope, defScope, "", "")
+	m.writeTokenExt(w, r, user, clientID, scope, defScope, "", "", nil)
 }
 
 // writeTokenExt issues access+refresh tokens for the user, optionally
-// tagging the response with an RFC 8693 issued_token_type and embedding
-// the OIDC nonce in the id_token.
-func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.UserExtended, clientID string, scope, defScope []string, issuedTokenType, nonce string) {
+// tagging the response with an RFC 8693 issued_token_type, embedding
+// the OIDC nonce in the id_token and adding RFC 8707 resource audiences.
+func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.UserExtended, clientID string, scope, defScope []string, issuedTokenType, nonce string, resources []string) {
 	ctx := r.Context()
 	signer, err := m.jwtRuntime(ctx)
 	if err != nil {
@@ -130,7 +164,8 @@ func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.
 	tokenCfg := sn.Token
 
 	claimsAccess := map[string]any{
-		"aud":                "turna-auth",
+		"aud":                tokenAudience(resources),
+		"jti":                ulid.Make().String(),
 		"sub":                user.ID,
 		"azp":                clientID,
 		"name":               user.Details["name"],
@@ -205,7 +240,8 @@ func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.
 	}
 
 	claimsRefresh := map[string]any{
-		"aud": "turna-auth",
+		"aud": tokenAudience(resources),
+		"jti": ulid.Make().String(),
 		"sub": user.ID,
 		"azp": clientID,
 		"typ": "Refresh",
@@ -303,6 +339,23 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// RFC 8707 resource indicator applies to the direct grants; the
+	// authorization_code grant resolves it against the stored code below.
+	var reqResources []string
+	if accessTokenRequest.Resource != "" {
+		if err := validateResource(accessTokenRequest.Resource); err != nil {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_target",
+				ErrorDescription: err.Error(),
+				code:             http.StatusBadRequest,
+			})
+
+			return
+		}
+
+		reqResources = []string{accessTokenRequest.Resource}
+	}
+
 	switch accessTokenRequest.GrantType {
 	case "client_credentials":
 		// certificate based client authentication (RFC 8705 style) when no
@@ -321,7 +374,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 
 			scope, _ := user.Details["scope"].(string)
 
-			m.writeToken(w, r, user, clientID, nil, splitFields(scope))
+			m.writeTokenExt(w, r, user, clientID, nil, splitFields(scope), "", "", reqResources)
 
 			return
 		}
@@ -353,7 +406,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 
 		scope, _ := user.Details["scope"].(string)
 
-		m.writeToken(w, r, user, clientID, nil, splitFields(scope))
+		m.writeTokenExt(w, r, user, clientID, nil, splitFields(scope), "", "", reqResources)
 
 		return
 	case "password":
@@ -493,7 +546,17 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		m.writeToken(w, r, user, clientID, splitFields(accessTokenRequest.Scope), accessClient.Scope)
+		if !resourcesAllowed(reqResources, accessClient.Resources) {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_target",
+				ErrorDescription: "requested resource not allowed",
+				code:             http.StatusBadRequest,
+			})
+
+			return
+		}
+
+		m.writeTokenExt(w, r, user, clientID, splitFields(accessTokenRequest.Scope), accessClient.Scope, "", "", reqResources)
 
 		return
 	case "refresh_token":
@@ -549,6 +612,17 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// RFC 7009: a revoked refresh token must not mint new tokens
+		if jti, _ := claims["jti"].(string); m.isTokenRevoked(r.Context(), jti) {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_grant",
+				ErrorDescription: "token revoked",
+				code:             http.StatusUnauthorized,
+			})
+
+			return
+		}
+
 		userID, _ := claims["sub"].(string)
 		user, err := m.cache.GetUser(data.GetUserRequest{ID: userID, AddScopeRoles: true})
 		if err != nil {
@@ -563,7 +637,8 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 
 		scope, _ := claims["scope"].(string)
 
-		m.writeToken(w, r, user, clientID, splitFields(scope), nil)
+		// resource audiences granted at login survive the refresh
+		m.writeTokenExt(w, r, user, clientID, splitFields(scope), nil, "", "", audienceResources(claims["aud"]))
 
 		return
 	case "authorization_code":
@@ -631,6 +706,28 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 
 		_ = codeStore.Code.Delete(r.Context(), "code_"+accessTokenRequest.Code)
 
+		// codes issued by the local authorize endpoint are bound to the
+		// requesting client and redirect target (RFC 6749 §4.1.3)
+		if codeValue.ClientID != "" && codeValue.ClientID != clientID {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_grant",
+				ErrorDescription: "code was issued to another client",
+				code:             http.StatusUnauthorized,
+			})
+
+			return
+		}
+
+		if codeValue.RedirectURI != "" && codeValue.RedirectURI != accessTokenRequest.RedirectURI {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_grant",
+				ErrorDescription: "redirect_uri not match",
+				code:             http.StatusUnauthorized,
+			})
+
+			return
+		}
+
 		// PKCE: a stored challenge requires a matching verifier and a sent
 		// verifier requires a stored challenge (no bypass for public clients)
 		if codeValue.CodeChallenge != "" || accessTokenRequest.CodeVerifier != "" {
@@ -644,6 +741,38 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 
 				return
 			}
+		}
+
+		// RFC 8707: a resource sent at the token endpoint must stay within
+		// what the authorization request granted (or the client allows)
+		resources := codeValue.Resources
+		if accessTokenRequest.Resource != "" {
+			if err := validateResource(accessTokenRequest.Resource); err != nil {
+				httputil.HandleError(w, AccessTokenErrorResponse{
+					Error:            "invalid_target",
+					ErrorDescription: err.Error(),
+					code:             http.StatusBadRequest,
+				})
+
+				return
+			}
+
+			allowed := codeValue.Resources
+			if len(allowed) == 0 {
+				allowed = accessClient.Resources
+			}
+
+			if !resourcesAllowed([]string{accessTokenRequest.Resource}, allowed) {
+				httputil.HandleError(w, AccessTokenErrorResponse{
+					Error:            "invalid_target",
+					ErrorDescription: "requested resource not allowed",
+					code:             http.StatusBadRequest,
+				})
+
+				return
+			}
+
+			resources = []string{accessTokenRequest.Resource}
 		}
 
 		user, err := m.GetOrCreateUser(r.Context(), data.GetUserRequest{
@@ -661,7 +790,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// nonce from the original authorization request lands in the id_token
-		m.writeTokenExt(w, r, user, clientID, codeValue.Scope, accessClient.Scope, "", codeValue.Nonce)
+		m.writeTokenExt(w, r, user, clientID, codeValue.Scope, accessClient.Scope, "", codeValue.Nonce, resources)
 
 		return
 	case grantTypeDeviceCode:
@@ -744,6 +873,16 @@ func (m *Auth) APIUserInfo(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_token",
 			ErrorDescription: err.Error(),
+			code:             http.StatusUnauthorized,
+		})
+
+		return
+	}
+
+	if jti, _ := claims["jti"].(string); m.isTokenRevoked(r.Context(), jti) {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_token",
+			ErrorDescription: "token revoked",
 			code:             http.StatusUnauthorized,
 		})
 
@@ -898,9 +1037,11 @@ func (m *Auth) CustomInfoPreviewAPI(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, Response[map[string]any]{Payload: result})
 }
 
-// APIWellKnown returns the OpenID configuration for this issuer.
-func (m *Auth) APIWellKnown(w http.ResponseWriter, r *http.Request) {
+// serverMetadata builds the shared OIDC discovery / RFC 8414 authorization
+// server metadata document.
+func (m *Auth) serverMetadata(r *http.Request, custom string) map[string]any {
 	issuer := m.issuerURL(r)
+	sn := m.cache.Snapshot()
 
 	alg := "RS256"
 	if signer, err := m.jwtRuntime(r.Context()); err == nil {
@@ -911,18 +1052,21 @@ func (m *Auth) APIWellKnown(w http.ResponseWriter, r *http.Request) {
 	// {custom} segment only points userinfo at the per-name custom_info route
 	// so discovery-driven clients pick up the tailored claims automatically.
 	userinfoEndpoint := issuer + "/userinfo"
-	if custom := r.PathValue("custom"); custom != "" {
+	if custom != "" {
 		userinfoEndpoint = issuer + "/userinfo/" + url.PathEscape(custom)
 	}
 
-	httputil.JSON(w, http.StatusOK, map[string]any{
+	metadata := map[string]any{
 		"issuer":                        issuer,
-		"authorization_endpoint":        issuer + "/auth",
+		"authorization_endpoint":        issuer + "/authorize",
 		"token_endpoint":                issuer + "/token",
 		"userinfo_endpoint":             userinfoEndpoint,
 		"jwks_uri":                      issuer + "/certs",
 		"device_authorization_endpoint": issuer + "/device_authorization",
+		"revocation_endpoint":           issuer + "/revoke",
+		"introspection_endpoint":        issuer + "/introspect",
 		"response_types_supported":      []string{"code"},
+		"response_modes_supported":      []string{"query"},
 		"grant_types_supported": []string{
 			"authorization_code", "client_credentials", "password", "refresh_token",
 			grantTypeDeviceCode, grantTypeTokenExchange, grantTypeEmailCode,
@@ -930,7 +1074,35 @@ func (m *Auth) APIWellKnown(w http.ResponseWriter, r *http.Request) {
 		"subject_types_supported":               []string{"public"},
 		"id_token_signing_alg_values_supported": []string{alg},
 		"code_challenge_methods_supported":      []string{"S256", "plain"},
-	})
+		"scopes_supported":                      []string{"openid"},
+		"token_endpoint_auth_methods_supported": []string{
+			"client_secret_basic", "client_secret_post", "none",
+		},
+		"revocation_endpoint_auth_methods_supported": []string{
+			"client_secret_basic", "client_secret_post",
+		},
+		"introspection_endpoint_auth_methods_supported": []string{
+			"client_secret_basic", "client_secret_post",
+		},
+	}
+
+	if sn.Registration.Enabled {
+		metadata["registration_endpoint"] = issuer + "/register"
+	}
+
+	return metadata
+}
+
+// APIWellKnown returns the OpenID configuration for this issuer.
+func (m *Auth) APIWellKnown(w http.ResponseWriter, r *http.Request) {
+	httputil.JSON(w, http.StatusOK, m.serverMetadata(r, r.PathValue("custom")))
+}
+
+// APIAuthServerMetadata returns the RFC 8414 authorization server metadata.
+// It serves both the path-suffix variant under the issuer and the RFC-style
+// root path-insertion variant (/.well-known/oauth-authorization-server/...).
+func (m *Auth) APIAuthServerMetadata(w http.ResponseWriter, r *http.Request) {
+	httputil.JSON(w, http.StatusOK, m.serverMetadata(r, ""))
 }
 
 func (m *Auth) issuerURL(r *http.Request) string {
@@ -965,7 +1137,7 @@ func (m *Auth) redirectURIAllowed(clientID, redirectURI string) bool {
 
 	if clientID != "" {
 		if client, ok := sn.OAuthClients[clientID]; ok {
-			return redirectAllowed(redirectURI, client.WhitelistURLs)
+			return client.redirectURIAllowedForClient(redirectURI)
 		}
 
 		// service account fallback client
@@ -1077,6 +1249,19 @@ func (m *Auth) APIAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resources := r.URL.Query()["resource"]
+	for _, resource := range resources {
+		if err := validateResource(resource); err != nil {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_target",
+				ErrorDescription: err.Error(),
+				code:             http.StatusBadRequest,
+			})
+
+			return
+		}
+	}
+
 	state := ulid.Make().String()
 
 	stateValue, err := oauth2store.Encode(oauth2store.State{
@@ -1087,6 +1272,8 @@ func (m *Auth) APIAuth(w http.ResponseWriter, r *http.Request) {
 		Nonce:               r.URL.Query().Get("nonce"),
 		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
+		ClientID:            r.URL.Query().Get("client_id"),
+		Resources:           resources,
 	})
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
@@ -1275,6 +1462,10 @@ func (m *Auth) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 		Nonce:               stateValue.Nonce,
 		CodeChallenge:       stateValue.CodeChallenge,
 		CodeChallengeMethod: stateValue.CodeChallengeMethod,
+		// bind the code to the requesting client when it identified itself;
+		// RedirectURI stays empty here to keep older redeemers working.
+		ClientID:  stateValue.ClientID,
+		Resources: stateValue.Resources,
 	})
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{

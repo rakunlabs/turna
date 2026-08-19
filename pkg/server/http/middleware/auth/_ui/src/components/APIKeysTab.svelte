@@ -59,7 +59,7 @@
     { label: "7D", value: "168h" },
     { label: "30D", value: "720h" },
     { label: "90D", value: "2160h" },
-    { label: "NO EXPIRY", value: "" },
+    { label: "No expiry", value: "" },
   ];
 
   $: working = busy || apiBusy;
@@ -128,7 +128,7 @@
   }
 
   function ownerLabel(owner: Owner | null | undefined) {
-    if (!owner) return "UNKNOWN OWNER";
+    if (!owner) return "Unknown owner";
     const aliases = owner.alias?.filter(Boolean).join(", ") || owner.id;
     const name = typeof owner.details?.name === "string" ? owner.details.name : "";
     const email = typeof owner.details?.email === "string" ? owner.details.email : "";
@@ -181,7 +181,7 @@
     } catch (err) {
       owners = [];
       keys = [];
-      fail(err, "CANNOT LOAD API KEY PRINCIPALS");
+      fail(err, "Cannot load API key principals");
     } finally {
       apiBusy = false;
     }
@@ -189,7 +189,7 @@
 
   async function createKey() {
     if (!selectedOwnerID) {
-      error = "OWNER IS REQUIRED";
+      error = "Owner is required";
       return;
     }
 
@@ -213,9 +213,9 @@
       keyPermissionIDs = "";
       await load();
       view = "list";
-      flash("API KEY CREATED - COPY IT NOW, IT IS SHOWN ONCE");
+      flash("API key created - copy it now, it is shown once");
     } catch (err) {
-      fail(err, "API KEY CREATE FAILED");
+      fail(err, "API key create failed");
     } finally {
       apiBusy = false;
     }
@@ -237,9 +237,9 @@
       await load();
       view = "list";
       editKey = null;
-      flash("API KEY UPDATED - CHANGES APPLY IMMEDIATELY");
+      flash("API key updated - changes apply immediately");
     } catch (err) {
-      fail(err, "API KEY UPDATE FAILED");
+      fail(err, "API key update failed");
     } finally {
       apiBusy = false;
     }
@@ -255,9 +255,9 @@
       await load();
       view = "list";
       editKey = null;
-      flash("API KEY REVOKED");
+      flash("API key revoked");
     } catch (err) {
-      fail(err, "API KEY REVOKE FAILED");
+      fail(err, "API key revoke failed");
     } finally {
       apiBusy = false;
     }
@@ -266,16 +266,16 @@
   async function copyText(value: string) {
     try {
       await navigator.clipboard.writeText(value);
-      flash("COPIED TO CLIPBOARD");
+      flash("Copied to clipboard");
     } catch {
-      error = "CLIPBOARD UNAVAILABLE";
+      error = "Clipboard unavailable";
     }
   }
 
   function keyStatus(key: APIKeyMeta): { label: string; ok: boolean } {
-    if (key.disabled) return { label: "DISABLED", ok: false };
-    if (key.expires_at && new Date(key.expires_at).getTime() < Date.now()) return { label: "EXPIRED", ok: false };
-    return { label: "ACTIVE", ok: true };
+    if (key.disabled) return { label: "Disabled", ok: false };
+    if (key.expires_at && new Date(key.expires_at).getTime() < Date.now()) return { label: "Expired", ok: false };
+    return { label: "Active", ok: true };
   }
 
   function resetDraft(key: APIKeyMeta) {
@@ -317,14 +317,14 @@
 <div class="grid gap-px bg-line p-px">
   {#if error}
     <div class="flex items-center gap-3 bg-panel px-4 py-2">
-      <span class="bg-alert px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-white">FAULT</span>
-      <span class="text-xs uppercase tracking-[0.05em] text-alert">{error}</span>
+      <span class="bg-alert px-2 py-0.5 text-xs font-bold text-white">Fault</span>
+      <span class="text-xs text-alert">{error}</span>
     </div>
   {/if}
   {#if notice}
     <div class="flex items-center gap-3 bg-panel px-4 py-2">
-      <span class="bg-fg px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-crt">OK</span>
-      <span class="text-xs uppercase tracking-[0.05em]">{notice}</span>
+      <span class="bg-fg px-2 py-0.5 text-xs font-bold text-crt">Ok</span>
+      <span class="text-xs">{notice}</span>
     </div>
   {/if}
 
@@ -332,53 +332,53 @@
     <div class="grid gap-3 bg-panel p-4">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <span class="t-label text-fg">[ API KEYS ]</span>
-          <h3 class="mt-2 font-display text-3xl uppercase leading-none tracking-tight md:text-4xl">Machine Principals</h3>
+          <span class="t-label text-fg">API keys</span>
+          <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Machine Principals</h3>
         </div>
         <div class="flex flex-wrap gap-px">
-          <button class="btn-t-solid" disabled={working || apiKeysDisabled} on:click={openCreate}>[+] NEW API KEY</button>
-          <button class="btn-t border-0 bg-crt" disabled={working} on:click={openSettings}>[ SETTINGS ]</button>
-          <button class="btn-t border-0 bg-crt" disabled={working} on:click={load}>[ REFRESH ]</button>
+          <button class="btn-t-solid" disabled={working || apiKeysDisabled} on:click={openCreate}>+ NEW API KEY</button>
+          <button class="btn-t border-0 bg-crt" disabled={working} on:click={openSettings}>Settings</button>
+          <button class="btn-t border-0 bg-crt" disabled={working} on:click={load}>Refresh</button>
         </div>
       </div>
       <p class="max-w-3xl text-xs leading-5 text-dim">
         API keys are static machine credentials owned by a user or service account. They carry their own role and permission IDs, are validated against the database on every request, and stop working immediately when revoked or disabled.
       </p>
       {#if apiKeysDisabled}
-        <p class="t-label text-alert">/// API KEY CREATION AND VALIDATION ARE DISABLED — ENABLE THEM IN [ SETTINGS ]</p>
+        <p class="t-label text-alert">API key creation and validation are disabled — enable them in settings</p>
       {/if}
     </div>
 
     {#if createdKey}
       <div class="grid gap-2 border-l-2 border-alert bg-panel p-4">
         <span class="t-label text-alert">NEW KEY — SHOWN ONCE, COPY IT NOW</span>
-        <p class="break-all text-[12px] font-bold text-fg">{createdKey}</p>
+        <p class="break-all text-xs font-bold text-fg">{createdKey}</p>
         <div class="flex flex-wrap gap-2">
-          <button class="btn-t-solid" on:click={() => copyText(createdKey)}>[ COPY KEY ]</button>
-          <button class="btn-t" on:click={() => (createdKey = "")}>DISMISS</button>
+          <button class="btn-t-solid" on:click={() => copyText(createdKey)}>Copy key</button>
+          <button class="btn-t" on:click={() => (createdKey ="")}>Dismiss</button>
         </div>
       </div>
     {/if}
 
     <div class="bg-panel">
       <div class="flex items-center justify-between border-b border-line px-4 py-2">
-        <span class="t-label text-fg">[ KEY PRINCIPALS ] / REC.COUNT {String(keys.length).padStart(3, "0")}</span>
-        <span class="t-label">HASHES ONLY STORED</span>
+        <span class="t-label text-fg">Key principals / REC.COUNT {String(keys.length).padStart(3,"0")}</span>
+        <span class="t-label">Hashes only stored</span>
       </div>
 
       {#if keys.length === 0}
         <div class="grid min-h-48 place-items-center p-8 text-center">
           <div>
-            <p class="text-sm font-bold uppercase tracking-[0.2em]">/// NO API KEYS ///</p>
-            <p class="t-label mt-3">PRESS [+] NEW API KEY TO ISSUE A MACHINE CREDENTIAL</p>
+            <p class="text-sm font-bold">No API keys</p>
+            <p class="t-label mt-3">Press + new API key to issue a machine credential</p>
           </div>
         </div>
       {:else}
         <div class="hidden grid-cols-[1fr,1fr,110px,130px] gap-4 border-b border-line px-4 py-2 md:grid">
-          <span class="t-label text-fg">NAME / PRINCIPAL</span>
-          <span class="t-label text-fg">OWNER</span>
-          <span class="t-label text-fg">STATUS</span>
-          <span class="t-label text-right text-fg">ACTIONS</span>
+          <span class="t-label text-fg">Name / principal</span>
+          <span class="t-label text-fg">Owner</span>
+          <span class="t-label text-fg">Status</span>
+          <span class="t-label text-right text-fg">Actions</span>
         </div>
         <div class="divide-y divide-line">
           {#each keys as key, index}
@@ -386,32 +386,32 @@
             <div class="grid gap-2 px-4 py-3 md:grid-cols-[1fr,1fr,110px,130px] md:items-center md:gap-4">
               <div class="min-w-0">
                 <p class="truncate text-sm font-bold text-fg">
-                  <span class="mr-2 text-[10px] font-medium text-dim">{String(index + 1).padStart(2, "0")}</span>{key.name || key.id}
+                  <span class="mr-2 text-xs font-medium text-dim">{String(index + 1).padStart(2,"0")}</span>{key.name || key.id}
                 </p>
-                <p class="mt-0.5 truncate pl-6 text-[11px] text-dim">api-key:{key.id}</p>
+                <p class="mt-0.5 truncate pl-6 text-xs text-dim">api-key:{key.id}</p>
               </div>
-              <p class="min-w-0 truncate text-[11px] text-dim">{ownerLabelFromID(key.user_id)}</p>
+              <p class="min-w-0 truncate text-xs text-dim">{ownerLabelFromID(key.user_id)}</p>
               <div>
                 {#if status.ok}
-                  <span class="text-[11px] font-bold uppercase tracking-[0.1em] text-fg">[ {status.label} ]</span>
+                  <span class="text-xs font-bold text-fg">[ {status.label} ]</span>
                 {:else}
-                  <span class="text-[11px] font-bold uppercase tracking-[0.1em] text-alert">[ {status.label} ]</span>
+                  <span class="text-xs font-bold text-alert">[ {status.label} ]</span>
                 {/if}
               </div>
               <div class="flex gap-px md:justify-end">
                 <button
-                  class="border border-line px-3 py-1 text-[11px] font-bold uppercase tracking-[0.1em] text-fg hover:bg-fg hover:text-crt"
+                  class="rounded-md border border-line px-3 py-1 text-xs font-medium text-fg hover:bg-panel-hover"
                   disabled={working}
                   on:click={() => openEdit(key)}
                 >
-                  EDIT
+                  Edit
                 </button>
                 <button
-                  class="border border-line px-3 py-1 text-[11px] font-bold uppercase tracking-[0.1em] text-alert hover:bg-alert hover:text-white"
+                  class="rounded-md border border-alert/40 px-3 py-1 text-xs font-medium text-alert hover:bg-alert hover:text-white"
                   disabled={working}
                   on:click={() => revokeKey(key.id)}
                 >
-                  REVOKE
+                  Revoke
                 </button>
               </div>
             </div>
@@ -424,20 +424,20 @@
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2">
         <div class="flex items-center gap-3">
           <button class="btn-t border-0 bg-crt" disabled={working} on:click={backToList}>[ &lt; BACK ]</button>
-          <span class="t-label text-fg">NEW API KEY / <span class="text-alert">DRAFT</span></span>
+          <span class="t-label text-fg">NEW API KEY / <span class="text-alert">Draft</span></span>
         </div>
-        <button class="btn-t-solid" disabled={working || !selectedOwnerID || apiKeysDisabled} on:click={createKey}>[ CREATE API KEY ]</button>
+        <button class="btn-t-solid" disabled={working || !selectedOwnerID || apiKeysDisabled} on:click={createKey}>Create API key</button>
       </div>
 
       {#if apiKeysDisabled}
-        <p class="border-b border-line bg-panel px-4 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-alert">
-          API KEY CREATION IS DISABLED — ENABLE IT IN SETTINGS FIRST
+        <p class="border-b border-line bg-panel px-4 py-2 text-xs font-bold text-alert">
+          API key creation is disabled — enable it in settings first
         </p>
       {/if}
 
       <div class="grid gap-px bg-line p-px">
         <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">OWNER</span>
+          <span class="t-label">Owner</span>
           <select bind:value={selectedOwnerID} class="field-t">
             <option value="">select owner</option>
             {#each owners as owner}
@@ -445,20 +445,20 @@
             {/each}
           </select>
           {#if selectedOwner}
-            <span class="text-[10px] leading-4 text-dim">ROLES: {accessIDs(selectedOwner, "roles")} / PERMISSIONS: {accessIDs(selectedOwner, "permissions")}</span>
+            <span class="text-xs leading-4 text-dim">ROLES: {accessIDs(selectedOwner,"roles")} / PERMISSIONS: {accessIDs(selectedOwner,"permissions")}</span>
           {/if}
         </label>
         <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">KEY NAME</span>
+          <span class="t-label">Key name</span>
           <input bind:value={keyName} class="field-t" placeholder="ci-pipeline" />
         </label>
         <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">LIFETIME / EXPIRES IN</span>
+          <span class="t-label">Lifetime / expires in</span>
           <input bind:value={expiresIn} class="field-t" placeholder="720h; empty = no expiry" />
           <div class="mt-1 flex flex-wrap gap-px">
             {#each presets as preset}
               <button
-                class={`border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] ${expiresIn === preset.value ? "border-alert bg-alert text-white" : "border-line text-dim hover:text-fg"}`}
+                class={`border px-2.5 py-1 text-xs font-bold ${expiresIn === preset.value ?"border-alert bg-alert text-white" :"border-line text-dim hover:text-fg"}`}
                 on:click={() => (expiresIn = preset.value)}
               >
                 {preset.label}
@@ -466,17 +466,17 @@
             {/each}
           </div>
           {#if maxLifetime}
-            <span class="text-[10px] leading-4 text-dim">MAX LIFETIME CAP: {maxLifetime} — LONGER REQUESTS ARE SHORTENED</span>
+            <span class="text-xs leading-4 text-dim">MAX LIFETIME CAP: {maxLifetime} — LONGER REQUESTS ARE SHORTENED</span>
           {/if}
         </label>
         <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">ROLE IDS</span>
+          <span class="t-label">Role IDs</span>
           <input bind:value={keyRoleIDs} class="field-t" placeholder="role-id-a, role-id-b" />
         </label>
         <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">PERMISSION IDS</span>
+          <span class="t-label">Permission IDs</span>
           <input bind:value={keyPermissionIDs} class="field-t" placeholder="perm-id-a, perm-id-b" />
-          <span class="text-[10px] leading-4 text-dim">Leave role/permission IDs empty to inherit the owner's access.</span>
+          <span class="text-xs leading-4 text-dim">Leave role/permission IDs empty to inherit the owner's access.</span>
         </label>
       </div>
     </div>
@@ -488,42 +488,42 @@
           <span class="t-label text-fg">EDIT KEY / <span class="text-dim">{editKey.id}</span></span>
         </div>
         <div class="flex flex-wrap gap-px">
-          <button class="btn-t-solid" disabled={working} on:click={() => editKey && saveKey(editKey)}>[ SAVE ]</button>
+          <button class="btn-t-solid" disabled={working} on:click={() => editKey && saveKey(editKey)}>Save</button>
           <button
-            class="border border-line px-3 py-1 text-[11px] font-bold uppercase tracking-[0.1em] text-alert hover:bg-alert hover:text-white"
+            class="rounded-md border border-alert/40 px-3 py-1 text-xs font-medium text-alert hover:bg-alert hover:text-white"
             disabled={working}
             on:click={() => editKey && revokeKey(editKey.id)}
           >
-            REVOKE
+            Revoke
           </button>
         </div>
       </div>
 
       <div class="grid gap-px bg-line p-px">
         <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">NAME</span>
+          <span class="t-label">Name</span>
           <input bind:value={editKey.draft_name} class="field-t" placeholder={editKey.id} />
         </label>
         <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">ROLE IDS</span>
+          <span class="t-label">Role IDs</span>
           <input bind:value={editKey.draft_role_ids} class="field-t" placeholder="role-id-a, role-id-b" />
         </label>
         <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">PERMISSION IDS</span>
+          <span class="t-label">Permission IDs</span>
           <input bind:value={editKey.draft_permission_ids} class="field-t" placeholder="perm-id-a, perm-id-b" />
         </label>
-        <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold uppercase tracking-[0.15em]">
+        <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
           <input bind:checked={editKey.disabled} type="checkbox" class={checkboxClass(!editKey.disabled, true)} />
-          <span class={editKey.disabled ? "text-alert" : "text-dim"}>{editKey.disabled ? "DISABLED" : "ENABLED"}</span>
+          <span class={editKey.disabled ?"text-alert" :"text-dim"}>{editKey.disabled ?"Disabled" :"Enabled"}</span>
         </label>
-        <div class="bg-panel p-3 text-[11px] leading-5 text-dim">
+        <div class="bg-panel p-3 text-xs leading-5 text-dim">
           <p class="break-all">
-            OWNER {ownerLabelFromID(editKey.user_id)} / PRINCIPAL api-key:{editKey.id} / REV {editKey.revision}
+            Owner {ownerLabelFromID(editKey.user_id)} / principal api-key:{editKey.id} / rev {editKey.revision}
           </p>
           <p class="break-all">
-            CREATED {editKey.created_at} / UPDATED {editKey.updated_at}
-            {#if editKey.expires_at} / EXPIRES {editKey.expires_at}{:else} / NO EXPIRY{/if}
-            {#if editKey.last_used_at} / LAST USED {editKey.last_used_at}{/if}
+            Created {editKey.created_at} / updated {editKey.updated_at}
+            {#if editKey.expires_at} / expires {editKey.expires_at}{:else} / no expiry{/if}
+            {#if editKey.last_used_at} / last used {editKey.last_used_at}{/if}
           </p>
         </div>
       </div>
@@ -533,41 +533,41 @@
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2">
         <div class="flex items-center gap-3">
           <button class="btn-t border-0 bg-crt" disabled={working} on:click={backToList}>[ &lt; BACK ]</button>
-          <span class="t-label text-fg">API KEY SETTINGS</span>
+          <span class="t-label text-fg">API key settings</span>
         </div>
-        <button class="btn-t-solid" disabled={working} on:click={() => saveSetting("api_key")}>[ SAVE SETTINGS ]</button>
+        <button class="btn-t-solid" disabled={working} on:click={() => saveSetting("api_key")}>Save settings</button>
       </div>
 
       <div class="grid gap-px bg-line p-px">
-        <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold uppercase tracking-[0.15em]">
+        <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
           <input type="checkbox" checked={apiKeysDisabled} class={checkboxClass(apiKeysDisabled, true)} on:change={(event) => setSettingBool("api_key", ["disabled"], checkedValue(event))} />
-          <span class={apiKeysDisabled ? "text-alert" : "text-dim"}>DISABLE API KEY CREATION AND VALIDATION</span>
+          <span class={apiKeysDisabled ?"text-alert" :"text-dim"}>Disable API key creation and validation</span>
         </label>
         <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">MAX LIFETIME</span>
+          <span class="t-label">Max lifetime</span>
           <input class="field-t" value={maxLifetime} placeholder="empty = no cap, e.g. 720h" on:input={(event) => setSettingString("api_key", ["max_lifetime"], inputValue(event))} />
-          <span class="text-[10px] leading-4 text-dim">Creation requests longer than this cap are shortened automatically.</span>
+          <span class="text-xs leading-4 text-dim">Creation requests longer than this cap are shortened automatically.</span>
         </label>
       </div>
     </div>
 
     <div class="grid gap-px bg-line lg:grid-cols-2">
       <div class="bg-panel p-4">
-        <span class="t-label text-fg">[ DIRECT USAGE ]</span>
-        <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-[11px] leading-5 text-fg">curl https://app.example.com/api \
+        <span class="t-label text-fg">Direct usage</span>
+        <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">curl https://app.example.com/api \
   -H 'X-API-Key: tak_...'</pre>
-        <p class="mt-3 text-[11px] leading-4 text-dim">
+        <p class="mt-3 text-xs leading-4 text-dim">
           The key is a static credential sent on every request. No token exchange, no refresh dance; revoke or disable the key and access stops immediately.
         </p>
       </div>
       <div class="bg-panel p-4">
-        <span class="t-label text-fg">[ SESSION INTEGRATION ]</span>
-        <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-[11px] leading-5 text-fg"># session provider config
+        <span class="t-label text-fg">Session integration</span>
+        <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg"># session provider config
 api_key: true            # accept X-API-Key
 # remote auth instance:
 # oauth2:
 #   api_key_url: {oauthBase}/oauth2/api-key</pre>
-        <p class="mt-3 text-[11px] leading-4 text-dim">
+        <p class="mt-3 text-xs leading-4 text-dim">
           Session validates <span class="text-fg">X-API-Key</span> against the database on each request, deletes the raw key header, and forwards <span class="text-fg">X-User: api-key:&lt;id&gt;</span> with the key's own roles/permissions.
         </p>
       </div>

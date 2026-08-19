@@ -52,6 +52,7 @@ A single named middleware can hold only one middleware type. If you need both he
 | `log` | Lightweight request log line. |
 | `login` | Login UI and OAuth2 code/password flows backed by `session`. |
 | `oauth2` | Deprecated OAuth2/OIDC-compatible endpoints backed by IAM. |
+| `oauth2_resource` | Protect an upstream (e.g. an MCP server) as an OAuth2 resource server (RFC 9728). |
 | `path` | Replace the request path and optionally set request headers. |
 | `print` | Print POST bodies to stderr for debugging. |
 | `rate_limit` | Limit requests by all traffic, IP, or real IP. |

@@ -180,6 +180,30 @@ func (m *Auth) PutSetting(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if namespace == "authorize" {
+		var setting AuthorizeSettings
+		if err := json.Unmarshal(req.Value, &setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("cannot decode authorize setting", err, http.StatusBadRequest))
+			return
+		}
+		if err := validateDuration(setting.FlowLifetime); err != nil {
+			httputil.HandleError(w, httputil.NewError("invalid authorize flow_lifetime", err, http.StatusBadRequest))
+			return
+		}
+	}
+
+	if namespace == "registration" {
+		var setting RegistrationSettings
+		if err := json.Unmarshal(req.Value, &setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("cannot decode registration setting", err, http.StatusBadRequest))
+			return
+		}
+		if err := validateDuration(setting.ClientLifetime); err != nil {
+			httputil.HandleError(w, httputil.NewError("invalid registration client_lifetime", err, http.StatusBadRequest))
+			return
+		}
+	}
+
 	version, err := m.store.PutSetting(r.Context(), namespace, req.Value, getUserName(r))
 	if err != nil {
 		httputil.HandleError(w, httputil.NewError("cannot save auth setting", err, http.StatusInternalServerError))

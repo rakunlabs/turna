@@ -58,6 +58,8 @@ Everything else is a settings namespace under `/auth/v1/settings/{namespace}` an
 | `signup` | `enabled`, `email_verification`, `password_reset`, `default_role_ids`, `code_lifetime`, `verify_subject`, `verify_body_template`, `reset_subject`, `reset_body_template` | Self-registration and forgot-password flows (UI: *Signup*). Off by default. `email_verification` defaults to `true`; verification/reset mails use the `email` SMTP relay. Codes live `1h` by default. Templates are Go `text/template` strings validated on save. |
 | `mtls` | `enabled`, `cert_header` | Certificate based client authentication (RFC 8705 style). `cert_header` names a trusted proxy header carrying the client certificate (e.g. nginx `$ssl_client_escaped_cert`); only set it behind a trusted proxy. Off by default. |
 | `saml` | `certificate`, `private_key` | SAML SP signing key pair; auto-generated (self-signed, 10 years) on first SAML use. |
+| `authorize` | `disabled`, `flow_lifetime`, `login_url` | Local browser-based authorization code flow (`/oauth2/authorize` + consent screen). Pending consents live `10m` by default. `login_url` redirects anonymous browsers to a login page (with `?redirect_path=` back reference, the [`login`](./login) middleware convention); empty shows an error asking to log in first. |
+| `registration` | `enabled`, `client_lifetime`, `default_scope`, `max_clients` | RFC 7591 dynamic client registration (`/oauth2/register`). Off by default because registration is anonymous. `client_lifetime` expires dynamic clients (empty keeps them forever), `max_clients` caps stored dynamic clients (default `1000`). |
 | `custom_info` | `disabled`, `sets` | Per-name userinfo claim templates served at `/oauth2/userinfo/{custom}` (and advertised by `/oauth2/openid/{custom}/.well-known/openid-configuration`). `sets.<name>.claims` maps an output claim to a Go `text/template`; templates receive <code v-pre>{{ .claims }}</code> (the base userinfo claims) and <code v-pre>{{ .user }}</code> (the full user record). A template whose key is new adds a claim, an existing key overwrites it, and a template that renders empty (e.g. `""` or trimmed with <code v-pre>{{- -}}</code>) removes the claim. Templates are validated on save. Managed in the UI under *Custom Info*. |
 
 Example:
@@ -73,13 +75,13 @@ curl -X PUT /auth/v1/settings/cache -d '{"value":{"poll_interval":"5s","code_sto
 Migrations are embedded and run through `github.com/rakunlabs/muz` with a PostgreSQL advisory lock. The schema includes:
 
 - `auth_versions`, `auth_events` — monotonic change version and durable event log.
-- `auth_settings` — encrypted JSON settings namespaces. Reserved: `admin`, `jwt`, `token`, `oauth2`, `check`, `cache`, `api_key`, `device`, `token_exchange`, `totp`, `email`, `signup`, `mtls`, `saml`, `custom_info` (see [Runtime settings](#runtime-settings-stored-in-postgresql)).
+- `auth_settings` — encrypted JSON settings namespaces. Reserved: `admin`, `jwt`, `token`, `oauth2`, `check`, `cache`, `api_key`, `device`, `token_exchange`, `totp`, `email`, `signup`, `mtls`, `saml`, `custom_info`, `authorize`, `registration` (see [Runtime settings](#runtime-settings-stored-in-postgresql)).
 - `auth_oauth_clients`, `auth_oauth_providers`, `auth_ldap_configs`, `auth_saml_providers` — encrypted config records.
 - `auth_users` — IAM users; the `details` map is encrypted at rest, passwords are bcrypt hashed.
 - `auth_roles`, `auth_permissions`, `auth_lmaps` — IAM model.
 - `auth_api_keys` — api keys (sha256 hashes; the key itself is never stored).
 - `auth_totp_secrets` — encrypted TOTP shared secrets.
-- `auth_flow_codes` — short-lived flow state shared between instances (device codes, email login codes, SAML relay states).
+- `auth_flow_codes` — short-lived flow state shared between instances (device codes, email login codes, SAML relay states, pending consents, revoked token ids).
 
 ## Routes
 
@@ -147,6 +149,8 @@ Attach more roles to an LDAP group by editing its group map. The management UI s
 
 | Method | Route | Purpose |
 | --- | --- | --- |
+| `GET` | `/auth/oauth2/authorize` | Local authorization endpoint (code flow with consent screen); see [Local authorize + consent](#local-authorize--consent). |
+| `GET/POST` | `/auth/oauth2/consent` | Consent page for a pending authorize flow (browser plane, needs `X-User` from the session middleware). |
 | `GET` | `/auth/oauth2/auth/{provider}` | Start authorization code flow against an upstream provider. |
 | `GET` | `/auth/oauth2/code/{provider}` | Provider callback; issues a local code. |
 | `POST` | `/auth/oauth2/token` | Token endpoint: `password`, `client_credentials`, `refresh_token`, `authorization_code` (PKCE supported), `urn:ietf:params:oauth:grant-type:device_code`, `urn:ietf:params:oauth:grant-type:token-exchange`, `email_code`. |
@@ -161,7 +165,12 @@ Attach more roles to an LDAP group by editing its group map. The management UI s
 | `GET` | `/auth/oauth2/certs` | JWKS for the auto-generated RS256 signing key. |
 | `GET` | `/auth/oauth2/userinfo` | Userinfo for a bearer access token. |
 | `GET` | `/auth/oauth2/userinfo/{custom}` | Userinfo with the named `custom_info` claim templates applied (add or overwrite claims). |
+| `POST` | `/auth/oauth2/revoke` | RFC 7009 token revocation. Tokens are stateless JWTs, so the `jti` goes on a denylist (in `auth_flow_codes`) until expiry; refresh, token exchange, userinfo and introspection honor it. |
+| `POST` | `/auth/oauth2/introspect` | RFC 7662 token introspection (client-authenticated); returns `active` plus token claims. |
+| `POST` | `/auth/oauth2/register` | RFC 7591 dynamic client registration (requires the `registration` setting). |
+| `GET/PUT/DELETE` | `/auth/oauth2/register/{client_id}` | RFC 7592 client management with the `registration_access_token` returned at registration. |
 | `GET` | `/auth/oauth2/.well-known/openid-configuration` | OpenID configuration built from the request host. |
+| `GET` | `/auth/oauth2/.well-known/oauth-authorization-server` | RFC 8414 authorization server metadata (same document). Root path-insertion variants `/.well-known/oauth-authorization-server[/...]` and `/.well-known/openid-configuration[/...]` are also registered and take effect when the router forwards `/.well-known/*` to this middleware. |
 | `GET` | `/auth/oauth2/openid/{custom}/.well-known/openid-configuration` | Same OpenID configuration, but `userinfo_endpoint` points to `/auth/oauth2/userinfo/{custom}` so discovery-driven clients pick up that set's `custom_info` claims. `issuer` and the other endpoints stay shared (the `issuer` matches the `id_token` `iss`). |
 
 Token notes:
@@ -174,7 +183,30 @@ Token notes:
 - Token lifetimes come from the `token` settings namespace (default `15m` / `24h`).
 - An `id_token` is issued whenever the granted scope contains `openid`; the `nonce` from the authorization request is embedded for code-flow logins.
 - **PKCE (RFC 7636):** `/auth/oauth2/auth/{provider}` and `/auth/saml/{provider}/login` accept `code_challenge` (+ `code_challenge_method`, `S256` or `plain`); the `authorization_code` grant then requires a matching `code_verifier`. With a valid verifier public clients (no stored secret) may exchange codes without a client secret.
-- **Redirect whitelist:** authorization and SAML login requests validate `redirect_uri` against the client's `whitelist_urls` (prefix match). Pass `client_id` to pin a specific client; without one the URI must match some client's whitelist when at least one is configured. Whitelist-free setups stay open for backwards compatibility.
+- **Redirect whitelist:** authorization and SAML login requests validate `redirect_uri` against the client's `whitelist_urls` (prefix match). Pass `client_id` to pin a specific client; without one the URI must match some client's whitelist when at least one is configured. Whitelist-free setups stay open for backwards compatibility. Clients with registered `redirect_uris` (dynamic registration or manual config) use exact matching instead.
+- **Code binding:** authorization codes issued by the local `/oauth2/authorize` endpoint are bound to the requesting `client_id` and `redirect_uri`; the token endpoint rejects redemption by another client or with a different redirect target. Federated codes bind the `client_id` when the authorization request carried one.
+- **Resource indicators (RFC 8707):** `resource` parameters on `/oauth2/authorize`, `/oauth2/auth/{provider}` and the token endpoint land in the access token `aud` claim (next to `turna-auth`), so resource servers can require their own identifier. A client record may pin allowed resources with `resources` (prefix match; empty allows any).
+- **Revocation:** access and refresh tokens carry a `jti`; `/oauth2/revoke` puts it on a shared denylist until the token expires.
+
+### Local authorize + consent
+
+`GET /auth/oauth2/authorize` implements the standard browser-based authorization code flow against local users (enabled by default; the `authorize` namespace can disable or tune it):
+
+1. The client opens `/auth/oauth2/authorize?response_type=code&client_id=...&redirect_uri=...&scope=...&state=...&code_challenge=...&code_challenge_method=S256[&resource=...]`. Public clients (no stored secret) must send PKCE.
+2. The request is validated (client, redirect target, PKCE, resources), stored as a pending flow and the browser is redirected to `/auth/oauth2/consent?flow=...`.
+3. The consent page needs a logged-in user: it reads `X-User` set by the [`session`](./session) middleware in front. Use session `skip_paths: ["/auth/oauth2/**"]` so machine endpoints stay public while cookie-carrying browsers are still authenticated on the consent page. Anonymous browsers are redirected to `authorize.login_url` (with `?redirect_path=`) when configured. Clients with `skip_consent: true` are auto-approved; everyone else sees an approve/deny screen with client name and scopes.
+4. Approval issues a single-use code bound to client + redirect + PKCE + resources and redirects back to `redirect_uri?code=...&state=...`; the client exchanges it at the token endpoint with `code_verifier`.
+
+### MCP / resource server integration
+
+The combination of RFC 8414 metadata, dynamic client registration, PKCE, resource indicators and the consent flow makes the auth middleware a drop-in authorization server for MCP clients (Claude, Cursor, ...):
+
+1. Enable registration: `PUT /auth/v1/settings/registration {"value":{"enabled":true,"client_lifetime":"720h"}}`.
+2. Route `/.well-known/*` to the auth middleware so RFC 8414 discovery works from the issuer root.
+3. Keep the machine endpoints public: either add `skip_paths: ["/auth/oauth2/**", "/.well-known/**"]` to the [`session`](./session) middleware in front (recommended — the consent page still authenticates cookie-carrying browsers, and `authorize.login_url` catches anonymous ones), or split the router so `/auth/oauth2/*` bypasses session.
+4. Protect the MCP endpoint with the [`oauth2_resource`](./oauth2_resource) middleware, which serves the RFC 9728 protected resource metadata and validates bearer tokens in-process.
+
+An MCP client then discovers the resource metadata, registers itself (`/oauth2/register`), sends the user through `/oauth2/authorize` + consent, and calls the MCP endpoint with the issued bearer token — no manual client setup per user.
 
 ### Claim mapping (OAuth2/SAML → roles)
 

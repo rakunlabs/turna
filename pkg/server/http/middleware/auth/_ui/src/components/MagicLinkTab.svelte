@@ -96,7 +96,7 @@ The link expires in {{.ExpiresIn}}.`;
       preview = body.payload as EmailPreview;
     } catch (err) {
       preview = null;
-      previewError = err instanceof Error ? err.message : "CANNOT RENDER PREVIEW";
+      previewError = err instanceof Error ? err.message : "Cannot render preview";
     } finally {
       previewBusy = false;
     }
@@ -107,53 +107,53 @@ The link expires in {{.ExpiresIn}}.`;
   <div class="grid gap-3 bg-panel p-4">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <span class="t-label text-fg">[ MAGIC LINK ]</span>
-        <h3 class="mt-2 font-display text-3xl uppercase leading-none tracking-tight md:text-4xl">Magic Link Login</h3>
+        <span class="t-label text-fg">Magic link</span>
+        <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Magic Link Login</h3>
       </div>
-      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting("email")}>[ SAVE MAGIC LINK ]</button>
+      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting("email")}>Save magic link</button>
     </div>
     <p class="max-w-3xl text-xs leading-5 text-dim">
-      The magic link mail is sent during email login when the request carries a <span class="text-fg">redirect_uri</span> allowed by the OAuth client's whitelist; the link is <span class="text-fg">redirect_uri?code=...</span>. It shares the SMTP relay and code lifetime configured on the <span class="text-fg">EMAIL</span> page.
+      The magic link mail is sent during email login when the request carries a <span class="text-fg">redirect_uri</span> allowed by the OAuth client's whitelist; the link is <span class="text-fg">redirect_uri?code=...</span>. It shares the SMTP relay and code lifetime configured on the <span class="text-fg">Email</span> page.
     </p>
     {#if smtpHost === ""}
-      <p class="text-[11px] leading-4 text-alert">SMTP HOST IS NOT SET — configure delivery on the EMAIL page first.</p>
+      <p class="text-xs leading-4 text-alert">SMTP host is not set — configure delivery on the Email page first.</p>
     {/if}
     {#if codeDisabled && magicLink}
-      <p class="text-[11px] leading-4 text-dim">Code login is disabled; magic link mails are still sent when a redirect_uri is provided.</p>
+      <p class="text-xs leading-4 text-dim">Code login is disabled; magic link mails are still sent when a redirect_uri is provided.</p>
     {/if}
   </div>
 
   <div class="grid gap-px bg-line xl:grid-cols-[minmax(0,1fr),minmax(0,1fr)]">
     <div class="grid content-start gap-px bg-line">
       <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">[ MAGIC LINK SETTINGS ]</span>
+        <span class="t-label text-fg">Magic link settings</span>
       </div>
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold uppercase tracking-[0.15em]">
+      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
         <input type="checkbox" checked={magicLink} class={checkboxClass(magicLink)} on:change={(event) => setSettingBool("email", ["magic_link"], checkedValue(event))} />
-        <span class={magicLink ? "text-fg" : "text-alert"}>{magicLink ? "MAGIC LINK ENABLED" : "MAGIC LINK DISABLED"}</span>
+        <span class={magicLink ?"text-fg" :"text-alert"}>{magicLink ?"Magic link enabled" :"Magic link disabled"}</span>
       </label>
-      <div class="bg-panel p-3 text-[11px] leading-5 text-dim">
+      <div class="bg-panel p-3 text-xs leading-5 text-dim">
         Turn this off to send only the one-time code during email login, even when a redirect_uri is provided. Useful when the SMTP relay is shared with signup and you don't want login magic links.
       </div>
     </div>
 
     <div class="grid content-start gap-px bg-line">
       <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">[ MAGIC LINK MAIL TEMPLATE ]</span>
+        <span class="t-label text-fg">Magic link mail template</span>
       </div>
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">SUBJECT</span>
+        <span class="t-label">Subject</span>
         <input class="field-t" value={magicSubject} placeholder="Your login link" disabled={!magicLink} on:input={(event) => setSettingString("email", ["magic_link_subject"], inputValue(event))} />
       </label>
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">BODY TEMPLATE</span>
-        <textarea class="field-t min-h-48 text-[11px] leading-4" value={magicBodyTemplate} placeholder="empty = built-in magic-link body" disabled={!magicLink} on:input={(event) => setSettingString("email", ["magic_link_body_template"], inputValue(event))}></textarea>
+        <span class="t-label">Body template</span>
+        <textarea class="field-t min-h-48 text-xs leading-4" value={magicBodyTemplate} placeholder="empty = built-in magic-link body" disabled={!magicLink} on:input={(event) => setSettingString("email", ["magic_link_body_template"], inputValue(event))}></textarea>
       </label>
       <div class="flex flex-wrap gap-2 bg-panel p-3">
-        <button class="btn-t" disabled={busy || !magicLink} on:click={() => setSettingString("email", ["magic_link_body_template"], defaultMagicBodyTemplate)}>USE DEFAULT</button>
-        <button class="btn-t" disabled={busy || !magicLink} on:click={() => setSettingString("email", ["magic_link_body_template"], "")}>USE BUILT-IN</button>
+        <button class="btn-t" disabled={busy || !magicLink} on:click={() => setSettingString("email", ["magic_link_body_template"], defaultMagicBodyTemplate)}>Use default</button>
+        <button class="btn-t" disabled={busy || !magicLink} on:click={() => setSettingString("email", ["magic_link_body_template"],"")}>Use built-in</button>
       </div>
-      <div class="bg-panel p-3 text-[11px] leading-5 text-dim">
+      <div class="bg-panel p-3 text-xs leading-5 text-dim">
         Variables: <code class="text-fg">{"{{.Email}}"}</code>, <code class="text-fg">{"{{.Code}}"}</code>, <code class="text-fg">{"{{.MagicLink}}"}</code>, <code class="text-fg">{"{{.ExpiresIn}}"}</code>, <code class="text-fg">{"{{.ClientID}}"}</code>, <code class="text-fg">{"{{.RedirectURI}}"}</code>, <code class="text-fg">{"{{.UserID}}"}</code>, <code class="text-fg">{"{{.UserAlias}}"}</code>.
       </div>
     </div>
@@ -162,45 +162,45 @@ The link expires in {{.ExpiresIn}}.`;
   <div class="grid gap-px bg-line lg:grid-cols-[360px,minmax(0,1fr)]">
     <div class="grid content-start gap-px bg-line">
       <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">[ MAGIC LINK PREVIEW ]</span>
+        <span class="t-label text-fg">Magic link preview</span>
       </div>
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">EMAIL</span>
+        <span class="t-label">Email</span>
         <input bind:value={previewEmail} class="field-t" placeholder="user@example.com" />
       </label>
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">CODE</span>
+        <span class="t-label">Code</span>
         <input bind:value={previewCode} class="field-t" placeholder="123456" />
       </label>
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">CLIENT ID</span>
+        <span class="t-label">Client ID</span>
         <input bind:value={previewClientID} class="field-t" placeholder="ui" />
       </label>
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">REDIRECT URI</span>
+        <span class="t-label">Redirect URI</span>
         <input bind:value={previewRedirectURI} class="field-t" placeholder="https://app.example.com/login/" />
       </label>
       <div class="bg-panel p-3">
-        <button class="btn-t-solid w-full" disabled={previewBusy} on:click={renderPreview}>[ RENDER PREVIEW ]</button>
+        <button class="btn-t-solid w-full" disabled={previewBusy} on:click={renderPreview}>Render preview</button>
       </div>
     </div>
 
     <div class="grid content-start gap-px bg-line">
       <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">[ RENDERED MAIL ]</span>
+        <span class="t-label text-fg">Rendered mail</span>
       </div>
       {#if previewError}
         <div class="bg-panel p-3 text-xs text-alert">{previewError}</div>
       {:else if preview}
         <div class="grid gap-3 bg-panel p-4">
-          <p class="break-all text-xs"><span class="t-label">SUBJECT</span> <span class="text-fg">{preview.subject}</span></p>
+          <p class="break-all text-xs"><span class="t-label">Subject</span> <span class="text-fg">{preview.subject}</span></p>
           {#if preview.magic_link}
-            <p class="break-all text-[11px] leading-4 text-dim"><span class="t-label text-fg">MAGIC LINK</span> {preview.magic_link}</p>
+            <p class="break-all text-xs leading-4 text-dim"><span class="t-label text-fg">Magic link</span> {preview.magic_link}</p>
           {/if}
-          <pre class="overflow-auto whitespace-pre-wrap border border-line bg-crt p-3 text-[11px] leading-5 text-fg">{preview.body}</pre>
+          <pre class="overflow-auto whitespace-pre-wrap border border-line bg-crt p-3 text-xs leading-5 text-fg">{preview.body}</pre>
         </div>
       {:else}
-        <div class="bg-panel p-4 text-[11px] leading-4 text-dim">Render a preview to validate the Go template before saving.</div>
+        <div class="bg-panel p-4 text-xs leading-4 text-dim">Render a preview to validate the Go template before saving.</div>
       {/if}
     </div>
   </div>

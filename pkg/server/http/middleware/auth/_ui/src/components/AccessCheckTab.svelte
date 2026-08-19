@@ -38,8 +38,8 @@
 
 <div class="grid gap-px bg-line p-px">
   <div class="bg-panel p-4">
-    <p class="t-label text-fg">[ ACCESS CHECK ]</p>
-    <h3 class="mt-2 font-display text-3xl uppercase leading-none tracking-tight md:text-4xl">Live Check</h3>
+    <p class="t-label text-fg">Access check</p>
+    <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Live Check</h3>
     <p class="mt-3 max-w-3xl text-xs leading-5 text-dim">
       Test an alias, host, path, and method against the IAM permission graph.
     </p>
@@ -49,17 +49,17 @@
   </div>
   <div class="grid gap-px bg-line p-px">
     <div class="flex items-center justify-between bg-panel px-3 py-2">
-      <span class="t-label text-fg">[ CHECK SETTINGS ]</span>
-      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting("check")}>SAVE CHECK</button>
+      <span class="t-label text-fg">Check settings</span>
+      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting("check")}>Save check</button>
     </div>
     <div class="grid gap-px bg-line md:grid-cols-2">
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">DEFAULT HOSTS</span>
+        <span class="t-label">Default hosts</span>
         <textarea class="field-t min-h-24" value={defaultHosts} placeholder="api.example.com" on:input={(event) => setSettingList("check", ["default_hosts"], inputValue(event))}></textarea>
       </label>
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold uppercase tracking-[0.15em]">
+      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
         <input type="checkbox" checked={noHostCheck} class={checkboxClass(noHostCheck)} on:change={(event) => setSettingBool("check", ["no_host_check"], checkedValue(event))} />
-        <span class={noHostCheck ? "text-alert" : "text-dim"}>DISABLE HOST CHECK</span>
+        <span class={noHostCheck ?"text-alert" :"text-dim"}>Disable host check</span>
       </label>
     </div>
   </div>

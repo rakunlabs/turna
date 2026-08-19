@@ -42,10 +42,10 @@
   <div class="grid gap-3 bg-panel p-4">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <span class="t-label text-fg">[ MTLS ]</span>
-        <h3 class="mt-2 font-display text-3xl uppercase leading-none tracking-tight md:text-4xl">Client Certificates</h3>
+        <span class="t-label text-fg">MTLS</span>
+        <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Client Certificates</h3>
       </div>
-      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting("mtls")}>[ SAVE MTLS ]</button>
+      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting("mtls")}>Save mTLS</button>
     </div>
     <p class="max-w-3xl text-xs leading-5 text-dim">
       mTLS authenticates <span class="text-fg">service accounts</span> for the OAuth2 <span class="text-fg">client_credentials</span> grant. The token endpoint matches the incoming certificate against that service account's certificate fingerprint or subject.
@@ -55,22 +55,22 @@
   <div class="grid gap-px bg-line lg:grid-cols-[minmax(0,1fr),minmax(0,1fr)]">
     <div class="grid content-start gap-px bg-line">
       <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">[ GLOBAL MTLS SETTINGS ]</span>
+        <span class="t-label text-fg">Global mTLS settings</span>
       </div>
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold uppercase tracking-[0.15em]">
+      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
         <input type="checkbox" checked={enabled} class={checkboxClass(enabled)} on:change={(event) => setSettingBool("mtls", ["enabled"], checkedValue(event))} />
-        <span class={enabled ? "text-fg" : "text-alert"}>{enabled ? "MTLS ENABLED" : "MTLS DISABLED"}</span>
+        <span class={enabled ?"text-fg" :"text-alert"}>{enabled ?"MTLS enabled" :"MTLS disabled"}</span>
       </label>
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">TRUSTED CERTIFICATE HEADER</span>
+        <span class="t-label">Trusted certificate header</span>
         <input class="field-t" value={certHeader} placeholder="ssl-client-cert" on:input={(event) => setSettingString("mtls", ["cert_header"], inputValue(event))} />
-        <span class="text-[10px] leading-4 text-dim">Use only behind a trusted TLS-terminating proxy. Empty means use the TLS handshake peer certificate.</span>
+        <span class="text-xs leading-4 text-dim">Use only behind a trusted TLS-terminating proxy. Empty means use the TLS handshake peer certificate.</span>
       </label>
     </div>
 
     <div class="grid content-start gap-px bg-line">
       <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">[ WHERE CLIENT CERTS LIVE ]</span>
+        <span class="t-label text-fg">Where client certs live</span>
       </div>
       <div class="grid gap-3 bg-panel p-4 text-xs leading-5 text-dim">
         <p>
@@ -79,25 +79,25 @@
         <p>
           The service account alias is the OAuth2 <span class="text-fg">client_id</span>. For mTLS-only clients, <span class="text-fg">client_secret</span> may be empty when a certificate is configured.
         </p>
-        <button class="btn-t-solid w-fit" on:click={() => onSelect("service-accounts")}>[ OPEN SERVICE ACCOUNTS ]</button>
+        <button class="btn-t-solid w-fit" on:click={() => onSelect("service-accounts")}>Open service accounts</button>
       </div>
     </div>
   </div>
 
   <div class="grid gap-px bg-line lg:grid-cols-2">
     <div class="bg-panel p-4">
-      <span class="t-label text-fg">[ TOKEN REQUEST ]</span>
-      <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-[11px] leading-5 text-fg">curl --cert client.crt --key client.key \
+      <span class="t-label text-fg">Token request</span>
+      <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">curl --cert client.crt --key client.key \
   -X POST {oauthBase}/oauth2/token \
   -d grant_type=client_credentials \
   -d client_id=my-service</pre>
     </div>
     <div class="bg-panel p-4">
-      <span class="t-label text-fg">[ SESSION INTEGRATION ]</span>
+      <span class="t-label text-fg">Session integration</span>
       <p class="mt-3 text-xs leading-5 text-dim">
         Session does not inspect the raw certificate. Auth issues a normal access token after mTLS validation; then session validates that token through <span class="text-fg">auth_middleware</span> or JWKS and forwards claims/X-User to the app.
       </p>
-      <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-[11px] leading-5 text-fg">curl https://app.example.com/api \
+      <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">curl https://app.example.com/api \
   -H 'Authorization: Bearer &lt;access_token&gt;'</pre>
     </div>
   </div>

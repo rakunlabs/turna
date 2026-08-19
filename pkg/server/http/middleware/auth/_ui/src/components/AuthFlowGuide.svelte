@@ -175,14 +175,14 @@
 <div class="bg-panel">
   <div class="flex flex-col gap-3 border-b border-line p-4 md:flex-row md:items-end md:justify-between">
     <div>
-      <p class="t-label text-fg">[ AUTH FLOW GUIDE ]</p>
-      <h3 class="mt-2 font-display text-3xl uppercase leading-none tracking-tight md:text-4xl">Token & Session Paths</h3>
+      <p class="t-label text-fg">Auth flow guide</p>
+      <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Token & Session Paths</h3>
       <p class="mt-3 max-w-3xl text-xs leading-5 text-dim">
         OAuth2, LDAP password check, local users and service accounts all end at the same Turna token surface.
         Use the tabs below to choose the integration path.
       </p>
     </div>
-    <div class="grid gap-2 text-[11px] uppercase tracking-[0.1em] text-dim md:min-w-[360px]">
+    <div class="grid gap-2 text-xs text-dim md:min-w-[360px]">
       <label class="grid gap-1">
         <span class="t-label">Provider ID</span>
         <input class="field-t" bind:value={providerID} placeholder="keycloak" />
@@ -197,24 +197,24 @@
   <div class="grid gap-px bg-line p-px xl:grid-cols-[300px,minmax(0,1fr)]">
     <div class="grid content-start gap-px bg-line">
       <button
-        class={`grid gap-1 p-3 text-left uppercase ${selected === reference.id ? "bg-alert text-white" : "bg-panel text-dim hover:text-fg"}`}
+        class={`grid gap-1 p-3 text-left ${selected === reference.id ?"bg-alert text-white" :"bg-panel text-dim hover:text-fg"}`}
         on:click={() => (selected = reference.id)}
       >
-        <span class="text-xs font-bold tracking-[0.12em]">{reference.label}</span>
-        <span class="text-[10px] leading-4 tracking-[0.08em]">{reference.summary}</span>
+        <span class="text-xs font-bold">{reference.label}</span>
+        <span class="text-xs leading-4">{reference.summary}</span>
       </button>
 
       <div class="bg-panel px-3 py-2">
-        <span class="t-label">[ INTEGRATION FLOWS ]</span>
+        <span class="t-label">Integration flows</span>
       </div>
 
       {#each flows as flow}
         <button
-          class={`grid gap-1 p-3 text-left uppercase ${selected === flow.id ? "bg-alert text-white" : "bg-panel text-dim hover:text-fg"}`}
+          class={`grid gap-1 p-3 text-left ${selected === flow.id ?"bg-alert text-white" :"bg-panel text-dim hover:text-fg"}`}
           on:click={() => (selected = flow.id)}
         >
-          <span class="text-xs font-bold tracking-[0.12em]">{flow.label}</span>
-          <span class="text-[10px] leading-4 tracking-[0.08em]">{flow.summary}</span>
+          <span class="text-xs font-bold">{flow.label}</span>
+          <span class="text-xs leading-4">{flow.summary}</span>
         </button>
       {/each}
     </div>
@@ -228,23 +228,23 @@
 
         <div class="flex flex-wrap items-center justify-between gap-3 bg-panel p-4">
           <div>
-            <p class="t-label text-fg">[ OPENAPI / SWAGGER ]</p>
+            <p class="t-label text-fg">Openapi / swagger</p>
             <p class="mt-2 max-w-3xl text-xs leading-5 text-dim">Interactive API reference for every admin endpoint (admin access required).</p>
           </div>
           <div class="flex flex-wrap gap-px">
-            <a class="btn-t-solid" href={swaggerURL} target="_blank" rel="noreferrer">[ OPEN SWAGGER UI ]</a>
-            <a class="btn-t border-0 bg-crt" href={openapiURL} target="_blank" rel="noreferrer">OPENAPI JSON</a>
+            <a class="btn-t-solid" href={swaggerURL} target="_blank" rel="noreferrer">Open swagger UI</a>
+            <a class="btn-t border-0 bg-crt" href={openapiURL} target="_blank" rel="noreferrer">Openapi JSON</a>
           </div>
         </div>
 
         <div class="bg-panel px-4 py-2">
-          <span class="t-label text-fg">[ OAUTH2 ENDPOINTS ]</span>
+          <span class="t-label text-fg">OAuth2 endpoints</span>
         </div>
         <div class="grid gap-px bg-line md:grid-cols-2 xl:grid-cols-3">
           {#each endpoints as endpoint}
             <div class="bg-panel p-3">
               <p class="t-label text-fg">{endpoint.label}</p>
-              <p class="mt-2 break-all text-[11px] leading-4 text-dim">{publicAuthBase}{endpoint.value}</p>
+              <p class="mt-2 break-all text-xs leading-4 text-dim">{publicAuthBase}{endpoint.value}</p>
             </div>
           {/each}
         </div>
@@ -257,13 +257,13 @@
         </div>
 
         <div class="bg-panel px-4 py-2">
-          <span class="t-label text-fg">[ IAM ENDPOINTS ]</span>
+          <span class="t-label text-fg">IAM endpoints</span>
         </div>
         <div class="grid gap-px bg-line md:grid-cols-2 xl:grid-cols-3">
           {#each iamEndpoints as endpoint}
             <div class="bg-panel p-3">
               <p class="t-label text-fg">{endpoint.label}</p>
-              <p class="mt-2 break-all text-[11px] leading-4 text-dim">{publicAuthBase}{endpoint.value}</p>
+              <p class="mt-2 break-all text-xs leading-4 text-dim">{publicAuthBase}{endpoint.value}</p>
             </div>
           {/each}
         </div>
@@ -282,7 +282,7 @@
           </div>
           <div class="bg-panel p-4">
             <p class="t-label text-fg">Session/login config</p>
-            <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-[11px] leading-5 text-fg">{browserSnippet}</pre>
+            <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">{browserSnippet}</pre>
           </div>
         </div>
       {:else if selected === "provider"}
@@ -294,7 +294,7 @@
           </div>
           <div class="bg-panel p-4">
             <p class="t-label text-fg">Authorization code token exchange</p>
-            <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-[11px] leading-5 text-fg">{codeCurl}</pre>
+            <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">{codeCurl}</pre>
           </div>
         </div>
       {:else if selected === "password"}
@@ -306,7 +306,7 @@
           </div>
           <div class="bg-panel p-4">
             <p class="t-label text-fg">Password grant request</p>
-            <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-[11px] leading-5 text-fg">{passwordCurl}</pre>
+            <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">{passwordCurl}</pre>
           </div>
         </div>
       {:else if selected === "client"}
@@ -318,7 +318,7 @@
           </div>
           <div class="bg-panel p-4">
             <p class="t-label text-fg">Client credentials request</p>
-            <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-[11px] leading-5 text-fg">{clientCurl}</pre>
+            <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">{clientCurl}</pre>
           </div>
         </div>
       {:else if selected === "api"}
@@ -331,7 +331,7 @@
           </div>
           <div class="bg-panel p-4">
             <p class="t-label text-fg">Protected API config</p>
-            <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-[11px] leading-5 text-fg">{apiSnippet}</pre>
+            <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">{apiSnippet}</pre>
           </div>
         </div>
         {/if}

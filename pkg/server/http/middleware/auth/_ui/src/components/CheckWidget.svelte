@@ -12,7 +12,7 @@
 
   async function check() {
     if (!alias.trim()) {
-      error = "ALIAS IS REQUIRED";
+      error = "Alias is required";
       return;
     }
 
@@ -35,7 +35,7 @@
       const body = await res.json();
       result = Boolean(body.allowed);
     } catch (err) {
-      error = err instanceof Error ? err.message : "UNKNOWN ERROR";
+      error = err instanceof Error ? err.message : "Unknown error";
     } finally {
       busy = false;
     }
@@ -44,25 +44,25 @@
 
 <div class="bg-panel">
   <div class="flex items-center justify-between border-b border-line px-4 py-2">
-    <span class="t-label text-fg">[ LIVE ACCESS CHECK ]</span>
-    <span class="t-label">PROC / V1-CHECK</span>
+    <span class="t-label text-fg">Live access check</span>
+    <span class="t-label">Proc / v1-check</span>
   </div>
 
   <div class="grid gap-px bg-line p-px sm:grid-cols-2">
     <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">SUBJECT ALIAS *</span>
+      <span class="t-label">Subject alias *</span>
       <input bind:value={alias} class="field-t" placeholder="user@example.com" />
     </label>
     <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">HOST</span>
+      <span class="t-label">Host</span>
       <input bind:value={host} class="field-t" placeholder="example.com" />
     </label>
     <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">PATH</span>
+      <span class="t-label">Path</span>
       <input bind:value={path} class="field-t" placeholder="/path/to/check" />
     </label>
     <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">METHOD</span>
+      <span class="t-label">Method</span>
       <input bind:value={method} list="live-check-methods" class="field-t" placeholder="GET or custom method" />
       <datalist id="live-check-methods">
         {#each methodOptions as option}
@@ -76,17 +76,17 @@
     <button class="btn-t" disabled={busy} on:click={check}>RUN CHECK &gt;&gt;&gt;</button>
 
     {#if result === true}
-      <span class="bg-fg px-3 py-1 text-xs font-bold uppercase tracking-[0.15em] text-crt">
-        [ ALLOWED ]
+      <span class="bg-fg px-3 py-1 text-xs font-bold text-crt">
+        Allowed
       </span>
     {:else if result === false}
-      <span class="bg-alert px-3 py-1 text-xs font-bold uppercase tracking-[0.15em] text-white">
-        [ DENIED ]
+      <span class="bg-alert px-3 py-1 text-xs font-bold text-white">
+        Denied
       </span>
     {/if}
 
     {#if error}
-      <span class="text-xs uppercase tracking-[0.1em] text-alert">ERR // {error}</span>
+      <span class="text-xs text-alert">ERR // {error}</span>
     {/if}
   </div>
 </div>

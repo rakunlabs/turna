@@ -23,66 +23,66 @@
 <div class="grid gap-3 bg-panel p-3 md:col-span-2 xl:col-span-3">
   <div class="flex flex-wrap items-center justify-between gap-2">
     <div>
-      <span class="t-label text-fg">[ TEMPORARY ACCESS ]</span>
-      <p class="mt-1 text-[11px] leading-4 text-dim">Grant role or permission IDs until a duration or exact expiration. Remove sends the same IDs without expiration.</p>
+      <span class="t-label text-fg">Temporary access</span>
+      <p class="mt-1 text-xs leading-4 text-dim">Grant role or permission IDs until a duration or exact expiration. Remove sends the same IDs without expiration.</p>
     </div>
-    <span class="t-label">{editorLoadedID ? "READY" : "CREATE FIRST"}</span>
+    <span class="t-label">{editorLoadedID ?"Ready" :"Create first"}</span>
   </div>
 
   {#if editorLoadedID}
     <div class="grid gap-px bg-line md:grid-cols-2 xl:grid-cols-3">
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">TEMP ROLE IDS</span>
+        <span class="t-label">Temp role IDs</span>
         <input bind:value={tempAccessRoleIDs} class="field-t" placeholder="admin, operator" />
       </label>
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">TEMP PERMISSION IDS</span>
+        <span class="t-label">Temp permission IDs</span>
         <input bind:value={tempAccessPermissionIDs} class="field-t" placeholder="read-api, write-api" />
       </label>
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">STARTS AT</span>
+        <span class="t-label">Starts at</span>
         <input bind:value={tempAccessStartsAt} class="field-t" placeholder="optional RFC3339" />
       </label>
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">EXPIRES IN</span>
+        <span class="t-label">Expires in</span>
         <input bind:value={tempAccessExpiresIn} class="field-t" placeholder="1h, 24h, 7d" />
       </label>
       <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">EXPIRES AT</span>
+        <span class="t-label">Expires at</span>
         <input bind:value={tempAccessExpiresAt} class="field-t" placeholder="optional RFC3339" />
       </label>
       <div class="flex flex-wrap items-end gap-px bg-panel p-3">
-        <button class="btn-t-solid flex-1" disabled={!canGrantTemporaryAccess} on:click={() => patchTemporaryAccess(false)}>[ GRANT / UPDATE ]</button>
-        <button class="btn-t flex-1 border-0 bg-crt text-alert" disabled={!canRemoveTemporaryAccess} on:click={() => patchTemporaryAccess(true)}>[ REMOVE ]</button>
+        <button class="btn-t-solid flex-1" disabled={!canGrantTemporaryAccess} on:click={() => patchTemporaryAccess(false)}>Grant / update</button>
+        <button class="btn-t flex-1 border-0 bg-crt text-alert" disabled={!canRemoveTemporaryAccess} on:click={() => patchTemporaryAccess(true)}>Remove</button>
       </div>
     </div>
 
     <div class="grid gap-px bg-line md:grid-cols-2">
       <div class="grid gap-2 bg-panel p-3">
-        <span class="t-label text-fg">CURRENT TEMP ROLES</span>
+        <span class="t-label text-fg">Current temp roles</span>
         {#if temporaryAccessItems("tmp_role_ids", editorJSON).length === 0}
-          <p class="text-[11px] leading-4 text-dim">No temporary roles.</p>
+          <p class="text-xs leading-4 text-dim">No temporary roles.</p>
         {:else}
           <div class="grid gap-px bg-line">
             {#each temporaryAccessItems("tmp_role_ids", editorJSON) as item}
-              <div class="grid gap-1 bg-crt p-2 text-[11px] leading-4">
+              <div class="grid gap-1 bg-crt p-2 text-xs leading-4">
                 <span class="font-bold text-fg">{fieldText(item.id)}</span>
-                <span class="text-dim">START {fieldText(item.starts_at) || "NOW"} / EXPIRE {fieldText(item.expires_at) || "N/A"}</span>
+                <span class="text-dim">Start {fieldText(item.starts_at) ||"Now"} / EXPIRE {fieldText(item.expires_at) ||"N/A"}</span>
               </div>
             {/each}
           </div>
         {/if}
       </div>
       <div class="grid gap-2 bg-panel p-3">
-        <span class="t-label text-fg">CURRENT TEMP PERMISSIONS</span>
+        <span class="t-label text-fg">Current temp permissions</span>
         {#if temporaryAccessItems("tmp_permission_ids", editorJSON).length === 0}
-          <p class="text-[11px] leading-4 text-dim">No temporary permissions.</p>
+          <p class="text-xs leading-4 text-dim">No temporary permissions.</p>
         {:else}
           <div class="grid gap-px bg-line">
             {#each temporaryAccessItems("tmp_permission_ids", editorJSON) as item}
-              <div class="grid gap-1 bg-crt p-2 text-[11px] leading-4">
+              <div class="grid gap-1 bg-crt p-2 text-xs leading-4">
                 <span class="font-bold text-fg">{fieldText(item.id)}</span>
-                <span class="text-dim">START {fieldText(item.starts_at) || "NOW"} / EXPIRE {fieldText(item.expires_at) || "N/A"}</span>
+                <span class="text-dim">Start {fieldText(item.starts_at) ||"Now"} / EXPIRE {fieldText(item.expires_at) ||"N/A"}</span>
               </div>
             {/each}
           </div>
@@ -90,6 +90,6 @@
       </div>
     </div>
   {:else}
-    <p class="text-[11px] leading-4 text-dim">Temporary access uses <span class="text-fg">/{editorSpec.listPath}/{"{id}"}/access</span>, so create the record first.</p>
+    <p class="text-xs leading-4 text-dim">Temporary access uses <span class="text-fg">/{editorSpec.listPath}/{"{id}"}/access</span>, so create the record first.</p>
   {/if}
 </div>
