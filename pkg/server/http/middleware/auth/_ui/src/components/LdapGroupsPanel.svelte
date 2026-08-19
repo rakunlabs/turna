@@ -1,102 +1,88 @@
 <script lang="ts">
   import { onMount } from "svelte";
 
-  export let apiBase = "/auth/v1";
+  import Section from "./ui/Section.svelte";
+  import Seal from "./ui/Seal.svelte";
+  import Switch from "./ui/Switch.svelte";
+  import { messageOf, session, statusOf } from "../lib/state/session.svelte";
+  import { registry } from "../lib/state/registry.svelte";
 
-  type LdapGroup = {
-    name: string;
-    members: string[];
-    description: string;
-  };
+  type LdapGroup = { name: string; members?: string[]; description?: string };
+  type LMap = { name: string; role_ids?: string[] };
+  type Role = { id: string; name: string };
 
-  type LMap = {
-    name: string;
-    role_ids: string[];
-  };
+  /**
+   * A panel, not a page: it hangs under the group-map register and reports what
+   * the directory actually holds right now, beside the maps that were written
+   * for it. Everything here is read from LDAP on load — nothing is stored.
+   */
+  let groups = $state<LdapGroup[]>([]);
+  let lmapByName = $state<Record<string, LMap>>({});
+  let roleNameByID = $state<Record<string, string>>({});
+  let problem = $state("");
+  let ldapConfigured = $state(true);
+  let loading = $state(true);
+  let syncing = $state(false);
+  let forceSync = $state(false);
 
-  let groups: LdapGroup[] = [];
-  let lmapByName: Record<string, LMap> = {};
-  let roleNameByID: Record<string, string> = {};
-  let panelError = "";
-  let panelNotice = "";
-  let ldapConfigured = true;
-  let loading = true;
-  let syncing = false;
-  let forceSync = false;
+  const unmapped = $derived(groups.filter((group) => !lmapByName[group.name]).length);
 
-  async function fetchJSON(path: string) {
-    const res = await fetch(`${apiBase}/${path}`);
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const error = new Error(body?.message ?? `${path} failed: ${res.status}`);
-      (error as Error & { status?: number }).status = res.status;
-      throw error;
-    }
-
-    return body;
-  }
-
-  async function load() {
-    loading = true;
-    panelError = "";
-    try {
-      const [lmapsRes, rolesRes] = await Promise.all([
-        fetchJSON("lmaps?_limit=1000"),
-        fetchJSON("roles?_limit=1000"),
-      ]);
-
-      lmapByName = {};
-      for (const lmap of lmapsRes.payload ?? []) {
-        lmapByName[lmap.name] = lmap;
-      }
-
-      roleNameByID = {};
-      for (const role of rolesRes.payload ?? []) {
-        roleNameByID[role.id] = role.name;
-      }
-
-      try {
-        const groupsRes = await fetchJSON("ldap/groups");
-        groups = groupsRes.payload ?? [];
-        ldapConfigured = true;
-      } catch (err) {
-        const status = (err as Error & { status?: number }).status;
-        // 424: no enabled LDAP config
-        ldapConfigured = status !== 424;
-        groups = [];
-        if (ldapConfigured) throw err;
-      }
-    } catch (err) {
-      panelError = err instanceof Error ? err.message : String(err);
-    } finally {
-      loading = false;
-    }
-  }
-
-  function mappedRoles(groupName: string): string[] {
+  function mappedRoles(groupName: string) {
     const lmap = lmapByName[groupName];
     if (!lmap) return [];
 
     return (lmap.role_ids ?? []).map((id) => roleNameByID[id] ?? id);
   }
 
+  async function load() {
+    loading = true;
+    problem = "";
+
+    try {
+      const [lmapsRes, rolesRes] = await Promise.all([
+        session.request<LMap[]>("lmaps?_limit=1000"),
+        session.request<Role[]>("roles?_limit=1000"),
+      ]);
+
+      const maps: Record<string, LMap> = {};
+      for (const lmap of lmapsRes.payload ?? []) maps[lmap.name] = lmap;
+      lmapByName = maps;
+
+      const names: Record<string, string> = {};
+      for (const role of rolesRes.payload ?? []) names[role.id] = role.name;
+      roleNameByID = names;
+
+      try {
+        const groupsRes = await session.request<LdapGroup[]>("ldap/groups");
+        groups = groupsRes.payload ?? [];
+        ldapConfigured = true;
+      } catch (err) {
+        // 424 is the directory answering "no enabled LDAP config", which is a
+        // standing, not a fault — so this one call is read by status.
+        if (statusOf(err) !== 424) throw err;
+
+        ldapConfigured = false;
+        groups = [];
+      }
+    } catch (err) {
+      problem = messageOf(err, "The directory could not be read");
+      groups = [];
+    } finally {
+      loading = false;
+    }
+  }
+
+  /**
+   * The register owns the sync: it posts once, reloads every list the sync
+   * touches, and reports to the docket. This panel only re-reads the directory
+   * afterwards so the group list matches what was just written.
+   */
   async function syncNow() {
     syncing = true;
-    panelError = "";
-    panelNotice = "";
-    try {
-      const res = await fetch(`${apiBase}/ldap/sync`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force: forceSync }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.message ?? `sync failed: ${res.status}`);
+    problem = "";
 
-      panelNotice = forceSync ? "LDAP force sync complete" : "LDAP sync complete";
-      await load();
-    } catch (err) {
-      panelError = err instanceof Error ? err.message : String(err);
+    try {
+      if (await registry.syncLdap(forceSync)) await load();
     } finally {
       syncing = false;
     }
@@ -105,72 +91,105 @@
   onMount(load);
 </script>
 
-<div class="bg-panel">
-  <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2">
-    <span class="t-label text-fg">Live LDAP groups</span>
-    <div class="flex flex-wrap items-center gap-3">
-      <label class="flex items-center gap-2 text-xs font-bold {forceSync ? 'text-alert' : 'text-dim'}">
-        <input type="checkbox" bind:checked={forceSync} disabled={syncing || !ldapConfigured} />
-        Force
-      </label>
-      <button class="btn-t-solid" disabled={syncing || !ldapConfigured} on:click={syncNow}>
-        {syncing ? "Syncing..." : forceSync ? "Run force sync" : "Run LDAP sync"}
+<Section
+  title="Live LDAP groups"
+  note="Read from the directory each time this page opens. Every sync gives each LDAP group a role of the same name, creating it when missing, and a map pointing at it. Members receive those roles as sync roles; a user who leaves every group has its sync roles cleared."
+>
+  {#snippet aside()}
+    {#if !loading && ldapConfigured}
+      <span class="stamp">
+        {groups.length}
+        {groups.length === 1 ? "group" : "groups"}{unmapped ? ` · ${unmapped} unmapped` : ""}
+      </span>
+    {/if}
+    <button type="button" class="act" disabled={syncing || !ldapConfigured} onclick={() => void syncNow()}>
+      {syncing ? "Syncing…" : forceSync ? "Run force sync" : "Run sync"}
+    </button>
+  {/snippet}
+
+  <div class="max-w-[70ch]">
+    <Switch
+      label="Force: overwrite stored profiles from the directory"
+      consequential
+      disabled={syncing || !ldapConfigured}
+      hint="A normal sync only creates new users and updates sync roles. Force re-fetches every existing user and overwrites the details held here — email, uid, name, given and family name, and aliases — with whatever LDAP currently says. Use it when directory profile fields changed."
+      bind:checked={forceSync}
+    />
+  </div>
+
+  {#if problem}
+    <div class="mt-6 border border-seal/45 px-4 py-3">
+      <p class="stamp text-seal">Not read</p>
+      <p class="mt-1.5 max-w-[70ch] text-[13px] leading-[1.55] text-ink">{problem}</p>
+      <button type="button" class="act mt-3" disabled={loading} onclick={() => void load()}>
+        {loading ? "Retrying…" : "Try again"}
       </button>
     </div>
-  </div>
-
-  <div class="grid gap-px bg-line p-px">
-    <p class="bg-panel p-3 text-xs leading-4 text-dim">
-      Automatic mapping: on every sync each LDAP group gets a <span class="text-fg">role with the same name</span> (created when missing) and a group map pointing to it. Group members receive the mapped roles as <span class="text-fg">sync roles</span>; users that leave all groups have their sync roles cleared. Edit a group map below to attach more roles to an LDAP group.
+  {:else if loading}
+    <p class="mt-6 border border-dashed border-rule px-6 py-12 text-center text-[13px] text-muted">
+      Querying the directory…
     </p>
-
-    {#if forceSync}
-      <p class="bg-panel p-3 text-xs leading-4 text-alert">
-        FORCE re-fetches every existing user from LDAP and <span class="font-bold">overwrites their profile details</span> (email, uid, name, given/family name) and aliases. A normal sync only updates sync roles and creates new users. Use force when LDAP profile fields changed.
+  {:else if !ldapConfigured}
+    <div class="mt-6 border border-dashed border-rule px-6 py-12 text-center">
+      <p class="text-[15px] font-semibold text-ink">No LDAP configuration is enabled</p>
+      <p class="mx-auto mt-2 max-w-[56ch] text-[13px] leading-[1.6] text-muted">
+        Add one under LDAP configs and enable it. Until then there is no directory to read, and the
+        maps above are never filled by a sync.
       </p>
-    {/if}
-
-    {#if panelError}
-      <p class="bg-panel px-3 py-2 text-xs font-bold text-alert">{panelError}</p>
-    {/if}
-    {#if panelNotice}
-      <p class="bg-panel px-3 py-2 text-xs font-bold text-fg">{panelNotice}</p>
-    {/if}
-
-    {#if loading}
-      <p class="bg-panel p-3 text-xs text-dim">QUERYING LDAP...</p>
-    {:else if !ldapConfigured}
-      <p class="bg-panel p-3 text-xs leading-4 text-dim">
-        No enabled LDAP configuration. Add one under <span class="text-fg">LDAP / LDAP configs</span> to see live groups here.
+    </div>
+  {:else if groups.length === 0}
+    <div class="mt-6 border border-dashed border-rule px-6 py-12 text-center">
+      <p class="text-[15px] font-semibold text-ink">The directory returned no groups</p>
+      <p class="mx-auto mt-2 max-w-[56ch] text-[13px] leading-[1.6] text-muted">
+        The connection worked, but the configured base DN and filter matched nothing. Check the
+        groups block on the active LDAP config.
       </p>
-    {:else if groups.length === 0}
-      <p class="bg-panel p-3 text-xs leading-4 text-dim">LDAP returned no groups for the configured filters.</p>
-    {:else}
-      <div class="hidden grid-cols-[minmax(0,1fr),90px,minmax(0,1.2fr)] gap-4 bg-panel px-3 py-2 md:grid">
-        <span class="t-label text-fg">LDAP group</span>
-        <span class="t-label text-fg">Members</span>
-        <span class="t-label text-fg">Mapped roles</span>
+    </div>
+  {:else}
+    <div class="mt-6 border border-rule bg-sheet">
+      <div
+        class="hidden items-baseline gap-4 border-b border-rule px-4 py-2 md:grid md:grid-cols-[minmax(0,1fr)_6rem_minmax(0,1.2fr)]"
+      >
+        <span class="stamp">Directory group</span>
+        <span class="stamp text-right">Members</span>
+        <span class="stamp">Mapped roles</span>
       </div>
-      <div class="grid gap-px bg-line">
-        {#each groups as group}
-          <div class="grid gap-2 bg-crt px-3 py-2 text-xs leading-4 md:grid-cols-[minmax(0,1fr),90px,minmax(0,1.2fr)] md:items-center md:gap-4">
-            <div class="min-w-0">
-              <p class="truncate font-bold text-fg">{group.name}</p>
-              {#if group.description}
-                <p class="truncate text-dim">{group.description}</p>
-              {/if}
+
+      <ul>
+        {#each groups as group (group.name)}
+          <li class="border-b border-rule last:border-b-0">
+            <div
+              class="grid gap-x-4 gap-y-1.5 px-4 py-3 md:grid-cols-[minmax(0,1fr)_6rem_minmax(0,1.2fr)] md:items-center"
+            >
+              <div class="min-w-0">
+                <p class="serial truncate text-[13.5px] font-medium text-ink">{group.name}</p>
+                {#if group.description}
+                  <p class="mt-0.5 truncate text-[12px] text-muted">{group.description}</p>
+                {/if}
+              </div>
+
+              <p class="serial text-[13px] text-muted md:text-right">
+                {(group.members ?? []).length}
+              </p>
+
+              <div class="min-w-0">
+                {#if lmapByName[group.name]}
+                  <p class="truncate text-[13px] text-ink">
+                    {mappedRoles(group.name).join(", ") || "—"}
+                  </p>
+                {:else}
+                  <span class="inline-flex items-center gap-2.5">
+                    <Seal state="void" />
+                    <span class="text-[12.5px] text-muted">
+                      Not mapped — role and map are created on the next sync
+                    </span>
+                  </span>
+                {/if}
+              </div>
             </div>
-            <span class="text-dim">{(group.members ?? []).length}</span>
-            <div class="min-w-0">
-              {#if lmapByName[group.name]}
-                <p class="truncate text-fg">{mappedRoles(group.name).join(",") ||"—"}</p>
-              {:else}
-                <p class="text-dim">NOT MAPPED — role + map auto-created on next sync</p>
-              {/if}
-            </div>
-          </div>
+          </li>
         {/each}
-      </div>
-    {/if}
-  </div>
-</div>
+      </ul>
+    </div>
+  {/if}
+</Section>

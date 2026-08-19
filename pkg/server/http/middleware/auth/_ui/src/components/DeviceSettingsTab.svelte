@@ -1,74 +1,122 @@
 <script lang="ts">
-  import type { SettingNamespace } from "../lib/api";
+  import Instrument from "./ui/Instrument.svelte";
+  import Section from "./ui/Section.svelte";
+  import Switch from "./ui/Switch.svelte";
+  import Seal from "./ui/Seal.svelte";
+  import Serial from "./ui/Serial.svelte";
+  import { session } from "../lib/state/session.svelte";
+  import {
+    getSettingBool,
+    setSettingBool,
+    getSettingString,
+    setSettingString,
+    getSettingNumber,
+    setSettingNumber,
+    saveSetting,
+  } from "../lib/state/settings.svelte";
 
-  export let busy = false;
-  export let settingsRevision = 0;
-  export let getSettingBool: (namespace: SettingNamespace, path: string[], fallback?: boolean) => boolean = () => false;
-  export let setSettingBool: (namespace: SettingNamespace, path: string[], value: boolean) => void = () => {};
-  export let getSettingString: (namespace: SettingNamespace, path: string[]) => string = () => "";
-  export let setSettingString: (namespace: SettingNamespace, path: string[], value: string) => void = () => {};
-  export let getSettingNumber: (namespace: SettingNamespace, path: string[], fallback?: number) => number = () => 0;
-  export let setSettingNumber: (namespace: SettingNamespace, path: string[], value: string) => void = () => {};
-  export let saveSetting: (namespace: SettingNamespace) => void | Promise<void> = () => {};
+  const disabled = $derived(getSettingBool("device", ["disabled"]));
+  const codeLifetime = $derived(getSettingString("device", ["code_lifetime"]));
+  const interval = $derived(getSettingNumber("device", ["interval"], 5));
+  const verificationURI = $derived(getSettingString("device", ["verification_uri"]));
 
-  const ns: SettingNamespace = "device";
-
-  function inputValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement).value;
-  }
-
-  function checkedValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement).checked;
-  }
-
-  function sBool(_rev: number, path: string[], fallback = false) {
-    return getSettingBool(ns, path, fallback);
-  }
-
-  function sString(_rev: number, path: string[]) {
-    return getSettingString(ns, path);
-  }
-
-  function sNumber(_rev: number, path: string[], fallback = 0) {
-    return getSettingNumber(ns, path, fallback);
-  }
-
-  $: disabled = sBool(settingsRevision, ["disabled"]);
-  $: codeLifetime = sString(settingsRevision, ["code_lifetime"]);
-  $: interval = sNumber(settingsRevision, ["interval"], 5);
-  $: verificationURI = sString(settingsRevision, ["verification_uri"]);
+  /** What a device is actually told to display when the field is left empty. */
+  const effectiveURI = $derived(verificationURI.trim() || `${session.oauthBase}/ui/device`);
 </script>
 
-<div class="grid gap-px bg-line p-px">
-  <div class="grid gap-3 bg-panel p-4">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <span class="t-label text-fg">Device flow</span>
-        <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Device Authorization</h3>
-      </div>
-      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting(ns)}>Save device</button>
-    </div>
-    <p class="max-w-3xl text-xs leading-5 text-dim">
-      RFC 8628 device authorization grant for input-constrained clients. Users approve a code at the verification URI; clients poll the token endpoint until approval.
-    </p>
-  </div>
+<Instrument
+  title="Device flow"
+  note="The RFC 8628 device authorization grant, for clients that cannot open a browser. The device shows a code, the person approves it here, and the device polls the token endpoint until it is answered."
+>
+  {#snippet actions()}
+    <button
+      type="button"
+      class="act act-primary"
+      disabled={session.busy}
+      onclick={() => saveSetting("device")}
+    >
+      Commit
+    </button>
+  {/snippet}
 
-  <div class="grid gap-px bg-line md:grid-cols-2 xl:grid-cols-3">
-    <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-      <input type="checkbox" checked={disabled} class="h-3.5 w-3.5 appearance-none border border-line bg-crt checked:bg-alert" on:change={(event) => setSettingBool(ns, ["disabled"], checkedValue(event))} />
-      <span class={disabled ?"text-alert" :"text-dim"}>Disable device flow</span>
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Code lifetime</span>
-      <input class="field-t" value={codeLifetime} placeholder="10m" on:input={(event) => setSettingString(ns, ["code_lifetime"], inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Poll interval (seconds)</span>
-      <input class="field-t" type="number" min="1" value={interval} on:input={(event) => setSettingNumber(ns, ["interval"], inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2 xl:col-span-3">
-      <span class="t-label">Verification URI</span>
-      <input class="field-t" value={verificationURI} placeholder="default: <prefix>/ui/device" on:input={(event) => setSettingString(ns, ["verification_uri"], inputValue(event))} />
-    </label>
-  </div>
-</div>
+  {#snippet custody()}
+    <span class="stamp">Namespace <span class="serial stamp-raw">device</span></span>
+    <Seal state={disabled ? "void" : "endorsed"} label={disabled ? "Not issued" : "Issuing codes"} />
+  {/snippet}
+
+  <Section title="Standing" first>
+    <Switch
+      label="Stop issuing device codes"
+      hint="On, /oauth2/device rejects new requests. Devices already holding a code stop being answered and their users see nothing to approve."
+      bind:checked={
+        () => getSettingBool("device", ["disabled"]),
+        (value: boolean) => setSettingBool("device", ["disabled"], value)
+      }
+    />
+  </Section>
+
+  <Section title="Timing" note="How long a code stands, and how often a device may ask about it.">
+    <div class="grid max-w-[52ch] gap-6 sm:grid-cols-2">
+      <div>
+        <label class="stamp block" for="device-code-lifetime">Code lifetime</label>
+        <input
+          id="device-code-lifetime"
+          class="entry serial mt-1.5"
+          autocomplete="off"
+          placeholder="10m"
+          aria-describedby="device-code-lifetime-hint"
+          value={codeLifetime}
+          oninput={(e) => setSettingString("device", ["code_lifetime"], e.currentTarget.value)}
+        />
+        <p id="device-code-lifetime-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+          A Go duration. After this the code expires and the device must start again.
+        </p>
+      </div>
+
+      <div>
+        <label class="stamp block" for="device-interval">Poll interval</label>
+        <input
+          id="device-interval"
+          class="entry serial mt-1.5"
+          type="number"
+          min="1"
+          aria-describedby="device-interval-hint"
+          value={interval}
+          oninput={(e) => setSettingNumber("device", ["interval"], e.currentTarget.value)}
+        />
+        <p id="device-interval-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+          Seconds the device is told to wait between polls. Asking faster is answered with
+          <span class="serial">slow_down</span>.
+        </p>
+      </div>
+    </div>
+  </Section>
+
+  <Section
+    title="Where people approve"
+    note="This address is printed on the device screen, so it has to be reachable and readable by whoever is holding it."
+  >
+    <div class="max-w-[62ch]">
+      <label class="stamp block" for="device-verification-uri">Verification URI</label>
+      <input
+        id="device-verification-uri"
+        class="entry serial mt-1.5"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="{session.oauthBase}/ui/device"
+        aria-describedby="device-verification-uri-hint"
+        value={verificationURI}
+        oninput={(e) => setSettingString("device", ["verification_uri"], e.currentTarget.value)}
+      />
+      <p id="device-verification-uri-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+        Leave empty to use this console's own approval page. Set it when the console is behind a
+        different public address than the one this instance sees.
+      </p>
+    </div>
+
+    <div class="mt-8">
+      <Serial value={effectiveURI} size="md" tone="carbon" />
+      <p class="stamp mt-2">Printed on the device</p>
+    </div>
+  </Section>
+</Instrument>

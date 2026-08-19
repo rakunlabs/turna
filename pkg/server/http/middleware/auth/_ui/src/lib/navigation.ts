@@ -1,79 +1,131 @@
 import type { ResourceKind } from "./api";
 
-export type Tab = "overview" | "check" | "flows" | "oauth2-overview" | "docs" | "account" | "api-keys" | "device" | "email" | "magic-link" | "signup" | "mtls" | "encryption" | "admin" | "cache" | "device-settings" | "token-exchange" | "totp" | "custom-info" | ResourceKind;
+export type Tab =
+  | "overview"
+  | "check"
+  | "flows"
+  | "oauth2-overview"
+  | "docs"
+  | "account"
+  | "api-keys"
+  | "device"
+  | "email"
+  | "magic-link"
+  | "signup"
+  | "mtls"
+  | "encryption"
+  | "admin"
+  | "cache"
+  | "device-settings"
+  | "token-exchange"
+  | "totp"
+  | "custom-info"
+  | ResourceKind;
 
 export type NavItem = { id: Tab; label: string };
 
 export type NavGroup = { label: string; items: NavItem[] };
 
+/**
+ * The seven groups are the operator's existing map and stay exactly as they
+ * were. Labels are set in sentence case because the index renders them as text
+ * at reading size; the engraved caps register belongs to the group headings.
+ */
 export const navGroups: NavGroup[] = [
   {
-    label: "CONTROL",
+    label: "Control",
     items: [
-      { id: "overview", label: "OVERVIEW" },
-      { id: "flows", label: "FLOWS" },
-      { id: "check", label: "ACCESS CHECK" },
+      { id: "overview", label: "Overview" },
+      { id: "flows", label: "Flows" },
+      { id: "check", label: "Access check" },
     ],
   },
   {
-    label: "SELF SERVICE",
+    label: "Self service",
     items: [
-      { id: "account", label: "MY ACCOUNT" },
-      { id: "device", label: "DEVICE LOGIN" },
+      { id: "account", label: "My account" },
+      { id: "device", label: "Device login" },
     ],
   },
   {
     label: "IAM",
     items: [
-      { id: "users", label: "USERS" },
-      { id: "service-accounts", label: "SERVICE ACCTS" },
-      { id: "roles", label: "ROLES" },
-      { id: "permissions", label: "PERMISSIONS" },
+      { id: "users", label: "Users" },
+      { id: "service-accounts", label: "Service accounts" },
+      { id: "roles", label: "Roles" },
+      { id: "permissions", label: "Permissions" },
     ],
   },
   {
     label: "LDAP",
     items: [
-      { id: "lmaps", label: "GROUP MAPS" },
-      { id: "ldap", label: "LDAP CONFIGS" },
+      { id: "lmaps", label: "Group maps" },
+      { id: "ldap", label: "LDAP configs" },
     ],
   },
   {
-    label: "FEDERATION",
+    label: "Federation",
     items: [
-      { id: "oauth2-overview", label: "OAUTH2 OVERVIEW" },
-      { id: "clients", label: "SERVER CLIENTS" },
-      { id: "providers", label: "OAUTH PROVIDERS" },
-      { id: "saml", label: "SAML PROVIDERS" },
+      { id: "oauth2-overview", label: "OAuth2 overview" },
+      { id: "clients", label: "Server clients" },
+      { id: "providers", label: "OAuth providers" },
+      { id: "saml", label: "SAML providers" },
     ],
   },
   {
-    label: "SYSTEM",
+    label: "System",
     items: [
-      { id: "api-keys", label: "API KEYS" },
-      { id: "email", label: "EMAIL" },
-      { id: "magic-link", label: "MAGIC LINK" },
-      { id: "signup", label: "SIGNUP" },
-      { id: "mtls", label: "MTLS" },
+      { id: "api-keys", label: "API keys" },
+      { id: "email", label: "Email" },
+      { id: "magic-link", label: "Magic link" },
+      { id: "signup", label: "Signup" },
+      { id: "mtls", label: "mTLS" },
       { id: "totp", label: "TOTP" },
-      { id: "custom-info", label: "CUSTOM INFO" },
-      { id: "device-settings", label: "DEVICE FLOW" },
-      { id: "token-exchange", label: "TOKEN EXCHANGE" },
+      { id: "custom-info", label: "Custom info" },
+      { id: "device-settings", label: "Device flow" },
+      { id: "token-exchange", label: "Token exchange" },
     ],
   },
   {
-    label: "PLATFORM",
+    label: "Platform",
     items: [
-      { id: "admin", label: "ADMIN" },
-      { id: "cache", label: "CACHE" },
-      { id: "encryption", label: "ENCRYPTION" },
-      { id: "docs", label: "DOCS" },
+      { id: "admin", label: "Admin" },
+      { id: "cache", label: "Cache" },
+      { id: "encryption", label: "Encryption" },
+      { id: "docs", label: "Docs" },
     ],
   },
 ];
 
 export const nav = navGroups.flatMap((group) => group.items);
 
+const FIXED_TABS: Tab[] = [
+  "overview",
+  "check",
+  "flows",
+  "oauth2-overview",
+  "docs",
+  "account",
+  "api-keys",
+  "device",
+  "email",
+  "magic-link",
+  "signup",
+  "mtls",
+  "encryption",
+  "admin",
+  "cache",
+  "device-settings",
+  "token-exchange",
+  "totp",
+  "custom-info",
+];
+
+/** Resource tabs are the ones backed by a generic record list plus editor. */
 export function isResourceTab(tab: Tab): tab is ResourceKind {
-  return !["overview", "check", "flows", "oauth2-overview", "docs", "account", "api-keys", "device", "email", "magic-link", "signup", "mtls", "encryption", "admin", "cache", "device-settings", "token-exchange", "totp", "custom-info"].includes(tab);
+  return !FIXED_TABS.includes(tab);
+}
+
+export function labelOf(tab: Tab) {
+  return nav.find((item) => item.id === tab)?.label ?? tab;
 }

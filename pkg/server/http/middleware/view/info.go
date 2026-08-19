@@ -60,9 +60,10 @@ type Page struct {
 	Path      string `cfg:"path"       json:"path,omitempty"`
 	PathExtra string `cfg:"path_extra" json:"path_extra,omitempty"`
 
-	URL    string       `cfg:"url"    json:"-"`
-	Header HeaderHolder `cfg:"header" json:"-"`
-	Host   bool         `cfg:"host"   json:"-"`
+	URL     string       `cfg:"url"     json:"-"`
+	Header  HeaderHolder `cfg:"header"  json:"-"`
+	Host    bool         `cfg:"host"    json:"-"`
+	Rewrite *Rewrite     `cfg:"rewrite" json:"-"`
 }
 
 type HeaderHolder struct {

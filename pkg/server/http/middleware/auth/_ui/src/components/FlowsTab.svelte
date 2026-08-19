@@ -1,164 +1,207 @@
 <script lang="ts">
-  import type { SettingNamespace } from "../lib/api";
+  import Instrument from "./ui/Instrument.svelte";
+  import Section from "./ui/Section.svelte";
+  import Seal from "./ui/Seal.svelte";
+  import { registry } from "../lib/state/registry.svelte";
+  import { route } from "../lib/state/route.svelte";
+  import { getSettingBool } from "../lib/state/settings.svelte";
+  import { labelOf, type Tab } from "../lib/navigation";
 
-  export let settingsRevision = 0;
-  export let getSettingBool: (namespace: SettingNamespace, path: string[], fallback?: boolean) => boolean = () => false;
-  export let ldapActive = false;
-  export let providerCount = 0;
-  export let samlCount = 0;
+  /**
+   * A standing report, not a control panel. Every line reads live settings and
+   * says what is true right now; the button hands the operator to the page that
+   * owns the switch. Nothing on this page writes anything.
+   */
+  type Flow = { label: string; on: boolean; meaning: string; tab: Tab };
 
-  function sBool(_rev: number, ns: SettingNamespace, path: string[], fallback = false) {
-    return getSettingBool(ns, path, fallback);
-  }
+  const ldapReachable = $derived(registry.ldapActive && !getSettingBool("password", ["ldap_disabled"]));
 
-  $: passwordDisabled = sBool(settingsRevision, "password", ["disabled"]);
-  $: localDisabled = sBool(settingsRevision, "password", ["local_disabled"]);
-  $: ldapDisabled = sBool(settingsRevision, "password", ["ldap_disabled"]);
-  $: ldapRegisterDisabled = sBool(settingsRevision, "password", ["ldap_register_disabled"]);
-  $: passkeyDisabled = sBool(settingsRevision, "passkey", ["disabled"]);
-  $: totpDisabled = sBool(settingsRevision, "totp", ["disabled"]);
-  $: signupEnabled = sBool(settingsRevision, "signup", ["enabled"]);
-  $: emailVerification = sBool(settingsRevision, "signup", ["email_verification"], true);
-  $: passwordReset = sBool(settingsRevision, "signup", ["password_reset"]);
-  $: apiKeyDisabled = sBool(settingsRevision, "api_key", ["disabled"]);
-  $: deviceDisabled = sBool(settingsRevision, "device", ["disabled"]);
-  $: mtlsEnabled = sBool(settingsRevision, "mtls", ["enabled"]);
-  $: tokenExchangeDisabled = sBool(settingsRevision, "token_exchange", ["disabled"]);
+  const waysIn: Flow[] = $derived([
+    {
+      label: "Password grant",
+      on: !getSettingBool("password", ["disabled"]),
+      meaning:
+        "A registered client may exchange a username and password for a token at the token endpoint.",
+      tab: "oauth2-overview",
+    },
+    {
+      label: "Local passwords",
+      on: !getSettingBool("password", ["local_disabled"]),
+      meaning: "Users stored in this instance verify against their own bcrypt password.",
+      tab: "oauth2-overview",
+    },
+    {
+      label: "LDAP passwords",
+      on: ldapReachable,
+      meaning: "Users that are not local bind against the first enabled LDAP config instead.",
+      tab: "ldap",
+    },
+    {
+      label: "LDAP auto-register",
+      on: ldapReachable && !getSettingBool("password", ["ldap_register_disabled"]),
+      meaning:
+        "An alias found in LDAP but not yet stored here is created as a non-local user on first login.",
+      tab: "ldap",
+    },
+    {
+      label: "Passkey / WebAuthn",
+      on: !getSettingBool("passkey", ["disabled"]),
+      meaning: "Enrolled authenticators sign a challenge instead of sending a password.",
+      tab: "oauth2-overview",
+    },
+    {
+      label: "Self registration",
+      on: getSettingBool("signup", ["enabled"]),
+      meaning: "Anyone reaching the login page may create a local account for themselves.",
+      tab: "signup",
+    },
+    {
+      label: "mTLS client certificates",
+      on: getSettingBool("mtls", ["enabled"]),
+      meaning: "A client certificate presented at the token endpoint authenticates the caller.",
+      tab: "mtls",
+    },
+  ]);
 
-  // password grant outcome for an unknown (not-yet-stored) alias
-  $: passwordUnknown = (() => {
-    if (ldapDisabled || !ldapActive) return "off";
-    if (ldapRegisterDisabled) return "known-only";
-    return "auto-register";
-  })();
+  const proofs: Flow[] = $derived([
+    {
+      label: "TOTP second factor",
+      on: !getSettingBool("totp", ["disabled"]),
+      meaning: "A user who enrolled TOTP must supply a valid code before a login completes.",
+      tab: "totp",
+    },
+    {
+      label: "Signup email verification",
+      on: getSettingBool("signup", ["email_verification"], true),
+      meaning: "A new account is created only after the address answers a mailed code or link.",
+      tab: "signup",
+    },
+    {
+      label: "Password reset by email",
+      on: getSettingBool("signup", ["password_reset"]),
+      meaning: "A user who lost their password can set a new one through a mailed link.",
+      tab: "signup",
+    },
+  ]);
+
+  const grants: Flow[] = $derived([
+    {
+      label: "API keys",
+      on: !getSettingBool("api_key", ["disabled"]),
+      meaning: "A static key is accepted as a credential and checked against the database per request.",
+      tab: "api-keys",
+    },
+    {
+      label: "Device flow",
+      on: !getSettingBool("device", ["disabled"]),
+      meaning: "An input-limited device gets a user code and polls until a person approves it.",
+      tab: "device-settings",
+    },
+    {
+      label: "Token exchange",
+      on: !getSettingBool("token_exchange", ["disabled"]),
+      meaning: "A held token can be traded for another one under the exchange grant.",
+      tab: "token-exchange",
+    },
+  ]);
+
+  const federation: Flow[] = $derived([
+    {
+      label: "Upstream OAuth providers",
+      on: registry.providerCount > 0,
+      meaning:
+        "Login can be delegated to an upstream identity provider, which returns a code this instance redeems.",
+      tab: "providers",
+    },
+    {
+      label: "SAML providers",
+      on: registry.samlCount > 0,
+      meaning: "A SAML assertion is accepted and converted into a standard authorization code.",
+      tab: "saml",
+    },
+    {
+      label: "LDAP directory",
+      on: registry.ldapActive,
+      meaning: "A directory is connected for password binds and scheduled group synchronisation.",
+      tab: "ldap",
+    },
+  ]);
+
+  const sealed = $derived(
+    waysIn.every((flow) => !flow.on) && federation.every((flow) => !flow.on),
+  );
+
+  const onCount = $derived(
+    [...waysIn, ...proofs, ...grants, ...federation].filter((flow) => flow.on).length,
+  );
 </script>
 
-<div class="grid gap-px bg-line p-px">
-  <div class="bg-panel p-4">
-    <p class="t-label text-fg">Flows</p>
-    <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">What Happens Now</h3>
-    <p class="mt-3 max-w-3xl text-xs leading-5 text-dim">
-      Live walkthrough of each authentication path based on the <span class="text-fg">current</span> settings. Change a
-      toggle on its page and this view updates after the next refresh.
+{#snippet ledger(flows: Flow[])}
+  <ul>
+    {#each flows as flow (flow.label)}
+      <li
+        class="grid gap-x-6 gap-y-2 border-b border-rule py-3.5 last:border-b-0 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto] md:items-baseline"
+      >
+        <span class="flex min-w-0 items-center gap-2.5">
+          <Seal state={flow.on ? "endorsed" : "void"} />
+          <span class="min-w-0 text-[13.5px] font-medium text-ink">{flow.label}</span>
+        </span>
+
+        <span class="min-w-0 text-[12.5px] leading-[1.55] text-muted">
+          {flow.meaning}
+        </span>
+
+        <span class="flex shrink-0 items-center gap-4 md:justify-end">
+          <span class="stamp {flow.on ? 'text-endorsed' : 'text-muted'}">{flow.on ? "On" : "Off"}</span>
+          <button type="button" class="act" onclick={() => route.select(flow.tab)}>
+            Open {labelOf(flow.tab)}
+          </button>
+        </span>
+      </li>
+    {/each}
+  </ul>
+{/snippet}
+
+{#snippet count(flows: Flow[])}
+  <span class="stamp">{flows.filter((flow) => flow.on).length} of {flows.length} on</span>
+{/snippet}
+
+<Instrument
+  title="Flows"
+  note="What this instance currently accepts. Every line reads the live settings — this is a report, not a set of switches, so each one hands you to the page that owns it."
+>
+  {#snippet custody()}
+    <span class="stamp">{onCount} enabled</span>
+    <span class="stamp">Read from the live settings namespaces</span>
+  {/snippet}
+
+  {#if sealed}
+    <p class="hatch mb-8 border border-seal/45 px-4 py-3 text-[13px] leading-[1.55] text-ink">
+      <span class="stamp text-seal">Sealed shut</span>
+      <span class="ml-3">
+        No way in is enabled and no upstream is connected, so nothing can obtain a token from this
+        instance. Enable a login method below before anyone depends on it.
+      </span>
     </p>
-  </div>
+  {/if}
 
-  <div class="grid gap-px bg-line lg:grid-cols-2">
-    <!-- PASSWORD LOGIN -->
-    <div class="grid content-start gap-px bg-line">
-      <div class="flex items-center justify-between bg-panel px-3 py-2">
-        <span class="t-label text-fg">Password login</span>
-        {#if passwordDisabled}
-          <span class="text-xs font-bold text-alert">Off</span>
-        {:else}
-          <span class="text-xs font-bold text-fg">On</span>
-        {/if}
-      </div>
-      <div class="bg-panel p-4 text-xs leading-5 text-dim">
-        {#if passwordDisabled}
-          <p class="text-alert">The <span class="text-fg">password</span> grant is disabled; username/password logins are rejected.</p>
-        {:else}
-          <ol class="grid list-decimal gap-1 pl-4">
-            <li>Client <span class="text-fg">client_id/secret</span> is validated (registered OAuth client or service account).</li>
-            <li>The alias is resolved to a user:</li>
-            <ul class="grid list-disc gap-1 pl-4">
-              <li>
-                <span class="text-fg">Local user</span>:
-                {#if localDisabled}<span class="text-alert">local passwords are disabled</span>{:else}bcrypt password is checked{/if}.
-              </li>
-              <li>
-                <span class="text-fg">Unknown alias</span>:
-                {#if passwordUnknown === "auto-register"}
-                  found in LDAP &rarr; account is <span class="text-fg">auto-created (non-local)</span> and logged in.
-                {:else if passwordUnknown === "known-only"}
-                  <span class="text-alert">LDAP auto-register is off</span> &rarr; only already-stored users can log in.
-                {:else}
-                  {#if ldapDisabled}<span class="text-alert">LDAP passwords disabled</span>{:else}<span class="text-alert">no enabled LDAP config</span>{/if} &rarr; unknown aliases are rejected.
-                {/if}
-              </li>
-            </ul>
-            {#if !totpDisabled}
-              <li>If the user enrolled <span class="text-fg">TOTP</span>, a valid code is required to finish.</li>
-            {/if}
-          </ol>
-        {/if}
-      </div>
-    </div>
+  <Section title="Ways in" note="How a person or a machine first proves who it is." first>
+    {#snippet aside()}{@render count(waysIn)}{/snippet}
+    {@render ledger(waysIn)}
+  </Section>
 
-    <!-- SELF REGISTRATION -->
-    <div class="grid content-start gap-px bg-line">
-      <div class="flex items-center justify-between bg-panel px-3 py-2">
-        <span class="t-label text-fg">Self registration</span>
-        {#if signupEnabled}
-          <span class="text-xs font-bold text-fg">On</span>
-        {:else}
-          <span class="text-xs font-bold text-alert">Off</span>
-        {/if}
-      </div>
-      <div class="bg-panel p-4 text-xs leading-5 text-dim">
-        {#if !signupEnabled}
-          <p class="text-alert">Self-registration is disabled; <span class="text-fg">Create account</span> is hidden on the login page.</p>
-        {:else}
-          <ol class="grid list-decimal gap-1 pl-4">
-            <li>User submits email + password at <span class="text-fg">/oauth2/signup</span> (valid client required).</li>
-            {#if emailVerification}
-              <li>A verification code/magic link is emailed; the <span class="text-fg">local</span> account is created only after confirmation.</li>
-            {:else}
-              <li>The <span class="text-fg">local</span> account is created immediately; duplicate addresses answer 409.</li>
-            {/if}
-            <li>Forgot-password over email is <span class={passwordReset ?"text-fg" :"text-alert"}>{passwordReset ?"enabled" :"disabled"}</span>.</li>
-          </ol>
-          <p class="mt-2">New accounts are <span class="text-fg">local</span> users and verify against the stored bcrypt password.</p>
-        {/if}
-      </div>
-    </div>
+  <Section title="Additional proof" note="Steps that stand between a correct password and a finished login.">
+    {#snippet aside()}{@render count(proofs)}{/snippet}
+    {@render ledger(proofs)}
+  </Section>
 
-    <!-- OAUTH2 / OIDC -->
-    <div class="grid content-start gap-px bg-line">
-      <div class="flex items-center justify-between bg-panel px-3 py-2">
-        <span class="t-label text-fg">OAuth2 / OIDC provider</span>
-        <span class="text-xs font-bold {providerCount ? 'text-fg' : 'text-dim'}">{providerCount} configured</span>
-      </div>
-      <div class="bg-panel p-4 text-xs leading-5 text-dim">
-        {#if providerCount === 0}
-          <p>No upstream OAuth providers configured. Add one under <span class="text-fg">OAuth providers</span>.</p>
-        {:else}
-          <ol class="grid list-decimal gap-1 pl-4">
-            <li>User is redirected to the provider at <span class="text-fg">/oauth2/auth/&lbrace;provider&rbrace;</span> and returns with a code.</li>
-            <li>Claims are read; if the provider's <span class="text-fg">claim_mapping.register</span> is on, an unknown user is <span class="text-fg">auto-created (non-local)</span> from the claims.</li>
-            <li>Roles from <span class="text-fg">roles_claim</span> are synced into the user's sync roles (optionally via LDAP group maps).</li>
-          </ol>
-          <p class="mt-2">Register + role mapping is configured <span class="text-fg">per provider</span>.</p>
-        {/if}
-      </div>
-    </div>
+  <Section title="Grants and credentials" note="Ways a token is obtained or traded once an identity exists.">
+    {#snippet aside()}{@render count(grants)}{/snippet}
+    {@render ledger(grants)}
+  </Section>
 
-    <!-- METHODS STATUS -->
-    <div class="grid content-start gap-px bg-line">
-      <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">[ METHODS &amp; GRANTS ]</span>
-      </div>
-      <div class="grid grid-cols-2 gap-px bg-line">
-        {#each [
-          { label: "Passkey / WebAuthn", on: !passkeyDisabled },
-          { label: "TOTP 2FA", on: !totpDisabled },
-          { label: "API keys", on: !apiKeyDisabled },
-          { label: "Device flow", on: !deviceDisabled },
-          { label: "mTLS client certs", on: mtlsEnabled },
-          { label: "Token exchange", on: !tokenExchangeDisabled },
-          { label: "SAML providers", on: samlCount > 0 },
-          { label: "LDAP", on: ldapActive },
-        ] as item}
-          <div class="flex items-center justify-between gap-2 bg-panel p-3">
-            <span class="text-xs text-dim">{item.label}</span>
-            {#if item.on}
-              <span class="text-xs font-bold text-fg">On</span>
-            {:else}
-              <span class="text-xs font-bold text-alert">Off</span>
-            {/if}
-          </div>
-        {/each}
-      </div>
-    </div>
-  </div>
-</div>
+  <Section title="Federation" note="Identity sources outside this instance. These count records, not settings.">
+    {#snippet aside()}{@render count(federation)}{/snippet}
+    {@render ledger(federation)}
+  </Section>
+</Instrument>

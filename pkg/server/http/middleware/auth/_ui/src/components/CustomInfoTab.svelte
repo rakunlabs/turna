@@ -1,52 +1,49 @@
 <script lang="ts">
-  import type { AnyRecord, SettingNamespace } from "../lib/api";
+  import Instrument from "./ui/Instrument.svelte";
+  import Section from "./ui/Section.svelte";
+  import Switch from "./ui/Switch.svelte";
+  import Seal from "./ui/Seal.svelte";
 
-  export let apiBase = "/auth/v1";
-  export let busy = false;
-  export let settingsRevision = 0;
-  export let settingRecord: (namespace: SettingNamespace) => AnyRecord = () => ({});
-  export let setSettingRecord: (namespace: SettingNamespace, value: AnyRecord) => void = () => {};
-  export let saveSetting: (namespace: SettingNamespace) => void | Promise<void> = () => {};
+  import type { AnyRecord, SettingNamespace } from "../lib/api";
+  import { pretty } from "../lib/records";
+  import { docket, messageOf, session } from "../lib/state/session.svelte";
+  import { saveSetting, setSettingRecord, settingRecord } from "../lib/state/settings.svelte";
 
   type ClaimRow = { id: number; key: string; tmpl: string };
   type SetRow = { id: number; name: string; claims: ClaimRow[] };
 
   const ns: SettingNamespace = "custom_info";
 
-  // ready-to-paste endpoint URLs for a set (the auth prefix is apiBase without /v1).
-  $: origin = typeof window !== "undefined" ? window.location.origin : "";
-  $: oauthBase = apiBase.replace(/\/v1$/, "");
+  /** The two template inputs, stated where the templates are written. */
+  const templateFields = ["{{ .claims.<name> }}", "{{ .user.Details.<key> }}"];
 
-  function userinfoURL(name: string) {
-    return `${origin}${oauthBase}/oauth2/userinfo/${encodeURIComponent(name.trim())}`;
-  }
-
-  function discoveryURL(name: string) {
-    return `${origin}${oauthBase}/oauth2/openid/${encodeURIComponent(name.trim())}/.well-known/openid-configuration`;
-  }
-
-  async function copyText(value: string) {
-    try {
-      await navigator.clipboard.writeText(value);
-    } catch {
-      // clipboard may be unavailable (insecure context); ignore.
-    }
-  }
+  // Braces are template syntax in markup, so the route is named from script.
+  const pageNote =
+    "Named sets that rewrite the response of GET /auth/oauth2/userinfo/{name}. Each claim is a Go text/template rendered against the base userinfo claims and the full user record.";
 
   let uid = 0;
-  let disabled = false;
-  let sets: SetRow[] = [];
-  // re-sync the local editable model from the canonical record only when it
-  // actually changes (initial load + after save); typing keeps edits local.
-  let syncedRevision = -1;
+  let held = $state(false);
+  let sets = $state<SetRow[]>([]);
 
-  $: if (settingsRevision !== syncedRevision) {
-    syncFromRecord();
-    syncedRevision = settingsRevision;
-  }
+  /**
+   * The editable model is local: typing must not write through to the canonical
+   * record, or every keystroke would be a pending change. Re-sync only when the
+   * record itself is replaced — initial load, and again after a commit.
+   */
+  let syncedFrom: AnyRecord | null = null;
+
+  $effect(() => {
+    const record = settingRecord(ns);
+    if (record === syncedFrom) return;
+
+    syncedFrom = record;
+    syncFromRecord(record);
+  });
 
   function asRecord(value: unknown): Record<string, unknown> {
-    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
   }
 
   function newClaim(key = "", tmpl = ""): ClaimRow {
@@ -57,9 +54,9 @@
     return { id: uid++, name, claims };
   }
 
-  function syncFromRecord() {
-    const rec = asRecord(settingRecord(ns));
-    disabled = Boolean(rec.disabled);
+  function syncFromRecord(value: unknown) {
+    const rec = asRecord(value);
+    held = Boolean(rec.disabled);
 
     const recSets = asRecord(rec.sets);
     const next: SetRow[] = [];
@@ -68,6 +65,7 @@
       const claims = Object.entries(claimsObj).map(([key, tmpl]) => newClaim(key, String(tmpl)));
       next.push(newSet(name, claims.length ? claims : [newClaim()]));
     }
+
     sets = next;
   }
 
@@ -86,7 +84,7 @@
       out[name] = { claims };
     }
 
-    return { disabled, sets: out };
+    return { disabled: held, sets: out };
   }
 
   function addSet() {
@@ -98,11 +96,17 @@
   }
 
   function addClaim(setID: number) {
-    sets = sets.map((set) => (set.id === setID ? { ...set, claims: [...set.claims, newClaim()] } : set));
+    sets = sets.map((set) =>
+      set.id === setID ? { ...set, claims: [...set.claims, newClaim()] } : set,
+    );
   }
 
   function removeClaim(setID: number, claimID: number) {
-    sets = sets.map((set) => (set.id === setID ? { ...set, claims: set.claims.filter((claim) => claim.id !== claimID) } : set));
+    sets = sets.map((set) =>
+      set.id === setID
+        ? { ...set, claims: set.claims.filter((claim) => claim.id !== claimID) }
+        : set,
+    );
   }
 
   async function save() {
@@ -110,28 +114,78 @@
     await saveSetting(ns);
   }
 
-  // ---- preview -----------------------------------------------------------
-  let previewSetID: number | "" = "";
-  let previewClaims = `{
+  const named = $derived(sets.filter((set) => set.name.trim()).length);
+  const dropped = $derived(sets.length - named);
+
+  const standing = $derived.by(() => {
+    if (held) {
+      return {
+        state: "held" as const,
+        label: "Held",
+        detail:
+          "Every named userinfo route answers with the base claims, exactly as the plain endpoint does. The sets below are kept but not applied.",
+      };
+    }
+
+    if (named === 0) {
+      return {
+        state: "void" as const,
+        label: "No sets",
+        detail:
+          "Nothing is tailored. A request to a named userinfo route has no set to apply until one is added and committed.",
+      };
+    }
+
+    return {
+      state: "endorsed" as const,
+      label: "Applied",
+      detail: `${named} ${named === 1 ? "set rewrites" : "sets rewrite"} the response of their own named userinfo route. The plain /userinfo endpoint is never affected.`,
+    };
+  });
+
+  function userinfoURL(name: string) {
+    return `${window.location.origin}${session.oauthBase}/oauth2/userinfo/${encodeURIComponent(name.trim())}`;
+  }
+
+  function discoveryURL(name: string) {
+    return `${window.location.origin}${session.oauthBase}/oauth2/openid/${encodeURIComponent(name.trim())}/.well-known/openid-configuration`;
+  }
+
+  async function copyText(value: string, what: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      docket.commit(`${what} copied`);
+    } catch {
+      // Clipboard access needs a secure context; say what to do instead.
+      docket.reject(
+        `Cannot reach the clipboard — this page is not in a secure context. Select the ${what.toLowerCase()} and copy it by hand.`,
+      );
+    }
+  }
+
+  /* ---- preview ---------------------------------------------------------- */
+
+  let previewSetID = $state<number | "">("");
+  let previewClaims = $state(`{
   "sub": "user-123",
   "name": "Jane Doe",
   "preferred_username": "jane",
   "email": "jane@example.com",
   "given_name": "Jane",
   "family_name": "Doe"
-}`;
-  let previewUserDetails = `{
+}`);
+  let previewUserDetails = $state(`{
   "department": "Engineering"
-}`;
-  let preview: AnyRecord | null = null;
-  let previewError = "";
-  let previewBusy = false;
+}`);
+  let preview = $state<AnyRecord | null>(null);
+  let previewError = $state("");
+  let previewBusy = $state(false);
 
-  $: if (previewSetID === "" && sets.length) previewSetID = sets[0].id;
+  $effect(() => {
+    if (previewSetID === "" && sets.length) previewSetID = sets[0].id;
+  });
 
-  function prettyJSON(value: unknown) {
-    return JSON.stringify(value, null, 2);
-  }
+  const previewSet = $derived(sets.find((item) => item.id === previewSetID));
 
   async function renderPreview() {
     previewBusy = true;
@@ -144,164 +198,356 @@
       try {
         claims = JSON.parse(previewClaims || "{}");
       } catch (err) {
-        throw new Error(`Sample claims: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(`Sample claims: ${messageOf(err, String(err))}`);
       }
       try {
         details = JSON.parse(previewUserDetails || "{}");
       } catch (err) {
-        throw new Error(`User details: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(`User details: ${messageOf(err, String(err))}`);
       }
 
-      const set = sets.find((item) => item.id === previewSetID);
       const claimsMap: Record<string, string> = {};
-      if (set) {
-        for (const claim of set.claims) {
+      if (previewSet) {
+        for (const claim of previewSet.claims) {
           const key = claim.key.trim();
           if (key) claimsMap[key] = claim.tmpl;
         }
       }
 
-      const res = await fetch(`${apiBase}/custom-info/preview`, {
+      const body = await session.request<AnyRecord>("custom-info/preview", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ claims, user: { details }, set: { claims: claimsMap } }),
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.message ?? body?.error ?? `preview failed: ${res.status}`);
 
-      preview = (body.payload ?? {}) as AnyRecord;
+      preview = body.payload ?? {};
     } catch (err) {
-      previewError = err instanceof Error ? err.message : String(err);
+      previewError = messageOf(err, "Cannot render preview");
     } finally {
       previewBusy = false;
     }
   }
 </script>
 
-<div class="grid gap-px bg-line p-px">
-  <div class="grid gap-3 bg-panel p-4">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <span class="t-label text-fg">Custom info</span>
-        <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Userinfo Claim Templates</h3>
-      </div>
-      <button class="btn-t-solid" disabled={busy} on:click={save}>Save custom info</button>
+<Instrument title="Userinfo claim templates" note={pageNote} wide>
+  {#snippet actions()}
+    <button type="button" class="act act-primary" disabled={session.busy} onclick={save}>
+      {session.busy ? "Committing…" : "Commit"}
+    </button>
+  {/snippet}
+
+  {#snippet custody()}
+    <span class="stamp">Namespace <span class="serial stamp-raw">custom_info</span></span>
+    <span class="stamp">
+      {sets.length}
+      {sets.length === 1 ? "set" : "sets"}{dropped > 0 ? ` · ${dropped} unnamed` : ""}
+    </span>
+    <span class="serial stamp-raw">{session.oauthBase}/oauth2/userinfo/…</span>
+  {/snippet}
+
+  <div class="max-w-[104ch] border border-rule bg-sheet px-4 py-3.5">
+    <div class="flex flex-wrap items-baseline gap-x-5 gap-y-2">
+      <span class="shrink-0"><Seal state={standing.state} label={standing.label} /></span>
+      <p class="min-w-0 flex-1 basis-72 max-w-[70ch] text-[13px] leading-[1.6] text-ink">
+        {standing.detail}
+      </p>
     </div>
-    <p class="max-w-3xl text-xs leading-5 text-dim">
-      Named template sets rewrite the response of <span class="text-fg">GET /auth/oauth2/userinfo/&#123;name&#125;</span>. Each claim template is a Go
-      <code class="text-fg">text/template</code> rendered with <code class="text-fg">{"{{ .claims.<name> }}"}</code> (base userinfo claims) and
-      <code class="text-fg">{"{{ .user.Details.<key> }}"}</code> (full user record). A new key <span class="text-fg">adds</span> a claim, an existing key
-      <span class="text-fg">overwrites</span> it, and a template that renders <span class="text-alert">empty</span> <span class="text-fg">removes</span> it
-      (use <code class="text-fg">{"{{- -}}"}</code> to trim whitespace). The plain <span class="text-fg">/userinfo</span> endpoint is never affected.
-    </p>
-    <label class="flex w-fit items-center gap-3 text-xs font-bold">
-      <input type="checkbox" bind:checked={disabled} class="h-3.5 w-3.5 appearance-none border border-line bg-crt checked:bg-alert" />
-      <span class={disabled ?"text-alert" :"text-fg"}>{disabled ?"Custom info disabled" :"Custom info enabled"}</span>
-    </label>
   </div>
 
-  <div class="grid gap-px bg-line">
-    <div class="flex flex-wrap items-center justify-between gap-3 bg-panel px-3 py-2">
-      <span class="t-label text-fg">Template sets</span>
-      <button class="btn-t-solid" disabled={busy} on:click={addSet}>[ + ADD SET ]</button>
-    </div>
+  <div class="max-w-[104ch]">
+    <Section title="What a set does to a claim">
+      <!-- The whole model is three rules, and none of them are guessable. -->
+      <dl class="grid gap-y-4 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-x-6">
+        <dt class="stamp stamp-ink sm:pt-[3px]">Adds</dt>
+        <dd class="max-w-[70ch] text-[13px] leading-[1.6] text-ink">
+          A key that is not already in the userinfo response is added, carrying whatever the
+          template rendered.
+        </dd>
 
-    {#if sets.length === 0}
-      <p class="bg-panel p-4 text-xs leading-4 text-dim">No template sets yet. Add a set; its name becomes the <span class="text-fg">&#123;name&#125;</span> path segment, e.g. <span class="text-fg">/auth/oauth2/userinfo/myapp</span>.</p>
-    {:else}
-      {#each sets as set (set.id)}
-        <div class="grid gap-px bg-line">
-          <div class="flex flex-wrap items-end justify-between gap-3 bg-panel p-3">
-            <label class="grid min-w-0 flex-1 gap-1">
-              <span class="t-label">SET NAME (URL SEGMENT)</span>
-              <input class="field-t" bind:value={set.name} placeholder="myapp" />
-            </label>
-            <button class="btn-t border border-line text-alert hover:border-alert" disabled={busy} on:click={() => removeSet(set.id)}>Remove set</button>
-          </div>
+        <dt class="stamp stamp-ink sm:pt-[3px]">Overwrites</dt>
+        <dd class="max-w-[70ch] text-[13px] leading-[1.6] text-ink">
+          A key that already exists is replaced by the rendered text. The original value is still
+          readable inside the template as
+          <span class="serial">{"{{ .claims.<name> }}"}</span>.
+        </dd>
 
-          {#if set.name.trim()}
-            <div class="grid gap-px bg-line lg:grid-cols-2">
-              <div class="grid gap-1 bg-panel p-3">
-                <span class="t-label">Userinfo URL</span>
-                <div class="flex items-center gap-2">
-                  <input class="field-t min-w-0 flex-1 font-mono text-xs" readonly value={userinfoURL(set.name)} />
-                  <button class="btn-t border border-line text-dim hover:border-fg hover:text-fg" on:click={() => copyText(userinfoURL(set.name))}>Copy</button>
-                </div>
-              </div>
-              <div class="grid gap-1 bg-panel p-3">
-                <span class="t-label">DISCOVERY URL (.well-known)</span>
-                <div class="flex items-center gap-2">
-                  <input class="field-t min-w-0 flex-1 font-mono text-xs" readonly value={discoveryURL(set.name)} />
-                  <button class="btn-t border border-line text-dim hover:border-fg hover:text-fg" on:click={() => copyText(discoveryURL(set.name))}>Copy</button>
-                </div>
-                <span class="text-xs leading-4 text-dim">Point the app's OIDC discovery here; its <code class="text-fg">userinfo_endpoint</code> resolves to the URL above (other endpoints and issuer stay shared).</span>
-              </div>
-            </div>
-          {/if}
+        <dt class="stamp stamp-ink sm:pt-[3px]">Removes</dt>
+        <dd class="max-w-[70ch] text-[13px] leading-[1.6] text-ink">
+          A template that renders to nothing <span class="font-semibold">deletes</span> the claim
+          from the response. That is how a claim is suppressed — there is no separate remove
+          control. Trim surrounding whitespace with
+          <span class="serial">{"{{- -}}"}</span>, or the claim survives as a blank string.
+        </dd>
+      </dl>
 
-          <div class="hidden grid-cols-[minmax(0,1fr),minmax(0,2fr),auto] gap-3 bg-panel px-3 py-2 md:grid">
-            <span class="t-label text-fg">Claim</span>
-            <span class="t-label text-fg">Template</span>
-            <span class="t-label text-fg">&nbsp;</span>
-          </div>
+      <div class="mt-7">
+        <Switch
+          label="Hold every set"
+          hint="Named userinfo routes keep answering, but with the base claims untouched. Use this to prove a claim problem is or is not coming from these templates."
+          bind:checked={held}
+        />
+      </div>
+    </Section>
 
-          {#each set.claims as claim (claim.id)}
-            <div class="grid gap-2 bg-crt px-3 py-2 md:grid-cols-[minmax(0,1fr),minmax(0,2fr),auto] md:items-center md:gap-3">
-              <input class="field-t" bind:value={claim.key} placeholder="full_name" />
-              <input class="field-t font-mono text-xs" bind:value={claim.tmpl} placeholder={"{{ .claims.given_name }} {{ .claims.family_name }}"} />
-              <button class="btn-t border border-line text-alert hover:border-alert" disabled={busy} on:click={() => removeClaim(set.id, claim.id)} aria-label="remove claim">[ x ]</button>
-            </div>
-          {/each}
+    <Section
+      title="Template sets"
+      note="A set's name is the URL segment. Edits here are local until you commit — leave the page to discard them."
+    >
+      {#snippet aside()}
+        <button type="button" class="act act-quiet" onclick={addSet}>Add set</button>
+      {/snippet}
 
-          <div class="bg-panel p-3">
-            <button class="btn-t border border-line text-dim hover:border-fg hover:text-fg" disabled={busy} on:click={() => addClaim(set.id)}>[ + ADD CLAIM ]</button>
-          </div>
+      {#if sets.length === 0}
+        <div class="border border-dashed border-rule px-6 py-14 text-center">
+          <p class="text-[15px] font-semibold text-ink">No template sets</p>
+          <p class="mx-auto mt-2 max-w-[56ch] text-[13px] leading-[1.6] text-muted">
+            Every named userinfo route needs a set. The name you give it becomes the path segment —
+            a set called <span class="serial">myapp</span> is served at
+            <span class="serial">/auth/oauth2/userinfo/myapp</span>.
+          </p>
+          <button type="button" class="act act-primary mt-6" onclick={addSet}>Add set</button>
         </div>
-      {/each}
-    {/if}
-  </div>
-
-  <div class="grid gap-px bg-line lg:grid-cols-[360px,minmax(0,1fr)]">
-    <div class="grid content-start gap-px bg-line">
-      <div class="flex items-center justify-between gap-2 bg-panel px-3 py-2">
-        <span class="t-label text-fg">Preview input</span>
-      </div>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Set</span>
-        <select class="field-t" bind:value={previewSetID}>
-          {#if sets.length === 0}
-            <option value="">— no sets —</option>
-          {/if}
-          {#each sets as set (set.id)}
-            <option value={set.id}>{set.name.trim() || "(unnamed)"}</option>
-          {/each}
-        </select>
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">SAMPLE BASE CLAIMS (JSON)</span>
-        <textarea class="field-t min-h-32 font-mono text-xs leading-4" bind:value={previewClaims} spellcheck="false"></textarea>
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">SAMPLE USER DETAILS (JSON)</span>
-        <textarea class="field-t min-h-24 font-mono text-xs leading-4" bind:value={previewUserDetails} spellcheck="false"></textarea>
-        <span class="text-xs leading-4 text-dim">Reachable as <code class="text-fg">{"{{ .user.Details.<key> }}"}</code> in templates.</span>
-      </label>
-      <div class="bg-panel p-3">
-        <button class="btn-t-solid w-full" disabled={previewBusy || sets.length === 0} on:click={renderPreview}>Render preview</button>
-      </div>
-    </div>
-
-    <div class="grid content-start gap-px bg-line">
-      <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">Resulting claims</span>
-      </div>
-      {#if previewError}
-        <div class="bg-panel p-3 text-xs text-alert">{previewError}</div>
-      {:else if preview}
-        <pre class="overflow-auto whitespace-pre-wrap border border-line bg-crt p-3 text-xs leading-5 text-fg">{prettyJSON(preview)}</pre>
       {:else}
-        <div class="bg-panel p-4 text-xs leading-4 text-dim">Render a preview to apply the selected set to the sample claims before saving. Validates the templates too.</div>
+        <div class="grid gap-8">
+          {#each sets as set (set.id)}
+            <div class="border border-rule bg-sheet">
+              <div class="flex flex-wrap items-end gap-x-6 gap-y-3 border-b border-rule px-4 py-3">
+                <div class="min-w-0 flex-1 basis-64">
+                  <label class="stamp block" for="set-name-{set.id}">Set name · URL segment</label>
+                  <input
+                    id="set-name-{set.id}"
+                    class="entry serial mt-1.5"
+                    placeholder="myapp"
+                    autocomplete="off"
+                    spellcheck="false"
+                    bind:value={set.name}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  class="act act-quiet shrink-0 text-seal hover:bg-seal/10 hover:text-seal"
+                  onclick={() => removeSet(set.id)}
+                >
+                  Remove set
+                </button>
+              </div>
+
+              {#if set.name.trim()}
+                <div class="grid gap-x-8 gap-y-5 border-b border-rule px-4 py-4 lg:grid-cols-2">
+                  <div class="min-w-0">
+                    <span class="stamp block">Userinfo URL</span>
+                    <div class="mt-1.5 flex items-end gap-3">
+                      <input
+                        class="entry serial min-w-0 flex-1 text-[12.5px]"
+                        readonly
+                        aria-label="Userinfo URL for {set.name}"
+                        value={userinfoURL(set.name)}
+                      />
+                      <button
+                        type="button"
+                        class="act shrink-0"
+                        onclick={() => copyText(userinfoURL(set.name), "Userinfo URL")}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="min-w-0">
+                    <span class="stamp block">Discovery URL</span>
+                    <div class="mt-1.5 flex items-end gap-3">
+                      <input
+                        class="entry serial min-w-0 flex-1 text-[12.5px]"
+                        readonly
+                        aria-label="Discovery URL for {set.name}"
+                        value={discoveryURL(set.name)}
+                      />
+                      <button
+                        type="button"
+                        class="act shrink-0"
+                        onclick={() => copyText(discoveryURL(set.name), "Discovery URL")}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <p class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
+                      Point the app's OIDC discovery here: its
+                      <span class="serial">userinfo_endpoint</span> resolves to the URL beside it,
+                      while the issuer and every other endpoint stay shared.
+                    </p>
+                  </div>
+                </div>
+              {/if}
+
+              {#if set.claims.length === 0}
+                <div class="px-4 py-10 text-center">
+                  <p class="text-[13.5px] font-semibold text-ink">No claims in this set</p>
+                  <p class="mx-auto mt-2 max-w-[52ch] text-[13px] leading-[1.6] text-muted">
+                    As it stands this set returns the base userinfo response unchanged.
+                  </p>
+                  <button type="button" class="act mt-5" onclick={() => addClaim(set.id)}>
+                    Add claim
+                  </button>
+                </div>
+              {:else}
+                <div
+                  class="hidden items-baseline gap-4 border-b border-rule px-4 py-2 md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_5.5rem]"
+                >
+                  <span class="stamp">Claim</span>
+                  <span class="stamp">Template</span>
+                  <span class="stamp text-right">Row</span>
+                </div>
+
+                <ul>
+                  {#each set.claims as claim (claim.id)}
+                    <li
+                      class="grid gap-x-4 gap-y-2 border-b border-rule px-4 py-3 last:border-b-0 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_5.5rem] md:items-end"
+                    >
+                      <div class="min-w-0">
+                        <label class="stamp block md:hidden" for="claim-key-{claim.id}">Claim</label>
+                        <input
+                          id="claim-key-{claim.id}"
+                          class="entry serial mt-1.5 md:mt-0"
+                          placeholder="full_name"
+                          autocomplete="off"
+                          spellcheck="false"
+                          bind:value={claim.key}
+                        />
+                      </div>
+
+                      <div class="min-w-0">
+                        <label class="stamp block md:hidden" for="claim-tmpl-{claim.id}">
+                          Template
+                        </label>
+                        <input
+                          id="claim-tmpl-{claim.id}"
+                          class="entry serial mt-1.5 md:mt-0"
+                          placeholder={"{{ .claims.given_name }} {{ .claims.family_name }}"}
+                          autocomplete="off"
+                          spellcheck="false"
+                          bind:value={claim.tmpl}
+                        />
+                      </div>
+
+                      <div class="md:text-right">
+                        <button
+                          type="button"
+                          class="act act-quiet text-seal hover:bg-seal/10 hover:text-seal"
+                          onclick={() => removeClaim(set.id, claim.id)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </li>
+                  {/each}
+                </ul>
+
+                <div class="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+                  <button type="button" class="act" onclick={() => addClaim(set.id)}>
+                    Add claim
+                  </button>
+                  <ul class="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <li class="stamp">Fields</li>
+                    {#each templateFields as field (field)}
+                      <li class="serial text-[12px] text-muted">{field}</li>
+                    {/each}
+                  </ul>
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
       {/if}
-    </div>
+    </Section>
+
+    <Section
+      title="Preview"
+      note="Applies the selected set to sample input on the server — the same rendering the userinfo route performs. Nothing is saved."
+    >
+      <div class="grid gap-10 lg:grid-cols-[24rem_minmax(0,1fr)]">
+        <div class="min-w-0">
+          <div>
+            <label class="stamp block" for="preview-set">Set</label>
+            <select id="preview-set" class="entry serial mt-1.5" bind:value={previewSetID}>
+              {#if sets.length === 0}
+                <option value="">No sets to apply</option>
+              {/if}
+              {#each sets as set (set.id)}
+                <option value={set.id}>{set.name.trim() || "(unnamed)"}</option>
+              {/each}
+            </select>
+          </div>
+
+          <div class="mt-6">
+            <label class="stamp block" for="preview-claims">Sample base claims · JSON</label>
+            <textarea
+              id="preview-claims"
+              class="exhibit mt-1.5 min-h-[10rem]"
+              spellcheck="false"
+              bind:value={previewClaims}
+            ></textarea>
+          </div>
+
+          <div class="mt-6">
+            <label class="stamp block" for="preview-details">Sample user details · JSON</label>
+            <textarea
+              id="preview-details"
+              class="exhibit mt-1.5 min-h-[7rem]"
+              spellcheck="false"
+              bind:value={previewUserDetails}
+            ></textarea>
+            <p class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
+              Reachable as <span class="serial">{"{{ .user.Details.<key> }}"}</span> in every
+              template of the set.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            class="act act-primary mt-6 w-full"
+            disabled={previewBusy || sets.length === 0}
+            onclick={renderPreview}
+          >
+            {previewBusy ? "Rendering…" : "Render"}
+          </button>
+        </div>
+
+        <div class="min-w-0">
+          {#if previewError}
+            <div class="border border-seal/45 px-4 py-3.5">
+              <p class="stamp text-seal">Rejected</p>
+              <p class="mt-1.5 max-w-[70ch] text-[13px] leading-[1.6] text-ink">{previewError}</p>
+              <p class="mt-2 max-w-[70ch] text-[12.5px] leading-[1.55] text-muted">
+                Fix the template or the sample JSON and render again — nothing was written.
+              </p>
+            </div>
+          {:else if preview}
+            <!-- The response as returned: a document, not a form field. -->
+            <div class="border border-rule bg-sheet">
+              <div class="border-b border-rule px-5 py-4">
+                <p class="stamp">Response</p>
+                <p class="mt-1.5 break-words text-[15.5px] font-semibold leading-[1.35] text-ink">
+                  {previewSet?.name.trim() || "(unnamed set)"}
+                </p>
+                <p class="serial mt-1 break-all text-[12px] leading-[1.5] text-muted">
+                  GET /oauth2/userinfo/{previewSet?.name.trim() || "…"}
+                </p>
+              </div>
+              <p class="serial whitespace-pre-wrap px-5 py-5 text-[12.5px] leading-[1.7] text-ink">
+                {pretty(preview)}
+              </p>
+            </div>
+          {:else}
+            <div class="border border-dashed border-rule px-6 py-12 text-center">
+              <p class="text-[13.5px] font-semibold text-ink">Nothing rendered yet</p>
+              <p class="mx-auto mt-2 max-w-[52ch] text-[13px] leading-[1.6] text-muted">
+                Render before you commit: this is where a claim that silently disappears shows
+                itself, rather than in the app that expected it.
+              </p>
+            </div>
+          {/if}
+        </div>
+      </div>
+    </Section>
   </div>
-</div>
+</Instrument>

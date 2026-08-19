@@ -1,10 +1,23 @@
 <script lang="ts">
   import { onMount } from "svelte";
+
+  import Instrument from "./ui/Instrument.svelte";
+  import Section from "./ui/Section.svelte";
+  import Seal from "./ui/Seal.svelte";
+  import Entry from "./ui/Entry.svelte";
+  import BreakSeal from "./ui/BreakSeal.svelte";
   import { isWebAuthnSupported, startRegistration } from "../lib/webauthn";
   import type { ServerCreationOptions } from "../lib/webauthn";
   import type { AnyRecord } from "../lib/api";
+  import { fieldText, formatStamp } from "../lib/records";
+  import { docket, messageOf, session } from "../lib/state/session.svelte";
 
-  export let apiBase = "/auth/v1";
+  /**
+   * The only page a person who is not an operator ever opens. It is written for
+   * them: every control says what it does to their own sign-in, and the three
+   * acts that cannot be taken back — dropping a passkey, dropping two-step
+   * codes, replacing recovery codes — are sealed rather than confirmed.
+   */
 
   type Me = {
     id: string;
@@ -20,73 +33,59 @@
 
   type PasskeyMeta = { id: string; name: string; created_at: string; sign_count: number };
 
-  let me: Me | null = null;
-  let loadError = "";
-  let busy = false;
-  let error = "";
-  let notice = "";
+  let me = $state<Me | null>(null);
+  let loadError = $state("");
 
   // password
-  let currentPassword = "";
-  let newPassword = "";
-  let confirmPassword = "";
+  let currentPassword = $state("");
+  let newPassword = $state("");
+  let confirmPassword = $state("");
 
   // totp
-  let totpSecret = "";
-  let totpURL = "";
-  let totpCode = "";
-  let recoveryCodes: string[] = [];
+  let totpSecret = $state("");
+  let totpURL = $state("");
+  let totpCode = $state("");
+  let recoveryCodes = $state<string[]>([]);
 
   // passkeys
-  let passkeys: PasskeyMeta[] = [];
-  let passkeyLabel = "";
+  let passkeys = $state<PasskeyMeta[]>([]);
+  let passkeyLabel = $state("");
+  let pendingPasskey = $state("");
 
-  function flash(message: string) {
-    notice = message;
-    error = "";
-    window.setTimeout(() => {
-      if (notice === message) notice = "";
-    }, 4000);
-  }
+  const webauthnReady = isWebAuthnSupported();
 
-  function fail(err: unknown, fallback: string) {
-    error = err instanceof Error ? err.message : fallback;
-    notice = "";
-  }
+  const profileName = $derived(fieldText(me?.details?.name));
+  const profileEmail = $derived(fieldText(me?.details?.email));
+  const aliases = $derived((me?.alias ?? []).filter(Boolean).join(", "));
+  const passwordMismatch = $derived(confirmPassword.length > 0 && newPassword !== confirmPassword);
+  const totpOn = $derived(me?.totp_enabled === true);
 
-  async function api<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${apiBase}/${path}`, {
-      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-      ...init,
-    });
-
-    let body: AnyRecord = {};
+  async function copyText(value: string, what: string) {
     try {
-      body = await res.json();
+      await navigator.clipboard.writeText(value);
+      docket.commit(`${what} copied to the clipboard.`);
     } catch {
-      // ignore empty bodies
+      docket.reject(
+        "This browser did not allow the page to use the clipboard. Select the text and copy it by hand.",
+      );
     }
-
-    if (!res.ok) {
-      throw new Error(String(body.message ?? body.error ?? res.statusText));
-    }
-
-    return body.payload as T;
   }
 
   async function loadMe() {
     loadError = "";
     try {
-      me = await api<Me>("me");
+      const res = await session.request<Me>("me");
+      me = res.payload;
     } catch (err) {
       me = null;
-      loadError = err instanceof Error ? err.message : "Cannot load account";
+      loadError = messageOf(err, "Cannot load account");
     }
   }
 
   async function loadPasskeys() {
     try {
-      passkeys = (await api<PasskeyMeta[]>("passkey/credentials")) ?? [];
+      const res = await session.request<PasskeyMeta[]>("passkey/credentials");
+      passkeys = res.payload ?? [];
     } catch {
       passkeys = [];
     }
@@ -102,150 +101,126 @@
 
   async function changePassword() {
     if (newPassword !== confirmPassword) {
-      error = "New passwords do not match";
+      docket.reject("The two new-password boxes do not match. Retype both and try again.");
       return;
     }
 
-    busy = true;
-    try {
-      await api("me/password", {
+    const ok = await session.run(async () => {
+      await session.request("me/password", {
         method: "POST",
         body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
       });
+    }, "Password update failed");
 
-      currentPassword = "";
-      newPassword = "";
-      confirmPassword = "";
-      flash("Password updated");
-    } catch (err) {
-      fail(err, "Password update failed");
-    } finally {
-      busy = false;
-    }
+    if (!ok) return;
+
+    currentPassword = "";
+    newPassword = "";
+    confirmPassword = "";
+    docket.commit("Password changed. Use the new one the next time you sign in.");
   }
 
   // ////////////////////////////////////////////////////////////////
   // totp
 
   async function totpRegister() {
-    busy = true;
-    try {
-      const payload = await api<{ secret: string; url: string }>("totp/register", { method: "POST", body: "{}" });
-      totpSecret = payload.secret;
-      totpURL = payload.url;
+    const ok = await session.run(async () => {
+      const res = await session.request<{ secret: string; url: string }>("totp/register", {
+        method: "POST",
+        body: "{}",
+      });
+
+      totpSecret = res.payload.secret;
+      totpURL = res.payload.url;
       recoveryCodes = [];
-      flash("Scan the secret, then confirm with a code");
-    } catch (err) {
-      fail(err, "TOTP register failed");
-    } finally {
-      busy = false;
-    }
+    }, "TOTP register failed");
+
+    if (ok) docket.commit("Add the secret to your authenticator app, then enter a code to finish.");
   }
 
   async function totpConfirm() {
-    busy = true;
-    try {
-      const payload = await api<{ recovery_codes?: string[] }>("totp/confirm", {
+    const ok = await session.run(async () => {
+      const res = await session.request<{ recovery_codes?: string[] }>("totp/confirm", {
         method: "POST",
         body: JSON.stringify({ code: totpCode.trim() }),
       });
 
-      recoveryCodes = payload.recovery_codes ?? [];
+      recoveryCodes = res.payload.recovery_codes ?? [];
       totpSecret = "";
       totpURL = "";
       totpCode = "";
       await loadMe();
-      flash("TOTP enabled — save your recovery codes");
-    } catch (err) {
-      fail(err, "TOTP confirm failed");
-    } finally {
-      busy = false;
-    }
+    }, "TOTP confirm failed");
+
+    if (ok) docket.commit("Two-step codes are on. Write down the recovery codes before you leave.");
   }
 
   async function totpRecovery() {
-    if (!confirm("Regenerate recovery codes? The old set becomes invalid.")) return;
+    const ok = await session.run(async () => {
+      const res = await session.request<{ recovery_codes?: string[] }>("totp/recovery", {
+        method: "POST",
+        body: "{}",
+      });
 
-    busy = true;
-    try {
-      const payload = await api<{ recovery_codes?: string[] }>("totp/recovery", { method: "POST", body: "{}" });
-      recoveryCodes = payload.recovery_codes ?? [];
-      flash("Recovery codes regenerated — save them now");
-    } catch (err) {
-      fail(err, "Recovery regenerate failed");
-    } finally {
-      busy = false;
-    }
+      recoveryCodes = res.payload.recovery_codes ?? [];
+    }, "Recovery regenerate failed");
+
+    if (ok) docket.commit("New recovery codes issued. The previous set no longer works.");
   }
 
   async function totpDisable() {
-    if (!confirm("DISABLE TOTP? Password logins will no longer require a second factor.")) return;
-
-    busy = true;
-    try {
-      await api("totp", { method: "DELETE" });
+    const ok = await session.run(async () => {
+      await session.request("totp", { method: "DELETE" });
       totpSecret = "";
       totpURL = "";
       recoveryCodes = [];
       await loadMe();
-      flash("TOTP disabled");
-    } catch (err) {
-      fail(err, "TOTP disable failed");
-    } finally {
-      busy = false;
-    }
+    }, "TOTP disable failed");
+
+    if (ok) docket.commit("Two-step codes are off. Signing in now needs your password only.");
   }
 
   // ////////////////////////////////////////////////////////////////
   // passkeys
 
   async function passkeyRegister() {
-    busy = true;
-    try {
-      const begin = await api<{ session_id: string; options: ServerCreationOptions }>("passkey/register", {
-        method: "POST",
-        body: "{}",
-      });
+    const ok = await session.run(async () => {
+      const begin = await session.request<{ session_id: string; options: ServerCreationOptions }>(
+        "passkey/register",
+        { method: "POST", body: "{}" },
+      );
 
-      const credential = await startRegistration(begin.options);
+      const credential = await startRegistration(begin.payload.options);
 
-      await api("passkey/register", {
+      await session.request("passkey/register", {
         method: "POST",
-        body: JSON.stringify({ session_id: begin.session_id, name: passkeyLabel.trim(), credential }),
+        body: JSON.stringify({
+          session_id: begin.payload.session_id,
+          name: passkeyLabel.trim(),
+          credential,
+        }),
       });
 
       passkeyLabel = "";
       await Promise.all([loadPasskeys(), loadMe()]);
-      flash("Passkey registered");
-    } catch (err) {
-      fail(err, "Passkey register failed");
-    } finally {
-      busy = false;
-    }
+    }, "Passkey register failed");
+
+    if (ok) docket.commit("Passkey registered. You can now sign in with this device.");
   }
 
   async function passkeyDelete(id: string) {
-    if (!confirm("DELETE PASSKEY?")) return;
+    pendingPasskey = "";
 
-    busy = true;
-    try {
-      await api(`passkey/credentials/${encodeURIComponent(id)}`, { method: "DELETE" });
+    const ok = await session.run(async () => {
+      await session.request(`passkey/credentials/${encodeURIComponent(id)}`, { method: "DELETE" });
       await Promise.all([loadPasskeys(), loadMe()]);
-      flash("Passkey deleted");
-    } catch (err) {
-      fail(err, "Passkey delete failed");
-    } finally {
-      busy = false;
-    }
+    }, "Passkey delete failed");
+
+    if (ok) docket.commit("Passkey removed. That device can no longer sign you in.");
   }
 
-  async function copyText(value: string) {
-    try {
-      await navigator.clipboard.writeText(value);
-      flash("Copied to clipboard");
-    } catch {
-      error = "Clipboard unavailable";
-    }
+  function passkeyName(passkey: PasskeyMeta) {
+    return passkey.name || passkey.id;
   }
 
   onMount(() => {
@@ -253,212 +228,414 @@
   });
 </script>
 
-<div class="grid gap-px bg-line p-px">
-  {#if error}
-    <div class="flex items-center gap-3 bg-panel px-4 py-2">
-      <span class="bg-alert px-2 py-0.5 text-xs font-bold text-white">Fault</span>
-      <span class="text-xs text-alert">{error}</span>
-    </div>
-  {/if}
-  {#if notice}
-    <div class="flex items-center gap-3 bg-panel px-4 py-2">
-      <span class="bg-fg px-2 py-0.5 text-xs font-bold text-crt">Ok</span>
-      <span class="text-xs">{notice}</span>
-    </div>
-  {/if}
+{#snippet copyGlyph()}
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <rect x="5.6" y="5.6" width="8.6" height="8.6" stroke="currentColor" stroke-width="1.4" />
+    <path
+      d="M10.9 5.6V2.6a.8.8 0 0 0-.8-.8H2.6a.8.8 0 0 0-.8.8v7.5a.8.8 0 0 0 .8.8h3"
+      stroke="currentColor"
+      stroke-width="1.4"
+      stroke-linecap="square"
+    />
+  </svg>
+{/snippet}
+
+<Instrument
+  title="Your account"
+  note="Everything here belongs to you alone: how you sign in, and what this system currently knows about you. Changes take effect immediately."
+>
+  {#snippet custody()}
+    {#if me}
+      <span class="stamp">Signed in as <span class="serial stamp-raw">{me.id}</span></span>
+      <Seal
+        state={me.is_active ? "endorsed" : "broken"}
+        label={me.is_active ? "Active" : "Suspended"}
+      />
+      <span class="stamp">{me.local ? "Local account" : "Directory account"}</span>
+    {:else}
+      <span class="stamp">Reading your record…</span>
+    {/if}
+  {/snippet}
 
   {#if !me}
-    <div class="grid gap-2 bg-panel p-4">
-      <span class="t-label text-fg">My account</span>
-      <p class="text-xs leading-4 text-dim">
-        {loadError ? loadError : "Loading..."}
+    <div class="border border-dashed border-rule px-6 py-14 text-center">
+      <p class="text-[15px] font-semibold text-ink">
+        {loadError ? "Your account could not be read" : "Reading your account…"}
       </p>
-      <p class="text-xs leading-4 text-dim">
-        This page needs an authenticated session (the X-User header). Put a session middleware in front of the auth routes.
-      </p>
+      {#if loadError}
+        <p class="mx-auto mt-2 max-w-[62ch] text-[13px] leading-[1.6] text-muted">{loadError}</p>
+        <p class="mx-auto mt-3 max-w-[62ch] text-[13px] leading-[1.6] text-muted">
+          This page needs a signed-in session. The request reached the server without an
+          <span class="serial">X-User</span> header, which usually means the session middleware is not
+          in front of these routes. Ask whoever runs this service to check that.
+        </p>
+        <button type="button" class="act mt-6" disabled={session.busy} onclick={() => void loadAll()}>
+          Try again
+        </button>
+      {/if}
     </div>
   {:else}
-    <!-- identity -->
-    <div class="grid gap-3 bg-panel p-4">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <span class="t-label text-fg">Identity</span>
-        <span class="t-label">{me.is_active ?"Active" :"Disabled"} / {me.local ?"Local" :"Federated"}</span>
-      </div>
+    <Section title="Who you are" first>
+      <dl class="divide-y divide-rule border-y border-rule">
+        <div class="grid gap-x-4 gap-y-0.5 py-2.5 sm:grid-cols-[11rem_minmax(0,1fr)]">
+          <dt class="stamp sm:pt-[3px]">Account ID</dt>
+          <dd class="serial min-w-0 break-all text-[13px] text-ink">{me.id}</dd>
+        </div>
 
-      <div class="grid gap-1 text-xs leading-5">
-        <p><span class="text-dim">ID</span> <span class="break-all font-bold text-fg">{me.id}</span></p>
-        <p><span class="text-dim">Alias</span> <span class="break-all">{me.alias.join(",")}</span></p>
-        {#if me.details?.name}<p><span class="text-dim">Name</span> {me.details.name}</p>{/if}
-        {#if me.details?.email}<p><span class="text-dim">Email</span> {me.details.email}</p>{/if}
-      </div>
+        <div class="grid gap-x-4 gap-y-0.5 py-2.5 sm:grid-cols-[11rem_minmax(0,1fr)]">
+          <dt class="stamp sm:pt-[3px]">Sign-in names</dt>
+          <dd class="serial min-w-0 break-all text-[13px] text-ink">{aliases || "—"}</dd>
+        </div>
 
-      <div class="grid gap-2 md:grid-cols-2">
-        <div class="grid content-start gap-1 border border-line p-2">
-          <span class="t-label">ROLES ({me.roles.length})</span>
+        {#if profileName}
+          <div class="grid gap-x-4 gap-y-0.5 py-2.5 sm:grid-cols-[11rem_minmax(0,1fr)]">
+            <dt class="stamp sm:pt-[3px]">Name</dt>
+            <dd class="min-w-0 break-words text-[13px] text-ink">{profileName}</dd>
+          </div>
+        {/if}
+
+        {#if profileEmail}
+          <div class="grid gap-x-4 gap-y-0.5 py-2.5 sm:grid-cols-[11rem_minmax(0,1fr)]">
+            <dt class="stamp sm:pt-[3px]">Email</dt>
+            <dd class="min-w-0 break-all text-[13px] text-ink">{profileEmail}</dd>
+          </div>
+        {/if}
+
+        <div class="grid gap-x-4 gap-y-0.5 py-2.5 sm:grid-cols-[11rem_minmax(0,1fr)]">
+          <dt class="stamp sm:pt-[3px]">Where it lives</dt>
+          <dd class="min-w-0 text-[13px] leading-[1.55] text-muted">
+            {me.local
+              ? "This account is stored here, so you set your own password."
+              : "This account comes from your organisation's directory. Your password is changed there, not here."}
+          </dd>
+        </div>
+      </dl>
+    </Section>
+
+    <Section
+      title="What you are allowed to do"
+      note="Set for you by an administrator. Nothing on this page can change them — they are shown so you know what your sign-in carries."
+    >
+      <div class="grid gap-x-10 gap-y-8 sm:grid-cols-2">
+        <div class="min-w-0">
+          <p class="stamp stamp-ink">Roles · {me.roles.length}</p>
           {#if me.roles.length === 0}
-            <span class="text-xs text-dim">No roles</span>
+            <p class="mt-2 text-[13px] text-muted">No roles granted.</p>
           {:else}
-            <div class="flex flex-wrap gap-1">
-              {#each me.roles as role}
-                <span class="border border-line px-1.5 py-0.5 text-xs">{role}</span>
+            <ul class="mt-2 divide-y divide-rule border-t border-rule">
+              {#each me.roles as role (role)}
+                <li class="serial break-all py-1.5 text-[12.5px] text-ink">{role}</li>
               {/each}
-            </div>
+            </ul>
           {/if}
         </div>
-        <div class="grid content-start gap-1 border border-line p-2">
-          <span class="t-label">PERMISSIONS ({me.permissions.length})</span>
+
+        <div class="min-w-0">
+          <p class="stamp stamp-ink">Permissions · {me.permissions.length}</p>
           {#if me.permissions.length === 0}
-            <span class="text-xs text-dim">No permissions</span>
+            <p class="mt-2 text-[13px] text-muted">No permissions granted.</p>
           {:else}
-            <div class="flex flex-wrap gap-1">
-              {#each me.permissions as permission}
-                <span class="border border-line px-1.5 py-0.5 text-xs">{permission}</span>
+            <ul class="mt-2 divide-y divide-rule border-t border-rule">
+              {#each me.permissions as permission (permission)}
+                <li class="serial break-all py-1.5 text-[12.5px] text-ink">{permission}</li>
               {/each}
-            </div>
+            </ul>
           {/if}
         </div>
       </div>
-    </div>
+    </Section>
 
-    <!-- password -->
     {#if me.local}
-      <div class="grid gap-3 bg-panel p-4">
-        <span class="t-label text-fg">Change password</span>
-        <div class="grid gap-2 md:grid-cols-3">
-          <label class="grid gap-1">
-            <span class="t-label">Current password</span>
-            <input type="password" bind:value={currentPassword} class="field-t" autocomplete="current-password" />
-          </label>
-          <label class="grid gap-1">
-            <span class="t-label">NEW PASSWORD (MIN 8)</span>
-            <input type="password" bind:value={newPassword} class="field-t" autocomplete="new-password" />
-          </label>
-          <label class="grid gap-1">
-            <span class="t-label">Confirm new password</span>
-            <input type="password" bind:value={confirmPassword} class="field-t" autocomplete="new-password" />
-          </label>
+      <Section
+        title="Password"
+        note="Changing it here replaces the password you type when you sign in. Sessions you already have stay open."
+      >
+        <div class="grid gap-5 sm:grid-cols-3">
+          <Entry
+            label="Current password"
+            type="password"
+            autocomplete="current-password"
+            bind:value={currentPassword}
+          />
+          <Entry
+            label="New password"
+            type="password"
+            autocomplete="new-password"
+            hint="At least 8 characters."
+            invalid={newPassword.length > 0 && newPassword.length < 8}
+            bind:value={newPassword}
+          />
+          <Entry
+            label="Repeat new password"
+            type="password"
+            autocomplete="new-password"
+            hint={passwordMismatch ? "These two do not match yet." : ""}
+            invalid={passwordMismatch}
+            bind:value={confirmPassword}
+          />
         </div>
-        <div>
+
+        <div class="mt-6">
           <button
-            class="btn-t-solid"
-            disabled={busy || !currentPassword || newPassword.length < 8 || newPassword !== confirmPassword}
-            on:click={changePassword}
+            type="button"
+            class="act act-primary"
+            disabled={session.busy ||
+              !currentPassword ||
+              newPassword.length < 8 ||
+              newPassword !== confirmPassword}
+            onclick={() => void changePassword()}
           >
-            Update password
+            {session.busy ? "Changing…" : "Change password"}
           </button>
         </div>
-      </div>
+      </Section>
     {/if}
 
-    <!-- totp -->
-    <div class="grid gap-3 bg-panel p-4">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <span class="t-label text-fg">Two-factor / TOTP</span>
-        <span class="t-label">{me.totp_enabled ?"Enabled" :"Disabled"}</span>
-      </div>
+    <Section
+      title="Two-step codes"
+      note="A six-digit code from an authenticator app, asked for after your password. It means a stolen password on its own is not enough to sign in as you."
+    >
+      {#snippet aside()}
+        <Seal state={totpOn ? "endorsed" : "void"} label={totpOn ? "On" : "Off"} />
+      {/snippet}
 
       {#if recoveryCodes.length > 0}
-        <div class="grid gap-2 border border-line p-3">
-          <span class="t-label text-alert">RECOVERY CODES — SHOWN ONCE, STORE THEM SAFELY</span>
-          <div class="grid grid-cols-2 gap-1 md:grid-cols-4">
-            {#each recoveryCodes as code}
-              <span class="break-all border border-line px-1.5 py-1 text-xs">{code}</span>
-            {/each}
+        <div class="guilloche stamp-in mb-8 border border-seal bg-sheet">
+          <div class="hatch flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-seal/40 px-5 py-3">
+            <span class="stamp text-seal">Shown once</span>
+            <span class="text-[13px] leading-[1.5] text-ink">
+              These recovery codes will never be displayed again.
+            </span>
           </div>
-          <div>
-            <button class="btn-t-solid" on:click={() => copyText(recoveryCodes.join("\n"))}>Copy all</button>
+
+          <div class="px-5 py-6">
+            <p class="max-w-[68ch] text-[13px] leading-[1.6] text-muted">
+              Each code signs you in once if you lose your authenticator app. Keep them somewhere you
+              can reach without your phone — printed, or in a password manager.
+            </p>
+
+            <ul class="mt-5 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3 lg:grid-cols-4">
+              {#each recoveryCodes as code (code)}
+                <li class="serial break-all border-b border-rule py-1.5 text-[13.5px] font-medium text-ink">
+                  {code}
+                </li>
+              {/each}
+            </ul>
+
+            <div class="mt-6 flex flex-wrap gap-2">
+              <button
+                type="button"
+                class="act act-primary"
+                onclick={() => void copyText(recoveryCodes.join("\n"), "Recovery codes")}
+              >
+                {@render copyGlyph()}
+                Copy all codes
+              </button>
+              <button type="button" class="act" onclick={() => (recoveryCodes = [])}>
+                I have stored them
+              </button>
+            </div>
           </div>
         </div>
       {/if}
 
       {#if totpSecret}
-        <div class="grid gap-2 border border-line p-3">
-          <span class="t-label">1. ADD THE SECRET TO YOUR AUTHENTICATOR APP</span>
-          <p class="break-all text-xs font-bold text-fg">{totpSecret}</p>
-          <p class="break-all text-xs leading-4 text-dim">{totpURL}</p>
-          <div class="flex flex-wrap gap-2">
-            <button class="btn-t-solid" on:click={() => copyText(totpSecret)}>Copy secret</button>
-            <button class="btn-t-solid" on:click={() => copyText(totpURL)}>Copy otpauth URL</button>
+        <div class="border border-rule bg-sheet">
+          <div class="border-b border-rule px-5 py-4">
+            <p class="stamp stamp-ink">Step 1 — add the secret to your app</p>
+            <p class="mt-2 max-w-[68ch] text-[13px] leading-[1.6] text-muted">
+              Open your authenticator app, choose to add an account by entering a key, and paste the
+              secret below. The long link does the same thing if your app accepts one.
+            </p>
+
+            <p class="serial mt-4 break-all text-[15px] font-semibold text-ink">{totpSecret}</p>
+            <p class="serial mt-2 break-all text-[12px] leading-[1.55] text-muted">{totpURL}</p>
+
+            <div class="mt-4 flex flex-wrap gap-2">
+              <button type="button" class="act" onclick={() => void copyText(totpSecret, "Secret")}>
+                {@render copyGlyph()}
+                Copy secret
+              </button>
+              <button type="button" class="act" onclick={() => void copyText(totpURL, "Setup link")}>
+                {@render copyGlyph()}
+                Copy setup link
+              </button>
+            </div>
           </div>
-          <label class="grid max-w-xs gap-1">
-            <span class="t-label">2. CONFIRM WITH A 6-DIGIT CODE</span>
-            <input bind:value={totpCode} class="field-t" placeholder="000000" maxlength="6" inputmode="numeric" />
-          </label>
-          <div>
-            <button class="btn-t-solid" disabled={busy || totpCode.trim().length !== 6} on:click={totpConfirm}>
-              Confirm & enable
-            </button>
+
+          <div class="px-5 py-4">
+            <p class="stamp stamp-ink">Step 2 — prove it works</p>
+            <div class="mt-3 flex flex-wrap items-end gap-4">
+              <div class="w-40">
+                <label class="stamp block" for="totp-confirm-code">Code from the app</label>
+                <input
+                  id="totp-confirm-code"
+                  class="entry serial mt-1.5 text-[15px]"
+                  placeholder="000000"
+                  maxlength="6"
+                  inputmode="numeric"
+                  autocomplete="one-time-code"
+                  bind:value={totpCode}
+                />
+              </div>
+              <button
+                type="button"
+                class="act act-primary"
+                disabled={session.busy || totpCode.trim().length !== 6}
+                onclick={() => void totpConfirm()}
+              >
+                {session.busy ? "Checking…" : "Turn on two-step codes"}
+              </button>
+            </div>
+            <p class="mt-3 max-w-[68ch] text-[12px] leading-[1.55] text-muted">
+              Nothing changes about your sign-in until this code is accepted.
+            </p>
           </div>
         </div>
       {:else if me.totp_enabled}
-        <p class="text-xs leading-4 text-dim">
-          Password logins require a TOTP code (or a single-use recovery code) from your authenticator app.
+        <p class="max-w-[70ch] text-[13px] leading-[1.6] text-ink">
+          Two-step codes are on. When you sign in with your password you will also be asked for the
+          current code from your authenticator app, or for one of your recovery codes.
         </p>
-        <div class="flex flex-wrap gap-2">
-          <button class="btn-t-solid" disabled={busy} on:click={totpRecovery}>Regenerate recovery codes</button>
-          <button
-            class="border border-line px-2.5 py-1 text-xs font-bold text-alert hover:bg-alert hover:text-white"
-            disabled={busy}
-            on:click={totpDisable}
-          >
-            Disable TOTP
-          </button>
-        </div>
-      {:else}
-        <p class="text-xs leading-4 text-dim">
-          Add a second factor: scan a secret with Google Authenticator (or compatible) and confirm with a code.
-        </p>
-        <div>
-          <button class="btn-t-solid" disabled={busy} on:click={totpRegister}>Set up TOTP</button>
-        </div>
-      {/if}
-    </div>
 
-    <!-- passkeys -->
-    <div class="grid gap-3 bg-panel p-4">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <span class="t-label text-fg">Passkeys</span>
-        <span class="t-label">{passkeys.length} registered</span>
-      </div>
-
-      {#if passkeys.length === 0}
-        <p class="text-xs leading-4 text-dim">No passkeys registered. Passkeys enable passwordless login.</p>
-      {:else}
-        <div class="grid gap-px bg-line">
-          {#each passkeys as passkey}
-            <div class="flex flex-wrap items-center justify-between gap-2 bg-crt p-2 text-xs leading-4">
-              <div class="grid gap-1">
-                <span class="break-all font-bold text-fg">{passkey.name || passkey.id}</span>
-                <span class="text-dim">Created {passkey.created_at}</span>
-              </div>
-              <button
-                class="border border-line px-2.5 py-1 text-xs font-bold text-alert hover:bg-alert hover:text-white"
-                disabled={busy}
-                on:click={() => passkeyDelete(passkey.id)}
-              >
-                Remove
-              </button>
+        <div class="mt-8 grid gap-8">
+          <div>
+            <p class="stamp stamp-ink">Replace your recovery codes</p>
+            <p class="mt-2 max-w-[70ch] text-[13px] leading-[1.6] text-muted">
+              Do this if you think someone else has seen them, or you no longer know where they are.
+            </p>
+            <div class="mt-3">
+              <BreakSeal
+                consequence="Issuing a new set invalidates every recovery code you were given before. Any copy you printed or saved stops working the moment the new set appears, and the old codes cannot be brought back."
+                action="Issue new recovery codes"
+                disabled={session.busy}
+                onconfirm={() => void totpRecovery()}
+              />
             </div>
-          {/each}
-        </div>
-      {/if}
+          </div>
 
-      {#if isWebAuthnSupported()}
-        <div class="grid gap-px bg-line md:grid-cols-[minmax(0,1fr),auto]">
-          <label class="grid gap-1 bg-panel p-3">
-            <span class="t-label">Passkey label</span>
-            <input bind:value={passkeyLabel} class="field-t" placeholder="my laptop" />
-          </label>
-          <div class="flex items-end bg-panel p-3">
-            <button class="btn-t-solid w-full" disabled={busy} on:click={passkeyRegister}>
-              {busy ? "Waiting for authenticator..." : "Register passkey"}
-            </button>
+          <div>
+            <p class="stamp stamp-ink">Turn two-step codes off</p>
+            <p class="mt-2 max-w-[70ch] text-[13px] leading-[1.6] text-muted">
+              Your password alone would then be enough to sign in as you.
+            </p>
+            <div class="mt-3">
+              <BreakSeal
+                consequence="Turning this off deletes your authenticator secret and every unused recovery code. Sign-in will need only your password from the next attempt onward, and this cannot be undone — setting it up again gives you a new secret to scan and a new set of codes."
+                action="Turn off two-step codes"
+                disabled={session.busy}
+                onconfirm={() => void totpDisable()}
+              />
+            </div>
           </div>
         </div>
       {:else}
-        <p class="text-xs leading-4 text-dim">WebAuthn is not supported in this browser.</p>
+        <p class="max-w-[70ch] text-[13px] leading-[1.6] text-ink">
+          Two-step codes are off. Setting them up takes a minute: you add a secret to an
+          authenticator app on your phone, type back the code it shows, and you are given recovery
+          codes in case you lose the phone.
+        </p>
+        <div class="mt-5">
+          <button
+            type="button"
+            class="act act-primary"
+            disabled={session.busy}
+            onclick={() => void totpRegister()}
+          >
+            {session.busy ? "Preparing…" : "Set up two-step codes"}
+          </button>
+        </div>
       {/if}
-    </div>
+    </Section>
 
+    <Section
+      title="Passkeys"
+      note="A passkey lets you sign in with the fingerprint, face or PIN of a device you already trust — no password to type or remember. Register one per device."
+    >
+      {#snippet aside()}
+        <span class="stamp">{passkeys.length} registered</span>
+      {/snippet}
+
+      {#if passkeys.length === 0}
+        <div class="border border-dashed border-rule px-6 py-12 text-center">
+          <p class="text-[15px] font-semibold text-ink">No passkeys registered</p>
+          <p class="mx-auto mt-2 max-w-[58ch] text-[13px] leading-[1.6] text-muted">
+            You sign in with your password only. Registering a passkey on this device adds a second
+            way in — and a faster one.
+          </p>
+        </div>
+      {:else}
+        <ul class="border-y border-rule">
+          {#each passkeys as passkey (passkey.id)}
+            <li class="border-b border-rule last:border-b-0">
+              <div class="flex flex-wrap items-center gap-x-6 gap-y-2 py-3">
+                <div class="min-w-0 flex-1 basis-64">
+                  <p class="truncate text-[13.5px] font-medium text-ink">{passkeyName(passkey)}</p>
+                  <p class="serial mt-0.5 truncate text-[12px] text-muted">
+                    Registered {formatStamp(passkey.created_at) || passkey.created_at || "—"}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  class="act act-quiet shrink-0 text-seal hover:bg-seal/10 hover:text-seal"
+                  aria-expanded={pendingPasskey === passkey.id}
+                  onclick={() => (pendingPasskey = pendingPasskey === passkey.id ? "" : passkey.id)}
+                >
+                  Remove
+                </button>
+              </div>
+
+              {#if pendingPasskey === passkey.id}
+                <div class="pb-4">
+                  <BreakSeal
+                    consequence={`Removing “${passkeyName(passkey)}” deletes this passkey from your account. The device or security key it is stored on can no longer sign you in, and it cannot be restored — you would have to register that device again from the start.`}
+                    action="Remove this passkey"
+                    disabled={session.busy}
+                    onconfirm={() => void passkeyDelete(passkey.id)}
+                  />
+                </div>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
+      {#if webauthnReady}
+        <div class="mt-8 flex flex-wrap items-end gap-4">
+          <div class="min-w-0 flex-1 basis-72">
+            <label class="stamp block" for="passkey-label">Name for this device</label>
+            <input
+              id="passkey-label"
+              class="entry mt-1.5"
+              placeholder="Work laptop"
+              autocomplete="off"
+              bind:value={passkeyLabel}
+            />
+            <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+              So you can tell your passkeys apart later.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            class="act act-primary shrink-0"
+            disabled={session.busy}
+            onclick={() => void passkeyRegister()}
+          >
+            {session.busy ? "Waiting for your device…" : "Register a passkey"}
+          </button>
+        </div>
+        <p class="mt-4 max-w-[70ch] text-[12.5px] leading-[1.55] text-muted">
+          Your browser will ask you to confirm with the fingerprint reader, face scan, PIN or
+          security key you already use on this device. Turna never sees any of it.
+        </p>
+      {:else}
+        <p class="mt-8 max-w-[70ch] text-[13px] leading-[1.6] text-muted">
+          This browser cannot create passkeys. Open this page in a current version of Chrome, Edge,
+          Firefox or Safari to register one.
+        </p>
+      {/if}
+    </Section>
   {/if}
-</div>
+</Instrument>

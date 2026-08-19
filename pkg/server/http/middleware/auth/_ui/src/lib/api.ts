@@ -29,6 +29,23 @@ export type Dashboard = {
   total_service_accounts: number;
 };
 
+/**
+ * What this request is allowed to do, from GET /v1/capabilities. The console
+ * hides admin surfaces rather than disabling them: a self-service visitor
+ * should not learn that an admin plane is there.
+ */
+export type Capabilities = {
+  is_admin: boolean;
+  anonymous_admin: boolean;
+  bootstrap_admin: boolean;
+  self_service: boolean;
+  admin_permission: string;
+  admin_permission_configured: boolean;
+  allow_missing_x_user: boolean;
+  x_user?: string;
+  authorization_error?: string;
+};
+
 export type ResourceKind =
   | "settings"
   | "clients"
@@ -45,6 +62,8 @@ export type KindSpec = {
   title: string;
   description: string;
   cta: string;
+  /** Lowercase singular noun for this record kind, used in titles and prose. */
+  singular: string;
   primaryLabel: string;
   secondaryLabel: string;
   listPath: string;
@@ -194,6 +213,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     description:
       "Encrypted system namespaces. OAuth2, access check, API key, email and mTLS settings live on their own pages.",
     cta: "Reserved setting",
+    singular: "settings namespace",
     primaryLabel: "Namespace",
     secondaryLabel: "Updated by",
     listPath: "settings",
@@ -214,6 +234,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     description:
       "OAuth2 server-side clients accepted by the token endpoint (password / authorization_code / refresh grants).",
     cta: "New server client",
+    singular: "server client",
     primaryLabel: "Client ID",
     secondaryLabel: "Updated by",
     listPath: "oauth/clients",
@@ -231,6 +252,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     description:
       "Encrypted upstream identity providers used by /oauth2/auth/{provider} and /oauth2/code/{provider}.",
     cta: "New provider",
+    singular: "OAuth provider",
     primaryLabel: "Provider ID",
     secondaryLabel: "Updated by",
     listPath: "oauth/providers",
@@ -257,6 +279,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     description:
       "SAML 2.0 identity providers. SP metadata lives at /saml/{id}/metadata; logins start at /saml/{id}/login and end with a standard authorization code.",
     cta: "New SAML provider",
+    singular: "SAML provider",
     primaryLabel: "Provider ID",
     secondaryLabel: "Updated by",
     listPath: "saml/providers",
@@ -282,6 +305,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     description:
       "Encrypted LDAP connection used for password checks and group sync. The first enabled config is active.",
     cta: "New LDAP config",
+    singular: "LDAP config",
     primaryLabel: "Config ID",
     secondaryLabel: "Updated by",
     listPath: "ldap/configs",
@@ -307,6 +331,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     title: "Users",
     description: "IAM users stored in PostgreSQL. Details are encrypted at rest; passwords are bcrypt hashed.",
     cta: "New user",
+    singular: "user",
     primaryLabel: "User ID",
     secondaryLabel: "Aliases",
     listPath: "users",
@@ -330,6 +355,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     title: "Service Accounts",
     description: "Machine identities for client_credentials. The `name` detail identifies the account; `secret` acts as the client secret.",
     cta: "New service account",
+    singular: "service account",
     primaryLabel: "Account ID",
     secondaryLabel: "Aliases",
     listPath: "service-accounts",
@@ -352,6 +378,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     title: "Roles",
     description: "Roles bundle permissions and can contain other roles (virtual roles).",
     cta: "New role",
+    singular: "role",
     primaryLabel: "Role ID",
     secondaryLabel: "Name",
     listPath: "roles",
@@ -370,6 +397,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     title: "Permissions",
     description: "Permissions match host/path/method resources, optionally carrying data and scope-role mappings.",
     cta: "New permission",
+    singular: "permission",
     primaryLabel: "Permission ID",
     secondaryLabel: "Name",
     listPath: "permissions",
@@ -395,6 +423,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     description:
       "Maps LDAP group names to role IDs. Sync auto-creates a role named after each LDAP group and links it here; group members receive the mapped roles as sync roles.",
     cta: "New LDAP map",
+    singular: "LDAP map",
     primaryLabel: "LDAP Group",
     secondaryLabel: "Role IDs",
     listPath: "lmaps",

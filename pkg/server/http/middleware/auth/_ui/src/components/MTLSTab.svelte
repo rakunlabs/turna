@@ -1,104 +1,133 @@
 <script lang="ts">
-  import type { SettingNamespace } from "../lib/api";
   import type { Tab } from "../lib/navigation";
 
-  export let apiBase = "/auth/v1";
-  export let busy = false;
-  export let settingsRevision = 0;
-  export let getSettingBool: (namespace: SettingNamespace, path: string[], fallback?: boolean) => boolean = () => false;
-  export let setSettingBool: (namespace: SettingNamespace, path: string[], value: boolean) => void = () => {};
-  export let getSettingString: (namespace: SettingNamespace, path: string[]) => string = () => "";
-  export let setSettingString: (namespace: SettingNamespace, path: string[], value: string) => void = () => {};
-  export let saveSetting: (namespace: SettingNamespace) => void | Promise<void> = () => {};
-  export let onSelect: (tab: Tab) => void = () => {};
+  import Instrument from "./ui/Instrument.svelte";
+  import Section from "./ui/Section.svelte";
+  import Switch from "./ui/Switch.svelte";
+  import Seal from "./ui/Seal.svelte";
+  import { session } from "../lib/state/session.svelte";
+  import {
+    getSettingBool,
+    setSettingBool,
+    getSettingString,
+    setSettingString,
+    saveSetting,
+  } from "../lib/state/settings.svelte";
 
-  function inputValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement).value;
-  }
+  let { onselect }: { onselect: (tab: Tab) => void } = $props();
 
-  function checkedValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement).checked;
-  }
+  const enabled = $derived(getSettingBool("mtls", ["enabled"]));
+  const certHeader = $derived(getSettingString("mtls", ["cert_header"]));
 
-  function settingBool(_revision: number, path: string[], fallback = false) {
-    return getSettingBool("mtls", path, fallback);
-  }
-
-  function settingString(_revision: number, path: string[]) {
-    return getSettingString("mtls", path);
-  }
-
-  function checkboxClass(checked: boolean) {
-    const base = "h-3.5 w-3.5 appearance-none border bg-crt";
-    return `${base} border-line checked:bg-fg ${checked ? "border-line" : "border-alert"}`;
-  }
-
-  $: enabled = settingBool(settingsRevision, ["enabled"]);
-  $: certHeader = settingString(settingsRevision, ["cert_header"]);
-  $: oauthBase = apiBase.replace(/\/v1$/, "");
+  /**
+   * A header is only a claim about a certificate: whoever can reach this
+   * instance directly can set it. Naming that standing on the page is the whole
+   * point of this control, so it is derived rather than left to the reader.
+   */
+  const trustingHeader = $derived(enabled && certHeader.trim() !== "");
 </script>
 
-<div class="grid gap-px bg-line p-px">
-  <div class="grid gap-3 bg-panel p-4">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <span class="t-label text-fg">MTLS</span>
-        <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Client Certificates</h3>
-      </div>
-      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting("mtls")}>Save mTLS</button>
-    </div>
-    <p class="max-w-3xl text-xs leading-5 text-dim">
-      mTLS authenticates <span class="text-fg">service accounts</span> for the OAuth2 <span class="text-fg">client_credentials</span> grant. The token endpoint matches the incoming certificate against that service account's certificate fingerprint or subject.
-    </p>
-  </div>
+<Instrument
+  title="mTLS"
+  note="Client certificates authenticate service accounts on the OAuth2 client_credentials grant. The token endpoint matches the presented certificate against that service account's fingerprint or subject."
+>
+  {#snippet actions()}
+    <button
+      type="button"
+      class="act act-primary"
+      disabled={session.busy}
+      onclick={() => saveSetting("mtls")}
+    >
+      Commit
+    </button>
+  {/snippet}
 
-  <div class="grid gap-px bg-line lg:grid-cols-[minmax(0,1fr),minmax(0,1fr)]">
-    <div class="grid content-start gap-px bg-line">
-      <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">Global mTLS settings</span>
-      </div>
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-        <input type="checkbox" checked={enabled} class={checkboxClass(enabled)} on:change={(event) => setSettingBool("mtls", ["enabled"], checkedValue(event))} />
-        <span class={enabled ?"text-fg" :"text-alert"}>{enabled ?"MTLS enabled" :"MTLS disabled"}</span>
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Trusted certificate header</span>
-        <input class="field-t" value={certHeader} placeholder="ssl-client-cert" on:input={(event) => setSettingString("mtls", ["cert_header"], inputValue(event))} />
-        <span class="text-xs leading-4 text-dim">Use only behind a trusted TLS-terminating proxy. Empty means use the TLS handshake peer certificate.</span>
-      </label>
-    </div>
+  {#snippet custody()}
+    <span class="stamp">Namespace <span class="serial stamp-raw">mtls</span></span>
+    <Seal
+      state={enabled ? "endorsed" : "void"}
+      label={enabled ? "Certificates accepted" : "Not accepted"}
+    />
+  {/snippet}
 
-    <div class="grid content-start gap-px bg-line">
-      <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">Where client certs live</span>
-      </div>
-      <div class="grid gap-3 bg-panel p-4 text-xs leading-5 text-dim">
-        <p>
-          Each mTLS client is a <span class="text-fg">service account</span>. Create/edit one and fill either <span class="text-fg">cert_fingerprint</span> or <span class="text-fg">cert_subject</span> in its certificate section.
+  <Section title="Acceptance" first>
+    <div class="grid gap-6">
+      <Switch
+        label="Accept client certificates at the token endpoint"
+        consequential
+        hint="On, a service account can obtain a token by presenting its certificate instead of a client secret. This widens what the token endpoint accepts — every certificate binding on every service account becomes a live credential."
+        bind:checked={
+          () => getSettingBool("mtls", ["enabled"]),
+          (value: boolean) => setSettingBool("mtls", ["enabled"], value)
+        }
+      />
+
+      <div class="max-w-[52ch]">
+        <label class="stamp block" for="mtls-cert-header">Trusted certificate header</label>
+        <input
+          id="mtls-cert-header"
+          class="entry serial mt-1.5"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="ssl-client-cert"
+          aria-describedby="mtls-cert-header-hint"
+          value={certHeader}
+          oninput={(e) => setSettingString("mtls", ["cert_header"], e.currentTarget.value)}
+        />
+        <p id="mtls-cert-header-hint" class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
+          Empty means the certificate is taken from the TLS handshake itself, which cannot be forged.
+          Set this only when a TLS-terminating proxy is the single way in.
         </p>
-        <p>
-          The service account alias is the OAuth2 <span class="text-fg">client_id</span>. For mTLS-only clients, <span class="text-fg">client_secret</span> may be empty when a certificate is configured.
-        </p>
-        <button class="btn-t-solid w-fit" on:click={() => onSelect("service-accounts")}>Open service accounts</button>
       </div>
     </div>
-  </div>
 
-  <div class="grid gap-px bg-line lg:grid-cols-2">
-    <div class="bg-panel p-4">
-      <span class="t-label text-fg">Token request</span>
-      <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">curl --cert client.crt --key client.key \
-  -X POST {oauthBase}/oauth2/token \
+    {#if trustingHeader}
+      <p class="hatch mt-6 max-w-[70ch] border border-seal/40 px-4 py-3 text-[13px] leading-[1.55] text-ink">
+        <span class="stamp text-seal">Bypass risk</span>
+        <span class="mt-1.5 block">
+          This instance now believes <span class="serial">{certHeader}</span> on every request. If
+          anything can reach it without passing through the proxy that sets that header, that caller
+          can name any certificate it likes and authenticate as any service account. The proxy must
+          strip and rewrite the header on the way in, and this route must not be reachable around it.
+        </span>
+      </p>
+    {/if}
+  </Section>
+
+  <Section
+    title="Where client certificates live"
+    note="There is no certificate list here. Each mTLS client is a service account, and its binding is stored on that record."
+  >
+    <ul class="max-w-[70ch]">
+      <li class="border-b border-rule py-3 text-[13px] leading-[1.6] text-ink">
+        Fill either <span class="serial">cert_fingerprint</span> or
+        <span class="serial">cert_subject</span> in the certificate section of the service account.
+      </li>
+      <li class="border-b border-rule py-3 text-[13px] leading-[1.6] text-ink">
+        The service account alias is the OAuth2 <span class="serial">client_id</span>.
+      </li>
+      <li class="py-3 text-[13px] leading-[1.6] text-ink">
+        For a certificate-only client the <span class="serial">client_secret</span> may be left empty.
+      </li>
+    </ul>
+
+    <button type="button" class="act mt-5" onclick={() => onselect("service-accounts")}>
+      Open service accounts
+    </button>
+  </Section>
+
+  <Section title="Token request">
+    <pre class="exhibit overflow-auto">curl --cert client.crt --key client.key \
+  -X POST {session.oauthBase}/oauth2/token \
   -d grant_type=client_credentials \
   -d client_id=my-service</pre>
-    </div>
-    <div class="bg-panel p-4">
-      <span class="t-label text-fg">Session integration</span>
-      <p class="mt-3 text-xs leading-5 text-dim">
-        Session does not inspect the raw certificate. Auth issues a normal access token after mTLS validation; then session validates that token through <span class="text-fg">auth_middleware</span> or JWKS and forwards claims/X-User to the app.
-      </p>
-      <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">curl https://app.example.com/api \
+  </Section>
+
+  <Section
+    title="Session integration"
+    note="Session never inspects the raw certificate. Auth validates the certificate and issues a normal access token; session then validates that token through auth_middleware or JWKS and forwards the claims and X-User to the application."
+  >
+    <pre class="exhibit overflow-auto">curl https://app.example.com/api \
   -H 'Authorization: Bearer &lt;access_token&gt;'</pre>
-    </div>
-  </div>
-</div>
+  </Section>
+</Instrument>

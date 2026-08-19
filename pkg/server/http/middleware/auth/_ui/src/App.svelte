@@ -1,1415 +1,241 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { fly } from "svelte/transition";
-  import AppHeader from "./components/AppHeader.svelte";
-  import NavRail from "./components/NavRail.svelte";
+
+  import Masthead from "./components/Masthead.svelte";
+  import IndexRail from "./components/IndexRail.svelte";
+  import Docket from "./components/Docket.svelte";
+
   import OverviewTab from "./components/OverviewTab.svelte";
-  import OAuthOverview from "./components/OAuthOverview.svelte";
+  import FlowsTab from "./components/FlowsTab.svelte";
   import AccessCheckTab from "./components/AccessCheckTab.svelte";
-  import ResourcePage from "./components/ResourcePage.svelte";
-  import RecordEditor from "./components/RecordEditor.svelte";
-  import LdapGroupsPanel from "./components/LdapGroupsPanel.svelte";
-  import AuthFlowGuide from "./components/AuthFlowGuide.svelte";
   import AccountTab from "./components/AccountTab.svelte";
-  import APIKeysTab from "./components/APIKeysTab.svelte";
   import DeviceTab from "./components/DeviceTab.svelte";
+  import OAuthOverview from "./components/OAuthOverview.svelte";
+  import APIKeysTab from "./components/APIKeysTab.svelte";
   import EmailTab from "./components/EmailTab.svelte";
   import MagicLinkTab from "./components/MagicLinkTab.svelte";
   import SignupTab from "./components/SignupTab.svelte";
   import MTLSTab from "./components/MTLSTab.svelte";
-  import EncryptionTab from "./components/EncryptionTab.svelte";
-  import AdminTab from "./components/AdminTab.svelte";
-  import CacheTab from "./components/CacheTab.svelte";
-  import DeviceSettingsTab from "./components/DeviceSettingsTab.svelte";
-  import TokenExchangeTab from "./components/TokenExchangeTab.svelte";
   import TotpTab from "./components/TotpTab.svelte";
   import CustomInfoTab from "./components/CustomInfoTab.svelte";
-  import FlowsTab from "./components/FlowsTab.svelte";
-  import { editableSettingNamespaces, kindSpecs, permissionPresets, rowFromItem, settingTemplates } from "./lib/api";
-  import { isResourceTab, nav, navGroups } from "./lib/navigation";
-  import type { AnyRecord, ApiResponse, Dashboard, InfoPayload, KindSpec, ResourceKind, Row, SettingNamespace } from "./lib/api";
+  import DeviceSettingsTab from "./components/DeviceSettingsTab.svelte";
+  import TokenExchangeTab from "./components/TokenExchangeTab.svelte";
+  import AdminTab from "./components/AdminTab.svelte";
+  import CacheTab from "./components/CacheTab.svelte";
+  import EncryptionTab from "./components/EncryptionTab.svelte";
+  import AuthFlowGuide from "./components/AuthFlowGuide.svelte";
+  import ResourcePage from "./components/ResourcePage.svelte";
+  import RecordEditor from "./components/RecordEditor.svelte";
+  import LdapGroupsPanel from "./components/LdapGroupsPanel.svelte";
+
+  import { navGroups } from "./lib/navigation";
   import type { Tab } from "./lib/navigation";
-
-  type ThemeMode = "system" | "dark" | "light";
-  type Capabilities = {
-    is_admin: boolean;
-    anonymous_admin: boolean;
-    bootstrap_admin: boolean;
-    self_service: boolean;
-    admin_permission: string;
-    admin_permission_configured: boolean;
-    allow_missing_x_user: boolean;
-    x_user?: string;
-    authorization_error?: string;
-  };
-
-  let activeTab: Tab = "overview";
-  let apiBase = "/auth/v1";
-  let info: InfoPayload | null = null;
-  let dashboard: Dashboard | null = null;
-  let capabilities: Capabilities | null = null;
-  let loading = true;
-  let busy = false;
-  let error = "";
-  let notice = "";
-  let deviceUserCode = "";
-  let themeMode: ThemeMode = "system";
-  // self-service tabs work without the admin data set; load it lazily
-  let adminLoaded = false;
-
-  let rowsByKind: Partial<Record<ResourceKind, Row[]>> = {};
-  let settingsByNamespace: Partial<Record<SettingNamespace, AnyRecord>> = {};
-  let settingsRevision = 0;
-  let jwksKeys: AnyRecord[] = [];
-
-  let editorKind: ResourceKind = "settings";
-  let editorOpen = false;
-  let editorID = "";
-  let editorLoadedID = "";
-  let editorEnabled = true;
-  let editorJSON = pretty(kindSpecs.settings.example);
-  let advancedMode = false;
-  let tempAccessRoleIDs = "";
-  let tempAccessPermissionIDs = "";
-  let tempAccessStartsAt = "";
-  let tempAccessExpiresIn = "1h";
-  let tempAccessExpiresAt = "";
-
-  $: editorSpec = kindSpecs[editorKind];
-  $: editorJSONError = validateJSON(editorJSON);
-  $: simpleFormAvailable = hasSimpleForm(editorKind, editorID, editorLoadedID);
-  $: settingsNamespaceAllowed = editorKind !== "settings" || Boolean(editorLoadedID) || isReservedSettingsNamespace(editorID);
-  $: editorRequirementError = requiredEditorFieldsError(editorKind, editorLoadedID, editorJSON, editorJSONError);
-  $: canCommit = !busy && !editorJSONError && !editorRequirementError && settingsNamespaceAllowed && (advancedMode || simpleFormAvailable) && (editorSpec.body === "raw" || Boolean(editorID.trim()));
-  $: tempAccessIDsSelected = splitValues(tempAccessRoleIDs).length > 0 || splitValues(tempAccessPermissionIDs).length > 0;
-  $: canGrantTemporaryAccess = !busy && Boolean(editorLoadedID) && tempAccessIDsSelected && Boolean(tempAccessExpiresIn.trim() || tempAccessExpiresAt.trim());
-  $: canRemoveTemporaryAccess = !busy && Boolean(editorLoadedID) && tempAccessIDsSelected;
-  $: oauthBase = apiBase.replace(/\/v1$/, "");
-  // live inputs for the dynamic Flows page
-  $: ldapActive = (rowsByKind.ldap ?? []).some((row) => row.enabled);
-  $: providerCount = (rowsByKind.providers ?? []).length;
-  $: samlCount = (rowsByKind.saml ?? []).length;
-  $: jwksKey = jwksKeys[0] ?? ({} as AnyRecord);
-  $: isAdmin = capabilities?.is_admin === true;
-  // depend on isAdmin explicitly so the nav recomputes when capabilities load
-  $: visibleNavGroups = navGroups
-    .map((group) => ({ ...group, items: group.items.filter((item) => isAdmin || isSelfServiceTab(item.id)) }))
-    .filter((group) => group.items.length > 0);
-  $: visibleNav = visibleNavGroups.flatMap((group) => group.items);
-
-  function pretty(value: unknown) {
-    return JSON.stringify(value, null, 2);
-  }
-
-  function validateJSON(value: string) {
-    try {
-      JSON.parse(value);
-      return "";
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Invalid JSON";
-      return `INVALID JSON: ${message}`;
-    }
-  }
-
-  function templateFor(spec: KindSpec, id: string, loadedID: string) {
-    const namespaceTemplate = !loadedID ? spec.namespaceExamples?.[id.trim()] : undefined;
-    return namespaceTemplate ?? spec.example;
-  }
-
-  function hasSimpleForm(kind: ResourceKind, id: string, loadedID: string) {
-    if (kind !== "settings") return true;
-    if (loadedID) return isReservedSettingsNamespace(loadedID);
-    return isReservedSettingsNamespace(id);
-  }
-
-  function isReservedSettingsNamespace(id: string) {
-    return Boolean(kindSpecs.settings.namespaceExamples?.[id.trim()]);
-  }
-
-  function fieldText(value: unknown) {
-    if (value === undefined || value === null) return "";
-    return typeof value === "string" ? value.trim() : String(value).trim();
-  }
-
-  function fieldList(value: unknown) {
-    if (Array.isArray(value)) return value.map(fieldText).filter(Boolean);
-    return splitValues(fieldText(value));
-  }
-
-  function requiredEditorFieldsError(kind: ResourceKind, loadedID: string, json: string, jsonError: string) {
-    if (loadedID) return "";
-    if (jsonError) return "";
-
-    let record = {} as AnyRecord;
-    try {
-      const parsed = JSON.parse(json);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        record = parsed as AnyRecord;
-      }
-    } catch {
-      return "";
-    }
-
-    const detailsValue = record.details;
-    const details = detailsValue && typeof detailsValue === "object" && !Array.isArray(detailsValue) ? (detailsValue as AnyRecord) : ({} as AnyRecord);
-
-    if (kind === "users") {
-      if (fieldList(record.alias).length === 0) return "Alias is required for login";
-      if (record.local !== false && fieldText(details.name) === "") return "Name is required for local users";
-      if (record.local !== false && fieldText(details.password) === "") return "Password is required for local users";
-    }
-
-    if (kind === "service-accounts") {
-      if (fieldList(record.alias).length === 0) return "Client ID alias is required";
-      if (fieldText(details.name) === "") return "Name is required for service accounts";
-      if (fieldText(details.secret) === "" && fieldText(details.cert_fingerprint) === "" && fieldText(details.cert_subject) === "") {
-        return "Client secret or mTLS certificate is required";
-      }
-    }
-
-    return "";
-  }
-
-  function splitValues(value: string) {
-    return value
-      .split(/[\n,]+/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-
-  function joinValues(value: unknown) {
-    if (Array.isArray(value)) return value.map(String).join(", ");
-    if (typeof value === "string") return value;
-    return "";
-  }
-
-  function cloneRecord(value: unknown) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return {} as AnyRecord;
-    return JSON.parse(JSON.stringify(value)) as AnyRecord;
-  }
-
-  function defaultSetting(namespace: SettingNamespace) {
-    return cloneRecord(settingTemplates[namespace]);
-  }
-
-  function settingRecord(namespace: SettingNamespace) {
-    return settingsByNamespace[namespace] ?? defaultSetting(namespace);
-  }
-
-  function setSettingRecord(namespace: SettingNamespace, value: AnyRecord) {
-    settingsByNamespace = { ...settingsByNamespace, [namespace]: value };
-    settingsRevision += 1;
-  }
-
-  function settingPathValue(namespace: SettingNamespace, path: string[]) {
-    let value: unknown = settingRecord(namespace);
-    for (const key of path) {
-      if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-      value = (value as AnyRecord)[key];
-    }
-
-    return value;
-  }
-
-  function setSettingPathValue(namespace: SettingNamespace, path: string[], value: unknown) {
-    const next = cloneRecord(settingRecord(namespace));
-    let cursor = next;
-
-    for (const key of path.slice(0, -1)) {
-      const current = cursor[key];
-      const child = current && typeof current === "object" && !Array.isArray(current) ? { ...(current as AnyRecord) } : ({} as AnyRecord);
-      cursor[key] = child;
-      cursor = child;
-    }
-
-    cursor[path[path.length - 1]] = value;
-    setSettingRecord(namespace, next);
-  }
-
-  function getSettingString(namespace: SettingNamespace, path: string[]) {
-    const value = settingPathValue(namespace, path);
-    if (value === undefined || value === null) return "";
-    return typeof value === "string" ? value : String(value);
-  }
-
-  function setSettingString(namespace: SettingNamespace, path: string[], value: string) {
-    setSettingPathValue(namespace, path, value);
-  }
-
-  function getSettingBool(namespace: SettingNamespace, path: string[], fallback = false) {
-    const value = settingPathValue(namespace, path);
-    return typeof value === "boolean" ? value : fallback;
-  }
-
-  function setSettingBool(namespace: SettingNamespace, path: string[], value: boolean) {
-    setSettingPathValue(namespace, path, value);
-  }
-
-  function getSettingNumber(namespace: SettingNamespace, path: string[], fallback = 0) {
-    const value = settingPathValue(namespace, path);
-    if (typeof value === "number") return value;
-    if (typeof value === "string") {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-
-    return fallback;
-  }
-
-  function setSettingNumber(namespace: SettingNamespace, path: string[], value: string) {
-    const parsed = Number(value);
-    setSettingPathValue(namespace, path, Number.isFinite(parsed) ? parsed : 0);
-  }
-
-  function getSettingList(namespace: SettingNamespace, path: string[]) {
-    return joinValues(settingPathValue(namespace, path));
-  }
-
-  function setSettingList(namespace: SettingNamespace, path: string[], value: string) {
-    setSettingPathValue(namespace, path, splitValues(value));
-  }
-
-  function resetTemporaryAccessForm() {
-    tempAccessRoleIDs = "";
-    tempAccessPermissionIDs = "";
-    tempAccessStartsAt = "";
-    tempAccessExpiresIn = "1h";
-    tempAccessExpiresAt = "";
-  }
-
-  function temporaryAccessItems(key: "tmp_role_ids" | "tmp_permission_ids", json: string) {
-    let record = {} as AnyRecord;
-    try {
-      const parsed = JSON.parse(json);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) record = parsed as AnyRecord;
-    } catch {
-      return [] as AnyRecord[];
-    }
-
-    const value = record[key];
-    if (!Array.isArray(value)) return [] as AnyRecord[];
-
-    return value
-      .filter((item) => item && typeof item === "object" && !Array.isArray(item))
-      .map((item) => item as AnyRecord);
-  }
-
-  function parseEditorValue() {
-    try {
-      return JSON.parse(editorJSON);
-    } catch {
-      return templateFor(editorSpec, editorID, editorLoadedID);
-    }
-  }
-
-  function editorRecord() {
-    const value = parseEditorValue();
-    if (!value || typeof value !== "object" || Array.isArray(value)) return {} as AnyRecord;
-    return { ...(value as AnyRecord) };
-  }
-
-  function setEditorRecord(next: AnyRecord) {
-    editorJSON = pretty(next);
-    error = "";
-  }
-
-  function getStringField(key: string) {
-    const value = editorRecord()[key];
-    if (value === undefined || value === null) return "";
-    return typeof value === "string" ? value : String(value);
-  }
-
-  function setStringField(key: string, value: string) {
-    const next = editorRecord();
-    next[key] = value;
-    setEditorRecord(next);
-  }
-
-  function getBoolField(key: string, fallback = false) {
-    const value = editorRecord()[key];
-    return typeof value === "boolean" ? value : fallback;
-  }
-
-  function setBoolField(key: string, value: boolean) {
-    const next = editorRecord();
-    next[key] = value;
-    setEditorRecord(next);
-  }
-
-  function setLocalUser(value: boolean) {
-    const next = editorRecord();
-    next.local = value;
-
-    if (!value) {
-      const details = nestedRecord("details");
-      delete details.password;
-      next.details = details;
-    }
-
-    setEditorRecord(next);
-  }
-
-  function getListField(key: string) {
-    return joinValues(editorRecord()[key]);
-  }
-
-  function setListField(key: string, value: string) {
-    const next = editorRecord();
-    next[key] = splitValues(value);
-    setEditorRecord(next);
-  }
-
-  function getJSONField(key: string) {
-    const value = editorRecord()[key];
-    if (value === undefined || value === null) return "{}";
-    return pretty(value);
-  }
-
-  function setJSONField(key: string, value: string) {
-    try {
-      const next = editorRecord();
-      next[key] = JSON.parse(value.trim() || "{}");
-      setEditorRecord(next);
-    } catch (err) {
-      error = err instanceof Error ? `INVALID ${key.toUpperCase()} JSON: ${err.message}` : `INVALID ${key.toUpperCase()} JSON`;
-    }
-  }
-
-  function editorPathValue(path: string[]) {
-    let value: unknown = editorRecord();
-    for (const key of path) {
-      if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-      value = (value as AnyRecord)[key];
-    }
-
-    return value;
-  }
-
-  function setEditorPathValue(path: string[], value: unknown) {
-    const next = editorRecord();
-    let cursor = next;
-
-    for (const key of path.slice(0, -1)) {
-      const current = cursor[key];
-      const child = current && typeof current === "object" && !Array.isArray(current) ? { ...(current as AnyRecord) } : ({} as AnyRecord);
-      cursor[key] = child;
-      cursor = child;
-    }
-
-    cursor[path[path.length - 1]] = value;
-    setEditorRecord(next);
-  }
-
-  function getPathString(path: string[]) {
-    const value = editorPathValue(path);
-    if (value === undefined || value === null) return "";
-    return typeof value === "string" ? value : String(value);
-  }
-
-  function setPathString(path: string[], value: string) {
-    setEditorPathValue(path, value);
-  }
-
-  function setPathBool(path: string[], value: boolean) {
-    setEditorPathValue(path, value);
-  }
-
-  function getPathBool(path: string[], fallback = false) {
-    const value = editorPathValue(path);
-    return typeof value === "boolean" ? value : fallback;
-  }
-
-  function getPathNumber(path: string[], fallback = 0) {
-    const value = editorPathValue(path);
-    if (typeof value === "number") return value;
-    if (typeof value === "string") {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-
-    return fallback;
-  }
-
-  function setPathNumber(path: string[], value: string) {
-    const parsed = Number(value);
-    setEditorPathValue(path, Number.isFinite(parsed) ? parsed : 0);
-  }
-
-  function getPathList(path: string[]) {
-    return joinValues(editorPathValue(path));
-  }
-
-  function setPathList(path: string[], value: string) {
-    setEditorPathValue(path, splitValues(value));
-  }
-
-  function nestedRecord(parent: string) {
-    const value = editorRecord()[parent];
-    if (!value || typeof value !== "object" || Array.isArray(value)) return {} as AnyRecord;
-    return { ...(value as AnyRecord) };
-  }
-
-  function getNestedString(parent: string, key: string) {
-    const value = nestedRecord(parent)[key];
-    if (value === undefined || value === null) return "";
-    return typeof value === "string" ? value : String(value);
-  }
-
-  function setNestedString(parent: string, key: string, value: string) {
-    const next = editorRecord();
-    next[parent] = { ...nestedRecord(parent), [key]: value };
-    setEditorRecord(next);
-  }
-
-  function firstArrayRecord(parent: string) {
-    const items = editorRecord()[parent];
-    if (!Array.isArray(items)) return {} as AnyRecord;
-    const first = items[0];
-    if (!first || typeof first !== "object" || Array.isArray(first)) return {} as AnyRecord;
-    return { ...(first as AnyRecord) };
-  }
-
-  function getFirstArrayString(parent: string, key: string) {
-    const value = firstArrayRecord(parent)[key];
-    if (value === undefined || value === null) return "";
-    return typeof value === "string" ? value : String(value);
-  }
-
-  function setFirstArrayString(parent: string, key: string, value: string) {
-    const next = editorRecord();
-    const items = Array.isArray(next[parent]) ? [...(next[parent] as unknown[])] : [];
-    items[0] = { ...firstArrayRecord(parent), [key]: value };
-    next[parent] = items;
-    setEditorRecord(next);
-  }
-
-  function getFirstArrayList(parent: string, key: string) {
-    return joinValues(firstArrayRecord(parent)[key]);
-  }
-
-  function setFirstArrayList(parent: string, key: string, value: string) {
-    const next = editorRecord();
-    const items = Array.isArray(next[parent]) ? [...(next[parent] as unknown[])] : [];
-    items[0] = { ...firstArrayRecord(parent), [key]: splitValues(value) };
-    next[parent] = items;
-    setEditorRecord(next);
-  }
-
-  function permissionResources() {
-    const resources = editorRecord().resources;
-    if (!Array.isArray(resources)) return [] as AnyRecord[];
-
-    return resources.map((resource) => {
-      if (!resource || typeof resource !== "object" || Array.isArray(resource)) return {} as AnyRecord;
-      return { ...(resource as AnyRecord) };
-    });
-  }
-
-  function resourceAt(index: number) {
-    return permissionResources()[index] ?? ({} as AnyRecord);
-  }
-
-  function getResourceList(index: number, key: string) {
-    return joinValues(resourceAt(index)[key]);
-  }
-
-  function setResourceList(index: number, key: string, value: string) {
-    const next = editorRecord();
-    const resources = permissionResources();
-    resources[index] = { ...resourceAt(index), [key]: splitValues(value) };
-    next.resources = resources;
-    setEditorRecord(next);
-  }
-
-  function addPermissionResource() {
-    const next = editorRecord();
-    next.resources = [...permissionResources(), { hosts: [], paths: ["/api/**"], methods: ["GET"] }];
-    setEditorRecord(next);
-  }
-
-  function removePermissionResource(index: number) {
-    const next = editorRecord();
-    next.resources = permissionResources().filter((_, resourceIndex) => resourceIndex !== index);
-    setEditorRecord(next);
-  }
-
-  function setAdvancedMode(enabled: boolean) {
-    if (!enabled && editorJSONError) {
-      loadEditorTemplate();
-    }
-
-    advancedMode = enabled;
-  }
-
-  function formatEditorJSON() {
-    try {
-      editorJSON = pretty(JSON.parse(editorJSON));
-      error = "";
-    } catch (err) {
-      error = err instanceof Error ? `INVALID JSON: ${err.message}` : "Invalid JSON";
-    }
-  }
-
-  function loadEditorTemplate() {
-    editorJSON = pretty(templateFor(editorSpec, editorID, editorLoadedID));
-    error = "";
-  }
-
-  function deriveApiBase() {
-    const path = window.location.pathname;
-    const uiIndex = path.indexOf("/ui");
-    if (uiIndex > -1) {
-      return `${path.slice(0, uiIndex)}/v1`;
-    }
-
-    return "/auth/v1";
-  }
-
-  async function request<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
-    const res = await fetch(`${apiBase}/${path}`, {
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {}),
-      },
-      ...init,
-    });
-
-    if (!res.ok) {
-      let message = res.statusText;
-      try {
-        const body = await res.json();
-        message = body.message || body.error || message;
-      } catch {
-        // keep status text
-      }
-
-      throw new Error(message);
-    }
-
-    return res.json();
-  }
-
-  function flash(message: string) {
-    notice = message;
-    window.setTimeout(() => {
-      if (notice === message) notice = "";
-    }, 3000);
-  }
-
-  async function loadSetting(namespace: SettingNamespace) {
-    const res = await fetch(`${apiBase}/settings/${encodeURIComponent(namespace)}`, {
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (res.status === 404) {
-      setSettingRecord(namespace, defaultSetting(namespace));
-      return;
-    }
-
-    if (!res.ok) {
-      let message = res.statusText;
-      try {
-        const body = await res.json();
-        message = body.message || body.error || message;
-      } catch {
-        // keep status text
-      }
-
-      throw new Error(message);
-    }
-
-    const body = (await res.json()) as ApiResponse<{ value?: unknown }>;
-    setSettingRecord(namespace, cloneRecord(body.payload?.value ?? settingTemplates[namespace]));
-  }
-
-  async function loadRuntimeSettings() {
-    await Promise.all((Object.keys(settingTemplates) as SettingNamespace[]).map((namespace) => loadSetting(namespace)));
-  }
-
-  async function loadJWKS() {
-    const res = await fetch(`${oauthBase}/oauth2/certs`);
-    if (!res.ok) return;
-
-    const body = (await res.json()) as { keys?: AnyRecord[] };
-    jwksKeys = body.keys ?? [];
-  }
-
-  async function loadCapabilities() {
-    const res = await request<Capabilities>("capabilities");
-    capabilities = res.payload;
-  }
-
-  async function saveSetting(namespace: SettingNamespace) {
-    busy = true;
-    error = "";
-    try {
-      await request(`settings/${encodeURIComponent(namespace)}`, {
-        method: "PUT",
-        body: JSON.stringify({ value: settingRecord(namespace) }),
-      });
-
-      await Promise.all([loadSetting(namespace), loadKind("settings")]);
-      if (namespace === "jwt") {
-        await loadJWKS();
-      }
-      flash(`${namespace} setting saved`);
-    } catch (err) {
-      error = err instanceof Error ? err.message : "Unknown error";
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function rotateJWT() {
-    if (!confirm("ROTATE JWT SIGNING KEY? All outstanding access and refresh tokens become invalid.")) return;
-
-    busy = true;
-    error = "";
-    try {
-      await request("jwt/rotate", { method: "POST", body: "{}" });
-
-      await Promise.all([loadSetting("jwt"), loadJWKS(), loadKind("settings")]);
-      flash("JWT signing key rotated");
-    } catch (err) {
-      error = err instanceof Error ? err.message : "Unknown error";
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function loadKind(kind: ResourceKind) {
-    const spec = kindSpecs[kind];
-    const query = kind === "users" || kind === "service-accounts" ? "?add_roles=false&_limit=500" : "";
-    const res = await request<Record<string, unknown>[]>(`${spec.listPath}${query}`);
-
-    let rows = (res.payload ?? []).map((item) => rowFromItem(kind, item));
-    if (kind === "settings") {
-      rows = rows.filter((row) => (editableSettingNamespaces as readonly string[]).includes(row.id));
-    }
-
-    rowsByKind[kind] = rows;
-    rowsByKind = rowsByKind;
-  }
-
-  async function loadCore() {
-    const [infoRes, dashboardRes] = await Promise.all([
-      request<InfoPayload>("info"),
-      request<Dashboard>("dashboard"),
-    ]);
-
-    info = infoRes.payload;
-    dashboard = dashboardRes.payload;
-  }
-
-  // loadAdminData fetches the resource lists and every runtime settings
-  // namespace. It is deferred until a tab that needs them is opened so the
-  // landing view stays quiet instead of firing every request at startup.
-  async function loadAdminData() {
-    await Promise.all((Object.keys(kindSpecs) as ResourceKind[]).map((kind) => loadKind(kind)));
-    await Promise.all([loadRuntimeSettings(), loadJWKS()]);
-    adminLoaded = true;
-  }
-
-  // ensureAdminData loads the bulk admin data once, on demand.
-  async function ensureAdminData() {
-    if (adminLoaded || busy) return;
-
-    busy = true;
-    error = "";
-    try {
-      await loadAdminData();
-    } catch (err) {
-      error = err instanceof Error ? err.message : "Unknown error";
-    } finally {
-      busy = false;
-    }
+  import { docket, messageOf, session } from "./lib/state/session.svelte";
+  import { registry } from "./lib/state/registry.svelte";
+  import { editor } from "./lib/state/editor.svelte";
+  import { route } from "./lib/state/route.svelte";
+  import { theme } from "./lib/state/theme.svelte";
+
+  let menuOpen = $state(false);
+  let search = $state("");
+  let rail = $state<ReturnType<typeof IndexRail> | null>(null);
+
+  // Self-service visitors never learn the admin plane exists; capability
+  // decides what is in the index, not what is disabled inside it.
+  const visibleGroups = $derived(
+    navGroups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => session.isAdmin || route.isSelfService(item.id)),
+      }))
+      .filter((group) => group.items.length > 0),
+  );
+
+  function selectTab(tab: Tab) {
+    route.select(tab);
+    menuOpen = false;
   }
 
   async function refresh() {
-    busy = true;
-    error = "";
-    try {
-      await loadCapabilities();
-      if (!capabilities?.is_admin) {
-        adminLoaded = false;
+    await session.run(async () => {
+      await session.loadCapabilities();
+      if (!session.isAdmin) {
+        registry.loaded = false;
         return;
       }
 
-      await loadCore();
+      await session.loadCore();
+      if (registry.loaded || route.needsRegistry(route.tab)) await registry.loadAll();
+    });
 
-      // reload the bulk admin data only when it is already in use or the active
-      // tab needs it, so a manual refresh on a light tab stays light.
-      if (adminLoaded || tabNeedsAdminData(activeTab)) {
-        await loadAdminData();
-      }
-    } catch (err) {
-      error = err instanceof Error ? err.message : "Unknown error";
-    } finally {
-      busy = false;
-      loading = false;
-    }
-  }
-
-  // resets the editor fields for a fresh record without opening the editor view
-  function resetEditor(kind: ResourceKind) {
-    editorKind = kind;
-    editorLoadedID = "";
-    editorID = kindSpecs[kind].idField === "namespace" ? Object.keys(kindSpecs[kind].namespaceExamples ?? {})[0] ?? "" : "";
-    editorEnabled = true;
-    advancedMode = false;
-    editorJSON = pretty(kindSpecs[kind].example);
-    resetTemporaryAccessForm();
-    applyNamespaceExample();
-  }
-
-  // opens the editor view in create mode
-  function startCreate(kind: ResourceKind) {
-    resetEditor(kind);
-    editorOpen = true;
-    error = "";
-  }
-
-  // returns from the editor view back to the resource list
-  function closeEditor() {
-    editorOpen = false;
-    error = "";
-    resetEditor(editorKind);
-  }
-
-  // prefill the permission editor with a ready-made auth_admin / auth_user
-  // template scoped to the live prefix; only when creating a new permission.
-  function applyPermissionPreset(name: string) {
-    if (editorKind !== "permissions" || editorLoadedID) return;
-
-    const preset = permissionPresets(oauthBase)[name];
-    if (!preset) return;
-
-    advancedMode = false;
-    editorJSON = pretty(preset);
-    error = "";
-  }
-
-  // prefill the editor with the reserved-namespace template when creating settings
-  function applyNamespaceExample(id = editorID) {
-    const spec = kindSpecs[editorKind];
-    const nextID = id.trim();
-    const example = spec.namespaceExamples?.[nextID];
-    if (!editorLoadedID && example !== undefined) {
-      editorID = nextID;
-      editorJSON = pretty(example);
-    }
-  }
-
-  async function editResource(kind: ResourceKind, id: string) {
-    busy = true;
-    error = "";
-    try {
-      const spec = kindSpecs[kind];
-      const res = await request<Record<string, unknown>>(`${spec.listPath}/${encodeURIComponent(id)}`);
-
-      editorKind = kind;
-      editorID = id;
-      editorLoadedID = id;
-      advancedMode = false;
-      resetTemporaryAccessForm();
-
-      if (spec.body === "value") {
-        editorJSON = pretty((res.payload as Record<string, unknown>).value);
-      } else if (spec.body === "config") {
-        editorEnabled = Boolean((res.payload as Record<string, unknown>).enabled);
-        editorJSON = pretty((res.payload as Record<string, unknown>).config);
-      } else {
-        editorJSON = pretty(res.payload);
-      }
-
-      editorOpen = true;
-    } catch (err) {
-      error = err instanceof Error ? err.message : "Unknown error";
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function saveResource() {
-    const spec = kindSpecs[editorKind];
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(editorJSON);
-    } catch (err) {
-      error = err instanceof Error ? err.message : "Invalid JSON";
-      return;
-    }
-
-    if (editorRequirementError) {
-      error = editorRequirementError;
-      return;
-    }
-
-    busy = true;
-    error = "";
-    try {
-      if (spec.body === "raw") {
-        if (editorLoadedID) {
-          await request(`${spec.listPath}/${encodeURIComponent(editorLoadedID)}`, {
-            method: "PUT",
-            body: JSON.stringify(parsed),
-          });
-        } else {
-          await request(spec.listPath, {
-            method: "POST",
-            body: JSON.stringify(parsed),
-          });
-        }
-      } else {
-        if (!editorID.trim()) {
-          error = "ID is required";
-          busy = false;
-          return;
-        }
-
-        if (editorKind === "settings" && !editorLoadedID && !isReservedSettingsNamespace(editorID)) {
-          error = "Settings namespace must be reserved";
-          busy = false;
-          return;
-        }
-
-        const body = spec.body === "value" ? { value: parsed } : { enabled: editorEnabled, config: parsed };
-        await request(`${spec.listPath}/${encodeURIComponent(editorID.trim())}`, {
-          method: "PUT",
-          body: JSON.stringify(body),
-        });
-      }
-
-      await refresh();
-      editorOpen = false;
-      flash("Record committed");
-    } catch (err) {
-      error = err instanceof Error ? err.message : "Unknown error";
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function patchTemporaryAccess(remove = false) {
-    if (!editorLoadedID || (editorKind !== "users" && editorKind !== "service-accounts")) return;
-
-    const roleIDs = splitValues(tempAccessRoleIDs);
-    const permissionIDs = splitValues(tempAccessPermissionIDs);
-    if (roleIDs.length === 0 && permissionIDs.length === 0) {
-      error = "Role IDs or permission IDs are required";
-      return;
-    }
-
-    if (!remove && !tempAccessExpiresIn.trim() && !tempAccessExpiresAt.trim()) {
-      error = "Expires in or expires at is required";
-      return;
-    }
-
-    const body: AnyRecord = {
-      role_ids: roleIDs,
-      permission_ids: permissionIDs,
-    };
-
-    if (!remove) {
-      if (tempAccessStartsAt.trim()) body.starts_at = tempAccessStartsAt.trim();
-      if (tempAccessExpiresIn.trim()) {
-        body.expires_in = tempAccessExpiresIn.trim();
-      } else if (tempAccessExpiresAt.trim()) {
-        body.expires_at = tempAccessExpiresAt.trim();
-      }
-    }
-
-    busy = true;
-    error = "";
-    try {
-      await request(`${editorSpec.listPath}/${encodeURIComponent(editorLoadedID)}/access`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-
-      await loadKind(editorKind);
-      await editResource(editorKind, editorLoadedID);
-      flash(remove ? "Temporary access removed" : "Temporary access updated");
-    } catch (err) {
-      error = err instanceof Error ? err.message : "Unknown error";
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function deleteResource(kind: ResourceKind, id: string) {
-    if (!confirm(`Delete ${id}?`)) return;
-
-    busy = true;
-    error = "";
-    try {
-      const spec = kindSpecs[kind];
-      await request(`${spec.listPath}/${encodeURIComponent(id)}`, { method: "DELETE" });
-
-      await refresh();
-      flash("Record purged");
-    } catch (err) {
-      error = err instanceof Error ? err.message : "Unknown error";
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function ldapSyncNow() {
-    busy = true;
-    error = "";
-    try {
-      await request("ldap/sync", { method: "POST", body: JSON.stringify({ force: false }) });
-      await refresh();
-      flash("LDAP sync complete");
-    } catch (err) {
-      error = err instanceof Error ? err.message : "Unknown error";
-    } finally {
-      busy = false;
-    }
-  }
-
-  function isSelfServiceTab(tab: Tab) {
-    return tab === "account" || tab === "device";
-  }
-
-  function currentIsAdmin() {
-    return capabilities?.is_admin === true;
-  }
-
-  // tabs that render from core data (info/dashboard) alone and must not trigger
-  // the bulk admin load (resource lists + every runtime settings namespace).
-  const coreOnlyTabs = new Set<Tab>(["overview", "docs", "encryption"]);
-
-  function tabNeedsAdminData(tab: Tab) {
-    return currentIsAdmin() && !isSelfServiceTab(tab) && !coreOnlyTabs.has(tab);
-  }
-
-  function canUseTab(tab: Tab) {
-    return currentIsAdmin() || isSelfServiceTab(tab);
-  }
-
-  function fallbackTab() {
-    return currentIsAdmin() ? "overview" : "account";
-  }
-
-  function ensureAllowedTab() {
-    if (canUseTab(activeTab)) return;
-
-    activeTab = fallbackTab();
-    window.location.hash = activeTab === "overview" ? "" : activeTab;
-  }
-
-  function isThemeMode(value: string | null): value is ThemeMode {
-    return value === "system" || value === "dark" || value === "light";
-  }
-
-  function resolvedTheme(mode: ThemeMode) {
-    if (mode !== "system") return mode;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
-
-  function applyThemeMode(mode: ThemeMode) {
-    document.documentElement.dataset.themeMode = mode;
-    document.documentElement.dataset.theme = resolvedTheme(mode);
-  }
-
-  function setThemeMode(mode: ThemeMode) {
-    themeMode = mode;
-    localStorage.setItem("turna-auth-theme", mode);
-    applyThemeMode(mode);
-  }
-
-  function initThemeMode() {
-    const stored = localStorage.getItem("turna-auth-theme");
-    themeMode = isThemeMode(stored) ? stored : "system";
-    applyThemeMode(themeMode);
-
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const onSystemThemeChange = () => {
-      if (themeMode === "system") applyThemeMode("system");
-    };
-
-    media.addEventListener("change", onSystemThemeChange);
-
-    return () => media.removeEventListener("change", onSystemThemeChange);
-  }
-
-  function selectTab(tab: Tab) {
-    if (!canUseTab(tab)) return;
-
-    activeTab = tab;
-    // switching tabs always lands on the resource list, never the editor
-    editorOpen = false;
-    if (isResourceTab(tab)) {
-      resetEditor(tab);
-    }
-
-    // load the bulk admin data on demand the first time a tab needs it
-    if (tabNeedsAdminData(tab)) {
-      void ensureAdminData();
-    }
-
-    window.location.hash = tab === "overview" ? "" : tab;
+    session.loading = false;
   }
 
   async function boot() {
-    const hash = window.location.hash.replace(/^#/, "") as Tab;
-    if (hash && nav.some((item) => item.id === hash)) {
-      activeTab = hash;
-    }
-
-    // /ui/device is the RFC 8628 verification_uri; ?user_code= prefills the form
-    const params = new URLSearchParams(window.location.search);
-    deviceUserCode = params.get("user_code") ?? "";
-    if (/\/ui\/device\/?$/.test(window.location.pathname) || deviceUserCode) {
-      activeTab = "device";
-    }
+    route.readLocation();
 
     try {
-      await loadCapabilities();
+      await session.loadCapabilities();
     } catch (err) {
-      error = err instanceof Error ? err.message : "Unknown error";
-      loading = false;
+      docket.reject(messageOf(err));
+      session.loading = false;
       return;
     }
 
-    ensureAllowedTab();
+    route.enforce();
+    if (route.isResource(route.tab)) editor.reset(route.tab);
 
-    if (isResourceTab(activeTab)) {
-      resetEditor(activeTab);
-    }
-
-    // load core data (header info + dashboard) for admins, then the bulk admin
-    // data only when the landing tab actually needs it.
-    if (currentIsAdmin()) {
+    if (session.isAdmin) {
       try {
-        await loadCore();
-        if (tabNeedsAdminData(activeTab)) {
-          await loadAdminData();
-        }
+        await session.loadCore();
+        if (route.needsRegistry(route.tab)) await registry.loadAll();
       } catch (err) {
-        error = err instanceof Error ? err.message : "Unknown error";
+        docket.reject(messageOf(err));
       }
     }
 
-    loading = false;
+    session.loading = false;
+  }
+
+  function onKeydown(event: KeyboardEvent) {
+    const target = event.target as HTMLElement | null;
+    const typing =
+      target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
+
+    if (event.key === "/" && !typing && !event.metaKey && !event.ctrlKey) {
+      event.preventDefault();
+      menuOpen = true;
+      rail?.focusSearch();
+    }
+
+    if (event.key === "Escape" && menuOpen) menuOpen = false;
   }
 
   onMount(() => {
-    const cleanupThemeMode = initThemeMode();
-    apiBase = deriveApiBase();
-
+    const teardownTheme = theme.init();
+    session.deriveApiBase();
     void boot();
 
-    return cleanupThemeMode;
+    const onHash = () => {
+      const hash = window.location.hash.replace(/^#/, "") as Tab;
+      if (hash !== route.tab) selectTab(hash || "overview");
+    };
+
+    window.addEventListener("hashchange", onHash);
+    return () => {
+      teardownTheme();
+      window.removeEventListener("hashchange", onHash);
+    };
   });
+
+  async function reloadAfterWrite() {
+    await session.loadCore();
+    await registry.loadAll();
+  }
 </script>
 
-<svelte:head>
-  <title>Turna // auth</title>
-</svelte:head>
+<svelte:window onkeydown={onKeydown} />
 
-<main class="grid h-screen grid-rows-[auto,1fr] overflow-hidden bg-crt font-sans text-fg">
-  <AppHeader {info} {busy} {themeMode} onRefresh={refresh} onThemeMode={setThemeMode} />
+<div class="grid h-screen grid-rows-[auto_1fr] overflow-hidden bg-ground text-ink">
+  <Masthead onrefresh={refresh} onmenu={() => (menuOpen = !menuOpen)} {menuOpen} />
 
-  <div class="grid min-h-0 grid-rows-[auto,1fr] overflow-hidden lg:grid-cols-[230px,1fr] lg:grid-rows-1">
-    <NavRail {activeTab} navGroups={visibleNavGroups} {info} {busy} onSelect={selectTab} onRefresh={refresh} />
+  <div class="grid min-h-0 overflow-hidden lg:grid-cols-[15rem_1fr]">
+    <div class="hidden min-h-0 lg:block">
+      <IndexRail bind:this={rail} groups={visibleGroups} active={route.tab} onselect={selectTab} bind:search />
+    </div>
 
-    <section class="min-h-0 min-w-0 overflow-y-auto overscroll-contain">
-      {#if loading}
-        <div class="grid min-h-[60vh] place-items-center">
-          <p class="text-sm text-dim">
-            Establishing link <span class="animate-pulse text-fg">&#9608;</span>
-          </p>
+    {#if menuOpen}
+      <div class="fixed inset-0 z-40 lg:hidden">
+        <button
+          type="button"
+          class="absolute inset-0 bg-ink/45"
+          aria-label="Close index"
+          onclick={() => (menuOpen = false)}
+        ></button>
+        <div class="absolute inset-y-0 left-0 w-[17rem] max-w-[85vw] border-r border-rule shadow-2xl">
+          <IndexRail groups={visibleGroups} active={route.tab} onselect={selectTab} bind:search />
+        </div>
+      </div>
+    {/if}
+
+    <main class="min-h-0 min-w-0 overflow-y-auto overscroll-contain bg-ground">
+      {#if session.loading}
+        <div class="grid min-h-[60vh] place-items-center px-6">
+          <p class="stamp">Reading the register…</p>
         </div>
       {:else}
-        {#if capabilities?.anonymous_admin}
-          <div class="flex items-center gap-3 border-b border-line bg-panel px-4 py-2">
-            <span class="bg-alert px-2 py-0.5 text-xs font-bold text-white">Break-glass</span>
-            <span class="text-xs text-alert">X-USER MISSING; ADMIN ACCESS ALLOWED</span>
-          </div>
-        {:else if capabilities?.bootstrap_admin}
-          <div class="flex items-center gap-3 border-b border-line bg-panel px-4 py-2">
-            <span class="bg-alert px-2 py-0.5 text-xs font-bold text-white">Bootstrap</span>
-            <span class="text-xs text-alert">Admin permission not configured</span>
-          </div>
+        {#if session.capabilities?.anonymous_admin}
+          <p class="hatch border-b border-seal/40 px-5 py-2.5 text-[13px] text-ink sm:px-8 lg:px-10">
+            <span class="stamp text-seal">Break-glass</span>
+            <span class="ml-3">
+              No <code class="serial">X-User</code> on this request and admin access is allowed anyway.
+              Intended for local recovery — do not leave this route publicly reachable.
+            </span>
+          </p>
+        {:else if session.capabilities?.bootstrap_admin}
+          <p class="hatch border-b border-caution/40 px-5 py-2.5 text-[13px] text-ink sm:px-8 lg:px-10">
+            <span class="stamp text-caution">Bootstrap</span>
+            <span class="ml-3">
+              No admin permission is configured, so every authenticated request manages this instance.
+              Set one under Platform → Admin once the first role exists.
+            </span>
+          </p>
         {/if}
 
-        {#if activeTab === "account"}
-          <AccountTab {apiBase} />
-        {:else if activeTab === "api-keys"}
-          <APIKeysTab
-            {apiBase}
-            {busy}
-            {settingsRevision}
-            {getSettingBool}
-            {setSettingBool}
-            {getSettingString}
-            {setSettingString}
-            {saveSetting}
-          />
-        {:else if activeTab === "device"}
-          <DeviceTab {apiBase} initialUserCode={deviceUserCode} />
-        {:else if activeTab === "email"}
-          <EmailTab
-            {apiBase}
-            {busy}
-            {settingsRevision}
-            {settingRecord}
-            {getSettingBool}
-            {setSettingBool}
-            {getSettingString}
-            {setSettingString}
-            {getSettingNumber}
-            {setSettingNumber}
-            {saveSetting}
-          />
-        {:else if activeTab === "magic-link"}
-          <MagicLinkTab
-            {apiBase}
-            {busy}
-            {settingsRevision}
-            {settingRecord}
-            {getSettingBool}
-            {setSettingBool}
-            {getSettingString}
-            {setSettingString}
-            {saveSetting}
-          />
-        {:else if activeTab === "signup"}
-          <SignupTab
-            {apiBase}
-            {busy}
-            {settingsRevision}
-            {getSettingBool}
-            {setSettingBool}
-            {getSettingString}
-            {setSettingString}
-            {getSettingList}
-            {setSettingList}
-            {getSettingNumber}
-            {setSettingNumber}
-            {saveSetting}
-          />
-        {:else if activeTab === "mtls"}
-          <MTLSTab
-            {apiBase}
-            {busy}
-            {settingsRevision}
-            {getSettingBool}
-            {setSettingBool}
-            {getSettingString}
-            {setSettingString}
-            {saveSetting}
-            onSelect={selectTab}
-          />
-        {:else if activeTab === "encryption"}
-          <EncryptionTab {apiBase} {busy} />
-        {:else if activeTab === "admin"}
-          <AdminTab
-            {busy}
-            {settingsRevision}
-            {getSettingBool}
-            {setSettingBool}
-            {getSettingString}
-            {setSettingString}
-            {saveSetting}
-          />
-        {:else if activeTab === "cache"}
-          <CacheTab
-            {busy}
-            {settingsRevision}
-            {getSettingBool}
-            {setSettingBool}
-            {getSettingString}
-            {setSettingString}
-            {getSettingList}
-            {setSettingList}
-            {saveSetting}
-          />
-        {:else if activeTab === "device-settings"}
-          <DeviceSettingsTab
-            {busy}
-            {settingsRevision}
-            {getSettingBool}
-            {setSettingBool}
-            {getSettingString}
-            {setSettingString}
-            {getSettingNumber}
-            {setSettingNumber}
-            {saveSetting}
-          />
-        {:else if activeTab === "token-exchange"}
-          <TokenExchangeTab
-            {busy}
-            {settingsRevision}
-            {getSettingBool}
-            {setSettingBool}
-            {saveSetting}
-          />
-        {:else if activeTab === "totp"}
-          <TotpTab
-            {busy}
-            {settingsRevision}
-            {getSettingBool}
-            {setSettingBool}
-            {getSettingString}
-            {setSettingString}
-            {getSettingNumber}
-            {setSettingNumber}
-            {saveSetting}
-          />
-        {:else if activeTab === "custom-info"}
-          <CustomInfoTab
-            {apiBase}
-            {busy}
-            {settingsRevision}
-            {settingRecord}
-            {setSettingRecord}
-            {saveSetting}
-          />
-        {:else if activeTab === "flows"}
-          <FlowsTab {settingsRevision} {getSettingBool} {ldapActive} {providerCount} {samlCount} />
-        {:else if activeTab === "overview"}
-          <OverviewTab {dashboard} {apiBase} {busy} onLdapSync={ldapSyncNow} />
-        {:else if activeTab === "oauth2-overview"}
-          <OAuthOverview
-            {busy}
-            {settingsRevision}
-            {oauthBase}
-            {jwksKey}
-            {getSettingString}
-            {setSettingString}
-            {getSettingBool}
-            {setSettingBool}
-            {getSettingList}
-            {setSettingList}
-            {saveSetting}
-            {rotateJWT}
-          />
-        {:else if activeTab === "check"}
-          <AccessCheckTab
-            {apiBase}
-            {busy}
-            {settingsRevision}
-            {getSettingBool}
-            {setSettingBool}
-            {getSettingList}
-            {setSettingList}
-            {saveSetting}
-          />
-        {:else if activeTab === "docs"}
-          <div class="grid gap-px bg-line p-px">
-            <AuthFlowGuide {apiBase} />
-          </div>
-        {:else if isResourceTab(activeTab)}
-          {#if !editorOpen}
-            <div class="grid gap-px bg-line p-px">
-              <ResourcePage
-                kind={activeTab}
-                rows={rowsByKind[activeTab] ?? []}
-                onCreate={startCreate}
-                onEdit={editResource}
-                onDelete={deleteResource}
-              />
-
-              {#if activeTab === "lmaps"}
-                <LdapGroupsPanel {apiBase} />
-              {/if}
-            </div>
+        {#if route.tab === "overview"}
+          <OverviewTab onselect={selectTab} />
+        {:else if route.tab === "flows"}
+          <FlowsTab />
+        {:else if route.tab === "check"}
+          <AccessCheckTab />
+        {:else if route.tab === "account"}
+          <AccountTab />
+        {:else if route.tab === "device"}
+          <DeviceTab />
+        {:else if route.tab === "oauth2-overview"}
+          <OAuthOverview />
+        {:else if route.tab === "api-keys"}
+          <APIKeysTab />
+        {:else if route.tab === "email"}
+          <EmailTab />
+        {:else if route.tab === "magic-link"}
+          <MagicLinkTab />
+        {:else if route.tab === "signup"}
+          <SignupTab />
+        {:else if route.tab === "mtls"}
+          <MTLSTab onselect={selectTab} />
+        {:else if route.tab === "totp"}
+          <TotpTab />
+        {:else if route.tab === "custom-info"}
+          <CustomInfoTab />
+        {:else if route.tab === "device-settings"}
+          <DeviceSettingsTab />
+        {:else if route.tab === "token-exchange"}
+          <TokenExchangeTab />
+        {:else if route.tab === "admin"}
+          <AdminTab />
+        {:else if route.tab === "cache"}
+          <CacheTab />
+        {:else if route.tab === "encryption"}
+          <EncryptionTab />
+        {:else if route.tab === "docs"}
+          <AuthFlowGuide />
+        {:else if route.isResource(route.tab)}
+          {#if editor.open}
+            <RecordEditor oncommitted={reloadAfterWrite} />
           {:else}
-            <div class="grid gap-px bg-line p-px">
-            <RecordEditor
-              {closeEditor}
-              {editorKind}
-              {editorSpec}
-              {apiBase}
-              bind:editorID
-              {editorLoadedID}
-              bind:editorEnabled
-              bind:editorJSON
-              {advancedMode}
-              {editorJSONError}
-              {editorRequirementError}
-              {canCommit}
-              {simpleFormAvailable}
-              {busy}
-              bind:tempAccessRoleIDs
-              bind:tempAccessPermissionIDs
-              bind:tempAccessStartsAt
-              bind:tempAccessExpiresIn
-              bind:tempAccessExpiresAt
-              {canGrantTemporaryAccess}
-              {canRemoveTemporaryAccess}
-              {setAdvancedMode}
-              {formatEditorJSON}
-              {loadEditorTemplate}
-              {saveResource}
-              {applyNamespaceExample}
-              {applyPermissionPreset}
-              {getStringField}
-              {setStringField}
-              {getBoolField}
-              {setBoolField}
-              {setLocalUser}
-              {getListField}
-              {setListField}
-              {getNestedString}
-              {setNestedString}
-              {getFirstArrayString}
-              {setFirstArrayString}
-              {getFirstArrayList}
-              {setFirstArrayList}
-              {getJSONField}
-              {setJSONField}
-              {getPathString}
-              {setPathString}
-              {setPathBool}
-              {getPathBool}
-              {getPathNumber}
-              {setPathNumber}
-              {getPathList}
-              {setPathList}
-              {addPermissionResource}
-              {removePermissionResource}
-              {getResourceList}
-              {setResourceList}
-              {temporaryAccessItems}
-              {patchTemporaryAccess}
-            />
-            </div>
+            <ResourcePage kind={route.tab} oncommitted={reloadAfterWrite}>
+              {#snippet extra()}
+                {#if route.tab === "lmaps"}
+                  <LdapGroupsPanel />
+                {/if}
+              {/snippet}
+            </ResourcePage>
           {/if}
         {/if}
       {/if}
-    </section>
+    </main>
   </div>
+</div>
 
-  <!-- transient toasts float over the canvas instead of pushing content -->
-  <div class="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-[min(360px,calc(100vw-2rem))] flex-col gap-2">
-    {#if error}
-      <div
-        class="pointer-events-auto flex items-start gap-3 rounded-lg border border-alert/30 bg-panel px-3 py-2.5 shadow-md"
-        role="alert"
-        transition:fly={{ x: 16, duration: 160 }}
-      >
-        <span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-alert"></span>
-        <span class="min-w-0 flex-1 break-words text-xs leading-5 text-fg">{error}</span>
-        <button class="shrink-0 text-sm leading-none text-dim hover:text-fg" on:click={() => (error ="")} aria-label="dismiss error">×</button>
-      </div>
-    {/if}
-
-    {#if notice}
-      <div
-        class="pointer-events-auto flex items-start gap-3 rounded-lg border border-phosphor/30 bg-panel px-3 py-2.5 shadow-md"
-        role="status"
-        transition:fly={{ x: 16, duration: 160 }}
-      >
-        <span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-phosphor"></span>
-        <span class="min-w-0 flex-1 break-words text-xs leading-5 text-fg">{notice}</span>
-        <button class="shrink-0 text-sm leading-none text-dim hover:text-fg" on:click={() => (notice ="")} aria-label="dismiss notice">×</button>
-      </div>
-    {/if}
-  </div>
-</main>
+<Docket />

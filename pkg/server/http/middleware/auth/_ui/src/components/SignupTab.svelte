@@ -1,74 +1,28 @@
 <script lang="ts">
-  import type { AnyRecord, SettingNamespace } from "../lib/api";
+  import Instrument from "./ui/Instrument.svelte";
+  import Section from "./ui/Section.svelte";
+  import Entry from "./ui/Entry.svelte";
+  import Switch from "./ui/Switch.svelte";
+  import Seal from "./ui/Seal.svelte";
 
-  export let apiBase = "/auth/v1";
-  export let busy = false;
-  export let settingsRevision = 0;
-  export let getSettingBool: (namespace: SettingNamespace, path: string[], fallback?: boolean) => boolean = () => false;
-  export let setSettingBool: (namespace: SettingNamespace, path: string[], value: boolean) => void = () => {};
-  export let getSettingString: (namespace: SettingNamespace, path: string[]) => string = () => "";
-  export let setSettingString: (namespace: SettingNamespace, path: string[], value: string) => void = () => {};
-  export let getSettingList: (namespace: SettingNamespace, path: string[]) => string = () => "";
-  export let setSettingList: (namespace: SettingNamespace, path: string[], value: string) => void = () => {};
-  export let getSettingNumber: (namespace: SettingNamespace, path: string[], fallback?: number) => number = () => 0;
-  export let setSettingNumber: (namespace: SettingNamespace, path: string[], value: string) => void = () => {};
-  export let saveSetting: (namespace: SettingNamespace) => void | Promise<void> = () => {};
+  import { messageOf, session } from "../lib/state/session.svelte";
+  import {
+    getSettingBool,
+    getSettingList,
+    getSettingNumber,
+    getSettingString,
+    saveSetting,
+    setSettingBool,
+    setSettingList,
+    setSettingNumber,
+    setSettingString,
+  } from "../lib/state/settings.svelte";
 
   type EmailPreview = {
     subject: string;
     body: string;
     magic_link?: string;
   };
-
-  let previewKind: "verify" | "reset" = "verify";
-  let previewEmail = "user@example.com";
-  let previewCode = "123456";
-  let previewRedirectURI = "https://app.example.com/login/?flow=verify";
-  let preview: EmailPreview | null = null;
-  let previewBusy = false;
-  let previewError = "";
-
-  $: enabled = settingBool(settingsRevision, ["enabled"]);
-  $: emailVerification = settingBool(settingsRevision, ["email_verification"], true);
-  $: passwordReset = settingBool(settingsRevision, ["password_reset"]);
-  $: passwordMinLength = settingNumber(settingsRevision, ["password_min_length"], 8);
-  $: codeLifetime = settingString(settingsRevision, ["code_lifetime"]);
-  $: defaultRoleIDs = settingList(settingsRevision, ["default_role_ids"]);
-  $: verifySubject = settingString(settingsRevision, ["verify_subject"]);
-  $: verifyBody = settingString(settingsRevision, ["verify_body_template"]);
-  $: resetSubject = settingString(settingsRevision, ["reset_subject"]);
-  $: resetBody = settingString(settingsRevision, ["reset_body_template"]);
-
-  function inputValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement | HTMLTextAreaElement).value;
-  }
-
-  function checkedValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement).checked;
-  }
-
-  function settingBool(_revision: number, path: string[], fallback = false) {
-    return getSettingBool("signup", path, fallback);
-  }
-
-  function settingString(_revision: number, path: string[]) {
-    return getSettingString("signup", path);
-  }
-
-  function settingList(_revision: number, path: string[]) {
-    return getSettingList("signup", path);
-  }
-
-  function settingNumber(_revision: number, path: string[], fallback = 0) {
-    return getSettingNumber("signup", path, fallback);
-  }
-
-  function checkboxClass(checked: boolean, danger = false) {
-    const base = "h-3.5 w-3.5 appearance-none border bg-crt";
-    if (danger) return `${base} border-line checked:bg-alert`;
-
-    return `${base} border-line checked:bg-fg ${checked ? "" : "border-alert"}`;
-  }
 
   const defaultVerifyBody = `{{if .MagicLink}}Click the link to verify your email:
 
@@ -90,8 +44,80 @@ Or use this reset code: {{.Code}}{{else}}Your password reset code is:
 
 The code expires in {{.ExpiresIn}}.`;
 
-  // signup verify/reset mails reuse the email preview endpoint: the selected
-  // subject/body templates are passed as a synthetic email settings payload.
+  /** The fields both signup mails are rendered with. */
+  const signupFields = [
+    "{{.Email}}",
+    "{{.Name}}",
+    "{{.Code}}",
+    "{{.MagicLink}}",
+    "{{.ExpiresIn}}",
+    "{{.ClientID}}",
+    "{{.RedirectURI}}",
+  ];
+
+  const endpoints = [
+    "POST /auth/oauth2/signup",
+    "POST /auth/oauth2/signup/verify",
+    "POST /auth/oauth2/password-reset",
+    "POST /auth/oauth2/password-reset/confirm",
+  ];
+
+  const remoteConfig = `# remote auth instance only:
+# oauth2:
+#   signup_url: https://auth.example.com/auth/oauth2/signup
+#   password_reset_url: https://auth.example.com/auth/oauth2/password-reset`;
+
+  let previewKind = $state<"verify" | "reset">("verify");
+  let previewEmail = $state("user@example.com");
+  let previewCode = $state("123456");
+  let previewRedirectURI = $state("https://app.example.com/login/?flow=verify");
+  let preview = $state<EmailPreview | null>(null);
+  let previewBusy = $state(false);
+  let previewError = $state("");
+
+  const enabled = $derived(getSettingBool("signup", ["enabled"]));
+  const emailVerification = $derived(getSettingBool("signup", ["email_verification"], true));
+  const passwordReset = $derived(getSettingBool("signup", ["password_reset"]));
+  const codeLifetime = $derived(getSettingString("signup", ["code_lifetime"]));
+  const verifySubject = $derived(getSettingString("signup", ["verify_subject"]));
+  const verifyBody = $derived(getSettingString("signup", ["verify_body_template"]));
+  const resetSubject = $derived(getSettingString("signup", ["reset_subject"]));
+  const resetBody = $derived(getSettingString("signup", ["reset_body_template"]));
+
+  /**
+   * Self-registration is the one flow on this instance that creates a principal
+   * for someone nobody vouched for, so the page opens by saying whether it is
+   * open and on what terms.
+   */
+  const standing = $derived.by(() => {
+    if (!enabled) {
+      return {
+        state: "void" as const,
+        label: "Closed",
+        detail:
+          "Nobody can create an account here. The signup and password-reset endpoints answer as disabled, and the login page shows neither link.",
+      };
+    }
+
+    if (!emailVerification) {
+      return {
+        state: "held" as const,
+        label: "Open, unverified",
+        detail:
+          "Anyone who can reach the login page creates an active local user immediately, with no proof that the address is theirs. Duplicate addresses answer 409, which also confirms who is registered.",
+      };
+    }
+
+    return {
+      state: "endorsed" as const,
+      label: "Open, verified",
+      detail:
+        "Anyone who can reach the login page can register, but the account exists only after the emailed code is confirmed. Responses never reveal whether an address is already registered.",
+    };
+  });
+
+  // The signup mails reuse the email preview endpoint: the selected subject and
+  // body are passed as a synthetic email settings payload.
   async function renderPreview() {
     previewBusy = true;
     previewError = "";
@@ -102,9 +128,8 @@ The code expires in {{.ExpiresIn}}.`;
     const fallbackBody = previewKind === "verify" ? defaultVerifyBody : defaultResetBody;
 
     try {
-      const res = await fetch(`${apiBase}/email/preview`, {
+      const payload = await session.request<EmailPreview>("email/preview", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           settings: {
             subject: subject || fallbackSubject,
@@ -117,179 +142,357 @@ The code expires in {{.ExpiresIn}}.`;
         }),
       });
 
-      let payload: AnyRecord = {};
-      try {
-        payload = await res.json();
-      } catch {
-        // keep status text
-      }
-      if (!res.ok) {
-        throw new Error(String(payload.message ?? payload.error ?? res.statusText));
-      }
-
-      preview = payload.payload as EmailPreview;
+      preview = payload.payload;
     } catch (err) {
       preview = null;
-      previewError = err instanceof Error ? err.message : "Cannot render preview";
+      previewError = messageOf(err, "Cannot render preview");
     } finally {
       previewBusy = false;
     }
   }
 </script>
 
-<div class="grid gap-px bg-line p-px">
-  <div class="grid gap-3 bg-panel p-4">
-    <div class="flex flex-wrap items-start justify-between gap-3">
+<Instrument
+  title="Self registration"
+  note="Optional signup and forgot-password flows for the login page. Signup creates local users; verification and reset codes go out over the SMTP relay configured on the Email page."
+>
+  {#snippet actions()}
+    <button
+      type="button"
+      class="act act-primary"
+      disabled={session.busy}
+      onclick={() => saveSetting("signup")}
+    >
+      {session.busy ? "Committing…" : "Commit"}
+    </button>
+  {/snippet}
+
+  {#snippet custody()}
+    <span class="stamp">Namespace <span class="serial stamp-raw">signup</span></span>
+    <span class="serial stamp-raw">{session.apiBase}/settings/signup</span>
+  {/snippet}
+
+  <div class="border border-rule bg-sheet px-4 py-3.5">
+    <div class="flex flex-wrap items-baseline gap-x-5 gap-y-2">
+      <span class="shrink-0"><Seal state={standing.state} label={standing.label} /></span>
+      <p class="min-w-0 flex-1 basis-72 max-w-[70ch] text-[13px] leading-[1.6] text-ink">
+        {standing.detail}
+      </p>
+    </div>
+  </div>
+
+  <Section title="Registration">
+    <div class="grid gap-6">
+      <Switch
+        label="Accept self-registration"
+        consequential
+        hint="Registration is anonymous by design: the caller only needs valid client credentials. Turning this on lets strangers create principals in this instance."
+        bind:checked={
+          () => getSettingBool("signup", ["enabled"]),
+          (v) => setSettingBool("signup", ["enabled"], v)
+        }
+      />
+
+      <Switch
+        label="Require email verification"
+        hint="Recommended. The account is created only after the emailed code is confirmed, and responses stay uniform so signup cannot be used to test which addresses exist."
+        bind:checked={
+          () => getSettingBool("signup", ["email_verification"], true),
+          (v) => setSettingBool("signup", ["email_verification"], v)
+        }
+      />
+
+      <Switch
+        label="Allow password reset over email"
+        hint="Adds the forgot-password flow: a one-time code or link mailed to the registered address."
+        bind:checked={
+          () => getSettingBool("signup", ["password_reset"]),
+          (v) => setSettingBool("signup", ["password_reset"], v)
+        }
+      />
+    </div>
+
+    {#if enabled && !passwordReset}
+      <p class="mt-6 max-w-[70ch] text-[13px] leading-[1.6] text-muted">
+        Password reset is off, so a local user who forgets their password needs an administrator to
+        set a new one.
+      </p>
+    {/if}
+  </Section>
+
+  <Section title="Terms of the account">
+    <div class="grid gap-6 sm:grid-cols-2">
+      <Entry
+        label="Password minimum length"
+        type="number"
+        mono
+        hint="Enforced on signup, reset and self-service change. The login page reflects it live. Default 8."
+        bind:value={
+          () => String(getSettingNumber("signup", ["password_min_length"], 8)),
+          (v) => setSettingNumber("signup", ["password_min_length"], v)
+        }
+      />
+
+      <Entry
+        label="Code lifetime"
+        placeholder="1h"
+        mono
+        hint="Verification and reset codes are single use and expire after this."
+        bind:value={
+          () => getSettingString("signup", ["code_lifetime"]),
+          (v) => setSettingString("signup", ["code_lifetime"], v)
+        }
+      />
+
+      <div class="sm:col-span-2">
+        <Entry
+          label="Default role IDs"
+          placeholder="role-id-a, role-id-b"
+          mono
+          hint="Granted to every user created through signup. Comma or newline separated."
+          bind:value={
+            () => getSettingList("signup", ["default_role_ids"]),
+            (v) => setSettingList("signup", ["default_role_ids"], v)
+          }
+        />
+      </div>
+    </div>
+  </Section>
+
+  <Section
+    title="Verification mail"
+    note="Leave the body empty to send the built-in text. Anything you write here is a Go text/template rendered per recipient."
+  >
+    <Entry
+      label="Subject"
+      placeholder="Verify your email"
+      bind:value={
+        () => getSettingString("signup", ["verify_subject"]),
+        (v) => setSettingString("signup", ["verify_subject"], v)
+      }
+    />
+
+    <div class="mt-7">
+      <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
+        <span class="stamp shrink-0">Body</span>
+        <span class="min-w-0 flex-1"></span>
+        <span class="stamp shrink-0">Fields</span>
+      </div>
+
+      <ul class="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+        {#each signupFields as field (field)}
+          <li class="serial text-[12px] text-muted">{field}</li>
+        {/each}
+      </ul>
+
+      <textarea
+        class="exhibit mt-2.5 min-h-[11rem]"
+        spellcheck="false"
+        placeholder="empty = built-in template"
+        aria-label="Verification mail body template"
+        value={verifyBody}
+        oninput={(e) => setSettingString("signup", ["verify_body_template"], e.currentTarget.value)}
+      ></textarea>
+
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="act"
+          disabled={session.busy}
+          onclick={() => setSettingString("signup", ["verify_body_template"], defaultVerifyBody)}
+        >
+          Load the standard text
+        </button>
+        <button
+          type="button"
+          class="act"
+          disabled={session.busy}
+          onclick={() => setSettingString("signup", ["verify_body_template"], "")}
+        >
+          Clear to built-in
+        </button>
+      </div>
+
+      <p class="mt-4 max-w-[70ch] text-[13px] leading-[1.6] text-muted">
+        <span class="serial">{"{{.MagicLink}}"}</span> is empty unless the request supplies a
+        redirect_uri, so guard it with
+        <span class="serial">{"{{if .MagicLink}}"}</span> as the built-in text does.
+      </p>
+    </div>
+  </Section>
+
+  <Section
+    title="Password reset mail"
+    note="Sent by the forgot-password flow. Same fields, same rules."
+  >
+    <Entry
+      label="Subject"
+      placeholder="Reset your password"
+      bind:value={
+        () => getSettingString("signup", ["reset_subject"]),
+        (v) => setSettingString("signup", ["reset_subject"], v)
+      }
+    />
+
+    <div class="mt-7">
+      <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
+        <span class="stamp shrink-0">Body</span>
+        <span class="min-w-0 flex-1"></span>
+        <span class="stamp shrink-0">Fields</span>
+      </div>
+
+      <ul class="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+        {#each signupFields as field (field)}
+          <li class="serial text-[12px] text-muted">{field}</li>
+        {/each}
+      </ul>
+
+      <textarea
+        class="exhibit mt-2.5 min-h-[11rem]"
+        spellcheck="false"
+        placeholder="empty = built-in template"
+        aria-label="Password reset mail body template"
+        value={resetBody}
+        oninput={(e) => setSettingString("signup", ["reset_body_template"], e.currentTarget.value)}
+      ></textarea>
+
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="act"
+          disabled={session.busy}
+          onclick={() => setSettingString("signup", ["reset_body_template"], defaultResetBody)}
+        >
+          Load the standard text
+        </button>
+        <button
+          type="button"
+          class="act"
+          disabled={session.busy}
+          onclick={() => setSettingString("signup", ["reset_body_template"], "")}
+        >
+          Clear to built-in
+        </button>
+      </div>
+    </div>
+  </Section>
+
+  <Section
+    title="Preview"
+    note="Renders the selected template on the server against sample values. Nothing is sent and nothing is saved."
+  >
+    <div class="grid gap-10 lg:grid-cols-[20rem_minmax(0,1fr)]">
       <div>
-        <span class="t-label text-fg">Signup</span>
-        <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Self Registration</h3>
-      </div>
-      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting("signup")}>Save signup</button>
-    </div>
-    <p class="max-w-3xl text-xs leading-5 text-dim">
-      Optional self-registration and forgot-password flows for the login page. Signup creates <span class="text-fg">local</span> users; email verification and password reset deliver one-time codes/magic links over the SMTP relay configured on the <span class="text-fg">Email</span> page.
-    </p>
-  </div>
-
-  <div class="grid gap-px bg-line xl:grid-cols-[minmax(0,1fr),minmax(0,1fr)]">
-    <div class="grid content-start gap-px bg-line">
-      <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">Flow settings</span>
-      </div>
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-        <input type="checkbox" checked={enabled} class={checkboxClass(enabled)} on:change={(event) => setSettingBool("signup", ["enabled"], checkedValue(event))} />
-        <span class={enabled ?"text-fg" :"text-dim"}>{enabled ?"Signup enabled" :"Signup disabled"}</span>
-      </label>
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-        <input type="checkbox" checked={emailVerification} class={checkboxClass(emailVerification)} on:change={(event) => setSettingBool("signup", ["email_verification"], checkedValue(event))} />
-        <span class={emailVerification ?"text-fg" :"text-alert"}>Email verification required</span>
-      </label>
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-        <input type="checkbox" checked={passwordReset} class={checkboxClass(passwordReset)} on:change={(event) => setSettingBool("signup", ["password_reset"], checkedValue(event))} />
-        <span class={passwordReset ?"text-fg" :"text-dim"}>Password reset over email</span>
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Password min length</span>
-        <input type="number" min="1" class="field-t" value={passwordMinLength} placeholder="8" on:input={(event) => setSettingNumber("signup", ["password_min_length"], inputValue(event))} />
-        <span class="text-xs leading-4 text-dim">Enforced on signup, password reset and self-service password change; the login page reflects it live. Default 8.</span>
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Default role IDs</span>
-        <input class="field-t" value={defaultRoleIDs} placeholder="role-id-a, role-id-b" on:input={(event) => setSettingList("signup", ["default_role_ids"], inputValue(event))} />
-        <span class="text-xs leading-4 text-dim">Granted to every user created through signup.</span>
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Code lifetime</span>
-        <input class="field-t" value={codeLifetime} placeholder="1h" on:input={(event) => setSettingString("signup", ["code_lifetime"], inputValue(event))} />
-        <span class="text-xs leading-4 text-dim">Verification and reset codes are single use and expire after this duration.</span>
-      </label>
-      <div class="bg-panel p-3 text-xs leading-5 text-dim">
-        Without email verification, signup creates active accounts immediately and duplicate addresses answer 409. With verification (recommended), the account exists only after the code is confirmed and responses never reveal whether an address is registered.
-      </div>
-    </div>
-
-    <div class="grid content-start gap-px bg-line">
-      <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">Mail templates</span>
-      </div>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Verify subject</span>
-        <input class="field-t" value={verifySubject} placeholder="Verify your email" on:input={(event) => setSettingString("signup", ["verify_subject"], inputValue(event))} />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Verify body template</span>
-        <textarea class="field-t min-h-32 text-xs leading-4" value={verifyBody} placeholder="empty = built-in template" on:input={(event) => setSettingString("signup", ["verify_body_template"], inputValue(event))}></textarea>
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Reset subject</span>
-        <input class="field-t" value={resetSubject} placeholder="Reset your password" on:input={(event) => setSettingString("signup", ["reset_subject"], inputValue(event))} />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Reset body template</span>
-        <textarea class="field-t min-h-32 text-xs leading-4" value={resetBody} placeholder="empty = built-in template" on:input={(event) => setSettingString("signup", ["reset_body_template"], inputValue(event))}></textarea>
-      </label>
-      <div class="bg-panel p-3 text-xs leading-5 text-dim">
-        Variables: <code class="text-fg">{"{{.Email}}"}</code>, <code class="text-fg">{"{{.Name}}"}</code>, <code class="text-fg">{"{{.Code}}"}</code>, <code class="text-fg">{"{{.MagicLink}}"}</code>, <code class="text-fg">{"{{.ExpiresIn}}"}</code>, <code class="text-fg">{"{{.ClientID}}"}</code>, <code class="text-fg">{"{{.RedirectURI}}"}</code>.
-      </div>
-    </div>
-  </div>
-
-  <div class="grid gap-px bg-line lg:grid-cols-[360px,minmax(0,1fr)]">
-    <div class="grid content-start gap-px bg-line">
-      <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">Preview input</span>
-      </div>
-      <div class="flex flex-wrap gap-px bg-panel p-3">
-        <button
-          class={`border px-2.5 py-1 text-xs font-bold ${previewKind ==="verify" ?"border-alert bg-alert text-white" :"border-line text-dim hover:text-fg"}`}
-          on:click={() => (previewKind = "verify")}
-        >
-          Verify mail
-        </button>
-        <button
-          class={`border px-2.5 py-1 text-xs font-bold ${previewKind ==="reset" ?"border-alert bg-alert text-white" :"border-line text-dim hover:text-fg"}`}
-          on:click={() => (previewKind = "reset")}
-        >
-          Reset mail
-        </button>
-      </div>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Email</span>
-        <input bind:value={previewEmail} class="field-t" placeholder="user@example.com" />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Code</span>
-        <input bind:value={previewCode} class="field-t" placeholder="123456" />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Redirect URI / magic link target</span>
-        <input bind:value={previewRedirectURI} class="field-t" placeholder="https://app.example.com/login/?flow=verify" />
-      </label>
-      <div class="bg-panel p-3">
-        <button class="btn-t-solid w-full" disabled={previewBusy} on:click={renderPreview}>Render preview</button>
-      </div>
-    </div>
-
-    <div class="grid content-start gap-px bg-line">
-      <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">Rendered mail</span>
-      </div>
-      {#if previewError}
-        <div class="bg-panel p-3 text-xs text-alert">{previewError}</div>
-      {:else if preview}
-        <div class="grid gap-3 bg-panel p-4">
-          <p class="break-all text-xs"><span class="t-label">Subject</span> <span class="text-fg">{preview.subject}</span></p>
-          {#if preview.magic_link}
-            <p class="break-all text-xs leading-4 text-dim"><span class="t-label text-fg">Magic link</span> {preview.magic_link}</p>
-          {/if}
-          <pre class="overflow-auto whitespace-pre-wrap border border-line bg-crt p-3 text-xs leading-5 text-fg">{preview.body}</pre>
+        <span class="stamp block">Mail</span>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="act {previewKind === 'verify' ? 'act-primary' : ''}"
+            aria-pressed={previewKind === "verify"}
+            onclick={() => (previewKind = "verify")}
+          >
+            Verification
+          </button>
+          <button
+            type="button"
+            class="act {previewKind === 'reset' ? 'act-primary' : ''}"
+            aria-pressed={previewKind === "reset"}
+            onclick={() => (previewKind = "reset")}
+          >
+            Password reset
+          </button>
         </div>
-      {:else}
-        <div class="bg-panel p-4 text-xs leading-4 text-dim">Render a preview to validate the Go template before saving.</div>
-      {/if}
-    </div>
-  </div>
 
-  <div class="grid gap-px bg-line lg:grid-cols-2">
-    <div class="bg-panel p-4">
-      <span class="t-label text-fg">Login page integration</span>
-      <p class="mt-3 text-xs leading-5 text-dim">
-        The <span class="text-fg">login</span> middleware detects these settings live and shows <span class="text-fg">Create account</span> / <span class="text-fg">Forgot password?</span> links automatically for password providers backed by this auth middleware. No login configuration is needed for in-process providers.
-      </p>
-      <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg"># remote auth instance only:
-# oauth2:
-#   signup_url: https://auth.example.com/auth/oauth2/signup
-#   password_reset_url: https://auth.example.com/auth/oauth2/password-reset</pre>
+        <div class="mt-6 grid gap-5">
+          <Entry label="Recipient" placeholder="user@example.com" bind:value={previewEmail} />
+          <Entry label="Code" placeholder="123456" mono bind:value={previewCode} />
+          <Entry
+            label="Redirect URI"
+            placeholder="https://app.example.com/login/?flow=verify"
+            mono
+            hint="Fills the magic link field. Leave it empty to see the code-only branch."
+            bind:value={previewRedirectURI}
+          />
+        </div>
+
+        <button
+          type="button"
+          class="act act-primary mt-6 w-full"
+          disabled={previewBusy}
+          onclick={renderPreview}
+        >
+          {previewBusy ? "Rendering…" : "Render"}
+        </button>
+      </div>
+
+      <div class="min-w-0">
+        {#if previewError}
+          <div class="border border-seal/45 px-4 py-3.5">
+            <p class="stamp text-seal">Template rejected</p>
+            <p class="mt-1.5 max-w-[70ch] text-[13px] leading-[1.6] text-ink">{previewError}</p>
+            <p class="mt-2 max-w-[70ch] text-[12.5px] leading-[1.55] text-muted">
+              Fix the body above and render again — the stored setting is untouched.
+            </p>
+          </div>
+        {:else if preview}
+          <!-- The mail as received: a document, not a form field. -->
+          <div class="border border-rule bg-sheet">
+            <div class="border-b border-rule px-5 py-4">
+              <p class="stamp">Subject</p>
+              <p class="mt-1.5 break-words text-[15.5px] font-semibold leading-[1.35] text-ink">
+                {preview.subject}
+              </p>
+              {#if preview.magic_link}
+                <p class="stamp mt-3">Link</p>
+                <p class="serial mt-1 break-all text-[12px] leading-[1.5] text-muted">
+                  {preview.magic_link}
+                </p>
+              {/if}
+            </div>
+            <p class="serial whitespace-pre-wrap px-5 py-5 text-[12.5px] leading-[1.7] text-ink">
+              {preview.body}
+            </p>
+          </div>
+        {:else}
+          <div class="border border-dashed border-rule px-6 py-12 text-center">
+            <p class="text-[13.5px] font-semibold text-ink">Nothing rendered yet</p>
+            <p class="mx-auto mt-2 max-w-[52ch] text-[13px] leading-[1.6] text-muted">
+              Render before you commit: these two mails are the only thing a locked-out person ever
+              sees from this instance.
+            </p>
+          </div>
+        {/if}
+      </div>
     </div>
-    <div class="bg-panel p-4">
-      <span class="t-label text-fg">Endpoints</span>
-      <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">POST /auth/oauth2/signup
-POST /auth/oauth2/signup/verify
-POST /auth/oauth2/password-reset
-POST /auth/oauth2/password-reset/confirm</pre>
-      <p class="mt-3 text-xs leading-4 text-dim">
-        Public endpoints requiring valid client credentials; responses never reveal whether an address is registered when verification is on.
-      </p>
+  </Section>
+
+  <Section title="How the login page picks this up">
+    <div class="grid gap-8 lg:grid-cols-2">
+      <div class="min-w-0">
+        <p class="max-w-[70ch] text-[13px] leading-[1.6] text-ink">
+          The login middleware reads these settings live and shows
+          <span class="font-semibold">Create account</span> and
+          <span class="font-semibold">Forgot password?</span> by itself for password providers backed
+          by this auth middleware. In-process providers need no login configuration; a remote instance
+          needs the two URLs below.
+        </p>
+        <pre class="exhibit mt-4 overflow-auto whitespace-pre-wrap">{remoteConfig}</pre>
+      </div>
+
+      <div class="min-w-0">
+        <span class="stamp block">Public endpoints</span>
+        <ul class="mt-2">
+          {#each endpoints as endpoint (endpoint)}
+            <li class="serial border-b border-rule py-2 text-[12.5px] text-ink last:border-b-0">
+              {endpoint}
+            </li>
+          {/each}
+        </ul>
+        <p class="mt-4 max-w-[70ch] text-[13px] leading-[1.6] text-muted">
+          Public, but every call still has to present valid client credentials. With verification on,
+          the responses never reveal whether an address is registered.
+        </p>
+      </div>
     </div>
-  </div>
-</div>
+  </Section>
+</Instrument>

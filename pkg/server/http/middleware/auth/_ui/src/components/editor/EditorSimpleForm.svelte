@@ -1,88 +1,61 @@
 <script lang="ts">
+  import Section from "../ui/Section.svelte";
   import TemporaryAccessPanel from "./TemporaryAccessPanel.svelte";
   import PasskeyPanel from "./PasskeyPanel.svelte";
-  import type { AnyRecord, KindSpec, ResourceKind } from "../../lib/api";
+  import { editor } from "../../lib/state/editor.svelte";
 
-  export let editorKind: ResourceKind = "settings";
-  export let editorSpec: KindSpec;
-  export let apiBase = "/auth/v1";
-  export let editorID = "";
-  export let editorLoadedID = "";
-  export let editorJSON = "";
-  export let tempAccessRoleIDs = "";
-  export let tempAccessPermissionIDs = "";
-  export let tempAccessStartsAt = "";
-  export let tempAccessExpiresIn = "1h";
-  export let tempAccessExpiresAt = "";
-  export let canGrantTemporaryAccess = false;
-  export let canRemoveTemporaryAccess = false;
-  export let getStringField: (key: string) => string = () => "";
-  export let setStringField: (key: string, value: string) => void = () => {};
-  export let getBoolField: (key: string, fallback?: boolean) => boolean = () => false;
-  export let setBoolField: (key: string, value: boolean) => void = () => {};
-  export let setLocalUser: (value: boolean) => void = () => {};
-  export let getListField: (key: string) => string = () => "";
-  export let setListField: (key: string, value: string) => void = () => {};
-  export let getNestedString: (parent: string, key: string) => string = () => "";
-  export let setNestedString: (parent: string, key: string, value: string) => void = () => {};
-  export let getFirstArrayString: (parent: string, key: string) => string = () => "";
-  export let setFirstArrayString: (parent: string, key: string, value: string) => void = () => {};
-  export let getFirstArrayList: (parent: string, key: string) => string = () => "";
-  export let setFirstArrayList: (parent: string, key: string, value: string) => void = () => {};
-  export let getJSONField: (key: string) => string = () => "{}";
-  export let setJSONField: (key: string, value: string) => void = () => {};
-  export let getPathString: (path: string[]) => string = () => "";
-  export let setPathString: (path: string[], value: string) => void = () => {};
-  export let setPathBool: (path: string[], value: boolean) => void = () => {};
-  export let getPathBool: (path: string[], fallback?: boolean) => boolean = () => false;
-  export let getPathNumber: (path: string[], fallback?: number) => number = () => 0;
-  export let setPathNumber: (path: string[], value: string) => void = () => {};
-  export let getPathList: (path: string[]) => string = () => "";
-  export let setPathList: (path: string[], value: string) => void = () => {};
-  export let addPermissionResource: () => void = () => {};
-  export let removePermissionResource: (index: number) => void = () => {};
-  export let getResourceList: (index: number, key: string) => string = () => "";
-  export let setResourceList: (index: number, key: string, value: string) => void = () => {};
-  export let temporaryAccessItems: (key: "tmp_role_ids" | "tmp_permission_ids", json: string) => AnyRecord[] = () => [];
-  export let patchTemporaryAccess: (remove?: boolean) => void | Promise<void> = () => {};
+  /**
+   * The field view of the draft. Every control here writes straight into the
+   * one document the raw exhibit shows — there is no second copy of the record
+   * and no field that only exists in this form.
+   */
+  type Line = {
+    label: string;
+    value: string;
+    set: (value: string) => void;
+    placeholder?: string;
+    hint?: string;
+    type?: "text" | "number";
+    min?: string;
+    mono?: boolean;
+    wide?: boolean;
+  };
 
-  // Derive the resource list straight from editorJSON (a reactive prop) so
-  // ADD/REMOVE/edit re-render it, including down to zero. permissionResources()
-  // reads editorJSON through a prop function whose dependency Svelte cannot see,
-  // so binding the list to it never updated after the first render.
-  $: resources = parseResources(editorJSON);
+  type Exhibit = {
+    label: string;
+    value: string;
+    set: (value: string) => void;
+    placeholder?: string;
+    hint?: string;
+    rows?: number;
+    /** JSON documents are parsed on blur, so half-typed text is never rejected. */
+    lazy?: boolean;
+  };
 
-  function parseResources(json: string): AnyRecord[] {
-    try {
-      const parsed = JSON.parse(json) as AnyRecord;
-      const list = parsed?.resources;
-      if (!Array.isArray(list)) return [];
-      return list.map((item) =>
-        item && typeof item === "object" && !Array.isArray(item) ? { ...(item as AnyRecord) } : ({} as AnyRecord),
-      );
-    } catch {
-      return [];
-    }
+  type Toggle = {
+    label: string;
+    on: boolean;
+    set: (value: boolean) => void;
+    hint?: string;
+    /** True when the ON state widens what this instance accepts. */
+    consequential?: boolean;
+  };
+
+  function slug(label: string) {
+    return `f-${label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")}`;
   }
 
-  function inputValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value;
-  }
+  const namespace = $derived(editor.kind === "settings" ? editor.loadedID || editor.id : "");
+  const codeStore = $derived(editor.getPathString(["code_store", "active"]).trim() || "memory");
+  const redisTLS = $derived(editor.getPathBool(["code_store", "redis", "tls", "enabled"]));
+  const localUser = $derived(editor.getBool("local", true));
+  const resources = $derived(editor.resources());
 
-  function checkedValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement).checked;
-  }
-
-  function checkboxClass(checked: boolean, variant: "positive" | "danger" | "neutral" = "positive") {
-    const base = "h-3.5 w-3.5 appearance-none border bg-crt";
-    if (variant === "danger") return `${base} border-line checked:bg-alert`;
-    if (variant === "neutral") return `${base} border-line checked:bg-fg`;
-
-    return `${base} ${checked ? "border-line" : "border-alert"} checked:bg-fg`;
-  }
-
-  let mtlsCertPEM = "";
-  let mtlsCertError = "";
+  let mtlsCertPEM = $state("");
+  let mtlsCertError = $state("");
 
   function certificateBytes(value: string) {
     const cleaned = value
@@ -107,520 +80,916 @@
       const hex = Array.from(new Uint8Array(digest))
         .map((item) => item.toString(16).padStart(2, "0"))
         .join("");
-      setNestedString("details", "cert_fingerprint", hex);
+      editor.setNestedString("details", "cert_fingerprint", hex);
       mtlsCertPEM = "";
     } catch (err) {
       mtlsCertError = err instanceof Error ? err.message : "Cannot read certificate";
     }
   }
-
-  function editorPathFromJSON(json: string, path: string[]) {
-    let value: unknown;
-    try {
-      value = JSON.parse(json || "{}");
-    } catch {
-      return undefined;
-    }
-
-    for (const key of path) {
-      if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-      value = (value as AnyRecord)[key];
-    }
-
-    return value;
-  }
-
-  function currentCodeStoreActive(currentEditorJSON: string) {
-    const value = editorPathFromJSON(currentEditorJSON, ["code_store", "active"]);
-    return typeof value === "string" && value ? value : "memory";
-  }
-
-  function currentRedisTLS(currentEditorJSON: string) {
-    return editorPathFromJSON(currentEditorJSON, ["code_store", "redis", "tls", "enabled"]) === true;
-  }
-
-  function setCodeStoreActive(event: Event) {
-    codeStoreActive = inputValue(event);
-    setPathString(["code_store", "active"], codeStoreActive);
-  }
-
-  function setRedisTLS(event: Event) {
-    redisTLSEnabled = checkedValue(event);
-    setPathBool(["code_store", "redis", "tls", "enabled"], redisTLSEnabled);
-  }
-
-  let codeStoreActive = "memory";
-  let redisTLSEnabled = false;
-
-  $: settingsNamespace = editorKind === "settings" ? editorLoadedID || editorID : "";
-  $: codeStoreActive = currentCodeStoreActive(editorJSON);
-  $: redisTLSEnabled = currentRedisTLS(editorJSON);
 </script>
 
-<div class="grid gap-px bg-line p-px md:grid-cols-2 xl:grid-cols-3">
-  {#if editorKind === "settings"}
-    {#if settingsNamespace === "admin"}
-      <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-        <span class="t-label">Admin permission</span>
-        <input class="field-t" value={getStringField("permission")} placeholder="turna.auth.admin; empty = bootstrap open" on:input={(event) => setStringField("permission", inputValue(event))} />
-        <span class="text-xs leading-4 text-dim">Matched against permission ID or name on X-User. Empty keeps bootstrap compatibility.</span>
-      </label>
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-        <input type="checkbox" checked={getBoolField("allow_missing_x_user", true)} class={checkboxClass(getBoolField("allow_missing_x_user", true),"danger")} on:change={(event) => setBoolField("allow_missing_x_user", checkedValue(event))} />
-        <span class={getBoolField("allow_missing_x_user", true) ?"text-alert" :"text-dim"}>Allow missing X-User break-glass admin</span>
-      </label>
-      <p class="bg-panel p-3 text-xs leading-4 text-dim md:col-span-2 xl:col-span-3">
-        Use break-glass only when the auth route is not publicly exposed. If enabled, removing the session chain lets direct requests administer auth.
-      </p>
-    {:else if settingsNamespace === "cache"}
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Poll interval</span>
-        <input class="field-t" value={getPathString(["poll_interval"])} placeholder="5s" on:input={(event) => setPathString(["poll_interval"], inputValue(event))} />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">OAuth code store</span>
-        <select class="field-t" on:change={setCodeStoreActive}>
-          <option value="memory" selected={codeStoreActive === "memory"}>memory</option>
-          <option value="redis" selected={codeStoreActive === "redis"}>redis</option>
-        </select>
-      </label>
-      <p class="bg-panel p-3 text-xs leading-4 text-dim">
-        Redis is recommended for multi-instance authorization-code, provider-state, device and email flows.
-      </p>
-
-      {#if codeStoreActive === "redis"}
-        <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-          <span class="t-label">Redis addresses</span>
-          <input class="field-t" value={getPathList(["code_store","redis","address"])} placeholder="127.0.0.1:6379" on:input={(event) => setPathList(["code_store","redis","address"], inputValue(event))} />
-        </label>
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">Redis username</span>
-          <input class="field-t" value={getPathString(["code_store","redis","username"])} placeholder="optional" on:input={(event) => setPathString(["code_store","redis","username"], inputValue(event))} />
-        </label>
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">Redis password</span>
-          <input class="field-t" value={getPathString(["code_store","redis","password"])} placeholder="optional" on:input={(event) => setPathString(["code_store","redis","password"], inputValue(event))} />
-        </label>
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">Client name</span>
-          <input class="field-t" value={getPathString(["code_store","redis","client_name"])} placeholder="turna-auth" on:input={(event) => setPathString(["code_store","redis","client_name"], inputValue(event))} />
-        </label>
-        <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-          <input type="checkbox" checked={redisTLSEnabled} class={checkboxClass(redisTLSEnabled,"neutral")} on:change={setRedisTLS} />
-          <span class={redisTLSEnabled ?"text-fg" :"text-dim"}>Redis TLS</span>
-        </label>
-        {#if redisTLSEnabled}
-          <label class="grid gap-1 bg-panel p-3">
-            <span class="t-label">TLS CA file</span>
-            <input class="field-t" value={getPathString(["code_store","redis","tls","ca_file"])} placeholder="optional" on:input={(event) => setPathString(["code_store","redis","tls","ca_file"], inputValue(event))} />
-          </label>
-          <label class="grid gap-1 bg-panel p-3">
-            <span class="t-label">TLS cert file</span>
-            <input class="field-t" value={getPathString(["code_store","redis","tls","cert_file"])} placeholder="optional" on:input={(event) => setPathString(["code_store","redis","tls","cert_file"], inputValue(event))} />
-          </label>
-          <label class="grid gap-1 bg-panel p-3">
-            <span class="t-label">TLS key file</span>
-            <input class="field-t" value={getPathString(["code_store","redis","tls","key_file"])} placeholder="optional" on:input={(event) => setPathString(["code_store","redis","tls","key_file"], inputValue(event))} />
-          </label>
-        {/if}
-      {/if}
-    {:else if settingsNamespace === "device"}
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-        <input type="checkbox" checked={getBoolField("disabled")} class={checkboxClass(getBoolField("disabled"),"danger")} on:change={(event) => setBoolField("disabled", checkedValue(event))} />
-        <span class={getBoolField("disabled") ?"text-alert" :"text-dim"}>Disable device flow</span>
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Code lifetime</span>
-        <input class="field-t" value={getStringField("code_lifetime")} placeholder="10m" on:input={(event) => setStringField("code_lifetime", inputValue(event))} />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Poll interval (seconds)</span>
-        <input class="field-t" type="number" min="1" value={getPathNumber(["interval"], 5)} on:input={(event) => setPathNumber(["interval"], inputValue(event))} />
-      </label>
-      <label class="grid gap-1 bg-panel p-3 md:col-span-2 xl:col-span-3">
-        <span class="t-label">Verification URI</span>
-        <input class="field-t" value={getStringField("verification_uri")} placeholder="default: <prefix>/ui/device" on:input={(event) => setStringField("verification_uri", inputValue(event))} />
-      </label>
-    {:else if settingsNamespace === "token_exchange"}
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-        <input type="checkbox" checked={getBoolField("disabled")} class={checkboxClass(getBoolField("disabled"),"danger")} on:change={(event) => setBoolField("disabled", checkedValue(event))} />
-        <span class={getBoolField("disabled") ?"text-alert" :"text-dim"}>Disable token exchange</span>
-      </label>
-    {:else if settingsNamespace === "totp"}
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-        <input type="checkbox" checked={getBoolField("disabled")} class={checkboxClass(getBoolField("disabled"),"danger")} on:change={(event) => setBoolField("disabled", checkedValue(event))} />
-        <span class={getBoolField("disabled") ?"text-alert" :"text-dim"}>Disable TOTP</span>
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Issuer</span>
-        <input class="field-t" value={getStringField("issuer")} placeholder="Turna Auth" on:input={(event) => setStringField("issuer", inputValue(event))} />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Skew periods</span>
-        <input class="field-t" type="number" min="0" value={getPathNumber(["skew"], 1)} on:input={(event) => setPathNumber(["skew"], inputValue(event))} />
-      </label>
-    {/if}
-  {:else if editorKind === "clients"}
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Client secret</span>
-      <input class="field-t" value={getStringField("client_secret")} placeholder="change-me" on:input={(event) => setStringField("client_secret", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-      <span class="t-label">Scopes</span>
-      <input class="field-t" value={getListField("scope")} placeholder="openid, profile" on:input={(event) => setListField("scope", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2 xl:col-span-3">
-      <span class="t-label">Redirect / whitelist URLs</span>
-      <textarea class="field-t min-h-24" value={getListField("whitelist_urls")} placeholder="https://app.example.com/callback" on:input={(event) => setListField("whitelist_urls", inputValue(event))}></textarea>
-    </label>
-  {:else if editorKind === "providers"}
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Upstream client ID</span>
-      <input class="field-t" value={getStringField("client_id")} placeholder="turna" on:input={(event) => setStringField("client_id", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Upstream client secret</span>
-      <input class="field-t" value={getStringField("client_secret")} placeholder="change-me" on:input={(event) => setStringField("client_secret", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Scopes</span>
-      <input class="field-t" value={getListField("scopes")} placeholder="openid, profile, email" on:input={(event) => setListField("scopes", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Auth URL</span>
-      <input class="field-t" value={getStringField("auth_url")} placeholder="https://idp.example.com/auth" on:input={(event) => setStringField("auth_url", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Token URL</span>
-      <input class="field-t" value={getStringField("token_url")} placeholder="https://idp.example.com/token" on:input={(event) => setStringField("token_url", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Cert / JWKS URL</span>
-      <input class="field-t" value={getStringField("cert_url")} placeholder="https://idp.example.com/certs" on:input={(event) => setStringField("cert_url", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Userinfo URL</span>
-      <input class="field-t" value={getStringField("userinfo_url")} placeholder="optional" on:input={(event) => setStringField("userinfo_url", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Introspect URL</span>
-      <input class="field-t" value={getStringField("introspect_url")} placeholder="optional" on:input={(event) => setStringField("introspect_url", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Revocation URL</span>
-      <input class="field-t" value={getStringField("revocation_url")} placeholder="optional" on:input={(event) => setStringField("revocation_url", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2 xl:col-span-3">
-      <span class="t-label">Logout URL</span>
-      <input class="field-t" value={getStringField("logout_url")} placeholder="optional" on:input={(event) => setStringField("logout_url", inputValue(event))} />
-    </label>
-    <div class="grid gap-px bg-line p-px md:col-span-2 xl:col-span-3">
-      <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">Auto-register / role mapping</span>
-      </div>
-      <div class="grid gap-px bg-line md:grid-cols-2 xl:grid-cols-3">
-        <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-          <input type="checkbox" checked={getPathBool(["claim_mapping","register"])} class={checkboxClass(getPathBool(["claim_mapping","register"]),"neutral")} on:change={(event) => setPathBool(["claim_mapping","register"], checkedValue(event))} />
-          <span class={getPathBool(["claim_mapping","register"]) ?"text-fg" :"text-dim"}>Register unknown users on first login</span>
-        </label>
-        <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-          <input type="checkbox" checked={getPathBool(["claim_mapping","use_lmap"])} class={checkboxClass(getPathBool(["claim_mapping","use_lmap"]),"neutral")} on:change={(event) => setPathBool(["claim_mapping","use_lmap"], checkedValue(event))} />
-          <span class={getPathBool(["claim_mapping","use_lmap"]) ?"text-fg" :"text-dim"}>Resolve roles via LDAP group maps</span>
-        </label>
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">Roles claim</span>
-          <input class="field-t" value={getPathString(["claim_mapping","roles_claim"])} placeholder="groups / realm_access.roles" on:input={(event) => setPathString(["claim_mapping","roles_claim"], inputValue(event))} />
-        </label>
-      </div>
-      <p class="bg-panel p-3 text-xs leading-4 text-dim">
-        With <span class="text-fg">register</span> on, a first-time OAuth2 login creates a non-local user from the provider claims (direct OAuth2 signup). Map claim values to roles via LDAP group maps or the <span class="text-fg">role_map</span> in Advanced JSON.
-      </p>
-    </div>
-  {:else if editorKind === "saml"}
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-      <span class="t-label">IdP metadata URL</span>
-      <input class="field-t" value={getStringField("metadata_url")} placeholder="https://idp.example.com/metadata" on:input={(event) => setStringField("metadata_url", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">SP entity ID</span>
-      <input class="field-t" value={getStringField("entity_id")} placeholder="optional" on:input={(event) => setStringField("entity_id", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Alias attribute</span>
-      <input class="field-t" value={getStringField("alias_attribute")} placeholder="email / NameID fallback" on:input={(event) => setStringField("alias_attribute", inputValue(event))} />
-    </label>
-    <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-      <input type="checkbox" checked={getBoolField("sign_requests")} class={checkboxClass(getBoolField("sign_requests"),"neutral")} on:change={(event) => setBoolField("sign_requests", checkedValue(event))} />
-      <span class={getBoolField("sign_requests") ?"text-fg" :"text-dim"}>Sign authnrequests</span>
-    </label>
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2 xl:col-span-3">
-      <span class="t-label">Inline IdP metadata xml</span>
-      <textarea class="field-t min-h-32" value={getStringField("metadata_xml")} placeholder="optional; takes precedence over metadata_url" on:input={(event) => setStringField("metadata_xml", inputValue(event))}></textarea>
-    </label>
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2 xl:col-span-3">
-      <span class="t-label">Claim mapping JSON</span>
-      <textarea class="field-t min-h-32" value={getJSONField("claim_mapping")} placeholder={`{
-  "roles_claim": "groups",
-  "use_lmap": true,
-  "role_map": {},
-  "register": true
-}`} on:change={(event) => setJSONField("claim_mapping", inputValue(event))}></textarea>
-      <span class="text-xs leading-4 text-dim">Map SAML assertion attributes to sync roles. Use role names/IDs in role_map values.</span>
-    </label>
-    <p class="bg-panel p-3 text-xs leading-4 text-dim md:col-span-2 xl:col-span-3">
-      Register this provider's SP metadata at <span class="text-fg">/auth/saml/{editorID ||"provider"}/metadata</span>. Use Advanced JSON for less common SAML options.
-    </p>
-  {:else if editorKind === "ldap"}
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">LDAP address</span>
-      <input class="field-t" value={getStringField("addr")} placeholder="ldap://ldap.example.com:389" on:input={(event) => setStringField("addr", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Bind username</span>
-      <input class="field-t" value={getNestedString("bind","username")} placeholder="cn=readonly,dc=example,dc=com" on:input={(event) => setNestedString("bind","username", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Bind password</span>
-      <input class="field-t" value={getNestedString("bind","password")} placeholder="change-me" on:input={(event) => setNestedString("bind","password", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-      <span class="t-label">User base DN</span>
-      <input class="field-t" value={getStringField("user_base_dn")} placeholder="ou=people,dc=example,dc=com" on:input={(event) => setStringField("user_base_dn", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Sync duration</span>
-      <input class="field-t" value={getStringField("sync_duration")} placeholder="10m" on:input={(event) => setStringField("sync_duration", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Group base DN</span>
-      <input class="field-t" value={getFirstArrayString("groups","base_dn")} placeholder="ou=groups,dc=example,dc=com" on:input={(event) => setFirstArrayString("groups","base_dn", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Group filter</span>
-      <input class="field-t" value={getFirstArrayString("groups","filter")} placeholder="(objectClass=groupOfUniqueNames)" on:input={(event) => setFirstArrayString("groups","filter", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-      <span class="t-label">Group attributes</span>
-      <input class="field-t" value={getFirstArrayList("groups","attributes")} placeholder="cn, uniqueMember, description" on:input={(event) => setFirstArrayList("groups","attributes", inputValue(event))} />
-    </label>
-    <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-      <input type="checkbox" checked={getBoolField("disable_sync")} class={checkboxClass(getBoolField("disable_sync"),"danger")} on:change={(event) => setBoolField("disable_sync", checkedValue(event))} />
-      <span class={getBoolField("disable_sync") ?"text-alert" :"text-fg"}>{getBoolField("disable_sync") ?"Sync disabled" :"Sync enabled"}</span>
-    </label>
-    <p class="bg-panel p-3 text-xs leading-4 text-dim md:col-span-2 xl:col-span-3">LDAP group filters can contain multiple entries. Use Advanced JSON when you need more than one group mapping.</p>
-  {:else if editorKind === "users"}
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-      <span class="t-label">Aliases / login IDs{editorLoadedID ?"" :" *"}</span>
-      <input class="field-t" value={getListField("alias")} placeholder="user@example.com, user" on:input={(event) => setListField("alias", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Name{!editorLoadedID && getBoolField("local", true) ?" *" :""}</span>
-      <input class="field-t" value={getNestedString("details","name")} placeholder="User Name" on:input={(event) => setNestedString("details","name", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Email</span>
-      <input class="field-t" value={getNestedString("details","email")} placeholder="user@example.com" on:input={(event) => setNestedString("details","email", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Uid</span>
-      <input class="field-t" value={getNestedString("details","uid")} placeholder="user" on:input={(event) => setNestedString("details","uid", inputValue(event))} />
-    </label>
-    <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-      <input type="checkbox" checked={getBoolField("local", true)} class={checkboxClass(getBoolField("local", true),"neutral")} on:change={(event) => setLocalUser(checkedValue(event))} />
-      <span class={getBoolField("local", true) ?"text-fg" :"text-dim"}>Local user</span>
-    </label>
-    {#if getBoolField("local", true)}
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Password{editorLoadedID ?"" :" *"}</span>
-        <input class="field-t" value={getNestedString("details","password")} placeholder="leave empty to keep existing" on:input={(event) => setNestedString("details","password", inputValue(event))} />
-      </label>
-    {/if}
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Role IDs</span>
-      <input class="field-t" value={getListField("role_ids")} placeholder="admin, operator" on:input={(event) => setListField("role_ids", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Sync role IDs</span>
-      <input class="field-t" value={getListField("sync_role_ids")} placeholder="ldap-admin" on:input={(event) => setListField("sync_role_ids", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Permission IDs</span>
-      <input class="field-t" value={getListField("permission_ids")} placeholder="read-api" on:input={(event) => setListField("permission_ids", inputValue(event))} />
-    </label>
-    <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-      <input type="checkbox" checked={getBoolField("is_active", true)} class={checkboxClass(getBoolField("is_active", true))} on:change={(event) => setBoolField("is_active", checkedValue(event))} />
-      <span class={getBoolField("is_active", true) ?"text-fg" :"text-alert"}>{getBoolField("is_active", true) ?"Active" :"Disabled"}</span>
-    </label>
-    <p class="bg-panel p-3 text-xs leading-4 text-dim md:col-span-2 xl:col-span-3">Permanent grants use role and permission fields. Temporary grants are managed in the panel below after the user is created.</p>
-  {:else if editorKind === "service-accounts"}
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-      <span class="t-label">Aliases / client IDs{editorLoadedID ?"" :" *"}</span>
-      <input class="field-t" value={getListField("alias")} placeholder="my-service" on:input={(event) => setListField("alias", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Name{editorLoadedID ?"" :" *"}</span>
-      <input class="field-t" value={getNestedString("details","name")} placeholder="my-service" on:input={(event) => setNestedString("details","name", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Client secret or mTLS cert{editorLoadedID || getNestedString("details","secret") || getNestedString("details","cert_fingerprint") || getNestedString("details","cert_subject") ?"" :" *"}</span>
-      <input class="field-t" value={getNestedString("details","secret")} placeholder="optional for mTLS-only clients" on:input={(event) => setNestedString("details","secret", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Default scope</span>
-      <input class="field-t" value={getNestedString("details","scope")} placeholder="openid profile" on:input={(event) => setNestedString("details","scope", inputValue(event))} />
-    </label>
-    <div class="grid gap-px bg-line p-px md:col-span-2 xl:col-span-3">
-      <div class="flex flex-wrap items-center justify-between gap-2 bg-panel px-3 py-2">
-        <span class="t-label text-fg">MTLS client certificate</span>
-        <span class="t-label">client_id = first alias</span>
-      </div>
-      <div class="grid gap-px bg-line md:grid-cols-2">
-        <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-          <span class="t-label">Cert sha256 fingerprint</span>
-          <input class="field-t" value={getNestedString("details","cert_fingerprint")} placeholder="lowercase sha256 hex" on:input={(event) => setNestedString("details","cert_fingerprint", inputValue(event))} />
-        </label>
-        <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-          <span class="t-label">Cert subject</span>
-          <input class="field-t" value={getNestedString("details","cert_subject")} placeholder="CN=my-client,O=Example" on:input={(event) => setNestedString("details","cert_subject", inputValue(event))} />
-        </label>
-        <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-          <span class="t-label">Paste PEM certificate to calculate fingerprint</span>
-          <textarea bind:value={mtlsCertPEM} class="field-t min-h-28 text-xs leading-4" placeholder={"-----BEGIN CERTIFICATE-----\n..."}></textarea>
-          {#if mtlsCertError}<span class="text-xs leading-4 text-alert">{mtlsCertError}</span>{/if}
-        </label>
-        <div class="bg-panel p-3 md:col-span-2">
-          <button class="btn-t-solid" disabled={!mtlsCertPEM.trim()} on:click={useMTLSCertificateFingerprint}>Use cert fingerprint</button>
-        </div>
-      </div>
-      <p class="bg-panel p-3 text-xs leading-4 text-dim">
-        With global mTLS enabled, this service account can use <span class="text-fg">grant_type=client_credentials</span> without a secret when the presented certificate matches one of these fields.
-      </p>
-    </div>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Role IDs</span>
-      <input class="field-t" value={getListField("role_ids")} placeholder="service-role" on:input={(event) => setListField("role_ids", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Sync role IDs</span>
-      <input class="field-t" value={getListField("sync_role_ids")} placeholder="ldap-service-role" on:input={(event) => setListField("sync_role_ids", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Permission IDs</span>
-      <input class="field-t" value={getListField("permission_ids")} placeholder="service-read" on:input={(event) => setListField("permission_ids", inputValue(event))} />
-    </label>
-    <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-      <input type="checkbox" checked={getBoolField("is_active", true)} class={checkboxClass(getBoolField("is_active", true))} on:change={(event) => setBoolField("is_active", checkedValue(event))} />
-      <span class={getBoolField("is_active", true) ?"text-fg" :"text-alert"}>{getBoolField("is_active", true) ?"Active" :"Disabled"}</span>
-    </label>
-    <p class="bg-panel p-3 text-xs leading-4 text-dim md:col-span-2 xl:col-span-3">Permanent grants use role and permission fields. Temporary grants are managed in the panel below after the service account is created.</p>
-  {:else if editorKind === "roles"}
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Role name</span>
-      <input class="field-t" value={getStringField("name")} placeholder="my-role" on:input={(event) => setStringField("name", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-      <span class="t-label">Description</span>
-      <input class="field-t" value={getStringField("description")} placeholder="optional" on:input={(event) => setStringField("description", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Permission IDs</span>
-      <input class="field-t" value={getListField("permission_ids")} placeholder="read-api, write-api" on:input={(event) => setListField("permission_ids", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Included role IDs</span>
-      <input class="field-t" value={getListField("role_ids")} placeholder="base-role" on:input={(event) => setListField("role_ids", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2 xl:col-span-3">
-      <span class="t-label">Data JSON</span>
-      <textarea class="field-t min-h-32" value={getJSONField("data")} placeholder={`{\n"tenant":"default"\n}`} on:change={(event) => setJSONField("data", inputValue(event))}></textarea>
-      <span class="text-xs leading-4 text-dim">JSON object stored as role.data.</span>
-    </label>
-  {:else if editorKind === "permissions"}
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Permission name</span>
-      <input class="field-t" value={getStringField("name")} placeholder="my-permission" on:input={(event) => setStringField("name", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-      <span class="t-label">Description</span>
-      <input class="field-t" value={getStringField("description")} placeholder="optional" on:input={(event) => setStringField("description", inputValue(event))} />
-    </label>
-    <div class="grid gap-2 bg-panel p-3 md:col-span-2 xl:col-span-3">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <span class="t-label text-fg">Resources</span>
-        <button class="btn-t border-0 bg-crt" on:click={addPermissionResource}>Add resource</button>
-      </div>
-      {#if resources.length === 0}
-        <p class="text-xs leading-4 text-dim">No resources yet. A permission with no resources matches nothing.</p>
-      {/if}
-    </div>
-
-    {#each resources as resource, i}
-      <div class="grid gap-px bg-line p-px md:col-span-2 xl:col-span-3">
-        <div class="flex flex-wrap items-center justify-between gap-2 bg-panel px-3 py-2">
-          <span class="t-label text-fg">Resource {String(i + 1).padStart(2,"0")}</span>
-          <button class="border border-line px-2.5 py-1 text-xs font-bold text-alert hover:bg-alert hover:text-white" on:click={() => removePermissionResource(i)}>Remove</button>
-        </div>
-        <div class="grid gap-px bg-line md:grid-cols-3">
-          <label class="grid gap-1 bg-panel p-3">
-            <span class="t-label">Hosts</span>
-            <input class="field-t" value={getResourceList(i,"hosts")} placeholder="api.example.com" on:input={(event) => setResourceList(i,"hosts", inputValue(event))} />
-          </label>
-          <label class="grid gap-1 bg-panel p-3">
-            <span class="t-label">Paths</span>
-            <input class="field-t" value={getResourceList(i,"paths")} placeholder="/api/**" on:input={(event) => setResourceList(i,"paths", inputValue(event))} />
-          </label>
-          <label class="grid gap-1 bg-panel p-3">
-            <span class="t-label">Methods</span>
-            <input class="field-t" value={getResourceList(i,"methods")} placeholder="GET, POST" on:input={(event) => setResourceList(i,"methods", inputValue(event))} />
-          </label>
-        </div>
-      </div>
-    {/each}
-
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2 xl:col-span-3">
-      <span class="t-label">Data JSON</span>
-      <textarea class="field-t min-h-32" value={getJSONField("data")} placeholder={`{\n"tenant":"default",\n"region":"eu"\n}`} on:change={(event) => setJSONField("data", inputValue(event))}></textarea>
-      <span class="text-xs leading-4 text-dim">JSON object stored as permission.data.</span>
-    </label>
-
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2 xl:col-span-3">
-      <span class="t-label">Scope role map JSON</span>
-      <textarea class="field-t min-h-32" value={getJSONField("scope")} placeholder={`{\n"openid": ["role-id-1","role-id-2"],\n"admin": ["admin-role-id"]\n}`} on:change={(event) => setJSONField("scope", inputValue(event))}></textarea>
-      <span class="text-xs leading-4 text-dim">JSON object stored as permission.scope. Each key is a scope, each value is a role ID array.</span>
-    </label>
-
-    <p class="bg-panel p-3 text-xs leading-4 text-dim md:col-span-2 xl:col-span-3">Use Advanced JSON for excluded resources or legacy single path.</p>
-  {:else if editorKind === "lmaps"}
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">LDAP group name</span>
-      <input class="field-t" value={getStringField("name")} placeholder="ldap-group" on:input={(event) => setStringField("name", inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-      <span class="t-label">Role IDs</span>
-      <input class="field-t" value={getListField("role_ids")} placeholder="admin, operator" on:input={(event) => setListField("role_ids", inputValue(event))} />
-    </label>
-  {/if}
-
-  {#if editorKind === "users" || editorKind === "service-accounts"}
-    <TemporaryAccessPanel
-      {editorSpec}
-      {editorLoadedID}
-      {editorJSON}
-      bind:tempAccessRoleIDs
-      bind:tempAccessPermissionIDs
-      bind:tempAccessStartsAt
-      bind:tempAccessExpiresIn
-      bind:tempAccessExpiresAt
-      {canGrantTemporaryAccess}
-      {canRemoveTemporaryAccess}
-      {temporaryAccessItems}
-      {patchTemporaryAccess}
+{#snippet line(f: Line)}
+  <div class={f.wide ? "min-w-0 sm:col-span-2" : "min-w-0"}>
+    <label class="stamp block" for={slug(f.label)}>{f.label}</label>
+    <input
+      id={slug(f.label)}
+      class="entry mt-1.5 {f.mono ? 'serial' : ''}"
+      type={f.type ?? "text"}
+      min={f.min}
+      placeholder={f.placeholder ?? ""}
+      autocomplete="off"
+      spellcheck="false"
+      value={f.value}
+      oninput={(event) => f.set(event.currentTarget.value)}
     />
-  {/if}
+    {#if f.hint}
+      <p class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">{f.hint}</p>
+    {/if}
+  </div>
+{/snippet}
 
-  {#if editorKind === "users" && editorLoadedID}
-    {#key editorLoadedID}
-      <PasskeyPanel {apiBase} userID={editorLoadedID} />
-    {/key}
+{#snippet exhibit(f: Exhibit)}
+  <div class="min-w-0 sm:col-span-2">
+    <label class="stamp block" for={slug(f.label)}>{f.label}</label>
+    <textarea
+      id={slug(f.label)}
+      class="exhibit mt-1.5"
+      rows={f.rows ?? 6}
+      placeholder={f.placeholder ?? ""}
+      spellcheck="false"
+      value={f.value}
+      oninput={(event) => {
+        if (!f.lazy) f.set(event.currentTarget.value);
+      }}
+      onchange={(event) => {
+        if (f.lazy) f.set(event.currentTarget.value);
+      }}
+    ></textarea>
+    {#if f.hint}
+      <p class="mt-1.5 max-w-[70ch] text-[12px] leading-[1.5] text-muted">{f.hint}</p>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet toggle(f: Toggle)}
+  <div class="min-w-0">
+    <button
+      type="button"
+      role="switch"
+      aria-checked={f.on}
+      class="flex w-full cursor-pointer items-center gap-3 py-1 text-left"
+      onclick={() => f.set(!f.on)}
+    >
+      <span
+        class="relative inline-flex h-[18px] w-[34px] shrink-0 items-center border transition-colors duration-150
+          {f.on
+          ? f.consequential
+            ? 'border-seal bg-seal'
+            : 'border-carbon bg-carbon'
+          : 'border-rule bg-transparent'}"
+      >
+        <span
+          class="absolute top-[2px] h-[12px] w-[12px] transition-[left] duration-150 ease-[var(--ease-settle)]
+            {f.on ? 'left-[19px] bg-white' : 'left-[2px] bg-faint'}"
+        ></span>
+      </span>
+      <span class="min-w-0 text-[13.5px] leading-[1.45] text-ink">{f.label}</span>
+    </button>
+    {#if f.hint}
+      <p class="ml-[46px] max-w-[62ch] text-[12px] leading-[1.5] text-muted">{f.hint}</p>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet note(text: string)}
+  <p class="max-w-[70ch] text-[13px] leading-[1.6] text-muted sm:col-span-2">{text}</p>
+{/snippet}
+
+{#if editor.kind === "settings"}
+  {#if namespace === "admin"}
+    <Section title="Administration gate" note="Who is allowed to change this instance.">
+      <div class="grid gap-6 sm:grid-cols-2">
+        {@render line({
+          label: "Admin permission",
+          value: editor.getString("permission"),
+          set: (value) => editor.setString("permission", value),
+          placeholder: "turna.auth.admin",
+          hint: "Matched against the permission ID or name carried on X-User. Leaving it empty keeps bootstrap compatibility — every authenticated request can administer auth.",
+          wide: true,
+        })}
+        {@render toggle({
+          label: "Allow missing X-User break-glass admin",
+          on: editor.getBool("allow_missing_x_user", true),
+          set: (value) => editor.setBool("allow_missing_x_user", value),
+          consequential: true,
+          hint: "Requests without a session chain are treated as administrators.",
+        })}
+        {@render note(
+          "Use break-glass only while the auth route is not publicly exposed. With it on, removing the session chain in front of this instance lets direct requests administer auth.",
+        )}
+      </div>
+    </Section>
+  {:else if namespace === "cache"}
+    <Section title="Convergence" note="How this instance notices writes made on another one.">
+      <div class="grid gap-6 sm:grid-cols-2">
+        {@render line({
+          label: "Poll interval",
+          value: editor.getPathString(["poll_interval"]),
+          set: (value) => editor.setPathValue(["poll_interval"], value),
+          placeholder: "5s",
+          hint: "How often this instance re-reads the auth version.",
+        })}
+
+        <div class="min-w-0">
+          <label class="stamp block" for="code-store">OAuth code store</label>
+          <select
+            id="code-store"
+            class="entry mt-1.5"
+            value={codeStore}
+            onchange={(event) => editor.setPathValue(["code_store", "active"], event.currentTarget.value)}
+          >
+            <option value="memory">memory</option>
+            <option value="redis">redis</option>
+          </select>
+          <p class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
+            Redis is what multi-instance authorization-code, provider-state, device and email flows
+            need; memory only works when a single instance serves every step.
+          </p>
+        </div>
+      </div>
+    </Section>
+
+    {#if codeStore === "redis"}
+      <Section title="Redis" note="Connection used for the shared code store.">
+        <div class="grid gap-6 sm:grid-cols-2">
+          {@render line({
+            label: "Redis addresses",
+            value: editor.getPathList(["code_store", "redis", "address"]),
+            set: (value) => editor.setPathList(["code_store", "redis", "address"], value),
+            placeholder: "127.0.0.1:6379",
+            hint: "Comma separated for a cluster.",
+            mono: true,
+            wide: true,
+          })}
+          {@render line({
+            label: "Redis username",
+            value: editor.getPathString(["code_store", "redis", "username"]),
+            set: (value) => editor.setPathValue(["code_store", "redis", "username"], value),
+            placeholder: "optional",
+          })}
+          {@render line({
+            label: "Redis password",
+            value: editor.getPathString(["code_store", "redis", "password"]),
+            set: (value) => editor.setPathValue(["code_store", "redis", "password"], value),
+            placeholder: "optional",
+          })}
+          {@render line({
+            label: "Client name",
+            value: editor.getPathString(["code_store", "redis", "client_name"]),
+            set: (value) => editor.setPathValue(["code_store", "redis", "client_name"], value),
+            placeholder: "turna-auth",
+          })}
+          {@render toggle({
+            label: "Redis TLS",
+            on: redisTLS,
+            set: (value) => editor.setPathValue(["code_store", "redis", "tls", "enabled"], value),
+          })}
+
+          {#if redisTLS}
+            {@render line({
+              label: "TLS CA file",
+              value: editor.getPathString(["code_store", "redis", "tls", "ca_file"]),
+              set: (value) => editor.setPathValue(["code_store", "redis", "tls", "ca_file"], value),
+              placeholder: "optional",
+              mono: true,
+            })}
+            {@render line({
+              label: "TLS cert file",
+              value: editor.getPathString(["code_store", "redis", "tls", "cert_file"]),
+              set: (value) => editor.setPathValue(["code_store", "redis", "tls", "cert_file"], value),
+              placeholder: "optional",
+              mono: true,
+            })}
+            {@render line({
+              label: "TLS key file",
+              value: editor.getPathString(["code_store", "redis", "tls", "key_file"]),
+              set: (value) => editor.setPathValue(["code_store", "redis", "tls", "key_file"], value),
+              placeholder: "optional",
+              mono: true,
+            })}
+          {/if}
+        </div>
+      </Section>
+    {/if}
+  {:else if namespace === "device"}
+    <Section title="Device flow" note="The browserless grant used by CLIs and set-top devices.">
+      <div class="grid gap-6 sm:grid-cols-2">
+        {@render toggle({
+          label: "Disable device flow",
+          on: editor.getBool("disabled"),
+          set: (value) => editor.setBool("disabled", value),
+          hint: "Device authorization requests are refused while this is on.",
+        })}
+        {@render line({
+          label: "Code lifetime",
+          value: editor.getString("code_lifetime"),
+          set: (value) => editor.setString("code_lifetime", value),
+          placeholder: "10m",
+          hint: "How long a user has to approve a pending device.",
+        })}
+        {@render line({
+          label: "Poll interval (seconds)",
+          value: String(editor.getPathNumber(["interval"], 5)),
+          set: (value) => editor.setPathNumber(["interval"], value),
+          type: "number",
+          min: "1",
+          hint: "How often the device may ask whether it has been approved.",
+        })}
+        {@render line({
+          label: "Verification URI",
+          value: editor.getString("verification_uri"),
+          set: (value) => editor.setString("verification_uri", value),
+          placeholder: "default: <prefix>/ui/device",
+          hint: "Shown to the person approving the device. Empty uses this instance's own page.",
+          wide: true,
+        })}
+      </div>
+    </Section>
+  {:else if namespace === "token_exchange"}
+    <Section title="Token exchange" note="RFC 8693 exchange of one token for another.">
+      <div class="grid gap-6 sm:grid-cols-2">
+        {@render toggle({
+          label: "Disable token exchange",
+          on: editor.getBool("disabled"),
+          set: (value) => editor.setBool("disabled", value),
+          hint: "Exchange requests are refused while this is on.",
+        })}
+      </div>
+    </Section>
+  {:else if namespace === "totp"}
+    <Section title="TOTP" note="Time-based one-time codes as a second factor.">
+      <div class="grid gap-6 sm:grid-cols-2">
+        {@render toggle({
+          label: "Disable TOTP",
+          on: editor.getBool("disabled"),
+          set: (value) => editor.setBool("disabled", value),
+          hint: "Enrolment and verification both stop while this is on.",
+        })}
+        {@render line({
+          label: "Issuer",
+          value: editor.getString("issuer"),
+          set: (value) => editor.setString("issuer", value),
+          placeholder: "Turna Auth",
+          hint: "The name authenticator apps show beside the code.",
+        })}
+        {@render line({
+          label: "Skew periods",
+          value: String(editor.getPathNumber(["skew"], 1)),
+          set: (value) => editor.setPathNumber(["skew"], value),
+          type: "number",
+          min: "0",
+          hint: "How many 30-second steps either side of now are still accepted.",
+        })}
+      </div>
+    </Section>
   {/if}
-</div>
+{:else if editor.kind === "clients"}
+  <Section title="Credentials" note="What this client presents at the token endpoint.">
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render line({
+        label: "Client secret",
+        value: editor.getString("client_secret"),
+        set: (value) => editor.setString("client_secret", value),
+        placeholder: "change-me",
+      })}
+      {@render line({
+        label: "Scopes",
+        value: editor.getList("scope"),
+        set: (value) => editor.setList("scope", value),
+        placeholder: "openid, profile",
+        hint: "Comma or newline separated.",
+      })}
+      {@render exhibit({
+        label: "Redirect / whitelist URLs",
+        value: editor.getList("whitelist_urls"),
+        set: (value) => editor.setList("whitelist_urls", value),
+        placeholder: "https://app.example.com/callback",
+        rows: 4,
+        hint: "One per line. A redirect that is not listed here is refused.",
+      })}
+    </div>
+  </Section>
+{:else if editor.kind === "providers"}
+  <Section title="Upstream client" note="How this instance identifies itself to the provider.">
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render line({
+        label: "Upstream client ID",
+        value: editor.getString("client_id"),
+        set: (value) => editor.setString("client_id", value),
+        placeholder: "turna",
+      })}
+      {@render line({
+        label: "Upstream client secret",
+        value: editor.getString("client_secret"),
+        set: (value) => editor.setString("client_secret", value),
+        placeholder: "change-me",
+      })}
+      {@render line({
+        label: "Scopes",
+        value: editor.getList("scopes"),
+        set: (value) => editor.setList("scopes", value),
+        placeholder: "openid, profile, email",
+      })}
+    </div>
+  </Section>
+
+  <Section title="Endpoints" note="Taken from the provider's own discovery document.">
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render line({
+        label: "Auth URL",
+        value: editor.getString("auth_url"),
+        set: (value) => editor.setString("auth_url", value),
+        placeholder: "https://idp.example.com/auth",
+        mono: true,
+      })}
+      {@render line({
+        label: "Token URL",
+        value: editor.getString("token_url"),
+        set: (value) => editor.setString("token_url", value),
+        placeholder: "https://idp.example.com/token",
+        mono: true,
+      })}
+      {@render line({
+        label: "Cert / JWKS URL",
+        value: editor.getString("cert_url"),
+        set: (value) => editor.setString("cert_url", value),
+        placeholder: "https://idp.example.com/certs",
+        mono: true,
+      })}
+      {@render line({
+        label: "Userinfo URL",
+        value: editor.getString("userinfo_url"),
+        set: (value) => editor.setString("userinfo_url", value),
+        placeholder: "optional",
+        mono: true,
+      })}
+      {@render line({
+        label: "Introspect URL",
+        value: editor.getString("introspect_url"),
+        set: (value) => editor.setString("introspect_url", value),
+        placeholder: "optional",
+        mono: true,
+      })}
+      {@render line({
+        label: "Revocation URL",
+        value: editor.getString("revocation_url"),
+        set: (value) => editor.setString("revocation_url", value),
+        placeholder: "optional",
+        mono: true,
+      })}
+      {@render line({
+        label: "Logout URL",
+        value: editor.getString("logout_url"),
+        set: (value) => editor.setString("logout_url", value),
+        placeholder: "optional",
+        mono: true,
+        wide: true,
+      })}
+    </div>
+  </Section>
+
+  <Section
+    title="Auto-register and role mapping"
+    note="What happens the first time somebody arrives from this provider."
+  >
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render toggle({
+        label: "Register unknown users on first login",
+        on: editor.getPathBool(["claim_mapping", "register"]),
+        set: (value) => editor.setPathValue(["claim_mapping", "register"], value),
+        consequential: true,
+        hint: "A first-time login creates a non-local user from the provider claims.",
+      })}
+      {@render toggle({
+        label: "Resolve roles via LDAP group maps",
+        on: editor.getPathBool(["claim_mapping", "use_lmap"]),
+        set: (value) => editor.setPathValue(["claim_mapping", "use_lmap"], value),
+      })}
+      {@render line({
+        label: "Roles claim",
+        value: editor.getPathString(["claim_mapping", "roles_claim"]),
+        set: (value) => editor.setPathValue(["claim_mapping", "roles_claim"], value),
+        placeholder: "groups / realm_access.roles",
+        mono: true,
+        wide: true,
+      })}
+      {@render note(
+        "Map claim values to roles through LDAP group maps, or through role_map in the raw document.",
+      )}
+    </div>
+  </Section>
+{:else if editor.kind === "saml"}
+  <Section title="Identity provider" note="Where the assertions come from.">
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render line({
+        label: "IdP metadata URL",
+        value: editor.getString("metadata_url"),
+        set: (value) => editor.setString("metadata_url", value),
+        placeholder: "https://idp.example.com/metadata",
+        mono: true,
+        wide: true,
+      })}
+      {@render line({
+        label: "SP entity ID",
+        value: editor.getString("entity_id"),
+        set: (value) => editor.setString("entity_id", value),
+        placeholder: "optional",
+      })}
+      {@render line({
+        label: "Alias attribute",
+        value: editor.getString("alias_attribute"),
+        set: (value) => editor.setString("alias_attribute", value),
+        placeholder: "email / NameID fallback",
+        hint: "Which assertion attribute becomes the login alias.",
+      })}
+      {@render toggle({
+        label: "Sign authnrequests",
+        on: editor.getBool("sign_requests"),
+        set: (value) => editor.setBool("sign_requests", value),
+      })}
+      {@render exhibit({
+        label: "Inline IdP metadata XML",
+        value: editor.getString("metadata_xml"),
+        set: (value) => editor.setString("metadata_xml", value),
+        placeholder: "optional; takes precedence over the metadata URL",
+        rows: 8,
+      })}
+      {@render exhibit({
+        label: "Claim mapping JSON",
+        value: editor.getJSON("claim_mapping"),
+        set: (value) => editor.setJSON("claim_mapping", value),
+        lazy: true,
+        rows: 8,
+        placeholder: '{\n  "roles_claim": "groups",\n  "use_lmap": true,\n  "role_map": {},\n  "register": true\n}',
+        hint: "Maps SAML assertion attributes onto synced roles. role_map values are role names or IDs.",
+      })}
+      {@render note(
+        `Register this provider's SP metadata at /auth/saml/${editor.id || "provider"}/metadata. Less common SAML options live in the raw document.`,
+      )}
+    </div>
+  </Section>
+{:else if editor.kind === "ldap"}
+  <Section title="Directory" note="The connection used for password checks and group sync.">
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render line({
+        label: "LDAP address",
+        value: editor.getString("addr"),
+        set: (value) => editor.setString("addr", value),
+        placeholder: "ldap://ldap.example.com:389",
+        mono: true,
+      })}
+      {@render line({
+        label: "Sync duration",
+        value: editor.getString("sync_duration"),
+        set: (value) => editor.setString("sync_duration", value),
+        placeholder: "10m",
+        hint: "How often the directory is re-read.",
+      })}
+      {@render line({
+        label: "Bind username",
+        value: editor.getNestedString("bind", "username"),
+        set: (value) => editor.setNestedString("bind", "username", value),
+        placeholder: "cn=readonly,dc=example,dc=com",
+        mono: true,
+      })}
+      {@render line({
+        label: "Bind password",
+        value: editor.getNestedString("bind", "password"),
+        set: (value) => editor.setNestedString("bind", "password", value),
+        placeholder: "change-me",
+      })}
+      {@render line({
+        label: "User base DN",
+        value: editor.getString("user_base_dn"),
+        set: (value) => editor.setString("user_base_dn", value),
+        placeholder: "ou=people,dc=example,dc=com",
+        mono: true,
+        wide: true,
+      })}
+    </div>
+  </Section>
+
+  <Section title="Groups" note="The first group filter only — add further filters in the raw document.">
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render line({
+        label: "Group base DN",
+        value: editor.getFirstString("groups", "base_dn"),
+        set: (value) => editor.setFirstString("groups", "base_dn", value),
+        placeholder: "ou=groups,dc=example,dc=com",
+        mono: true,
+      })}
+      {@render line({
+        label: "Group filter",
+        value: editor.getFirstString("groups", "filter"),
+        set: (value) => editor.setFirstString("groups", "filter", value),
+        placeholder: "(objectClass=groupOfUniqueNames)",
+        mono: true,
+      })}
+      {@render line({
+        label: "Group attributes",
+        value: editor.getFirstList("groups", "attributes"),
+        set: (value) => editor.setFirstList("groups", "attributes", value),
+        placeholder: "cn, uniqueMember, description",
+        mono: true,
+        wide: true,
+      })}
+      {@render toggle({
+        label: "Disable sync",
+        on: editor.getBool("disable_sync"),
+        set: (value) => editor.setBool("disable_sync", value),
+        hint: "Group membership stops being pulled; existing sync roles stay as they are.",
+      })}
+    </div>
+  </Section>
+{:else if editor.kind === "users"}
+  <Section title="Identity" note="What this person logs in with and how they are named.">
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render line({
+        label: `Aliases / login IDs${editor.loadedID ? "" : " *"}`,
+        value: editor.getList("alias"),
+        set: (value) => editor.setList("alias", value),
+        placeholder: "user@example.com, user",
+        hint: "Every alias is a working login identifier. Comma or newline separated.",
+        wide: true,
+      })}
+      {@render line({
+        label: `Name${editor.isNew && localUser ? " *" : ""}`,
+        value: editor.getNestedString("details", "name"),
+        set: (value) => editor.setNestedString("details", "name", value),
+        placeholder: "User Name",
+      })}
+      {@render line({
+        label: "Email",
+        value: editor.getNestedString("details", "email"),
+        set: (value) => editor.setNestedString("details", "email", value),
+        placeholder: "user@example.com",
+      })}
+      {@render line({
+        label: "Uid",
+        value: editor.getNestedString("details", "uid"),
+        set: (value) => editor.setNestedString("details", "uid", value),
+        placeholder: "user",
+      })}
+      {@render toggle({
+        label: "Local user",
+        on: localUser,
+        set: (value) => editor.setLocalUser(value),
+        hint: "Local users carry a stored password. Turning this off clears it — the account then only authenticates upstream.",
+      })}
+      {#if localUser}
+        {@render line({
+          label: `Password${editor.loadedID ? "" : " *"}`,
+          value: editor.getNestedString("details", "password"),
+          set: (value) => editor.setNestedString("details", "password", value),
+          placeholder: "leave empty to keep the existing password",
+          hint: "Stored bcrypt hashed; it is never read back.",
+        })}
+      {/if}
+    </div>
+  </Section>
+
+  <Section title="Standing access" note="Grants that do not expire.">
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render line({
+        label: "Role IDs",
+        value: editor.getList("role_ids"),
+        set: (value) => editor.setList("role_ids", value),
+        placeholder: "admin, operator",
+        mono: true,
+      })}
+      {@render line({
+        label: "Sync role IDs",
+        value: editor.getList("sync_role_ids"),
+        set: (value) => editor.setList("sync_role_ids", value),
+        placeholder: "ldap-admin",
+        mono: true,
+        hint: "Written by LDAP sync; edits here are overwritten on the next sync.",
+      })}
+      {@render line({
+        label: "Permission IDs",
+        value: editor.getList("permission_ids"),
+        set: (value) => editor.setList("permission_ids", value),
+        placeholder: "read-api",
+        mono: true,
+      })}
+      {@render toggle({
+        label: "Active",
+        on: editor.getBool("is_active", true),
+        set: (value) => editor.setBool("is_active", value),
+        hint: "Turning this off stops every login and every token for this user on the next request.",
+      })}
+    </div>
+  </Section>
+{:else if editor.kind === "service-accounts"}
+  <Section title="Identity" note="The machine identity used for client_credentials.">
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render line({
+        label: `Aliases / client IDs${editor.loadedID ? "" : " *"}`,
+        value: editor.getList("alias"),
+        set: (value) => editor.setList("alias", value),
+        placeholder: "my-service",
+        hint: "The first alias becomes the client ID.",
+        wide: true,
+      })}
+      {@render line({
+        label: `Name${editor.loadedID ? "" : " *"}`,
+        value: editor.getNestedString("details", "name"),
+        set: (value) => editor.setNestedString("details", "name", value),
+        placeholder: "my-service",
+      })}
+      {@render line({
+        label: `Client secret${
+          editor.loadedID ||
+          editor.getNestedString("details", "secret") ||
+          editor.getNestedString("details", "cert_fingerprint") ||
+          editor.getNestedString("details", "cert_subject")
+            ? ""
+            : " *"
+        }`,
+        value: editor.getNestedString("details", "secret"),
+        set: (value) => editor.setNestedString("details", "secret", value),
+        placeholder: "optional for mTLS-only clients",
+        hint: "Either a secret or an mTLS certificate binding is required.",
+      })}
+      {@render line({
+        label: "Default scope",
+        value: editor.getNestedString("details", "scope"),
+        set: (value) => editor.setNestedString("details", "scope", value),
+        placeholder: "openid profile",
+      })}
+    </div>
+  </Section>
+
+  <Section
+    title="mTLS certificate"
+    note="With global mTLS enabled this account can use grant_type=client_credentials without a secret, as long as the presented certificate matches one of these fields."
+  >
+    {#snippet aside()}
+      <span class="stamp">client_id = first alias</span>
+    {/snippet}
+
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render line({
+        label: "Cert sha256 fingerprint",
+        value: editor.getNestedString("details", "cert_fingerprint"),
+        set: (value) => editor.setNestedString("details", "cert_fingerprint", value),
+        placeholder: "lowercase sha256 hex",
+        mono: true,
+        wide: true,
+      })}
+      {@render line({
+        label: "Cert subject",
+        value: editor.getNestedString("details", "cert_subject"),
+        set: (value) => editor.setNestedString("details", "cert_subject", value),
+        placeholder: "CN=my-client,O=Example",
+        mono: true,
+        wide: true,
+      })}
+
+      <div class="min-w-0 sm:col-span-2">
+        <label class="stamp block" for="mtls-pem">Paste a PEM certificate to read its fingerprint</label>
+        <textarea
+          id="mtls-pem"
+          class="exhibit mt-1.5"
+          rows={5}
+          spellcheck="false"
+          placeholder={"-----BEGIN CERTIFICATE-----\n..."}
+          bind:value={mtlsCertPEM}
+        ></textarea>
+        {#if mtlsCertError}
+          <p class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-seal">
+            {mtlsCertError} — paste the whole PEM block, including the BEGIN and END lines.
+          </p>
+        {/if}
+        <button
+          type="button"
+          class="act mt-3"
+          disabled={!mtlsCertPEM.trim()}
+          onclick={() => void useMTLSCertificateFingerprint()}
+        >
+          Use cert fingerprint
+        </button>
+      </div>
+    </div>
+  </Section>
+
+  <Section title="Standing access" note="Grants that do not expire.">
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render line({
+        label: "Role IDs",
+        value: editor.getList("role_ids"),
+        set: (value) => editor.setList("role_ids", value),
+        placeholder: "service-role",
+        mono: true,
+      })}
+      {@render line({
+        label: "Sync role IDs",
+        value: editor.getList("sync_role_ids"),
+        set: (value) => editor.setList("sync_role_ids", value),
+        placeholder: "ldap-service-role",
+        mono: true,
+        hint: "Written by LDAP sync; edits here are overwritten on the next sync.",
+      })}
+      {@render line({
+        label: "Permission IDs",
+        value: editor.getList("permission_ids"),
+        set: (value) => editor.setList("permission_ids", value),
+        placeholder: "service-read",
+        mono: true,
+      })}
+      {@render toggle({
+        label: "Active",
+        on: editor.getBool("is_active", true),
+        set: (value) => editor.setBool("is_active", value),
+        hint: "Turning this off stops every token issued for this account on the next request.",
+      })}
+    </div>
+  </Section>
+{:else if editor.kind === "roles"}
+  <Section title="Role" note="Roles bundle permissions and can contain other roles.">
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render line({
+        label: "Role name",
+        value: editor.getString("name"),
+        set: (value) => editor.setString("name", value),
+        placeholder: "my-role",
+      })}
+      {@render line({
+        label: "Description",
+        value: editor.getString("description"),
+        set: (value) => editor.setString("description", value),
+        placeholder: "optional",
+      })}
+      {@render line({
+        label: "Permission IDs",
+        value: editor.getList("permission_ids"),
+        set: (value) => editor.setList("permission_ids", value),
+        placeholder: "read-api, write-api",
+        mono: true,
+      })}
+      {@render line({
+        label: "Included role IDs",
+        value: editor.getList("role_ids"),
+        set: (value) => editor.setList("role_ids", value),
+        placeholder: "base-role",
+        mono: true,
+        hint: "Everything those roles carry is carried by this one.",
+      })}
+      {@render exhibit({
+        label: "Data JSON",
+        value: editor.getJSON("data"),
+        set: (value) => editor.setJSON("data", value),
+        lazy: true,
+        rows: 6,
+        placeholder: '{\n  "tenant": "default"\n}',
+        hint: "A JSON object stored as role.data.",
+      })}
+    </div>
+  </Section>
+{:else if editor.kind === "permissions"}
+  <Section title="Permission" note="What this permission is called.">
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render line({
+        label: "Permission name",
+        value: editor.getString("name"),
+        set: (value) => editor.setString("name", value),
+        placeholder: "my-permission",
+      })}
+      {@render line({
+        label: "Description",
+        value: editor.getString("description"),
+        set: (value) => editor.setString("description", value),
+        placeholder: "optional",
+      })}
+    </div>
+  </Section>
+
+  <Section
+    title="Resources"
+    note="Host, path and method patterns this permission matches. A permission with no resources matches nothing."
+  >
+    {#snippet aside()}
+      <button type="button" class="act" onclick={() => editor.addResource()}>Add resource</button>
+    {/snippet}
+
+    {#if resources.length === 0}
+      <p class="border border-dashed border-rule px-6 py-10 text-center text-[13px] text-muted">
+        No resources yet — this permission grants nothing until one is added.
+      </p>
+    {:else}
+      <ul class="border border-rule bg-sheet">
+        {#each resources as _, i (i)}
+          <li class="border-b border-rule last:border-b-0">
+            <div class="flex items-center justify-between gap-4 border-b border-rule px-4 py-2">
+              <span class="stamp stamp-ink">Resource {String(i + 1).padStart(2, "0")}</span>
+              <button
+                type="button"
+                class="act act-quiet text-seal hover:bg-seal/10 hover:text-seal"
+                onclick={() => editor.removeResource(i)}
+              >
+                Remove
+              </button>
+            </div>
+            <div class="grid gap-6 px-4 py-4 sm:grid-cols-3">
+              <div class="min-w-0">
+                <label class="stamp block" for="resource-hosts-{i}">Hosts</label>
+                <input
+                  id="resource-hosts-{i}"
+                  class="entry serial mt-1.5"
+                  placeholder="api.example.com"
+                  autocomplete="off"
+                  value={editor.getResourceList(i, "hosts")}
+                  oninput={(event) => editor.setResourceList(i, "hosts", event.currentTarget.value)}
+                />
+              </div>
+              <div class="min-w-0">
+                <label class="stamp block" for="resource-paths-{i}">Paths</label>
+                <input
+                  id="resource-paths-{i}"
+                  class="entry serial mt-1.5"
+                  placeholder="/api/**"
+                  autocomplete="off"
+                  value={editor.getResourceList(i, "paths")}
+                  oninput={(event) => editor.setResourceList(i, "paths", event.currentTarget.value)}
+                />
+              </div>
+              <div class="min-w-0">
+                <label class="stamp block" for="resource-methods-{i}">Methods</label>
+                <input
+                  id="resource-methods-{i}"
+                  class="entry serial mt-1.5"
+                  placeholder="GET, POST"
+                  autocomplete="off"
+                  value={editor.getResourceList(i, "methods")}
+                  oninput={(event) => editor.setResourceList(i, "methods", event.currentTarget.value)}
+                />
+              </div>
+            </div>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </Section>
+
+  <Section title="Carried data" note="Excluded resources and the legacy single path live in the raw document.">
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render exhibit({
+        label: "Data JSON",
+        value: editor.getJSON("data"),
+        set: (value) => editor.setJSON("data", value),
+        lazy: true,
+        rows: 6,
+        placeholder: '{\n  "tenant": "default",\n  "region": "eu"\n}',
+        hint: "A JSON object stored as permission.data.",
+      })}
+      {@render exhibit({
+        label: "Scope role map JSON",
+        value: editor.getJSON("scope"),
+        set: (value) => editor.setJSON("scope", value),
+        lazy: true,
+        rows: 6,
+        placeholder: '{\n  "openid": ["role-id-1", "role-id-2"],\n  "admin": ["admin-role-id"]\n}',
+        hint: "Each key is a scope; each value is an array of role IDs.",
+      })}
+    </div>
+  </Section>
+{:else if editor.kind === "lmaps"}
+  <Section title="Group map" note="Members of this LDAP group receive the mapped roles as sync roles.">
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render line({
+        label: "LDAP group name",
+        value: editor.getString("name"),
+        set: (value) => editor.setString("name", value),
+        placeholder: "ldap-group",
+        mono: true,
+      })}
+      {@render line({
+        label: "Role IDs",
+        value: editor.getList("role_ids"),
+        set: (value) => editor.setList("role_ids", value),
+        placeholder: "admin, operator",
+        mono: true,
+      })}
+    </div>
+  </Section>
+{/if}
+
+{#if editor.kind === "users" || editor.kind === "service-accounts"}
+  <TemporaryAccessPanel />
+{/if}
+
+{#if editor.kind === "users" && editor.loadedID}
+  {#key editor.loadedID}
+    <PasskeyPanel userID={editor.loadedID} />
+  {/key}
+{/if}

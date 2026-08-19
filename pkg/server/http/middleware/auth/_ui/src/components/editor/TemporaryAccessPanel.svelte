@@ -1,95 +1,156 @@
 <script lang="ts">
-  import type { AnyRecord, KindSpec } from "../../lib/api";
+  import Section from "../ui/Section.svelte";
+  import Entry from "../ui/Entry.svelte";
+  import BreakSeal from "../ui/BreakSeal.svelte";
+  import Seal from "../ui/Seal.svelte";
+  import { editor } from "../../lib/state/editor.svelte";
+  import { session } from "../../lib/state/session.svelte";
+  import { fieldText, formatStamp } from "../../lib/records";
+  import type { AnyRecord } from "../../lib/api";
 
-  export let editorSpec: KindSpec;
-  export let editorLoadedID = "";
-  export let editorJSON = "";
-  export let tempAccessRoleIDs = "";
-  export let tempAccessPermissionIDs = "";
-  export let tempAccessStartsAt = "";
-  export let tempAccessExpiresIn = "1h";
-  export let tempAccessExpiresAt = "";
-  export let canGrantTemporaryAccess = false;
-  export let canRemoveTemporaryAccess = false;
-  export let temporaryAccessItems: (key: "tmp_role_ids" | "tmp_permission_ids", json: string) => AnyRecord[] = () => [];
-  export let patchTemporaryAccess: (remove?: boolean) => void | Promise<void> = () => {};
+  /**
+   * Temporary grants are written through their own endpoint, not through the
+   * record document — so this panel commits on its own and only after the
+   * principal exists.
+   */
+  const tempRoles = $derived(editor.temporaryItems("tmp_role_ids"));
+  const tempPermissions = $derived(editor.temporaryItems("tmp_permission_ids"));
+  const accessPath = $derived(`${session.apiBase}/${editor.spec.listPath}/${editor.loadedID}/access`);
 
-  function fieldText(value: unknown) {
-    if (value === undefined || value === null) return "";
-    return typeof value === "string" ? value.trim() : String(value).trim();
+  function startsAt(item: AnyRecord) {
+    return formatStamp(fieldText(item.starts_at)) || "Now";
+  }
+
+  function expiresAt(item: AnyRecord) {
+    return formatStamp(fieldText(item.expires_at)) || "No expiry";
   }
 </script>
 
-<div class="grid gap-3 bg-panel p-3 md:col-span-2 xl:col-span-3">
-  <div class="flex flex-wrap items-center justify-between gap-2">
-    <div>
-      <span class="t-label text-fg">Temporary access</span>
-      <p class="mt-1 text-xs leading-4 text-dim">Grant role or permission IDs until a duration or exact expiration. Remove sends the same IDs without expiration.</p>
-    </div>
-    <span class="t-label">{editorLoadedID ?"Ready" :"Create first"}</span>
-  </div>
+<Section
+  title="Temporary access"
+  note="Grants that withdraw themselves. Name the roles or permissions, give an expiry, and they stop applying without anyone having to remember them."
+>
+  {#snippet aside()}
+    {#if editor.loadedID}
+      <span class="stamp-raw serial">{accessPath}</span>
+    {:else}
+      <span class="stamp text-caution">Not yet issued</span>
+    {/if}
+  {/snippet}
 
-  {#if editorLoadedID}
-    <div class="grid gap-px bg-line md:grid-cols-2 xl:grid-cols-3">
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Temp role IDs</span>
-        <input bind:value={tempAccessRoleIDs} class="field-t" placeholder="admin, operator" />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Temp permission IDs</span>
-        <input bind:value={tempAccessPermissionIDs} class="field-t" placeholder="read-api, write-api" />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Starts at</span>
-        <input bind:value={tempAccessStartsAt} class="field-t" placeholder="optional RFC3339" />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Expires in</span>
-        <input bind:value={tempAccessExpiresIn} class="field-t" placeholder="1h, 24h, 7d" />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Expires at</span>
-        <input bind:value={tempAccessExpiresAt} class="field-t" placeholder="optional RFC3339" />
-      </label>
-      <div class="flex flex-wrap items-end gap-px bg-panel p-3">
-        <button class="btn-t-solid flex-1" disabled={!canGrantTemporaryAccess} on:click={() => patchTemporaryAccess(false)}>Grant / update</button>
-        <button class="btn-t flex-1 border-0 bg-crt text-alert" disabled={!canRemoveTemporaryAccess} on:click={() => patchTemporaryAccess(true)}>Remove</button>
-      </div>
-    </div>
-
-    <div class="grid gap-px bg-line md:grid-cols-2">
-      <div class="grid gap-2 bg-panel p-3">
-        <span class="t-label text-fg">Current temp roles</span>
-        {#if temporaryAccessItems("tmp_role_ids", editorJSON).length === 0}
-          <p class="text-xs leading-4 text-dim">No temporary roles.</p>
-        {:else}
-          <div class="grid gap-px bg-line">
-            {#each temporaryAccessItems("tmp_role_ids", editorJSON) as item}
-              <div class="grid gap-1 bg-crt p-2 text-xs leading-4">
-                <span class="font-bold text-fg">{fieldText(item.id)}</span>
-                <span class="text-dim">Start {fieldText(item.starts_at) ||"Now"} / EXPIRE {fieldText(item.expires_at) ||"N/A"}</span>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
-      <div class="grid gap-2 bg-panel p-3">
-        <span class="t-label text-fg">Current temp permissions</span>
-        {#if temporaryAccessItems("tmp_permission_ids", editorJSON).length === 0}
-          <p class="text-xs leading-4 text-dim">No temporary permissions.</p>
-        {:else}
-          <div class="grid gap-px bg-line">
-            {#each temporaryAccessItems("tmp_permission_ids", editorJSON) as item}
-              <div class="grid gap-1 bg-crt p-2 text-xs leading-4">
-                <span class="font-bold text-fg">{fieldText(item.id)}</span>
-                <span class="text-dim">Start {fieldText(item.starts_at) ||"Now"} / EXPIRE {fieldText(item.expires_at) ||"N/A"}</span>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    </div>
+  {#if !editor.loadedID}
+    <p class="border border-dashed border-rule px-6 py-10 text-center text-[13px] leading-[1.6] text-muted">
+      Temporary access is written to
+      <span class="serial">{editor.spec.listPath}/&#123;id&#125;/access</span>, so the record has to
+      exist first. Commit it, then reopen it from the register to grant.
+    </p>
   {:else}
-    <p class="text-xs leading-4 text-dim">Temporary access uses <span class="text-fg">/{editorSpec.listPath}/{"{id}"}/access</span>, so create the record first.</p>
+    <div class="grid gap-6 sm:grid-cols-2">
+      <Entry
+        label="Temp role IDs"
+        bind:value={editor.temp.roleIDs}
+        placeholder="admin, operator"
+        mono
+        hint="Comma or newline separated."
+      />
+      <Entry
+        label="Temp permission IDs"
+        bind:value={editor.temp.permissionIDs}
+        placeholder="read-api, write-api"
+        mono
+        hint="Comma or newline separated."
+      />
+      <Entry
+        label="Starts at"
+        bind:value={editor.temp.startsAt}
+        placeholder="optional RFC3339"
+        mono
+        hint="Empty starts the grant immediately."
+      />
+      <Entry
+        label="Expires in"
+        bind:value={editor.temp.expiresIn}
+        placeholder="1h, 24h, 7d"
+        mono
+        hint="A duration from now. Takes precedence over an exact time."
+      />
+      <Entry
+        label="Expires at"
+        bind:value={editor.temp.expiresAt}
+        placeholder="optional RFC3339"
+        mono
+        hint="Used only when no duration is given."
+      />
+    </div>
+
+    <div class="mt-7">
+      <button
+        type="button"
+        class="act act-primary"
+        disabled={!editor.canGrantTemp}
+        onclick={() => void editor.patchTemporaryAccess(false)}
+      >
+        {session.busy ? "Granting…" : "Grant temporary access"}
+      </button>
+      <p class="mt-2 max-w-[70ch] text-[12px] leading-[1.5] text-muted">
+        Granting again with the same IDs replaces their window rather than adding a second grant.
+      </p>
+    </div>
+
+    <div class="mt-8">
+      <BreakSeal
+        consequence={`Withdrawing removes the named roles and permissions from ${editor.loadedID} straight away. Anything authorising through them stops working on the next request, the grant window is not kept, and there is no undo.`}
+        action="Withdraw the named grants"
+        disabled={!editor.canRemoveTemp}
+        onconfirm={() => void editor.patchTemporaryAccess(true)}
+      />
+    </div>
+
+    <div class="mt-10 grid gap-x-10 gap-y-8 sm:grid-cols-2">
+      <div class="min-w-0">
+        <h3 class="stamp stamp-ink border-b border-rule pb-1.5">Standing temporary roles</h3>
+        {#if tempRoles.length === 0}
+          <p class="mt-3 text-[13px] text-muted">None — this principal holds no temporary roles.</p>
+        {:else}
+          <ul class="mt-1">
+            {#each tempRoles as item, index (`${fieldText(item.id)}-${index}`)}
+              <li class="border-b border-rule py-2.5 last:border-b-0">
+                <p class="serial truncate text-[13px] text-ink">{fieldText(item.id) || "—"}</p>
+                <p class="serial mt-0.5 text-[12px] text-muted">
+                  {startsAt(item)} until {expiresAt(item)}
+                </p>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+
+      <div class="min-w-0">
+        <h3 class="stamp stamp-ink border-b border-rule pb-1.5">Standing temporary permissions</h3>
+        {#if tempPermissions.length === 0}
+          <p class="mt-3 text-[13px] text-muted">
+            None — this principal holds no temporary permissions.
+          </p>
+        {:else}
+          <ul class="mt-1">
+            {#each tempPermissions as item, index (`${fieldText(item.id)}-${index}`)}
+              <li class="border-b border-rule py-2.5 last:border-b-0">
+                <p class="serial truncate text-[13px] text-ink">{fieldText(item.id) || "—"}</p>
+                <p class="serial mt-0.5 text-[12px] text-muted">
+                  {startsAt(item)} until {expiresAt(item)}
+                </p>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    </div>
+
+    {#if tempRoles.length > 0 || tempPermissions.length > 0}
+      <p class="mt-6 flex items-center gap-2.5 text-[12.5px] text-muted">
+        <Seal state="held" />
+        These grants are held in the record and disappear on their own at the time shown.
+      </p>
+    {/if}
   {/if}
-</div>
+</Section>

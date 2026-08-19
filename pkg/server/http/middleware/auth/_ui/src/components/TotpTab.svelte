@@ -1,69 +1,112 @@
 <script lang="ts">
-  import type { SettingNamespace } from "../lib/api";
+  import Instrument from "./ui/Instrument.svelte";
+  import Section from "./ui/Section.svelte";
+  import Switch from "./ui/Switch.svelte";
+  import Seal from "./ui/Seal.svelte";
+  import Serial from "./ui/Serial.svelte";
+  import { session } from "../lib/state/session.svelte";
+  import {
+    getSettingBool,
+    setSettingBool,
+    getSettingString,
+    setSettingString,
+    getSettingNumber,
+    setSettingNumber,
+    saveSetting,
+  } from "../lib/state/settings.svelte";
 
-  export let busy = false;
-  export let settingsRevision = 0;
-  export let getSettingBool: (namespace: SettingNamespace, path: string[], fallback?: boolean) => boolean = () => false;
-  export let setSettingBool: (namespace: SettingNamespace, path: string[], value: boolean) => void = () => {};
-  export let getSettingString: (namespace: SettingNamespace, path: string[]) => string = () => "";
-  export let setSettingString: (namespace: SettingNamespace, path: string[], value: string) => void = () => {};
-  export let getSettingNumber: (namespace: SettingNamespace, path: string[], fallback?: number) => number = () => 0;
-  export let setSettingNumber: (namespace: SettingNamespace, path: string[], value: string) => void = () => {};
-  export let saveSetting: (namespace: SettingNamespace) => void | Promise<void> = () => {};
+  const disabled = $derived(getSettingBool("totp", ["disabled"]));
+  const issuer = $derived(getSettingString("totp", ["issuer"]));
+  const skew = $derived(getSettingNumber("totp", ["skew"], 1));
 
-  const ns: SettingNamespace = "totp";
-
-  function inputValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement).value;
-  }
-
-  function checkedValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement).checked;
-  }
-
-  function sBool(_rev: number, path: string[], fallback = false) {
-    return getSettingBool(ns, path, fallback);
-  }
-
-  function sString(_rev: number, path: string[]) {
-    return getSettingString(ns, path);
-  }
-
-  function sNumber(_rev: number, path: string[], fallback = 0) {
-    return getSettingNumber(ns, path, fallback);
-  }
-
-  $: disabled = sBool(settingsRevision, ["disabled"]);
-  $: issuer = sString(settingsRevision, ["issuer"]);
-  $: skew = sNumber(settingsRevision, ["skew"], 1);
+  /** One period is 30 seconds either side, so the tolerated drift is legible. */
+  const drift = $derived(skew <= 0 ? "no drift tolerated" : `±${skew * 30}s of clock drift`);
 </script>
 
-<div class="grid gap-px bg-line p-px">
-  <div class="grid gap-3 bg-panel p-4">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <span class="t-label text-fg">TOTP</span>
-        <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Authenticator 2FA</h3>
-      </div>
-      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting(ns)}>Save TOTP</button>
-    </div>
-    <p class="max-w-3xl text-xs leading-5 text-dim">
-      Time-based one-time passwords (RFC 6238) for password logins. The issuer labels the entry in authenticator apps; skew tolerates clock drift in 30-second periods.
-    </p>
-  </div>
+<Instrument
+  title="TOTP"
+  note="Time-based one-time codes (RFC 6238) as a second factor on password logins. Secrets are sealed at rest and enrolled per user."
+>
+  {#snippet actions()}
+    <button
+      type="button"
+      class="act act-primary"
+      disabled={session.busy}
+      onclick={() => saveSetting("totp")}
+    >
+      Commit
+    </button>
+  {/snippet}
 
-  <div class="grid gap-px bg-line md:grid-cols-2">
-    <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold md:col-span-2">
-      <input type="checkbox" checked={disabled} class="h-3.5 w-3.5 appearance-none border border-line bg-crt checked:bg-alert" on:change={(event) => setSettingBool(ns, ["disabled"], checkedValue(event))} />
-      <span class={disabled ?"text-alert" :"text-dim"}>Disable TOTP</span>
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Issuer</span>
-      <input class="field-t" value={issuer} placeholder="Turna Auth" on:input={(event) => setSettingString(ns, ["issuer"], inputValue(event))} />
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Skew periods</span>
-      <input class="field-t" type="number" min="0" value={skew} on:input={(event) => setSettingNumber(ns, ["skew"], inputValue(event))} />
-    </label>
-  </div>
-</div>
+  {#snippet custody()}
+    <span class="stamp">Namespace <span class="serial stamp-raw">totp</span></span>
+    <Seal
+      state={disabled ? "void" : "endorsed"}
+      label={disabled ? "Not verified" : "Verified at login"}
+    />
+  {/snippet}
+
+  <Section title="Standing" first>
+    <Switch
+      label="Stop asking for authenticator codes"
+      consequential
+      hint="On, enrolled users sign in with their password alone and their existing secrets are ignored — a login that used to need a second factor is now accepted without one. Nothing is deleted, so turning this back off restores every enrolment."
+      bind:checked={
+        () => getSettingBool("totp", ["disabled"]),
+        (value: boolean) => setSettingBool("totp", ["disabled"], value)
+      }
+    />
+  </Section>
+
+  <Section title="Enrolment" note="How this instance names itself inside an authenticator app.">
+    <div class="grid max-w-[52ch] gap-6">
+      <div>
+        <label class="stamp block" for="totp-issuer">Issuer</label>
+        <input
+          id="totp-issuer"
+          class="entry mt-1.5"
+          autocomplete="off"
+          placeholder="Turna Auth"
+          aria-describedby="totp-issuer-hint"
+          value={issuer}
+          oninput={(e) => setSettingString("totp", ["issuer"], e.currentTarget.value)}
+        />
+        <p id="totp-issuer-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+          Shown above the code in the user's app. Changing it does not invalidate anything already
+          enrolled — existing entries keep the name they were scanned with.
+        </p>
+      </div>
+
+      <div>
+        <label class="stamp block" for="totp-skew">Skew periods</label>
+        <input
+          id="totp-skew"
+          class="entry serial mt-1.5"
+          type="number"
+          min="0"
+          aria-describedby="totp-skew-hint"
+          value={skew}
+          oninput={(e) => setSettingNumber("totp", ["skew"], e.currentTarget.value)}
+        />
+        <p id="totp-skew-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+          Adjacent 30-second periods also accepted, for phones whose clock has drifted. Each extra
+          period widens the window a valid code stays usable in.
+        </p>
+      </div>
+    </div>
+  </Section>
+
+  <Section title="Accepted window">
+    <div class="flex flex-wrap items-end gap-x-10 gap-y-4">
+      <div>
+        <Serial value={drift} size="md" tone={skew > 2 ? "seal" : "ink"} />
+        <p class="stamp mt-2">Tolerance</p>
+      </div>
+      <p class="max-w-[52ch] flex-1 basis-72 text-[13px] leading-[1.6] text-muted">
+        A code is valid for its own 30-second period plus {skew}
+        {skew === 1 ? "period" : "periods"} either side. One or two is normal; larger values leave a
+        stolen code usable for longer.
+      </p>
+    </div>
+  </Section>
+</Instrument>

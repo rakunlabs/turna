@@ -1,10 +1,20 @@
 <script lang="ts">
   import { onMount } from "svelte";
+
+  import Section from "../ui/Section.svelte";
+  import Entry from "../ui/Entry.svelte";
+  import BreakSeal from "../ui/BreakSeal.svelte";
+  import Seal from "../ui/Seal.svelte";
   import { isWebAuthnSupported, startRegistration } from "../../lib/webauthn";
   import type { ServerCreationOptions } from "../../lib/webauthn";
+  import { docket, messageOf, session } from "../../lib/state/session.svelte";
+  import { formatStamp } from "../../lib/records";
 
-  export let apiBase = "/auth/v1";
-  export let userID = "";
+  /**
+   * Passkeys live beside the user record but are written through their own
+   * endpoints, so this panel keeps its own busy flag rather than the session's.
+   */
+  let { userID }: { userID: string } = $props();
 
   type CredentialMeta = {
     id: string;
@@ -15,46 +25,50 @@
     updated_at: string;
   };
 
-  let credentials: CredentialMeta[] = [];
-  let panelError = "";
-  let panelNotice = "";
-  let busyLocal = false;
-  let label = "";
+  let credentials = $state<CredentialMeta[]>([]);
+  let working = $state(false);
+  let surveyed = $state(false);
+  let label = $state("");
+  let pendingRemoval = $state("");
+
+  const supported = isWebAuthnSupported();
 
   async function load() {
-    panelError = "";
     try {
-      const res = await fetch(`${apiBase}/passkey/credentials?user_id=${encodeURIComponent(userID)}`);
+      const res = await fetch(
+        `${session.apiBase}/passkey/credentials?user_id=${encodeURIComponent(userID)}`,
+      );
       if (!res.ok) throw new Error(`list failed: ${res.status}`);
       const body = await res.json();
       credentials = body.payload ?? [];
     } catch (err) {
-      panelError = err instanceof Error ? err.message : String(err);
+      docket.reject(messageOf(err, "Cannot read this user's passkeys"));
+    } finally {
+      surveyed = true;
     }
   }
 
   async function removeCredential(id: string) {
-    if (!confirm("DELETE PASSKEY?")) return;
-
-    busyLocal = true;
-    panelError = "";
+    pendingRemoval = "";
+    working = true;
     try {
-      const res = await fetch(`${apiBase}/passkey/credentials/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const res = await fetch(`${session.apiBase}/passkey/credentials/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
       if (!res.ok) throw new Error(`delete failed: ${res.status}`);
       await load();
+      docket.commit("Passkey removed");
     } catch (err) {
-      panelError = err instanceof Error ? err.message : String(err);
+      docket.reject(messageOf(err, "Cannot remove this passkey"));
     } finally {
-      busyLocal = false;
+      working = false;
     }
   }
 
   async function register() {
-    busyLocal = true;
-    panelError = "";
-    panelNotice = "";
+    working = true;
     try {
-      const beginRes = await fetch(`${apiBase}/passkey/register`, {
+      const beginRes = await fetch(`${session.apiBase}/passkey/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userID }),
@@ -65,7 +79,7 @@
       const options = beginBody.payload.options as ServerCreationOptions;
       const credential = await startRegistration(options);
 
-      const finishRes = await fetch(`${apiBase}/passkey/register`, {
+      const finishRes = await fetch(`${session.apiBase}/passkey/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -78,72 +92,101 @@
       const finishBody = await finishRes.json();
       if (!finishRes.ok) throw new Error(finishBody?.message ?? `finish failed: ${finishRes.status}`);
 
-      panelNotice = "Passkey registered";
       label = "";
       await load();
+      docket.commit("Passkey registered");
     } catch (err) {
-      panelError = err instanceof Error ? err.message : String(err);
+      docket.reject(messageOf(err, "Passkey registration did not complete"));
     } finally {
-      busyLocal = false;
+      working = false;
     }
   }
 
-  onMount(load);
+  onMount(() => {
+    void load();
+  });
 </script>
 
-<div class="grid gap-3 bg-panel p-3 md:col-span-2 xl:col-span-3">
-  <div class="flex flex-wrap items-center justify-between gap-2">
-    <div>
-      <span class="t-label text-fg">Passkeys</span>
-      <p class="mt-1 text-xs leading-4 text-dim">
-        WebAuthn credentials stored for <span class="text-fg">this user</span>. Registration binds the authenticator present in this browser to their account.
-      </p>
-    </div>
-    <span class="t-label">{credentials.length} registered</span>
-  </div>
+<Section
+  title="Passkeys"
+  note="WebAuthn credentials held for this user. Registering binds the authenticator present in this browser to their account — do it at the machine that will be logging in."
+>
+  {#snippet aside()}
+    <span class="stamp">
+      {credentials.length}
+      {credentials.length === 1 ? "credential" : "credentials"}
+    </span>
+  {/snippet}
 
-  {#if panelError}
-    <p class="text-xs font-bold text-alert">{panelError}</p>
-  {/if}
-  {#if panelNotice}
-    <p class="text-xs font-bold text-fg">{panelNotice}</p>
-  {/if}
-
-  {#if credentials.length === 0}
-    <p class="text-xs leading-4 text-dim">No passkeys registered for this user.</p>
+  {#if !surveyed}
+    <p class="text-[13px] text-muted">Reading credentials…</p>
+  {:else if credentials.length === 0}
+    <p class="border border-dashed border-rule px-6 py-10 text-center text-[13px] leading-[1.6] text-muted">
+      No passkey registered for this user — they sign in with a password or an upstream provider only.
+    </p>
   {:else}
-    <div class="grid gap-px bg-line">
-      {#each credentials as credential}
-        <div class="flex flex-wrap items-center justify-between gap-2 bg-crt p-2 text-xs leading-4">
-          <div class="grid gap-1">
-            <span class="break-all font-bold text-fg">{credential.name || credential.id}</span>
-            <span class="text-dim">Created {credential.created_at} / SIGN.COUNT {credential.sign_count}</span>
+    <ul class="border border-rule bg-sheet">
+      {#each credentials as credential (credential.id)}
+        <li class="border-b border-rule last:border-b-0">
+          <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3">
+            <div class="min-w-0">
+              <p class="truncate text-[13.5px] font-medium text-ink">
+                {credential.name || credential.id}
+              </p>
+              <p class="serial mt-0.5 truncate text-[12px] text-muted">
+                Registered {formatStamp(credential.created_at) || "—"} · signature count
+                {credential.sign_count}
+              </p>
+            </div>
+
+            <div class="flex items-center gap-3">
+              <Seal state="endorsed" label="Bound" />
+              <button
+                type="button"
+                class="act act-quiet text-seal hover:bg-seal/10 hover:text-seal"
+                aria-expanded={pendingRemoval === credential.id}
+                disabled={working}
+                onclick={() =>
+                  (pendingRemoval = pendingRemoval === credential.id ? "" : credential.id)}
+              >
+                Remove
+              </button>
+            </div>
           </div>
-          <button
-            class="border border-line px-2.5 py-1 text-xs font-bold text-alert hover:bg-alert hover:text-white"
-            disabled={busyLocal}
-            on:click={() => removeCredential(credential.id)}
-          >
-            Remove
-          </button>
-        </div>
+
+          {#if pendingRemoval === credential.id}
+            <div class="px-4 pb-4">
+              <BreakSeal
+                consequence={`Removing ${credential.name || credential.id} deletes the credential from this instance. The authenticator holding it can no longer sign this user in, the key cannot be re-registered from its stored form, and there is no undo.`}
+                action="Remove this passkey"
+                disabled={working}
+                onconfirm={() => void removeCredential(credential.id)}
+              />
+            </div>
+          {/if}
+        </li>
       {/each}
-    </div>
+    </ul>
   {/if}
 
-  {#if isWebAuthnSupported()}
-    <div class="grid gap-px bg-line md:grid-cols-[minmax(0,1fr),auto]">
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Passkey label</span>
-        <input bind:value={label} class="field-t" placeholder="my laptop" />
-      </label>
-      <div class="flex items-end bg-panel p-3">
-        <button class="btn-t-solid w-full" disabled={busyLocal} on:click={register}>
-          {busyLocal ? "Waiting for authenticator..." : "Register passkey"}
-        </button>
+  {#if supported}
+    <div class="mt-8 flex flex-wrap items-end gap-4">
+      <div class="min-w-0 flex-1 basis-72">
+        <Entry
+          label="Passkey label"
+          bind:value={label}
+          placeholder="my laptop"
+          hint="Names the authenticator so it can be told apart later."
+        />
       </div>
+      <button type="button" class="act act-primary" disabled={working} onclick={() => void register()}>
+        {working ? "Waiting for the authenticator…" : "Register passkey"}
+      </button>
     </div>
   {:else}
-    <p class="text-xs leading-4 text-dim">WebAuthn is not supported in this browser.</p>
+    <p class="mt-8 max-w-[70ch] text-[13px] leading-[1.6] text-muted">
+      This browser does not support WebAuthn, so a passkey cannot be registered here. Open the console
+      in a browser with platform authenticator support, or register from the user's own device.
+    </p>
   {/if}
-</div>
+</Section>

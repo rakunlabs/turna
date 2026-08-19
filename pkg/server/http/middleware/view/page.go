@@ -22,12 +22,12 @@ type PageUI struct {
 	m sync.Mutex
 }
 
-func (m *View) GetPageUI(ctx context.Context, page *Page) (*httputil.ReverseProxy, error) {
+func (m *View) GetPageUI(ctx context.Context, page *Page, pagePrefix string) (*httputil.ReverseProxy, error) {
 	m.pageUI.m.Lock()
 	defer m.pageUI.m.Unlock()
 
 	h, ok, err := m.pageUI.Handlers.Get(ctx, cacheKey{
-		Name: page.Path,
+		Name: pagePrefix,
 		Addr: page.URL,
 	})
 	if err != nil {
@@ -39,6 +39,11 @@ func (m *View) GetPageUI(ctx context.Context, page *Page) (*httputil.ReverseProx
 	}
 
 	apiURL, err := url.Parse(page.URL)
+	if err != nil {
+		return nil, err
+	}
+
+	rewriter, err := newRewriter(page.Rewrite, pagePrefix, apiURL)
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +77,8 @@ func (m *View) GetPageUI(ctx context.Context, page *Page) (*httputil.ReverseProx
 			if page.Host {
 				r.Out.Host = r.In.Host // if desired
 			}
+
+			rewriter.modifyRequest(r.Out)
 		},
 		ModifyResponse: func(r *http.Response) error {
 			for k, v := range page.Header.Response.SetHeader {
@@ -86,14 +93,16 @@ func (m *View) GetPageUI(ctx context.Context, page *Page) (*httputil.ReverseProx
 				r.Header.Del(k)
 			}
 
-			return nil
+			return rewriter.modifyResponse(r)
 		},
 	}
 
-	m.pageUI.Handlers.Set(ctx, cacheKey{
-		Name: page.Path,
+	if err := m.pageUI.Handlers.Set(ctx, cacheKey{
+		Name: pagePrefix,
 		Addr: page.URL,
-	}, proxy)
+	}, proxy); err != nil {
+		return nil, err
+	}
 
 	return proxy, nil
 }
@@ -178,12 +187,13 @@ func (m *View) Page(w http.ResponseWriter, r *http.Request, name string) {
 		return
 	}
 
-	h, err := m.GetPageUI(r.Context(), page)
+	pagePrefix := path.Join("/", m.PrefixPath, "page", name)
+	h, err := m.GetPageUI(r.Context(), page, pagePrefix)
 	if err != nil {
 		httputil2.JSON(w, http.StatusBadRequest, model.MetaData{Message: err.Error()})
 
 		return
 	}
 
-	http.StripPrefix(path.Join(m.PrefixPath, "page", name), h).ServeHTTP(w, r)
+	http.StripPrefix(pagePrefix, h).ServeHTTP(w, r)
 }

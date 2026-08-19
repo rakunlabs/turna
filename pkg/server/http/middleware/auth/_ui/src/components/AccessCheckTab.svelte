@@ -1,66 +1,103 @@
 <script lang="ts">
   import CheckWidget from "./CheckWidget.svelte";
-  import type { SettingNamespace } from "../lib/api";
+  import Instrument from "./ui/Instrument.svelte";
+  import Section from "./ui/Section.svelte";
+  import Switch from "./ui/Switch.svelte";
+  import { session } from "../lib/state/session.svelte";
+  import {
+    getSettingBool,
+    setSettingBool,
+    getSettingList,
+    setSettingList,
+    saveSetting,
+  } from "../lib/state/settings.svelte";
+  import { splitValues } from "../lib/records";
 
-  export let apiBase = "/auth/v1";
-  export let busy = false;
-  export let settingsRevision = 0;
-  export let getSettingBool: (namespace: SettingNamespace, path: string[], fallback?: boolean) => boolean = () => false;
-  export let setSettingBool: (namespace: SettingNamespace, path: string[], value: boolean) => void = () => {};
-  export let getSettingList: (namespace: SettingNamespace, path: string[]) => string = () => "";
-  export let setSettingList: (namespace: SettingNamespace, path: string[], value: string) => void = () => {};
-  export let saveSetting: (namespace: SettingNamespace) => void | Promise<void> = () => {};
-
-  function inputValue(event: Event) {
-    return (event.currentTarget as HTMLTextAreaElement).value;
-  }
-
-  function checkedValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement).checked;
-  }
-
-  function checkboxClass(checked: boolean) {
-    const base = "h-3.5 w-3.5 appearance-none border bg-crt";
-    return `${base} border-line checked:bg-alert`;
-  }
-
-  function settingBool(_revision: number, namespace: SettingNamespace, path: string[], fallback = false) {
-    return getSettingBool(namespace, path, fallback);
-  }
-
-  function settingList(_revision: number, namespace: SettingNamespace, path: string[]) {
-    return getSettingList(namespace, path);
-  }
-
-  $: noHostCheck = settingBool(settingsRevision, "check", ["no_host_check"]);
-  $: defaultHosts = settingList(settingsRevision, "check", ["default_hosts"]);
+  /**
+   * Two things live here, and only one of them is the point. The check answers
+   * "does this identity get through?"; the rules below are the small amount of
+   * configuration that changes how that question is decided.
+   */
+  const defaultHosts = $derived(getSettingList("check", ["default_hosts"]));
+  const hostList = $derived(splitValues(defaultHosts));
 </script>
 
-<div class="grid gap-px bg-line p-px">
-  <div class="bg-panel p-4">
-    <p class="t-label text-fg">Access check</p>
-    <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Live Check</h3>
-    <p class="mt-3 max-w-3xl text-xs leading-5 text-dim">
-      Test an alias, host, path, and method against the IAM permission graph.
-    </p>
-  </div>
-  <div class="bg-crt p-4">
-    <CheckWidget {apiBase} />
-  </div>
-  <div class="grid gap-px bg-line p-px">
-    <div class="flex items-center justify-between bg-panel px-3 py-2">
-      <span class="t-label text-fg">Check settings</span>
-      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting("check")}>Save check</button>
+<Instrument
+  title="Access check"
+  note="Ask the live permission graph whether one identity gets through to one request. Read-only: nothing is written and no token is issued."
+>
+  {#snippet custody()}
+    <span class="stamp">Namespace <span class="serial stamp-raw">check</span></span>
+    <span class="serial stamp-raw">{session.apiBase}/check</span>
+  {/snippet}
+
+  <CheckWidget />
+
+  <Section
+    title="Matching rules"
+    note="How every permission in this instance is matched — against the check above and against every request the middleware sees."
+  >
+    {#snippet aside()}
+      <button
+        type="button"
+        class="act act-primary"
+        disabled={session.busy}
+        onclick={() => void saveSetting("check")}
+      >
+        {session.busy ? "Committing…" : "Commit"}
+      </button>
+    {/snippet}
+
+    <div class="grid gap-8 lg:grid-cols-2">
+      <div class="min-w-0">
+        <label class="stamp block" for="check-default-hosts">Default hosts</label>
+        <textarea
+          id="check-default-hosts"
+          class="exhibit mt-1.5 min-h-24"
+          spellcheck="false"
+          aria-describedby="check-default-hosts-hint"
+          placeholder="api.example.com"
+          value={defaultHosts}
+          oninput={(event) => setSettingList("check", ["default_hosts"], event.currentTarget.value)}
+        ></textarea>
+        <p id="check-default-hosts-hint" class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
+          Used only by permissions that name no host of their own. One per line, or comma separated.
+          Glob patterns are accepted.
+        </p>
+
+        <h3 class="stamp stamp-ink mt-6 border-b border-rule pb-1.5">In effect</h3>
+        {#if hostList.length === 0}
+          <p class="border-b border-rule py-3 text-[12.5px] leading-[1.55] text-muted">
+            No default host set. With host checking on, a permission that names no host of its own
+            cannot match anything — add a host here or name hosts on the permission itself.
+          </p>
+        {:else}
+          <ul>
+            {#each hostList as host (host)}
+              <li class="serial border-b border-rule py-2 text-[13px] text-ink last:border-b-0">
+                {host}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+
+      <div class="min-w-0">
+        <Switch
+          label="Disable host checking"
+          consequential
+          hint="Permissions match on method and path alone, on every host. This widens what every existing permission accepts — leave it off unless this instance fronts a single host."
+          bind:checked={
+            () => getSettingBool("check", ["no_host_check"]),
+            (value: boolean) => setSettingBool("check", ["no_host_check"], value)
+          }
+        />
+
+        <p class="mt-6 max-w-[62ch] text-[12.5px] leading-[1.6] text-muted">
+          Both values apply without a restart. They take effect on the next request the middleware
+          handles, and on the next check run above.
+        </p>
+      </div>
     </div>
-    <div class="grid gap-px bg-line md:grid-cols-2">
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Default hosts</span>
-        <textarea class="field-t min-h-24" value={defaultHosts} placeholder="api.example.com" on:input={(event) => setSettingList("check", ["default_hosts"], inputValue(event))}></textarea>
-      </label>
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-        <input type="checkbox" checked={noHostCheck} class={checkboxClass(noHostCheck)} on:change={(event) => setSettingBool("check", ["no_host_check"], checkedValue(event))} />
-        <span class={noHostCheck ?"text-alert" :"text-dim"}>Disable host check</span>
-      </label>
-    </div>
-  </div>
-</div>
+  </Section>
+</Instrument>

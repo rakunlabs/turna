@@ -1,113 +1,238 @@
 <script lang="ts">
-  import type { SettingNamespace } from "../lib/api";
+  import Instrument from "./ui/Instrument.svelte";
+  import Section from "./ui/Section.svelte";
+  import Switch from "./ui/Switch.svelte";
+  import Seal from "./ui/Seal.svelte";
+  import { session } from "../lib/state/session.svelte";
+  import {
+    getSettingBool,
+    setSettingBool,
+    getSettingString,
+    setSettingString,
+    getSettingList,
+    setSettingList,
+    saveSetting,
+  } from "../lib/state/settings.svelte";
 
-  export let busy = false;
-  export let settingsRevision = 0;
-  export let getSettingBool: (namespace: SettingNamespace, path: string[], fallback?: boolean) => boolean = () => false;
-  export let setSettingBool: (namespace: SettingNamespace, path: string[], value: boolean) => void = () => {};
-  export let getSettingString: (namespace: SettingNamespace, path: string[]) => string = () => "";
-  export let setSettingString: (namespace: SettingNamespace, path: string[], value: string) => void = () => {};
-  export let getSettingList: (namespace: SettingNamespace, path: string[]) => string = () => "";
-  export let setSettingList: (namespace: SettingNamespace, path: string[], value: string) => void = () => {};
-  export let saveSetting: (namespace: SettingNamespace) => void | Promise<void> = () => {};
+  const pollInterval = $derived(getSettingString("cache", ["poll_interval"]));
+  const codeStore = $derived(getSettingString("cache", ["code_store", "active"]) || "memory");
+  const redisTLS = $derived(getSettingBool("cache", ["code_store", "redis", "tls", "enabled"]));
+  const addresses = $derived(getSettingList("cache", ["code_store", "redis", "address"]));
 
-  const ns: SettingNamespace = "cache";
-
-  function inputValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement | HTMLSelectElement).value;
-  }
-
-  function checkedValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement).checked;
-  }
-
-  function setCodeStoreActive(event: Event) {
-    setSettingString(ns, ["code_store", "active"], inputValue(event));
-  }
-
-  function setRedisTLS(event: Event) {
-    setSettingBool(ns, ["code_store", "redis", "tls", "enabled"], checkedValue(event));
-  }
-
-  function sString(_rev: number, path: string[]) {
-    return getSettingString(ns, path);
-  }
-
-  function sBool(_rev: number, path: string[], fallback = false) {
-    return getSettingBool(ns, path, fallback);
-  }
-
-  $: pollInterval = sString(settingsRevision, ["poll_interval"]);
-  $: codeStoreActive = sString(settingsRevision, ["code_store", "active"]) || "memory";
-  $: redisTLS = sBool(settingsRevision, ["code_store", "redis", "tls", "enabled"]);
+  const shared = $derived(codeStore === "redis");
 </script>
 
-<div class="grid gap-px bg-line p-px">
-  <div class="grid gap-3 bg-panel p-4">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <span class="t-label text-fg">Cache</span>
-        <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Shared State</h3>
-      </div>
-      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting(ns)}>Save cache</button>
+<Instrument
+  title="Cache"
+  note="Two pieces of shared state: how often an instance notices that the configuration changed, and where the short-lived OAuth codes live while a flow is in progress."
+>
+  {#snippet actions()}
+    <button
+      type="button"
+      class="act act-primary"
+      disabled={session.busy}
+      onclick={() => saveSetting("cache")}
+    >
+      Commit
+    </button>
+  {/snippet}
+
+  {#snippet custody()}
+    <span class="stamp">Namespace <span class="serial stamp-raw">cache</span></span>
+    <Seal
+      state={shared ? "endorsed" : "held"}
+      label={shared ? "Shared across instances" : "Single instance only"}
+    />
+  {/snippet}
+
+  <Section title="Configuration polling" first>
+    <div class="max-w-[52ch]">
+      <label class="stamp block" for="cache-poll-interval">Poll interval</label>
+      <input
+        id="cache-poll-interval"
+        class="entry serial mt-1.5"
+        autocomplete="off"
+        placeholder="5s"
+        aria-describedby="cache-poll-interval-hint"
+        value={pollInterval}
+        oninput={(e) => setSettingString("cache", ["poll_interval"], e.currentTarget.value)}
+      />
+      <p id="cache-poll-interval-hint" class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
+        A Go duration. Every instance asks PostgreSQL this often whether the auth version advanced,
+        and reloads its settings when it did. This is the longest a change can take to reach another
+        instance — the one you committed on applies immediately.
+      </p>
     </div>
-    <p class="max-w-3xl text-xs leading-5 text-dim">
-      Database version polling and the temporary OAuth code/state store. Use Redis for multi-instance authorization-code, provider-state, device and email flows.
-    </p>
-  </div>
+  </Section>
 
-  <div class="grid gap-px bg-line md:grid-cols-2 xl:grid-cols-3">
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">Poll interval</span>
-      <input class="field-t" value={pollInterval} placeholder="5s" on:input={(event) => setSettingString(ns, ["poll_interval"], inputValue(event))} />
-      <span class="text-xs leading-4 text-dim">How often instances poll PostgreSQL for config version changes.</span>
-    </label>
-    <label class="grid gap-1 bg-panel p-3">
-      <span class="t-label">OAuth code store</span>
-      <select class="field-t" on:change={setCodeStoreActive}>
-        <option value="memory" selected={codeStoreActive === "memory"}>memory</option>
-        <option value="redis" selected={codeStoreActive === "redis"}>redis</option>
+  <Section
+    title="OAuth code store"
+    note="Authorization codes, provider state, device codes and email codes are held here for the minutes a flow takes. They are not a cache of records — losing them fails whichever logins were mid-flight."
+  >
+    <div class="max-w-[52ch]">
+      <label class="stamp block" for="cache-code-store">Store</label>
+      <select
+        id="cache-code-store"
+        class="entry mt-1.5"
+        aria-describedby="cache-code-store-hint"
+        value={codeStore}
+        onchange={(e) => setSettingString("cache", ["code_store", "active"], e.currentTarget.value)}
+      >
+        <option value="memory">memory</option>
+        <option value="redis">redis</option>
       </select>
-    </label>
-    <p class="bg-panel p-3 text-xs leading-4 text-dim">
-      Memory works for a single instance; Redis is required when running more than one auth replica.
-    </p>
+      <p id="cache-code-store-hint" class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
+        Memory is correct for exactly one instance. With more than one replica, a browser that starts
+        a flow on one instance and returns to another finds no code there, so Redis is required.
+      </p>
+    </div>
+  </Section>
 
-    {#if codeStoreActive === "redis"}
-      <label class="grid gap-1 bg-panel p-3 md:col-span-2 xl:col-span-3">
-        <span class="t-label">Redis addresses</span>
-        <input class="field-t" value={getSettingList(ns, ["code_store","redis","address"])} placeholder="127.0.0.1:6379" on:input={(event) => setSettingList(ns, ["code_store","redis","address"], inputValue(event))} />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Redis username</span>
-        <input class="field-t" value={getSettingString(ns, ["code_store","redis","username"])} placeholder="optional" on:input={(event) => setSettingString(ns, ["code_store","redis","username"], inputValue(event))} />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Redis password</span>
-        <input class="field-t" value={getSettingString(ns, ["code_store","redis","password"])} placeholder="optional" on:input={(event) => setSettingString(ns, ["code_store","redis","password"], inputValue(event))} />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Client name</span>
-        <input class="field-t" value={getSettingString(ns, ["code_store","redis","client_name"])} placeholder="turna-auth" on:input={(event) => setSettingString(ns, ["code_store","redis","client_name"], inputValue(event))} />
-      </label>
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-        <input type="checkbox" checked={redisTLS} class="h-3.5 w-3.5 appearance-none border border-line bg-crt checked:bg-fg" on:change={setRedisTLS} />
-        <span class={redisTLS ?"text-fg" :"text-dim"}>Redis TLS</span>
-      </label>
+  {#if shared}
+    <Section title="Redis connection">
+      <div class="grid gap-6">
+        <div class="max-w-[62ch]">
+          <label class="stamp block" for="cache-redis-address">Addresses</label>
+          <input
+            id="cache-redis-address"
+            class="entry serial mt-1.5"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="127.0.0.1:6379"
+            aria-describedby="cache-redis-address-hint"
+            value={addresses}
+            oninput={(e) =>
+              setSettingList("cache", ["code_store", "redis", "address"], e.currentTarget.value)}
+          />
+          <p id="cache-redis-address-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+            Comma separated. More than one address is treated as a cluster.
+          </p>
+        </div>
+
+        <div class="grid gap-6 sm:grid-cols-2">
+          <div>
+            <label class="stamp block" for="cache-redis-username">Username</label>
+            <input
+              id="cache-redis-username"
+              class="entry mt-1.5"
+              autocomplete="off"
+              placeholder="optional"
+              value={getSettingString("cache", ["code_store", "redis", "username"])}
+              oninput={(e) =>
+                setSettingString("cache", ["code_store", "redis", "username"], e.currentTarget.value)}
+            />
+          </div>
+
+          <div>
+            <label class="stamp block" for="cache-redis-password">Password</label>
+            <input
+              id="cache-redis-password"
+              class="entry mt-1.5"
+              autocomplete="off"
+              placeholder="optional"
+              value={getSettingString("cache", ["code_store", "redis", "password"])}
+              oninput={(e) =>
+                setSettingString("cache", ["code_store", "redis", "password"], e.currentTarget.value)}
+            />
+          </div>
+
+          <div>
+            <label class="stamp block" for="cache-redis-client-name">Client name</label>
+            <input
+              id="cache-redis-client-name"
+              class="entry mt-1.5"
+              autocomplete="off"
+              placeholder="turna-auth"
+              aria-describedby="cache-redis-client-name-hint"
+              value={getSettingString("cache", ["code_store", "redis", "client_name"])}
+              oninput={(e) =>
+                setSettingString(
+                  "cache",
+                  ["code_store", "redis", "client_name"],
+                  e.currentTarget.value,
+                )}
+            />
+            <p id="cache-redis-client-name-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+              How this instance names itself in Redis client lists.
+            </p>
+          </div>
+        </div>
+      </div>
+    </Section>
+
+    <Section title="Redis TLS">
+      <Switch
+        label="Connect to Redis over TLS"
+        hint="The codes in flight are single-use secrets. Turn this on whenever Redis is not on the same host."
+        bind:checked={
+          () => getSettingBool("cache", ["code_store", "redis", "tls", "enabled"]),
+          (value: boolean) =>
+            setSettingBool("cache", ["code_store", "redis", "tls", "enabled"], value)
+        }
+      />
+
       {#if redisTLS}
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">TLS CA file</span>
-          <input class="field-t" value={getSettingString(ns, ["code_store","redis","tls","ca_file"])} placeholder="optional" on:input={(event) => setSettingString(ns, ["code_store","redis","tls","ca_file"], inputValue(event))} />
-        </label>
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">TLS cert file</span>
-          <input class="field-t" value={getSettingString(ns, ["code_store","redis","tls","cert_file"])} placeholder="optional" on:input={(event) => setSettingString(ns, ["code_store","redis","tls","cert_file"], inputValue(event))} />
-        </label>
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">TLS key file</span>
-          <input class="field-t" value={getSettingString(ns, ["code_store","redis","tls","key_file"])} placeholder="optional" on:input={(event) => setSettingString(ns, ["code_store","redis","tls","key_file"], inputValue(event))} />
-        </label>
+        <div class="mt-6 grid gap-6 sm:grid-cols-3">
+          <div>
+            <label class="stamp block" for="cache-redis-ca">CA file</label>
+            <input
+              id="cache-redis-ca"
+              class="entry serial mt-1.5"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="optional"
+              value={getSettingString("cache", ["code_store", "redis", "tls", "ca_file"])}
+              oninput={(e) =>
+                setSettingString(
+                  "cache",
+                  ["code_store", "redis", "tls", "ca_file"],
+                  e.currentTarget.value,
+                )}
+            />
+          </div>
+
+          <div>
+            <label class="stamp block" for="cache-redis-cert">Certificate file</label>
+            <input
+              id="cache-redis-cert"
+              class="entry serial mt-1.5"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="optional"
+              value={getSettingString("cache", ["code_store", "redis", "tls", "cert_file"])}
+              oninput={(e) =>
+                setSettingString(
+                  "cache",
+                  ["code_store", "redis", "tls", "cert_file"],
+                  e.currentTarget.value,
+                )}
+            />
+          </div>
+
+          <div>
+            <label class="stamp block" for="cache-redis-key">Key file</label>
+            <input
+              id="cache-redis-key"
+              class="entry serial mt-1.5"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="optional"
+              value={getSettingString("cache", ["code_store", "redis", "tls", "key_file"])}
+              oninput={(e) =>
+                setSettingString(
+                  "cache",
+                  ["code_store", "redis", "tls", "key_file"],
+                  e.currentTarget.value,
+                )}
+            />
+          </div>
+        </div>
+
+        <p class="mt-4 max-w-[70ch] text-[12.5px] leading-[1.55] text-muted">
+          All three are paths on the auth container's filesystem. Leave them empty to verify the
+          server against the system trust store without presenting a client certificate.
+        </p>
       {/if}
-    {/if}
-  </div>
-</div>
+    </Section>
+  {/if}
+</Instrument>

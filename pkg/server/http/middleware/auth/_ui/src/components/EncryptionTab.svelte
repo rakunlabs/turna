@@ -1,162 +1,180 @@
 <script lang="ts">
-  import type { AnyRecord } from "../lib/api";
+  import Instrument from "./ui/Instrument.svelte";
+  import Section from "./ui/Section.svelte";
+  import Entry from "./ui/Entry.svelte";
+  import Seal from "./ui/Seal.svelte";
+  import Serial from "./ui/Serial.svelte";
+  import BreakSeal from "./ui/BreakSeal.svelte";
+  import { docket, messageOf, session } from "../lib/state/session.svelte";
 
-  export let apiBase = "/auth/v1";
-  export let busy = false;
+  /**
+   * This page reports what the running instance already is — the cipher, the
+   * canary, the columns under seal — and offers exactly one act: rotating the
+   * key. Nothing here is a stored setting, so nothing here is a form field
+   * except the new key itself.
+   */
+  let newKey = $state("");
+  let rotatedKey = $state("");
 
-  let newKey = "";
-  let confirmUpdate = false;
-  let apiBusy = false;
-  let error = "";
-  let notice = "";
-  let rotatedKey = "";
+  const canRotate = $derived(!session.busy && newKey.trim().length > 0);
 
-  $: working = busy || apiBusy;
-  $: canRotate = !working && newKey.trim().length > 0 && confirmUpdate;
-
-  function flash(message: string) {
-    notice = message;
-    error = "";
-    window.setTimeout(() => {
-      if (notice === message) notice = "";
-    }, 6000);
-  }
-
-  async function api<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${apiBase}/${path}`, {
-      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-      ...init,
-    });
-
-    let body: AnyRecord = {};
-    try {
-      body = await res.json();
-    } catch {
-      // ignore empty bodies
-    }
-
-    if (!res.ok) {
-      throw new Error(String(body.message ?? body.error ?? res.statusText));
-    }
-
-    return (body as { payload: T }).payload;
-  }
+  /** The columns re-encrypted by a rotation, in the order the server walks them. */
+  const sealed = [
+    { label: "User details", detail: "auth_users.details_encrypted" },
+    { label: "Runtime settings", detail: "auth_settings.value_encrypted" },
+    { label: "OAuth server clients", detail: "auth_oauth_clients.config_encrypted" },
+    { label: "OAuth providers", detail: "auth_oauth_providers.config_encrypted" },
+    { label: "SAML providers", detail: "auth_saml_providers.config_encrypted" },
+    { label: "LDAP configs", detail: "auth_ldap_configs.config_encrypted" },
+    { label: "TOTP secrets", detail: "auth_totp_secrets.secret_encrypted" },
+  ];
 
   async function rotate() {
     const key = newKey.trim();
     if (!key) {
-      error = "New key is required";
+      docket.reject("Name the new key before rotating — the field above is empty.");
       return;
     }
 
-    if (!confirm("Rotate the record encryption key? All encrypted rows are re-encrypted now. You MUST set this key in the config before the next restart, or startup will fail.")) {
-      return;
-    }
+    let message = "";
 
-    apiBusy = true;
-    error = "";
-    try {
-      const payload = await api<{ message?: string; rotated?: boolean }>("encryption/rotate", {
-        method: "POST",
-        body: JSON.stringify({ new_key: key }),
-      });
+    const ok = await session.run(async () => {
+      const res = await session.request<{ message?: string; rotated?: boolean }>(
+        "encryption/rotate",
+        { method: "POST", body: JSON.stringify({ new_key: key }) },
+      );
 
-      rotatedKey = key;
-      newKey = "";
-      confirmUpdate = false;
-      flash(payload?.message ?? "Encryption key rotated");
-    } catch (err) {
-      error = err instanceof Error ? err.message : "Encryption key rotation failed";
-    } finally {
-      apiBusy = false;
-    }
+      message = res.payload?.message ?? "Encryption key rotated";
+    });
+
+    if (!ok) return;
+
+    rotatedKey = key;
+    newKey = "";
+    docket.commit(message);
   }
 
-  async function copyText(value: string) {
+  async function copyKey() {
     try {
-      await navigator.clipboard.writeText(value);
-      flash("Copied to clipboard");
-    } catch {
-      error = "Clipboard unavailable";
+      await navigator.clipboard.writeText(rotatedKey);
+      docket.commit("New key copied to the clipboard");
+    } catch (err) {
+      docket.reject(
+        `${messageOf(err, "Clipboard unavailable")} — select the key below and copy it by hand.`,
+      );
     }
   }
 </script>
 
-<div class="grid gap-px bg-line p-px">
-  {#if error}
-    <div class="flex items-center gap-3 bg-panel px-4 py-2">
-      <span class="bg-alert px-2 py-0.5 text-xs font-bold text-white">Fault</span>
-      <span class="text-xs text-alert">{error}</span>
-    </div>
-  {/if}
-  {#if notice}
-    <div class="flex items-center gap-3 bg-panel px-4 py-2">
-      <span class="bg-fg px-2 py-0.5 text-xs font-bold text-crt">Ok</span>
-      <span class="text-xs">{notice}</span>
-    </div>
-  {/if}
-
-  <div class="bg-panel p-4">
-    <p class="t-label text-fg">Encryption</p>
-    <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Record Encryption Key</h3>
-    <p class="mt-3 max-w-3xl text-xs leading-5 text-dim">
-      User details, runtime settings, OAuth/SAML/LDAP configs and TOTP secrets are sealed at rest with AES-256-GCM
-      using the static <span class="text-fg">encryption.key</span>. Rotating re-encrypts every encrypted row with a new
-      key in one transaction and hot-swaps the running cipher. On boot a canary value verifies the configured key, so a
-      wrong key fails fast instead of corrupting reads.
-    </p>
-  </div>
+<Instrument
+  title="Record encryption"
+  note="Everything sensitive in PostgreSQL is sealed at rest with AES-256-GCM under the static encryption.key. This page reports that standing and rotates the key; it holds no settings of its own."
+>
+  {#snippet custody()}
+    <span class="stamp">Static config <span class="serial stamp-raw">encryption.key</span></span>
+    <span class="serial stamp-raw">{session.apiBase}/encryption/rotate</span>
+  {/snippet}
 
   {#if rotatedKey}
-    <div class="grid gap-2 border-l-2 border-alert bg-panel p-4">
-      <span class="t-label text-alert">Rotated — update config before restart</span>
-      <p class="max-w-3xl text-xs leading-5 text-dim">
-        Set <span class="text-fg">encryption.key</span> to the value below in your static config. The next restart will
-        fail the startup canary check until you do. Other running instances must also be restarted with the new key.
+    <div class="mb-10 border border-seal/45">
+      <p class="hatch border-b border-seal/30 px-4 py-3 text-[13px] leading-[1.55] text-ink">
+        <span class="stamp text-seal">Config out of date</span>
+        <span class="mt-1.5 block">
+          The stored rows are now sealed under the key below, but the static config still names the
+          old one. Set <span class="serial">encryption.key</span> to this value everywhere before any
+          instance restarts — the startup canary check fails until you do, and every other running
+          replica must be restarted with it too.
+        </span>
       </p>
-      <p class="break-all border border-line bg-crt p-3 text-xs font-bold text-fg">{rotatedKey}</p>
-      <div class="flex flex-wrap gap-2">
-        <button class="btn-t-solid" on:click={() => copyText(rotatedKey)}>Copy key</button>
-        <button class="btn-t" on:click={() => (rotatedKey ="")}>Dismiss</button>
+
+      <div class="px-4 py-4">
+        <p class="serial break-all border border-rule bg-raised px-3 py-2.5 text-[13px] text-ink">
+          {rotatedKey}
+        </p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button type="button" class="act act-primary" onclick={() => void copyKey()}>
+            Copy key
+          </button>
+          <button type="button" class="act" onclick={() => (rotatedKey = "")}>
+            I have stored it
+          </button>
+        </div>
       </div>
     </div>
   {/if}
 
-  <div class="border border-line bg-panel">
-    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2">
-      <span class="t-label text-fg">Rotate encryption key</span>
-      <button class="btn-t-solid" disabled={!canRotate} on:click={rotate}>Rotate</button>
-    </div>
+  <Section title="Standing" first>
+    <div class="flex flex-wrap items-end gap-x-12 gap-y-6">
+      <div>
+        <Serial value="AES-256-GCM" size="md" />
+        <p class="stamp mt-2">Cipher</p>
+      </div>
 
-    <div class="grid gap-px bg-line p-px">
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">New encryption key</span>
-        <input
-          bind:value={newKey}
-          class="field-t"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="any text; base64 16/24/32-byte values are used as-is, anything else is SHA-256 derived"
-        />
-        <span class="text-xs leading-4 text-dim">
-          Pick a strong secret you can store in your config/secret manager. This value is what you must put in
-          <span class="text-fg">encryption.key</span>.
-        </span>
-      </label>
+      <div>
+        <span class="inline-block py-1"><Seal state="endorsed" label="Canary verified" size={13} /></span>
+        <p class="stamp mt-2">Startup check</p>
+      </div>
 
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-        <input
-          bind:checked={confirmUpdate}
-          type="checkbox"
-          class={`h-3.5 w-3.5 appearance-none border bg-crt checked:bg-alert ${confirmUpdate ?"border-line" :"border-alert"}`}
-        />
-        <span class={confirmUpdate ?"text-fg" :"text-alert"}>I WILL UPDATE encryption.key IN THE CONFIG BEFORE RESTART</span>
-      </label>
-
-      <p class="bg-panel p-3 text-xs leading-4 text-dim">
-        Rotation runs in a single transaction; if any row fails to re-encrypt it rolls back and the current key stays
-        active. A no-op is reported when the new key matches the current one.
+      <p class="max-w-[52ch] flex-1 basis-72 text-[13px] leading-[1.6] text-muted">
+        On boot this instance decrypts a known canary value with the configured key and refuses to
+        start if it cannot. You are reading this page, so the key it holds is the key the stored rows
+        were sealed with.
       </p>
     </div>
-  </div>
-</div>
+  </Section>
+
+  <Section title="Under seal" note="The columns a rotation walks, and the only ones it rewrites.">
+    <ul class="max-w-[70ch]">
+      {#each sealed as item (item.detail)}
+        <li class="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-rule py-2.5 last:border-b-0">
+          <span class="flex shrink-0 items-center gap-2.5">
+            <Seal state="endorsed" />
+            <span class="text-[13.5px] text-ink">{item.label}</span>
+          </span>
+          <span class="serial min-w-0 flex-1 basis-56 truncate text-right text-[12px] text-muted">
+            {item.detail}
+          </span>
+        </li>
+      {/each}
+    </ul>
+
+    <p class="mt-5 max-w-[70ch] text-[12.5px] leading-[1.55] text-muted">
+      Short-lived flow state and public passkey material are deliberately absent: neither is a secret
+      at rest, and neither survives a rotation long enough to matter.
+    </p>
+  </Section>
+
+  <Section
+    title="Rotate the key"
+    note="Re-encrypts every column above with a new key in one transaction and hot-swaps the running cipher. If any row fails, the whole rotation rolls back and the current key stays active."
+  >
+    <div class="max-w-[62ch]">
+      <Entry
+        label="New encryption key"
+        mono
+        bind:value={newKey}
+        placeholder="any text — base64 16/24/32-byte values are used as-is"
+        hint="Anything that is not a base64 key of 16, 24 or 32 bytes is SHA-256 derived. Store it in your secret manager before you rotate: this console shows it once and never again."
+      />
+    </div>
+
+    <div class="mt-6 max-w-[70ch]">
+      <BreakSeal
+        consequence="Rotating re-encrypts every sealed row under the new key and swaps the live cipher immediately. The old key stops decrypting anything, and unless you set encryption.key to the new value in the static config before the next restart, this instance will not start. There is no undo."
+        action="Rotate the encryption key"
+        disabled={!canRotate}
+        onconfirm={() => void rotate()}
+      />
+    </div>
+
+    {#if session.busy}
+      <p class="stamp mt-3 text-caution" role="status" aria-live="polite">
+        Re-encrypting every sealed row…
+      </p>
+    {:else if !newKey.trim()}
+      <p class="mt-3 text-[12px] text-muted">
+        The seal stays inert until a new key is named above.
+      </p>
+    {/if}
+  </Section>
+</Instrument>

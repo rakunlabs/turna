@@ -1,67 +1,161 @@
 <script lang="ts">
-  import type { SettingNamespace } from "../lib/api";
+  import Instrument from "./ui/Instrument.svelte";
+  import Section from "./ui/Section.svelte";
+  import Switch from "./ui/Switch.svelte";
+  import Seal from "./ui/Seal.svelte";
+  import Serial from "./ui/Serial.svelte";
+  import { session } from "../lib/state/session.svelte";
+  import {
+    getSettingBool,
+    setSettingBool,
+    getSettingString,
+    setSettingString,
+    saveSetting,
+  } from "../lib/state/settings.svelte";
 
-  export let busy = false;
-  export let settingsRevision = 0;
-  export let getSettingBool: (namespace: SettingNamespace, path: string[], fallback?: boolean) => boolean = () => false;
-  export let setSettingBool: (namespace: SettingNamespace, path: string[], value: boolean) => void = () => {};
-  export let getSettingString: (namespace: SettingNamespace, path: string[]) => string = () => "";
-  export let setSettingString: (namespace: SettingNamespace, path: string[], value: string) => void = () => {};
-  export let saveSetting: (namespace: SettingNamespace) => void | Promise<void> = () => {};
+  const permission = $derived(getSettingString("admin", ["permission"]));
+  const allowMissing = $derived(getSettingBool("admin", ["allow_missing_x_user"], true));
 
-  const ns: SettingNamespace = "admin";
-
-  function inputValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement).value;
-  }
-
-  function checkedValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement).checked;
-  }
-
-  function checkboxClass(danger = false) {
-    const base = "h-3.5 w-3.5 appearance-none border border-line bg-crt";
-    return `${base} ${danger ? "checked:bg-alert" : "checked:bg-fg"}`;
-  }
-
-  function sString(_rev: number, path: string[]) {
-    return getSettingString(ns, path);
-  }
-
-  function sBool(_rev: number, path: string[], fallback = false) {
-    return getSettingBool(ns, path, fallback);
-  }
-
-  $: permission = sString(settingsRevision, ["permission"]);
-  $: allowMissing = sBool(settingsRevision, ["allow_missing_x_user"], true);
+  /** What the running instance currently enforces, as opposed to the draft above. */
+  const enforced = $derived(session.capabilities?.admin_permission ?? "");
+  const configured = $derived(session.capabilities?.admin_permission_configured === true);
+  const breakGlassActive = $derived(session.capabilities?.anonymous_admin === true);
+  const identity = $derived(session.capabilities?.x_user ?? "");
 </script>
 
-<div class="grid gap-px bg-line p-px">
-  <div class="grid gap-3 bg-panel p-4">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <span class="t-label text-fg">Admin</span>
-        <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Admin Access</h3>
-      </div>
-      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting(ns)}>Save admin</button>
-    </div>
-    <p class="max-w-3xl text-xs leading-5 text-dim">
-      Controls who may administer this auth instance. The permission is matched against the permission ID or name carried by <span class="text-fg">X-User</span>.
-    </p>
-  </div>
+<Instrument
+  title="Admin access"
+  note="Who may administer this instance. The permission below is matched against the permission IDs and names carried by the X-User header that session forwards."
+>
+  {#snippet actions()}
+    <button
+      type="button"
+      class="act act-primary"
+      disabled={session.busy}
+      onclick={() => saveSetting("admin")}
+    >
+      Commit
+    </button>
+  {/snippet}
 
-  <div class="grid gap-px bg-line md:grid-cols-2">
-    <label class="grid gap-1 bg-panel p-3 md:col-span-2">
-      <span class="t-label">Admin permission</span>
-      <input class="field-t" value={permission} placeholder="turna.auth.admin; empty = bootstrap open" on:input={(event) => setSettingString(ns, ["permission"], inputValue(event))} />
-      <span class="text-xs leading-4 text-dim">Matched against permission ID or name on X-User. Empty keeps bootstrap compatibility.</span>
-    </label>
-    <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-      <input type="checkbox" checked={allowMissing} class={checkboxClass(true)} on:change={(event) => setSettingBool(ns, ["allow_missing_x_user"], checkedValue(event))} />
-      <span class={allowMissing ?"text-alert" :"text-dim"}>Allow missing X-User break-glass admin</span>
-    </label>
-    <p class="bg-panel p-3 text-xs leading-4 text-dim md:col-span-2">
-      Use break-glass only when the auth route is not publicly exposed. If enabled, removing the session chain lets direct requests administer auth.
+  {#snippet custody()}
+    <span class="stamp">Namespace <span class="serial stamp-raw">admin</span></span>
+    <Seal
+      state={breakGlassActive ? "broken" : configured ? "endorsed" : "held"}
+      label={breakGlassActive ? "Break-glass open" : configured ? "Permission enforced" : "Bootstrap open"}
+    />
+  {/snippet}
+
+  {#if breakGlassActive}
+    <p class="hatch mb-10 max-w-[70ch] border border-seal/45 px-4 py-3.5 text-[13px] leading-[1.6] text-ink">
+      <span class="stamp text-seal">Standing now</span>
+      <span class="mt-1.5 block">
+        This very request carried no identity and administered the instance anyway. Anything that can
+        reach this route can do the same. Keep it that way only while you are recovering an instance
+        that is not publicly reachable.
+      </span>
     </p>
-  </div>
-</div>
+  {/if}
+
+  <Section title="Required permission" first>
+    <div class="max-w-[62ch]">
+      <label class="stamp block" for="admin-permission">Admin permission</label>
+      <input
+        id="admin-permission"
+        class="entry serial mt-1.5"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="turna.auth.admin"
+        aria-describedby="admin-permission-hint"
+        value={permission}
+        oninput={(e) => setSettingString("admin", ["permission"], e.currentTarget.value)}
+      />
+      <p id="admin-permission-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+        Matched against the permission ID or the permission name on X-User. Leave it empty and every
+        authenticated request administers this instance — that is the bootstrap state, not a setting
+        to stay in. Create the permission first, grant it to a role, then name it here.
+      </p>
+    </div>
+
+    <div class="mt-8 flex flex-wrap items-end gap-x-10 gap-y-5">
+      <div class="min-w-0">
+        <Serial value={enforced || "not set"} size="md" tone={configured ? "ink" : "seal"} />
+        <p class="stamp mt-2">Enforced right now</p>
+      </div>
+
+      <p class="max-w-[52ch] flex-1 basis-72 text-[13px] leading-[1.6] text-muted">
+        {configured
+          ? "Committing a change here takes effect on the next request — including yours. Make sure you hold the new permission before you commit it."
+          : "Nothing is required yet, so any authenticated caller can write here. Naming a permission is the step that closes this instance."}
+      </p>
+    </div>
+  </Section>
+
+  <Section
+    title="Break-glass"
+    note="A request that arrives with no X-User has no identity at all: no user, no role, no permission to check."
+  >
+    {#snippet aside()}
+      <span class="stamp {allowMissing ? 'text-seal' : 'text-endorsed'}">
+        {allowMissing ? "Granted" : "Refused"}
+      </span>
+    {/snippet}
+
+    <Switch
+      label="Administer without an identity when X-User is missing"
+      consequential
+      hint="On, a request with no X-User is treated as a full administrator of this instance — no user, no role and no permission are checked. It exists so you can recover an instance whose admin permission locked you out."
+      bind:checked={
+        () => getSettingBool("admin", ["allow_missing_x_user"], true),
+        (value: boolean) => setSettingBool("admin", ["allow_missing_x_user"], value)
+      }
+    />
+
+    {#if allowMissing}
+      <p class="hatch mt-6 max-w-[70ch] border border-seal/40 px-4 py-3 text-[13px] leading-[1.55] text-ink">
+        <span class="stamp text-seal">Do not leave this reachable</span>
+        <span class="mt-1.5 block">
+          While this is on, this route must not be publicly reachable. Anyone who reaches it directly
+          — bypassing session, or hitting the container's port, or inside the cluster network — can
+          create users, grant permissions and read every encrypted config, with no credential at all.
+          Bind it to localhost or keep it behind the session chain, and turn this off once a real
+          admin permission works.
+        </span>
+      </p>
+    {/if}
+  </Section>
+
+  <Section title="This request" note="What the instance made of the credentials you are reading with.">
+    <ul class="max-w-[70ch]">
+      <li class="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-rule py-3">
+        <span class="flex shrink-0 items-center gap-2.5">
+          <Seal state={identity ? "endorsed" : "void"} />
+          <span class="text-[13.5px] text-ink">Identity forwarded</span>
+        </span>
+        <span class="serial min-w-0 flex-1 basis-64 truncate text-[12.5px] text-muted">
+          {identity || "no X-User on this request"}
+        </span>
+      </li>
+      <li class="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-rule py-3">
+        <span class="flex shrink-0 items-center gap-2.5">
+          <Seal state={configured ? "endorsed" : "held"} />
+          <span class="text-[13.5px] text-ink">Permission required</span>
+        </span>
+        <span class="min-w-0 flex-1 basis-64 text-[12.5px] leading-[1.5] text-muted">
+          {configured ? "Checked on every admin call" : "Bootstrap — every authenticated caller is an admin"}
+        </span>
+      </li>
+      <li class="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-3">
+        <span class="flex shrink-0 items-center gap-2.5">
+          <Seal state={breakGlassActive ? "broken" : "endorsed"} />
+          <span class="text-[13.5px] text-ink">Break-glass in use</span>
+        </span>
+        <span class="min-w-0 flex-1 basis-64 text-[12.5px] leading-[1.5] text-muted">
+          {breakGlassActive
+            ? "This session is administering without any identity"
+            : "This session was admitted with an identity"}
+        </span>
+      </li>
+    </ul>
+  </Section>
+</Instrument>

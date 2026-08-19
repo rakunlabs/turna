@@ -1,17 +1,22 @@
 <script lang="ts">
-  import type { AnyRecord, SettingNamespace } from "../lib/api";
+  import Instrument from "./ui/Instrument.svelte";
+  import Section from "./ui/Section.svelte";
+  import Entry from "./ui/Entry.svelte";
+  import Switch from "./ui/Switch.svelte";
+  import Seal from "./ui/Seal.svelte";
 
-  export let apiBase = "/auth/v1";
-  export let busy = false;
-  export let settingsRevision = 0;
-  export let settingRecord: (namespace: SettingNamespace) => AnyRecord = () => ({});
-  export let getSettingBool: (namespace: SettingNamespace, path: string[], fallback?: boolean) => boolean = () => false;
-  export let setSettingBool: (namespace: SettingNamespace, path: string[], value: boolean) => void = () => {};
-  export let getSettingString: (namespace: SettingNamespace, path: string[]) => string = () => "";
-  export let setSettingString: (namespace: SettingNamespace, path: string[], value: string) => void = () => {};
-  export let getSettingNumber: (namespace: SettingNamespace, path: string[], fallback?: number) => number = () => 0;
-  export let setSettingNumber: (namespace: SettingNamespace, path: string[], value: string) => void = () => {};
-  export let saveSetting: (namespace: SettingNamespace) => void | Promise<void> = () => {};
+  import type { AnyRecord } from "../lib/api";
+  import { messageOf, session } from "../lib/state/session.svelte";
+  import {
+    getSettingBool,
+    getSettingNumber,
+    getSettingString,
+    saveSetting,
+    setSettingBool,
+    setSettingNumber,
+    setSettingString,
+    settingRecord,
+  } from "../lib/state/settings.svelte";
 
   type EmailPreview = {
     subject: string;
@@ -26,67 +31,70 @@
 
 The code expires in {{.ExpiresIn}}.`;
 
-  let previewEmail = "user@example.com";
-  let previewCode = "123456";
-  let previewClientID = "ui";
-  let preview: EmailPreview | null = null;
-  let previewBusy = false;
-  let previewError = "";
-
-  type Section = "connection" | "template";
-  let section: Section = "connection";
-  const sections: { id: Section; label: string }[] = [
-    { id: "connection", label: "Connection" },
-    { id: "template", label: "Template & preview" },
+  /** Exactly the fields buildEmailMessage exposes to the code mail template. */
+  const codeFields = [
+    "{{.Email}}",
+    "{{.Code}}",
+    "{{.ExpiresIn}}",
+    "{{.ClientID}}",
+    "{{.RedirectURI}}",
+    "{{.UserID}}",
+    "{{.UserAlias}}",
   ];
 
-  $: disabled = settingBool(settingsRevision, ["disabled"]);
-  $: magicLink = settingBool(settingsRevision, ["magic_link"], true);
-  $: from = settingString(settingsRevision, ["from"]);
-  $: subject = settingString(settingsRevision, ["subject"]);
-  $: bodyTemplate = settingString(settingsRevision, ["body_template"]);
-  $: codeLifetime = settingString(settingsRevision, ["code_lifetime"]);
-  $: smtpHost = settingString(settingsRevision, ["smtp", "host"]);
-  $: smtpPort = getSettingNumber("email", ["smtp", "port"], 587);
-  $: smtpUsername = settingString(settingsRevision, ["smtp", "username"]);
-  $: smtpPassword = settingString(settingsRevision, ["smtp", "password"]);
-  $: smtpNoAuth = settingBool(settingsRevision, ["smtp", "no_auth"]);
-  $: smtpStartTLS = settingBool(settingsRevision, ["smtp", "starttls"], true);
-  $: smtpTLS = settingBool(settingsRevision, ["smtp", "tls"]);
-  $: smtpInsecureSkipVerify = settingBool(settingsRevision, ["smtp", "insecure_skip_verify"]);
+  let previewEmail = $state("user@example.com");
+  let previewCode = $state("123456");
+  let previewClientID = $state("ui");
+  let preview = $state<EmailPreview | null>(null);
+  let previewBusy = $state(false);
+  let previewError = $state("");
 
-  function inputValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement | HTMLTextAreaElement).value;
-  }
+  const host = $derived(getSettingString("email", ["smtp", "host"]).trim());
+  const port = $derived(getSettingNumber("email", ["smtp", "port"], 587));
+  const from = $derived(getSettingString("email", ["from"]).trim());
+  const codeHeld = $derived(getSettingBool("email", ["disabled"]));
+  const magicLink = $derived(getSettingBool("email", ["magic_link"], true));
+  const noAuth = $derived(getSettingBool("email", ["smtp", "no_auth"]));
+  const bodyTemplate = $derived(getSettingString("email", ["body_template"]));
 
-  function checkedValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement).checked;
-  }
+  /**
+   * Without a relay host nothing can leave this instance, so the whole email
+   * family — codes, magic links, signup verification, password reset — is off.
+   * That is the first thing the page has to say, not a hint under a field.
+   */
+  const standing = $derived.by(() => {
+    if (!host) {
+      return {
+        state: "void" as const,
+        label: "Not delivering",
+        detail:
+          "No SMTP host is set, so this instance cannot send mail. One-time code login, magic links, signup verification and password reset are all off until a relay is entered below.",
+      };
+    }
 
-  function settingBool(_revision: number, path: string[], fallback = false) {
-    return getSettingBool("email", path, fallback);
-  }
+    if (codeHeld) {
+      return {
+        state: "held" as const,
+        label: "Code login held",
+        detail: `The relay at ${host}:${port} is configured, but the token endpoint refuses grant_type=email_code. Magic link, signup and password reset mail still go out.`,
+      };
+    }
 
-  function settingString(_revision: number, path: string[]) {
-    return getSettingString("email", path);
-  }
+    return {
+      state: "endorsed" as const,
+      label: "Delivering",
+      detail: `Codes are sent from ${from || "the relay's default sender"} through ${host}:${port}.`,
+    };
+  });
 
-  function checkboxClass(checked: boolean, danger = false) {
-    const base = "h-3.5 w-3.5 appearance-none border bg-crt";
-    if (danger) return `${base} border-line checked:bg-alert`;
-
-    return `${base} border-line checked:bg-fg ${checked ? "" : "border-alert"}`;
-  }
-
-  // preview the one-time code mail (no redirect_uri so no magic link)
+  // Preview the one-time code mail: no redirect_uri, so no magic link is built.
   async function renderPreview() {
     previewBusy = true;
     previewError = "";
 
     try {
-      const res = await fetch(`${apiBase}/email/preview`, {
+      const body = await session.request<EmailPreview>("email/preview", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           settings: settingRecord("email"),
           email: previewEmail.trim(),
@@ -95,167 +103,287 @@ The code expires in {{.ExpiresIn}}.`;
         }),
       });
 
-      let body: AnyRecord = {};
-      try {
-        body = await res.json();
-      } catch {
-        // keep status text
-      }
-      if (!res.ok) {
-        throw new Error(String(body.message ?? body.error ?? res.statusText));
-      }
-
-      preview = body.payload as EmailPreview;
+      preview = body.payload;
     } catch (err) {
       preview = null;
-      previewError = err instanceof Error ? err.message : "Cannot render preview";
+      previewError = messageOf(err, "Cannot render preview");
     } finally {
       previewBusy = false;
     }
   }
 </script>
 
-<div class="grid gap-px bg-line p-px">
-  <div class="grid gap-3 bg-panel p-4">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <span class="t-label text-fg">Email</span>
-        <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Email Code Login</h3>
-      </div>
-      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting("email")}>Save email</button>
+<Instrument
+  title="Email code login"
+  note="Passwordless one-time codes delivered over your own SMTP relay. This relay is shared: magic link, signup verification and password reset all send through it."
+>
+  {#snippet actions()}
+    <button
+      type="button"
+      class="act act-primary"
+      disabled={session.busy}
+      onclick={() => saveSetting("email")}
+    >
+      {session.busy ? "Committing…" : "Commit"}
+    </button>
+  {/snippet}
+
+  {#snippet custody()}
+    <span class="stamp">Namespace <span class="serial stamp-raw">email</span></span>
+    <span class="serial stamp-raw">{session.apiBase}/settings/email</span>
+  {/snippet}
+
+  <div class="border border-rule bg-sheet px-4 py-3.5">
+    <div class="flex flex-wrap items-baseline gap-x-5 gap-y-2">
+      <span class="shrink-0"><Seal state={standing.state} label={standing.label} /></span>
+      <p class="min-w-0 flex-1 basis-72 max-w-[70ch] text-[13px] leading-[1.6] text-ink">
+        {standing.detail}
+      </p>
     </div>
-    <p class="max-w-3xl text-xs leading-5 text-dim">
-      Passwordless one-time code login over SMTP. The magic link mail is configured on its own <span class="text-fg">Magic link</span> page; the same SMTP relay here is also used by magic link, signup verification and password reset.
-    </p>
+  </div>
+
+  <Section
+    title="Relay"
+    note="Credentials are stored encrypted and applied without a restart."
+  >
+    <div class="grid gap-6 sm:grid-cols-2">
+      <Entry
+        label="From"
+        placeholder="auth@example.com"
+        hint="Envelope sender. Must be an address the relay will accept."
+        bind:value={
+          () => getSettingString("email", ["from"]),
+          (v) => setSettingString("email", ["from"], v)
+        }
+      />
+
+      <Entry
+        label="Code lifetime"
+        placeholder="15m"
+        mono
+        hint="Go duration. Codes are single use and expire after this."
+        bind:value={
+          () => getSettingString("email", ["code_lifetime"]),
+          (v) => setSettingString("email", ["code_lifetime"], v)
+        }
+      />
+
+      <Entry
+        label="SMTP host"
+        placeholder="smtp.example.com"
+        mono
+        invalid={!host}
+        hint={host ? "" : "Empty turns off every email flow on this instance."}
+        bind:value={
+          () => getSettingString("email", ["smtp", "host"]),
+          (v) => setSettingString("email", ["smtp", "host"], v)
+        }
+      />
+
+      <Entry
+        label="SMTP port"
+        type="number"
+        mono
+        hint="587 for STARTTLS, 465 for implicit TLS, 25 for an unauthenticated internal relay."
+        bind:value={
+          () => String(getSettingNumber("email", ["smtp", "port"], 587)),
+          (v) => setSettingNumber("email", ["smtp", "port"], v)
+        }
+      />
+
+      <Entry
+        label="SMTP username"
+        placeholder="optional"
+        mono
+        disabled={noAuth}
+        bind:value={
+          () => getSettingString("email", ["smtp", "username"]),
+          (v) => setSettingString("email", ["smtp", "username"], v)
+        }
+      />
+
+      <Entry
+        label="SMTP password"
+        type="password"
+        placeholder={noAuth ? "not used while auth is skipped" : "optional"}
+        disabled={noAuth}
+        bind:value={
+          () => getSettingString("email", ["smtp", "password"]),
+          (v) => setSettingString("email", ["smtp", "password"], v)
+        }
+      />
+    </div>
+  </Section>
+
+  <Section title="Transport">
+    <div class="grid gap-4 sm:grid-cols-2">
+      <Switch
+        label="Skip SMTP authentication"
+        hint="For an internal relay that accepts mail from this host without credentials."
+        bind:checked={
+          () => getSettingBool("email", ["smtp", "no_auth"]),
+          (v) => setSettingBool("email", ["smtp", "no_auth"], v)
+        }
+      />
+
+      <Switch
+        label="STARTTLS"
+        hint="Upgrade the plaintext connection after greeting. The usual choice on port 587."
+        bind:checked={
+          () => getSettingBool("email", ["smtp", "starttls"], true),
+          (v) => setSettingBool("email", ["smtp", "starttls"], v)
+        }
+      />
+
+      <Switch
+        label="Implicit TLS"
+        hint="Open the connection already encrypted. The usual choice on port 465."
+        bind:checked={
+          () => getSettingBool("email", ["smtp", "tls"]),
+          (v) => setSettingBool("email", ["smtp", "tls"], v)
+        }
+      />
+
+      <Switch
+        label="Accept any relay certificate"
+        consequential
+        hint="Stops verifying the relay's certificate, so a machine on the path can read the codes in transit. Use only against a relay with a self-signed certificate you control."
+        bind:checked={
+          () => getSettingBool("email", ["smtp", "insecure_skip_verify"]),
+          (v) => setSettingBool("email", ["smtp", "insecure_skip_verify"], v)
+        }
+      />
+    </div>
+
+    <div class="mt-7">
+      <Switch
+        label="Hold code login"
+        hint="While held, the token endpoint refuses grant_type=email_code. Mail for magic link, signup and password reset is unaffected."
+        bind:checked={
+          () => getSettingBool("email", ["disabled"]),
+          (v) => setSettingBool("email", ["disabled"], v)
+        }
+      />
+    </div>
+
     {#if magicLink}
-      <p class="text-xs leading-4 text-dim">Magic link login is <span class="text-fg">Enabled</span> — manage it on the MAGIC LINK page.</p>
+      <p class="mt-5 max-w-[70ch] text-[13px] leading-[1.6] text-muted">
+        Magic link login is on and configured on its own page — subject and body for that mail live
+        there, in the same <span class="serial">email</span> namespace.
+      </p>
     {/if}
-  </div>
+  </Section>
 
-  <div class="flex flex-wrap gap-px bg-line">
-    {#each sections as item}
-      <button
-        class={`px-4 py-2 text-xs font-bold ${section === item.id ?"bg-alert text-white" :"bg-panel text-dim hover:text-fg"}`}
-        on:click={() => (section = item.id)}
-      >
-        {item.label}
-      </button>
-    {/each}
-  </div>
+  <Section
+    title="Code mail"
+    note="Leave the body empty to send the built-in text. Anything you write here is a Go text/template rendered per recipient."
+  >
+    <Entry
+      label="Subject"
+      placeholder="Your login code"
+      bind:value={
+        () => getSettingString("email", ["subject"]),
+        (v) => setSettingString("email", ["subject"], v)
+      }
+    />
 
-  {#if section === "connection"}
-    <div class="grid content-start gap-px bg-line">
-      <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">Delivery settings</span>
+    <div class="mt-7">
+      <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
+        <span class="stamp shrink-0">Body</span>
+        <span class="min-w-0 flex-1"></span>
+        <span class="stamp shrink-0">Fields</span>
       </div>
-      <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-        <input type="checkbox" checked={disabled} class={checkboxClass(disabled, true)} on:change={(event) => setSettingBool("email", ["disabled"], checkedValue(event))} />
-        <span class={disabled ?"text-alert" :"text-dim"}>Disable code login</span>
-      </label>
-      <div class="grid gap-px bg-line md:grid-cols-2">
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">From</span>
-          <input class="field-t" value={from} placeholder="auth@example.com" on:input={(event) => setSettingString("email", ["from"], inputValue(event))} />
-        </label>
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">Code lifetime</span>
-          <input class="field-t" value={codeLifetime} placeholder="15m" on:input={(event) => setSettingString("email", ["code_lifetime"], inputValue(event))} />
-        </label>
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">SMTP host</span>
-          <input class="field-t" value={smtpHost} placeholder="smtp.example.com" on:input={(event) => setSettingString("email", ["smtp","host"], inputValue(event))} />
-        </label>
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">SMTP port</span>
-          <input class="field-t" type="number" min="1" value={smtpPort} on:input={(event) => setSettingNumber("email", ["smtp","port"], inputValue(event))} />
-        </label>
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">SMTP username</span>
-          <input class="field-t" value={smtpUsername} placeholder="optional" on:input={(event) => setSettingString("email", ["smtp","username"], inputValue(event))} />
-        </label>
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">SMTP password</span>
-          <input class="field-t" value={smtpPassword} placeholder={smtpNoAuth ?"not used while no pass is enabled" :"optional"} disabled={smtpNoAuth} on:input={(event) => setSettingString("email", ["smtp","password"], inputValue(event))} />
-        </label>
-      </div>
-      <div class="grid gap-px bg-line md:grid-cols-3">
-        <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-          <input type="checkbox" checked={smtpNoAuth} class={checkboxClass(smtpNoAuth)} on:change={(event) => setSettingBool("email", ["smtp","no_auth"], checkedValue(event))} />
-          <span class={smtpNoAuth ?"text-fg" :"text-dim"}>No pass / skip SMTP auth</span>
-        </label>
-        <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-          <input type="checkbox" checked={smtpStartTLS} class={checkboxClass(smtpStartTLS)} on:change={(event) => setSettingBool("email", ["smtp","starttls"], checkedValue(event))} />
-          <span class={smtpStartTLS ?"text-fg" :"text-dim"}>Starttls</span>
-        </label>
-        <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-          <input type="checkbox" checked={smtpTLS} class={checkboxClass(smtpTLS)} on:change={(event) => setSettingBool("email", ["smtp","tls"], checkedValue(event))} />
-          <span class={smtpTLS ?"text-fg" :"text-dim"}>Implicit TLS</span>
-        </label>
-        <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold md:col-span-3">
-          <input type="checkbox" checked={smtpInsecureSkipVerify} class={checkboxClass(smtpInsecureSkipVerify, true)} on:change={(event) => setSettingBool("email", ["smtp","insecure_skip_verify"], checkedValue(event))} />
-          <span class={smtpInsecureSkipVerify ?"text-alert" :"text-dim"}>Insecure TLS skip verify</span>
-        </label>
+
+      <ul class="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+        {#each codeFields as field (field)}
+          <li class="serial text-[12px] text-muted">{field}</li>
+        {/each}
+      </ul>
+
+      <textarea
+        class="exhibit mt-2.5 min-h-[13rem]"
+        spellcheck="false"
+        placeholder="empty = built-in code body"
+        aria-label="Code mail body template"
+        value={bodyTemplate}
+        oninput={(e) => setSettingString("email", ["body_template"], e.currentTarget.value)}
+      ></textarea>
+
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="act"
+          disabled={session.busy}
+          onclick={() => setSettingString("email", ["body_template"], defaultCodeBodyTemplate)}
+        >
+          Load the standard text
+        </button>
+        <button
+          type="button"
+          class="act"
+          disabled={session.busy}
+          onclick={() => setSettingString("email", ["body_template"], "")}
+        >
+          Clear to built-in
+        </button>
       </div>
     </div>
-  {:else if section === "template"}
-    <div class="grid content-start gap-px bg-line">
-      <div class="bg-panel px-3 py-2">
-        <span class="t-label text-fg">Code mail template</span>
-      </div>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Code subject</span>
-        <input class="field-t" value={subject} placeholder="Your login code" on:input={(event) => setSettingString("email", ["subject"], inputValue(event))} />
-      </label>
-      <label class="grid gap-1 bg-panel p-3">
-        <span class="t-label">Code body template</span>
-        <textarea class="field-t min-h-48 text-xs leading-4" value={bodyTemplate} placeholder="empty = built-in code body" on:input={(event) => setSettingString("email", ["body_template"], inputValue(event))}></textarea>
-      </label>
-      <div class="flex flex-wrap gap-2 bg-panel p-3">
-        <button class="btn-t" disabled={busy} on:click={() => setSettingString("email", ["body_template"], defaultCodeBodyTemplate)}>Use default</button>
-        <button class="btn-t" disabled={busy} on:click={() => setSettingString("email", ["body_template"],"")}>Use built-in</button>
-      </div>
-      <div class="bg-panel p-3 text-xs leading-5 text-dim">
-        Variables: <code class="text-fg">{"{{.Email}}"}</code>, <code class="text-fg">{"{{.Code}}"}</code>, <code class="text-fg">{"{{.ExpiresIn}}"}</code>, <code class="text-fg">{"{{.ClientID}}"}</code>, <code class="text-fg">{"{{.RedirectURI}}"}</code>, <code class="text-fg">{"{{.UserID}}"}</code>, <code class="text-fg">{"{{.UserAlias}}"}</code>.
-      </div>
-    </div>
+  </Section>
 
-    <div class="grid gap-px bg-line lg:grid-cols-[360px,minmax(0,1fr)]">
-      <div class="grid content-start gap-px bg-line">
-        <div class="bg-panel px-3 py-2">
-          <span class="t-label text-fg">Code mail preview</span>
+  <Section
+    title="Preview"
+    note="Renders the template above against sample values on the server. Nothing is sent and nothing is saved."
+  >
+    <div class="grid gap-10 lg:grid-cols-[20rem_minmax(0,1fr)]">
+      <div>
+        <div class="grid gap-5">
+          <Entry label="Recipient" placeholder="user@example.com" bind:value={previewEmail} />
+          <Entry label="Code" placeholder="123456" mono bind:value={previewCode} />
+          <Entry label="Client ID" placeholder="ui" mono bind:value={previewClientID} />
         </div>
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">Email</span>
-          <input bind:value={previewEmail} class="field-t" placeholder="user@example.com" />
-        </label>
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">Code</span>
-          <input bind:value={previewCode} class="field-t" placeholder="123456" />
-        </label>
-        <label class="grid gap-1 bg-panel p-3">
-          <span class="t-label">Client ID</span>
-          <input bind:value={previewClientID} class="field-t" placeholder="ui" />
-        </label>
-        <div class="bg-panel p-3">
-          <button class="btn-t-solid w-full" disabled={previewBusy} on:click={renderPreview}>Render preview</button>
-        </div>
+
+        <button
+          type="button"
+          class="act act-primary mt-6 w-full"
+          disabled={previewBusy}
+          onclick={renderPreview}
+        >
+          {previewBusy ? "Rendering…" : "Render"}
+        </button>
       </div>
 
-      <div class="grid content-start gap-px bg-line">
-        <div class="bg-panel px-3 py-2">
-          <span class="t-label text-fg">Rendered mail</span>
-        </div>
+      <div class="min-w-0">
         {#if previewError}
-          <div class="bg-panel p-3 text-xs text-alert">{previewError}</div>
+          <div class="border border-seal/45 px-4 py-3.5">
+            <p class="stamp text-seal">Template rejected</p>
+            <p class="mt-1.5 max-w-[70ch] text-[13px] leading-[1.6] text-ink">{previewError}</p>
+            <p class="mt-2 max-w-[70ch] text-[12.5px] leading-[1.55] text-muted">
+              Fix the body above and render again — the stored setting is untouched.
+            </p>
+          </div>
         {:else if preview}
-          <div class="grid gap-3 bg-panel p-4">
-            <p class="break-all text-xs"><span class="t-label">Subject</span> <span class="text-fg">{preview.subject}</span></p>
-            <pre class="overflow-auto whitespace-pre-wrap border border-line bg-crt p-3 text-xs leading-5 text-fg">{preview.body}</pre>
+          <!-- The mail as received: a document, not a form field. -->
+          <div class="border border-rule bg-sheet">
+            <div class="border-b border-rule px-5 py-4">
+              <p class="stamp">Subject</p>
+              <p class="mt-1.5 break-words text-[15.5px] font-semibold leading-[1.35] text-ink">
+                {preview.subject}
+              </p>
+            </div>
+            <p class="serial whitespace-pre-wrap px-5 py-5 text-[12.5px] leading-[1.7] text-ink">
+              {preview.body}
+            </p>
           </div>
         {:else}
-          <div class="bg-panel p-4 text-xs leading-4 text-dim">Render a preview to validate the Go template before saving.</div>
+          <div class="border border-dashed border-rule px-6 py-12 text-center">
+            <p class="text-[13.5px] font-semibold text-ink">Nothing rendered yet</p>
+            <p class="mx-auto mt-2 max-w-[52ch] text-[13px] leading-[1.6] text-muted">
+              Render before you commit: a template that fails to parse is only found here or by the
+              first person who tries to log in.
+            </p>
+          </div>
         {/if}
       </div>
     </div>
-  {/if}
-</div>
+  </Section>
+</Instrument>

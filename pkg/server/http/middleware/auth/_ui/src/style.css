@@ -1,128 +1,476 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-/* Clean, calm admin UI. Sans-serif first; mono only for code and identifiers.
-   Token names (crt/panel/line/fg/dim/...) are kept so components re-skin
-   without edits. */
-:root {
-  color-scheme: dark;
-  --color-crt: 17 19 23; /* background   #111317 */
-  --color-surface: 22 25 30; /* surface      #16191e */
-  --color-panel: 28 31 38; /* panel        #1c1f26 */
-  --color-panel-hover: 35 39 47; /* panel-hover  #23272f */
-  --color-line: 44 49 58; /* border       #2c313a */
-  --color-line-subtle: 55 61 72; /* border-subtle #373d48 */
-  --color-fg: 233 236 240; /* text         #e9ecf0 */
-  --color-dim: 148 155 168; /* muted text   #949ba8 */
-  --color-primary: 84 141 255; /* primary      #548dff */
-  --color-phosphor: 52 190 110; /* success      #34be6e */
-  --color-alert: 235 90 90; /* error        #eb5a5a */
-  --color-warning: 235 165 60; /* warning      #eba53c */
+/* ---------------------------------------------------------------------------
+   Faces are declared by hand rather than imported wholesale: this bundle is
+   compiled into the Go binary with go:embed, which ships every file in dist/
+   regardless of what a browser would download. Latin and Latin-Extended cover
+   an English console with European and Turkish identifiers; the Vietnamese,
+   Cyrillic, Greek and italic cuts would be four times the weight for nothing.
+   --------------------------------------------------------------------------- */
+@font-face {
+  font-family: "Public Sans Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/public-sans/files/public-sans-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+@font-face {
+  font-family: "Public Sans Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/public-sans/files/public-sans-latin-ext-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-ext-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ---------------------------------------------------------------------------
+   KEY CEREMONY — the visual world of the Turna auth console.
+
+   Every record here is an issued instrument: it carries a serial, a custody
+   trail and a seal. The system is typographic, never skeuomorphic. Separation
+   comes from rules, ground shifts and weight — not from a border around every
+   box. One colour, the wax seal, is reserved for what cannot be undone.
+   --------------------------------------------------------------------------- */
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  --color-ground: var(--w-ground);
+  --color-sheet: var(--w-sheet);
+  --color-raised: var(--w-raised);
+  --color-ink: var(--w-ink);
+  --color-muted: var(--w-muted);
+  --color-faint: var(--w-faint);
+  --color-rule: var(--w-rule);
+  --color-rule-strong: var(--w-rule-strong);
+  --color-seal: var(--w-seal);
+  --color-carbon: var(--w-carbon);
+  --color-endorsed: var(--w-endorsed);
+  --color-caution: var(--w-caution);
+
+  --font-sans: "Public Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Documents do not have rounded corners. */
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-DEFAULT: 2px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
+
+  --ease-settle: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* --- Instrument: the document plane, read under office light ------------- */
+:root,
 :root[data-theme="light"] {
   color-scheme: light;
-  --color-crt: 246 247 249;
-  --color-surface: 255 255 255;
-  --color-panel: 255 255 255;
-  --color-panel-hover: 243 245 248;
-  --color-line: 226 229 235;
-  --color-line-subtle: 214 218 226;
-  --color-fg: 28 32 40;
-  --color-dim: 105 113 128;
-  --color-primary: 43 108 233;
-  --color-phosphor: 22 141 73;
-  --color-alert: 208 55 55;
-  --color-warning: 168 106 20;
+  --w-ground: #dce1db;
+  --w-sheet: #f2f4f0;
+  --w-raised: #e8ebe4;
+  --w-ink: #16191a;
+  --w-muted: #565f59;
+  --w-faint: #6f7872;
+  --w-rule: #c2c9bf;
+  --w-rule-strong: #16191a;
+  --w-seal: #a3252b;
+  --w-carbon: #2a4674;
+  --w-endorsed: #2f6b4a;
+  --w-caution: #7d5110;
+  /* Text laid on a filled accent. Kept per theme: the dark theme's accents are
+     tints, so white on them falls under 3:1. */
+  --w-on-carbon: #ffffff;
+  --w-on-seal: #ffffff;
+  --w-guilloche: #16191a;
+  --w-guilloche-alpha: 0.09;
+  --w-hatch-alpha: 0.14;
 }
 
-html,
-body,
-#app {
-  height: 100%;
+/* --- Vault: the same instruments in the archive, low light --------------- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --w-ground: #101311;
+  --w-sheet: #181c19;
+  --w-raised: #1f2420;
+  --w-ink: #e4e9e2;
+  --w-muted: #98a199;
+  --w-faint: #8a938c;
+  --w-rule: #2c332d;
+  --w-rule-strong: #e4e9e2;
+  --w-seal: #e4737a;
+  --w-carbon: #7fa8e8;
+  --w-endorsed: #4fa97a;
+  --w-caution: #c79a3e;
+  --w-on-carbon: #0c1220;
+  --w-on-seal: #1a0708;
+  --w-guilloche: #e4e9e2;
+  --w-guilloche-alpha: 0.07;
+  --w-hatch-alpha: 0.2;
 }
 
-body {
-  margin: 0;
-  overflow: hidden;
-  background: rgb(var(--color-crt));
-  color: rgb(var(--color-fg));
-  font-family: "IBM Plex Sans", Inter, system-ui, "Helvetica Neue", Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
+/* Element defaults belong in the base layer. Left unlayered they would outrank
+   every Tailwind utility — an unlayered `button { color: inherit }` silently
+   defeats every text-colour utility applied to a button. */
+@layer base {
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
 
-textarea,
-input,
-button,
-select {
-  font: inherit;
-}
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: var(--w-ground);
+    color: var(--w-ink);
+    font-family: "Public Sans Variable", ui-sans-serif, system-ui, sans-serif;
+    font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-variant-numeric: tabular-nums;
+  }
 
-button,
-a,
-input,
-select,
-textarea {
-  position: relative;
-  z-index: 70;
-}
+  textarea,
+  input,
+  button,
+  select {
+    font: inherit;
+    color: inherit;
+  }
 
-input,
-select,
-textarea,
-pre,
-code {
-  border-radius: 8px;
-}
+  /* --- Browser surfaces: the parts we did not draw still carry the design - */
+  ::selection {
+    background: var(--w-seal);
+    color: var(--w-on-seal);
+  }
 
-.font-display {
-  font-weight: 600;
-}
+  :focus-visible {
+    outline: 2px solid var(--w-seal);
+    outline-offset: 2px;
+  }
 
-::selection {
-  background: rgb(var(--color-primary));
-  color: #fff;
-}
+  input,
+  textarea {
+    caret-color: var(--w-seal);
+  }
 
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgb(var(--color-line-subtle));
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--color-dim));
+  ::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--w-rule);
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--w-faint);
+    background-clip: content-box;
+  }
+  * {
+    scrollbar-color: var(--w-rule) transparent;
+    scrollbar-width: thin;
+  }
+
+  a {
+    color: var(--w-carbon);
+    text-underline-offset: 0.22em;
+    text-decoration-thickness: 1px;
+  }
 }
 
 @layer components {
-  /* small muted label */
-  .t-label {
-    @apply text-xs font-medium text-dim;
+  /* ---- Engraved caps: the label register of the whole console ---------- */
+  .stamp {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--w-muted);
+    font-variant-numeric: tabular-nums;
   }
 
-  /* standard action button */
-  .btn-t {
-    @apply inline-flex select-none items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3.5 py-2 text-[13px] font-medium text-fg shadow-sm transition-colors hover:border-line-subtle hover:bg-panel-hover disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:bg-surface;
+  .stamp-ink {
+    color: var(--w-ink);
   }
 
-  /* primary action */
-  .btn-t-solid {
-    @apply btn-t border-primary bg-primary text-white hover:border-primary hover:bg-primary/85 hover:text-white;
+  /* The label register at the same weight, but for values that are read
+     literally: API paths, namespaces, ids, hostnames. Uppercasing a
+     case-sensitive path turns a fact into a lie. */
+  .stamp-raw {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    text-transform: none;
+    color: var(--w-muted);
+    font-variant-numeric: tabular-nums;
   }
 
-  .btn-t-alert {
-    @apply btn-t border-alert/40 text-alert hover:border-alert hover:bg-alert hover:text-white;
+  /* ---- Rules: separation without boxes --------------------------------- */
+  .rule {
+    border-bottom: 1px solid var(--w-rule);
   }
 
-  /* form field */
-  .field-t {
-    @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg outline-none transition-shadow placeholder:text-dim focus:border-primary focus:ring-2 focus:ring-primary/25;
+  /* The legal double rule closes a masthead. */
+  .rule-double {
+    border-bottom: 3px double var(--w-rule-strong);
+  }
+
+  /* A section heading sits on its rule, not above a card. */
+  .rule-label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--w-rule);
+    padding-bottom: 0.4rem;
+  }
+  .rule-label::after {
+    content: "";
+    flex: 1 1 auto;
+  }
+
+  /* ---- Sheet: the instrument's own ground ------------------------------ */
+  .sheet {
+    background: var(--w-sheet);
+    border: 1px solid var(--w-rule);
+  }
+
+  /* ---- Security pantograph, for sealed regions only -------------------- */
+  .guilloche {
+    position: relative;
+    isolation: isolate;
+  }
+  .guilloche::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    opacity: var(--w-guilloche-alpha);
+    background-image:
+      repeating-radial-gradient(
+        circle at 18% 120%,
+        transparent 0 13px,
+        var(--w-guilloche) 13px 13.6px,
+        transparent 13.6px 27px
+      ),
+      repeating-radial-gradient(
+        circle at 88% -20%,
+        transparent 0 17px,
+        var(--w-guilloche) 17px 17.6px,
+        transparent 17.6px 35px
+      );
+  }
+
+  /* ---- Tamper-evident hatching, for what cannot be undone -------------- */
+  .hatch {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      color-mix(in srgb, var(--w-seal) calc(var(--w-hatch-alpha) * 100%), transparent) 0 6px,
+      transparent 6px 12px
+    );
+  }
+
+  /* ---- Controls: chrome deleted --------------------------------------- */
+  .act {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 1px solid var(--w-rule-strong);
+    border-radius: 2px;
+    background: transparent;
+    padding: 0.375rem 0.8rem;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--w-ink);
+    transition:
+      background-color 120ms var(--ease-settle),
+      transform 90ms var(--ease-settle),
+      color 120ms var(--ease-settle);
+  }
+  .act:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--w-ink) 8%, transparent);
+  }
+  /* the press: every commit shares one motion */
+  .act:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  .act:disabled {
+    border-color: var(--w-rule);
+    color: var(--w-faint);
+    cursor: not-allowed;
+  }
+
+  .act-primary {
+    background: var(--w-carbon);
+    border-color: var(--w-carbon);
+    color: var(--w-on-carbon);
+    font-weight: 600;
+  }
+  .act-primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--w-carbon) 86%, var(--w-ink));
+  }
+  .act-primary:disabled {
+    background: transparent;
+    color: var(--w-faint);
+  }
+
+  .act-seal {
+    border-color: var(--w-seal);
+    color: var(--w-seal);
+    font-weight: 600;
+  }
+  .act-seal:hover:not(:disabled) {
+    background: var(--w-seal);
+    color: var(--w-on-seal);
+  }
+
+  .act-quiet {
+    border-color: transparent;
+    color: var(--w-muted);
+    padding-inline: 0.4rem;
+  }
+  .act-quiet:hover:not(:disabled) {
+    color: var(--w-ink);
+    background: color-mix(in srgb, var(--w-ink) 7%, transparent);
+  }
+
+  /* ---- Fields: ruled lines, not boxes ---------------------------------- */
+  .entry {
+    width: 100%;
+    border: 0;
+    border-bottom: 1px solid var(--w-rule);
+    border-radius: 0;
+    background: transparent;
+    padding: 0.3rem 0.1rem;
+    font-size: 13.5px;
+    color: var(--w-ink);
+    outline: none;
+    transition: border-color 120ms var(--ease-settle);
+  }
+  /* Placeholder text is body text as far as the contrast floor is concerned;
+     --w-faint exists for disabled controls and marks, which are exempt. */
+  .entry::placeholder {
+    color: var(--w-muted);
+  }
+  .entry:hover:not(:disabled) {
+    border-bottom-color: var(--w-faint);
+  }
+  .entry:focus {
+    border-bottom-color: var(--w-seal);
+    border-bottom-width: 2px;
+    padding-bottom: calc(0.3rem - 1px);
+  }
+  .entry:disabled {
+    color: var(--w-faint);
+    border-bottom-style: dashed;
+  }
+
+  /* A select is the same ruled line, with its own mark instead of the
+     platform's chrome, so it does not read as a boxed field beside them. */
+  select.entry {
+    appearance: none;
+    padding-right: 1.4rem;
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+      linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position:
+      right 0.55rem center,
+      right 0.3rem center;
+    background-size:
+      5px 5px,
+      5px 5px;
+    background-repeat: no-repeat;
+  }
+  select.entry option {
+    background: var(--w-sheet);
+    color: var(--w-ink);
+  }
+
+  /* Multi-line and code entries keep a full frame: they are exhibits. */
+  .exhibit {
+    width: 100%;
+    border: 1px solid var(--w-rule);
+    border-radius: 2px;
+    background: var(--w-raised);
+    padding: 0.7rem 0.8rem;
+    font-family: "JetBrains Mono Variable", ui-monospace, monospace;
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--w-ink);
+    outline: none;
+    tab-size: 2;
+  }
+  .exhibit:focus {
+    border-color: var(--w-seal);
+  }
+
+  /* ---- Serial: identifiers, versions, keys ----------------------------- */
+  .serial {
+    font-family: "JetBrains Mono Variable", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* --- The one authored moment: ink arriving on the sheet ------------------ */
+@keyframes stamp-down {
+  0% {
+    opacity: 0;
+    transform: scale(1.05);
+    filter: blur(2.5px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+}
+
+.stamp-in {
+  animation: stamp-down 420ms var(--ease-settle) both;
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
   }
 }

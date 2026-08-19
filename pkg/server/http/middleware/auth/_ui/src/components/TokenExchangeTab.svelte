@@ -1,43 +1,53 @@
 <script lang="ts">
-  import type { SettingNamespace } from "../lib/api";
+  import Instrument from "./ui/Instrument.svelte";
+  import Section from "./ui/Section.svelte";
+  import Switch from "./ui/Switch.svelte";
+  import Seal from "./ui/Seal.svelte";
+  import { session } from "../lib/state/session.svelte";
+  import { getSettingBool, setSettingBool, saveSetting } from "../lib/state/settings.svelte";
 
-  export let busy = false;
-  export let settingsRevision = 0;
-  export let getSettingBool: (namespace: SettingNamespace, path: string[], fallback?: boolean) => boolean = () => false;
-  export let setSettingBool: (namespace: SettingNamespace, path: string[], value: boolean) => void = () => {};
-  export let saveSetting: (namespace: SettingNamespace) => void | Promise<void> = () => {};
-
-  const ns: SettingNamespace = "token_exchange";
-
-  function checkedValue(event: Event) {
-    return (event.currentTarget as HTMLInputElement).checked;
-  }
-
-  function sBool(_rev: number, path: string[], fallback = false) {
-    return getSettingBool(ns, path, fallback);
-  }
-
-  $: disabled = sBool(settingsRevision, ["disabled"]);
+  const disabled = $derived(getSettingBool("token_exchange", ["disabled"]));
 </script>
 
-<div class="grid gap-px bg-line p-px">
-  <div class="grid gap-3 bg-panel p-4">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <span class="t-label text-fg">Token exchange</span>
-        <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Rfc 8693</h3>
-      </div>
-      <button class="btn-t-solid" disabled={busy} on:click={() => saveSetting(ns)}>Save token exchange</button>
-    </div>
-    <p class="max-w-3xl text-xs leading-5 text-dim">
-      The RFC 8693 token exchange grant (<span class="text-fg">grant_type=urn:ietf:params:oauth:grant-type:token-exchange</span>) lets a client swap one token for another at <span class="text-fg">/oauth2/token</span>.
-    </p>
-  </div>
+<Instrument
+  title="Token exchange"
+  note="The RFC 8693 grant, which lets a client hand in one token and receive another at the token endpoint. Used to step a token down for a downstream service, or to act on behalf of the subject that presented it."
+>
+  {#snippet actions()}
+    <button
+      type="button"
+      class="act act-primary"
+      disabled={session.busy}
+      onclick={() => saveSetting("token_exchange")}
+    >
+      Commit
+    </button>
+  {/snippet}
 
-  <div class="grid gap-px bg-line">
-    <label class="flex items-center gap-3 bg-panel p-3 text-xs font-bold">
-      <input type="checkbox" checked={disabled} class="h-3.5 w-3.5 appearance-none border border-line bg-crt checked:bg-alert" on:change={(event) => setSettingBool(ns, ["disabled"], checkedValue(event))} />
-      <span class={disabled ?"text-alert" :"text-dim"}>Disable token exchange</span>
-    </label>
-  </div>
-</div>
+  {#snippet custody()}
+    <span class="stamp">Namespace <span class="serial stamp-raw">token_exchange</span></span>
+    <Seal state={disabled ? "void" : "endorsed"} label={disabled ? "Not accepted" : "Accepted"} />
+  {/snippet}
+
+  <Section title="Standing" first>
+    <Switch
+      label="Refuse the token exchange grant"
+      hint="On, the token endpoint answers unsupported_grant_type for every exchange request. Tokens already issued through an exchange keep working until they expire — this only stops new ones."
+      bind:checked={
+        () => getSettingBool("token_exchange", ["disabled"]),
+        (value: boolean) => setSettingBool("token_exchange", ["disabled"], value)
+      }
+    />
+  </Section>
+
+  <Section title="The grant" note="What a client sends to {session.oauthBase}/oauth2/token.">
+    <pre class="exhibit overflow-auto">grant_type=urn:ietf:params:oauth:grant-type:token-exchange
+subject_token=&lt;the token being handed in&gt;
+subject_token_type=urn:ietf:params:oauth:token-type:access_token</pre>
+
+    <p class="mt-5 max-w-[70ch] text-[13px] leading-[1.6] text-muted">
+      The subject token is validated the same way any other token is. The client presenting it still
+      authenticates as itself, so this widens what a client can obtain, never who it is.
+    </p>
+  </Section>
+</Instrument>

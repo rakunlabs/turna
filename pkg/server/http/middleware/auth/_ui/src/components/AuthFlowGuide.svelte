@@ -1,64 +1,48 @@
 <script lang="ts">
   import { onMount } from "svelte";
 
-  export let apiBase = "/auth/v1";
+  import Instrument from "./ui/Instrument.svelte";
+  import Entry from "./ui/Entry.svelte";
+  import { docket, messageOf, session } from "../lib/state/session.svelte";
 
-  type FlowID = "browser" | "provider" | "password" | "client" | "api";
-  type View = FlowID | "endpoints";
+  /**
+   * The one reading surface in this console. Everything else is a register or a
+   * control; this is a document, so it gets a prose measure, a heading
+   * hierarchy carried by weight, and every path set as a serial. The two
+   * identifiers at the top are substituted into every snippet below, so what an
+   * operator copies is already addressed to this instance.
+   */
+  let origin = $state("");
+  let providerID = $state("keycloak");
+  let clientID = $state("web-app");
 
-  let selected: View = "browser";
-  let origin = "";
-  let providerID = "keycloak";
-  let clientID = "web-app";
-  let loginBase = "/login/";
+  const loginProviderName = "turna";
+  const loginBase = "/login/";
 
-  $: authBase = apiBase.replace(/\/v1$/, "");
-  $: publicAuthBase = `${origin}${authBase}`;
-  $: swaggerURL = `${authBase}/swagger/index.html`;
-  $: openapiURL = `${authBase}/swagger/swagger.json`;
-  $: loginProviderName = "turna";
-  $: loginCallback = `${origin}${loginBase.replace(/\/?$/, "/")}auth/code/${loginProviderName}`;
-  $: providerCallback = `${publicAuthBase}/oauth2/code/${providerID || "{provider}"}`;
-  $: authStart = `${publicAuthBase}/oauth2/auth/${providerID || "{provider}"}`;
-  $: tokenURL = `${publicAuthBase}/oauth2/token`;
-  $: certURL = `${publicAuthBase}/oauth2/certs`;
+  const authBase = $derived(session.oauthBase);
+  const publicAuthBase = $derived(`${origin}${authBase}`);
+  const swaggerURL = $derived(`${authBase}/swagger/index.html`);
+  const openapiURL = $derived(`${authBase}/swagger/swagger.json`);
+  const loginCallback = $derived(
+    `${origin}${loginBase.replace(/\/?$/, "/")}auth/code/${loginProviderName}`,
+  );
+  const providerCallback = $derived(`${publicAuthBase}/oauth2/code/${providerID || "{provider}"}`);
+  const authStart = $derived(`${publicAuthBase}/oauth2/auth/${providerID || "{provider}"}`);
+  const tokenURL = $derived(`${publicAuthBase}/oauth2/token`);
+  const certURL = $derived(`${publicAuthBase}/oauth2/certs`);
 
-  const flows: { id: FlowID; label: string; summary: string }[] = [
-    {
-      id: "browser",
-      label: "Browser + session",
-      summary: "Use Turna Auth as an OIDC provider; login middleware stores the cookie/session.",
-    },
-    {
-      id: "provider",
-      label: "Upstream provider",
-      summary: "Connect Keycloak, GitHub, or another identity provider to Auth.",
-    },
-    {
-      id: "password",
-      label: "Password flow",
-      summary: "Issue tokens by checking a local user password or LDAP credentials.",
-    },
-    {
-      id: "client",
-      label: "Service account",
-      summary: "Use a service account secret for machine-to-machine tokens.",
-    },
-    {
-      id: "api",
-      label: "Protect API",
-      summary: "Validate bearer tokens or session cookies with the session middleware.",
-    },
+  const contents = [
+    { id: "guide-browser", label: "Browser session", summary: "Turna as the OIDC provider for your own app." },
+    { id: "guide-provider", label: "Upstream provider", summary: "Delegate login to Keycloak, GitHub or another IdP." },
+    { id: "guide-password", label: "Password grant", summary: "Trade a username and password for a token." },
+    { id: "guide-client", label: "Service account", summary: "Machine-to-machine tokens from a client secret." },
+    { id: "guide-api", label: "Protecting an API", summary: "Validate bearer tokens and cookies at the edge." },
+    { id: "guide-oauth-endpoints", label: "OAuth2 endpoints", summary: "The published surface, same for every flow." },
+    { id: "guide-iam-endpoints", label: "IAM endpoints", summary: "The administrative and compatibility surface." },
+    { id: "guide-reference", label: "Interactive reference", summary: "Swagger UI and the OpenAPI document." },
   ];
 
-  const reference = {
-    id: "endpoints" as const,
-    label: "API endpoints",
-    summary: "OAuth2 and IAM endpoint reference for this instance — the same for every flow.",
-  };
-
-  $: selectedFlow = flows.find((flow) => flow.id === selected) ?? flows[0];
-  $: browserSnippet = `server:
+  const browserSnippet = $derived(`server:
   http:
     middlewares:
       session:
@@ -93,31 +77,31 @@
         middlewares: [login]
       app:
         path: /*
-        middlewares: [session, app]`;
+        middlewares: [session, app]`);
 
-  $: passwordCurl = `curl -X POST ${tokenURL} \\
+  const passwordCurl = $derived(`curl -X POST ${tokenURL} \\
   -H 'Content-Type: application/x-www-form-urlencoded' \\
   -d 'grant_type=password' \\
   -d 'client_id=${clientID || "web-app"}' \\
   -d 'client_secret=change-me' \\
   -d 'username=user@example.com' \\
   -d 'password=secret' \\
-  -d 'scope=openid profile'`;
+  -d 'scope=openid profile'`);
 
-  $: clientCurl = `curl -X POST ${tokenURL} \\
+  const clientCurl = $derived(`curl -X POST ${tokenURL} \\
   -H 'Content-Type: application/x-www-form-urlencoded' \\
   -d 'grant_type=client_credentials' \\
   -d 'client_id=my-service' \\
-  -d 'client_secret=change-me'`;
+  -d 'client_secret=change-me'`);
 
-  $: codeCurl = `curl -X POST ${tokenURL} \\
+  const codeCurl = $derived(`curl -X POST ${tokenURL} \\
   -H 'Content-Type: application/x-www-form-urlencoded' \\
   -d 'grant_type=authorization_code' \\
   -d 'client_id=${clientID || "web-app"}' \\
   -d 'client_secret=change-me' \\
-  -d 'code=<code-from-redirect>'`;
+  -d 'code=<code-from-redirect>'`);
 
-  $: apiSnippet = `server:
+  const apiSnippet = $derived(`server:
   http:
     middlewares:
       token_api_mode:
@@ -134,7 +118,7 @@
     routers:
       api:
         path: /api/*
-        middlewares: [token_api_mode, session, api]`;
+        middlewares: [token_api_mode, session, api]`);
 
   const endpoints = [
     { label: "Discovery", value: "/oauth2/.well-known/openid-configuration" },
@@ -167,175 +151,265 @@
     { label: "Reload sync", value: "/v1/sync" },
   ];
 
+  /** In-page jumps, never anchors: the hash belongs to the router. */
+  function jump(id: string) {
+    document.getElementById(id)?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+
+  async function copy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      docket.commit("Copied to the clipboard");
+    } catch (err) {
+      docket.reject(
+        `${messageOf(err, "The clipboard is not available here")} — select the block and copy it manually.`,
+      );
+    }
+  }
+
   onMount(() => {
     origin = window.location.origin;
   });
 </script>
 
-<div class="bg-panel">
-  <div class="flex flex-col gap-3 border-b border-line p-4 md:flex-row md:items-end md:justify-between">
-    <div>
-      <p class="t-label text-fg">Auth flow guide</p>
-      <h3 class="mt-2 font-display text-3xl leading-none tracking-tight md:text-4xl">Token & Session Paths</h3>
-      <p class="mt-3 max-w-3xl text-xs leading-5 text-dim">
-        OAuth2, LDAP password check, local users and service accounts all end at the same Turna token surface.
-        Use the tabs below to choose the integration path.
-      </p>
+{#snippet code(caption: string, text: string)}
+  <div class="mt-5">
+    <div class="flex items-baseline justify-between gap-4 border-b border-rule pb-1.5">
+      <h4 class="stamp stamp-ink">{caption}</h4>
+      <button type="button" class="act act-quiet shrink-0" onclick={() => void copy(text)}>Copy</button>
     </div>
-    <div class="grid gap-2 text-xs text-dim md:min-w-[360px]">
-      <label class="grid gap-1">
-        <span class="t-label">Provider ID</span>
-        <input class="field-t" bind:value={providerID} placeholder="keycloak" />
-      </label>
-      <label class="grid gap-1">
-        <span class="t-label">OAuth client ID</span>
-        <input class="field-t" bind:value={clientID} placeholder="web-app" />
-      </label>
-    </div>
+    <pre class="exhibit mt-3 overflow-x-auto">{text}</pre>
   </div>
+{/snippet}
 
-  <div class="grid gap-px bg-line p-px xl:grid-cols-[300px,minmax(0,1fr)]">
-    <div class="grid content-start gap-px bg-line">
-      <button
-        class={`grid gap-1 p-3 text-left ${selected === reference.id ?"bg-alert text-white" :"bg-panel text-dim hover:text-fg"}`}
-        on:click={() => (selected = reference.id)}
-      >
-        <span class="text-xs font-bold">{reference.label}</span>
-        <span class="text-xs leading-4">{reference.summary}</span>
-      </button>
+{#snippet fact(label: string, value: string)}
+  <li class="grid gap-x-6 gap-y-1 border-b border-rule py-2.5 last:border-b-0 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] sm:items-baseline">
+    <span class="text-[13px] text-ink">{label}</span>
+    <span class="serial min-w-0 break-all text-[12.5px] text-muted">{value}</span>
+  </li>
+{/snippet}
 
-      <div class="bg-panel px-3 py-2">
-        <span class="t-label">Integration flows</span>
-      </div>
+<Instrument
+  title="Integration guide"
+  note="Every path into this instance — browser sessions, upstream providers, passwords, service accounts — ends at the same token surface. This is that surface, written out."
+>
+  {#snippet custody()}
+    <span class="stamp">Addressed to <span class="serial stamp-raw">{publicAuthBase || authBase}</span></span>
+    <span class="stamp">Reference, not configuration</span>
+  {/snippet}
 
-      {#each flows as flow}
-        <button
-          class={`grid gap-1 p-3 text-left ${selected === flow.id ?"bg-alert text-white" :"bg-panel text-dim hover:text-fg"}`}
-          on:click={() => (selected = flow.id)}
-        >
-          <span class="text-xs font-bold">{flow.label}</span>
-          <span class="text-xs leading-4">{flow.summary}</span>
-        </button>
+  <section>
+    <h2 class="border-b border-rule pb-2 text-[1.05rem] font-bold tracking-[-0.015em] text-ink">
+      How the pieces fit
+    </h2>
+    <p class="mt-4 max-w-[70ch] text-[13.5px] leading-[1.7] text-ink">
+      Turna Auth is an OAuth2 and OpenID Connect provider with an IAM store behind it. Whoever the
+      caller is — a person in a browser, a service holding a secret, a directory account binding
+      against LDAP — the result is the same: a signed token from
+      <span class="serial">/oauth2/token</span>, verifiable against
+      <span class="serial">/oauth2/certs</span>.
+    </p>
+    <p class="mt-3 max-w-[70ch] text-[13.5px] leading-[1.7] text-muted">
+      Authorisation is separate from authentication. A token says who the caller is; the permission
+      graph decides what that identity may reach, and the access check page asks it directly.
+    </p>
+
+    <h3 class="mt-8 text-[13.5px] font-semibold text-ink">Contents</h3>
+    <ul class="mt-2">
+      {#each contents as item (item.id)}
+        <li class="border-b border-rule last:border-b-0">
+          <button
+            type="button"
+            class="group grid w-full gap-x-6 gap-y-0.5 py-2.5 text-left transition-colors sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] sm:items-baseline"
+            onclick={() => jump(item.id)}
+          >
+            <span class="text-[13.5px] text-carbon group-hover:underline">{item.label}</span>
+            <span class="text-[12.5px] leading-[1.55] text-muted">{item.summary}</span>
+          </button>
+        </li>
       {/each}
+    </ul>
+  </section>
+
+  <section class="mt-14">
+    <h2 class="border-b border-rule pb-2 text-[1.05rem] font-bold tracking-[-0.015em] text-ink">
+      Your identifiers
+    </h2>
+    <p class="mt-4 max-w-[70ch] text-[13.5px] leading-[1.7] text-muted">
+      These two names are substituted into every snippet below. They are not stored — nothing on this
+      page writes anything.
+    </p>
+
+    <div class="mt-6 grid max-w-2xl gap-6 sm:grid-cols-2">
+      <Entry
+        label="Provider ID"
+        bind:value={providerID}
+        placeholder="keycloak"
+        mono
+        hint="The record you create under OAuth providers."
+      />
+      <Entry
+        label="OAuth client ID"
+        bind:value={clientID}
+        placeholder="web-app"
+        mono
+        hint="The record you create under Server clients."
+      />
     </div>
+  </section>
 
-    <div class="grid gap-px bg-line">
-      {#if selected === "endpoints"}
-        <div class="bg-panel p-4">
-          <p class="t-label text-fg">{reference.label}</p>
-          <p class="mt-2 max-w-3xl text-xs leading-5 text-dim">{reference.summary}</p>
-        </div>
+  <section id="guide-browser" class="mt-14 scroll-mt-6">
+    <h2 class="border-b border-rule pb-2 text-[1.05rem] font-bold tracking-[-0.015em] text-ink">
+      Browser session
+    </h2>
+    <p class="mt-4 max-w-[70ch] text-[13.5px] leading-[1.7] text-ink">
+      Use Turna Auth as the OIDC provider for your own application. The login middleware serves the
+      sign-in page, the session middleware holds the cookie and refreshes the token.
+    </p>
 
-        <div class="flex flex-wrap items-center justify-between gap-3 bg-panel p-4">
-          <div>
-            <p class="t-label text-fg">Openapi / swagger</p>
-            <p class="mt-2 max-w-3xl text-xs leading-5 text-dim">Interactive API reference for every admin endpoint (admin access required).</p>
-          </div>
-          <div class="flex flex-wrap gap-px">
-            <a class="btn-t-solid" href={swaggerURL} target="_blank" rel="noreferrer">Open swagger UI</a>
-            <a class="btn-t border-0 bg-crt" href={openapiURL} target="_blank" rel="noreferrer">Openapi JSON</a>
-          </div>
-        </div>
+    <h3 class="mt-8 text-[13.5px] font-semibold text-ink">Records this needs</h3>
+    <p class="mt-2 max-w-[70ch] text-[13px] leading-[1.65] text-muted">
+      An OAuth provider named <span class="serial">{providerID || "{provider}"}</span>, and an OAuth
+      server client named <span class="serial">{clientID || "web-app"}</span>. Add the login callback
+      below to that client's whitelist, or the redirect back from sign-in is refused.
+    </p>
+    <ul class="mt-4">
+      {@render fact("Login callback to whitelist", loginCallback)}
+      {@render fact("Token endpoint", tokenURL)}
+      {@render fact("JWKS", certURL)}
+    </ul>
 
-        <div class="bg-panel px-4 py-2">
-          <span class="t-label text-fg">OAuth2 endpoints</span>
-        </div>
-        <div class="grid gap-px bg-line md:grid-cols-2 xl:grid-cols-3">
-          {#each endpoints as endpoint}
-            <div class="bg-panel p-3">
-              <p class="t-label text-fg">{endpoint.label}</p>
-              <p class="mt-2 break-all text-xs leading-4 text-dim">{publicAuthBase}{endpoint.value}</p>
-            </div>
-          {/each}
-        </div>
+    {@render code("Session and login middleware", browserSnippet)}
+  </section>
 
-        <div class="bg-panel p-4">
-          <p class="t-label text-fg">IAM compatibility surface</p>
-          <p class="mt-2 max-w-3xl text-xs leading-5 text-dim">
-            Auth keeps the legacy IAM shapes for users, service accounts, roles, permissions, LDAP maps, access checks, temporary grants, exports, role relations, and bulk permission workflows. Backup/restore is intentionally not listed here because it was tied to the old Badger store; Auth uses PostgreSQL migrations and version polling instead.
-          </p>
-        </div>
+  <section id="guide-provider" class="mt-14 scroll-mt-6">
+    <h2 class="border-b border-rule pb-2 text-[1.05rem] font-bold tracking-[-0.015em] text-ink">
+      Upstream provider
+    </h2>
+    <p class="mt-4 max-w-[70ch] text-[13.5px] leading-[1.7] text-ink">
+      Delegate the actual sign-in to an existing identity provider. Turna starts the upstream flow,
+      receives the code at its own callback, reads the claims and issues its own token from them.
+    </p>
+    <p class="mt-3 max-w-[70ch] text-[13px] leading-[1.65] text-muted">
+      If the provider's <span class="serial">claim_mapping.register</span> is on, an unknown user is
+      created as a non-local account from the claims. Roles named in
+      <span class="serial">roles_claim</span> are synced into that user's sync roles, optionally
+      through the LDAP group maps. Both are configured per provider.
+    </p>
 
-        <div class="bg-panel px-4 py-2">
-          <span class="t-label text-fg">IAM endpoints</span>
-        </div>
-        <div class="grid gap-px bg-line md:grid-cols-2 xl:grid-cols-3">
-          {#each iamEndpoints as endpoint}
-            <div class="bg-panel p-3">
-              <p class="t-label text-fg">{endpoint.label}</p>
-              <p class="mt-2 break-all text-xs leading-4 text-dim">{publicAuthBase}{endpoint.value}</p>
-            </div>
-          {/each}
-        </div>
-      {:else}
-        <div class="bg-panel p-4">
-          <p class="t-label text-fg">{selectedFlow.label}</p>
-          <p class="mt-2 text-xs leading-5 text-dim">{selectedFlow.summary}</p>
-        </div>
+    <ul class="mt-6">
+      {@render fact("Redirect URI to set at the IdP", providerCallback)}
+      {@render fact("Where Turna starts the flow", authStart)}
+    </ul>
 
-        {#if selected === "browser"}
-        <div class="grid gap-px bg-line md:grid-cols-2">
-          <div class="bg-panel p-4">
-            <p class="t-label text-fg">Required records</p>
-            <p class="mt-3 text-xs leading-5 text-dim">Create an OAuth Provider named <span class="text-fg">{providerID}</span>, then create an OAuth Server Client named <span class="text-fg">{clientID}</span>.</p>
-            <p class="mt-3 break-all text-xs leading-5 text-dim">Add this login callback to the client whitelist: <span class="text-fg">{loginCallback}</span></p>
-          </div>
-          <div class="bg-panel p-4">
-            <p class="t-label text-fg">Session/login config</p>
-            <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">{browserSnippet}</pre>
-          </div>
-        </div>
-      {:else if selected === "provider"}
-        <div class="grid gap-px bg-line md:grid-cols-2">
-          <div class="bg-panel p-4">
-            <p class="t-label text-fg">Provider setup</p>
-            <p class="mt-3 break-all text-xs leading-5 text-dim">At the upstream IdP, set redirect/callback URL to <span class="text-fg">{providerCallback}</span>.</p>
-            <p class="mt-3 break-all text-xs leading-5 text-dim">Turna starts the upstream flow at <span class="text-fg">{authStart}</span>.</p>
-          </div>
-          <div class="bg-panel p-4">
-            <p class="t-label text-fg">Authorization code token exchange</p>
-            <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">{codeCurl}</pre>
-          </div>
-        </div>
-      {:else if selected === "password"}
-        <div class="grid gap-px bg-line md:grid-cols-2">
-          <div class="bg-panel p-4">
-            <p class="t-label text-fg">How password flow resolves users</p>
-            <p class="mt-3 text-xs leading-5 text-dim">If the user is local, Turna checks the stored bcrypt password in encrypted details. If the user is not local, Turna checks the active LDAP config.</p>
-            <p class="mt-3 text-xs leading-5 text-dim">The OAuth Server Client validates <span class="text-fg">client_id</span> and <span class="text-fg">client_secret</span> before user password check.</p>
-          </div>
-          <div class="bg-panel p-4">
-            <p class="t-label text-fg">Password grant request</p>
-            <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">{passwordCurl}</pre>
-          </div>
-        </div>
-      {:else if selected === "client"}
-        <div class="grid gap-px bg-line md:grid-cols-2">
-          <div class="bg-panel p-4">
-            <p class="t-label text-fg">Service account setup</p>
-            <p class="mt-3 text-xs leading-5 text-dim">Create a Service Account. Its alias is used as <span class="text-fg">client_id</span>, and <span class="text-fg">details.secret</span> is used as <span class="text-fg">client_secret</span>.</p>
-            <p class="mt-3 text-xs leading-5 text-dim">Optional default scopes come from <span class="text-fg">details.scope</span>.</p>
-          </div>
-          <div class="bg-panel p-4">
-            <p class="t-label text-fg">Client credentials request</p>
-            <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">{clientCurl}</pre>
-          </div>
-        </div>
-      {:else if selected === "api"}
-        <div class="grid gap-px bg-line md:grid-cols-2">
-          <div class="bg-panel p-4">
-            <p class="t-label text-fg">API protection</p>
-            <p class="mt-3 text-xs leading-5 text-dim">Put <span class="text-fg">session</span> before protected services. It validates bearer tokens or session cookies, then sets identity headers like <span class="text-fg">X-User</span>.</p>
-            <p class="mt-3 text-xs leading-5 text-dim">API keys are static credentials: session validates <span class="text-fg">X-API-Key</span> against the database on every request and forwards <span class="text-fg">X-User: api-key:&lt;id&gt;</span>. mTLS still authenticates at <span class="text-fg">/oauth2/token</span>.</p>
-            <p class="mt-3 text-xs leading-5 text-dim">For API routes, add <span class="text-fg">disable_redirect</span> so unauthenticated requests return 407 instead of browser redirect.</p>
-          </div>
-          <div class="bg-panel p-4">
-            <p class="t-label text-fg">Protected API config</p>
-            <pre class="mt-3 overflow-auto border border-line bg-crt p-3 text-xs leading-5 text-fg">{apiSnippet}</pre>
-          </div>
-        </div>
-        {/if}
-      {/if}
+    {@render code("Authorization code exchange", codeCurl)}
+  </section>
+
+  <section id="guide-password" class="mt-14 scroll-mt-6">
+    <h2 class="border-b border-rule pb-2 text-[1.05rem] font-bold tracking-[-0.015em] text-ink">
+      Password grant
+    </h2>
+    <p class="mt-4 max-w-[70ch] text-[13.5px] leading-[1.7] text-ink">
+      The client is authenticated first: <span class="serial">client_id</span> and
+      <span class="serial">client_secret</span> must belong to a registered server client or a
+      service account. Only then is the user's password checked.
+    </p>
+    <p class="mt-3 max-w-[70ch] text-[13px] leading-[1.65] text-muted">
+      A local user verifies against the bcrypt password held in their encrypted details. A non-local
+      user binds against the active LDAP config. An alias that is not stored here at all is looked up
+      in LDAP and created on first login, unless auto-register is off. If the user enrolled TOTP, a
+      valid code is required to finish.
+    </p>
+
+    {@render code("Password grant request", passwordCurl)}
+  </section>
+
+  <section id="guide-client" class="mt-14 scroll-mt-6">
+    <h2 class="border-b border-rule pb-2 text-[1.05rem] font-bold tracking-[-0.015em] text-ink">
+      Service account
+    </h2>
+    <p class="mt-4 max-w-[70ch] text-[13.5px] leading-[1.7] text-ink">
+      For machine-to-machine calls, create a service account. Its alias is the
+      <span class="serial">client_id</span>; <span class="serial">details.secret</span> is the
+      <span class="serial">client_secret</span>. Default scopes come from
+      <span class="serial">details.scope</span>.
+    </p>
+
+    {@render code("Client credentials request", clientCurl)}
+  </section>
+
+  <section id="guide-api" class="mt-14 scroll-mt-6">
+    <h2 class="border-b border-rule pb-2 text-[1.05rem] font-bold tracking-[-0.015em] text-ink">
+      Protecting an API
+    </h2>
+    <p class="mt-4 max-w-[70ch] text-[13.5px] leading-[1.7] text-ink">
+      Put the <span class="serial">session</span> middleware in front of anything protected. It
+      validates a bearer token or a session cookie and forwards identity headers such as
+      <span class="serial">X-User</span> to the service behind it.
+    </p>
+    <p class="mt-3 max-w-[70ch] text-[13px] leading-[1.65] text-muted">
+      API keys are static credentials: session validates <span class="serial">X-API-Key</span>
+      against the database on every request and forwards
+      <span class="serial">X-User: api-key:&lt;id&gt;</span>. mTLS authenticates at
+      <span class="serial">/oauth2/token</span> instead.
+    </p>
+    <p class="mt-3 max-w-[70ch] text-[13px] leading-[1.65] text-muted">
+      On API routes add <span class="serial">disable_redirect</span>, so an unauthenticated request
+      answers 407 rather than being redirected to a sign-in page a program cannot read.
+    </p>
+
+    {@render code("Protected API configuration", apiSnippet)}
+  </section>
+
+  <section id="guide-oauth-endpoints" class="mt-14 scroll-mt-6">
+    <h2 class="border-b border-rule pb-2 text-[1.05rem] font-bold tracking-[-0.015em] text-ink">
+      OAuth2 endpoints
+    </h2>
+    <p class="mt-4 max-w-[70ch] text-[13.5px] leading-[1.7] text-muted">
+      Published by this instance and safe to hand to a client. The same for every flow above.
+    </p>
+    <ul class="mt-5">
+      {#each endpoints as endpoint (endpoint.value)}
+        {@render fact(endpoint.label, `${publicAuthBase}${endpoint.value}`)}
+      {/each}
+    </ul>
+  </section>
+
+  <section id="guide-iam-endpoints" class="mt-14 scroll-mt-6">
+    <h2 class="border-b border-rule pb-2 text-[1.05rem] font-bold tracking-[-0.015em] text-ink">
+      IAM endpoints
+    </h2>
+    <p class="mt-4 max-w-[70ch] text-[13.5px] leading-[1.7] text-muted">
+      Auth keeps the legacy IAM shapes for users, service accounts, roles, permissions, LDAP maps,
+      access checks, temporary grants, exports, role relations and bulk permission workflows. These
+      require admin access.
+    </p>
+    <p class="mt-3 max-w-[70ch] text-[13px] leading-[1.65] text-muted">
+      Backup and restore are deliberately absent: they were tied to the old Badger store. This build
+      uses PostgreSQL migrations and version polling instead.
+    </p>
+    <ul class="mt-5">
+      {#each iamEndpoints as endpoint (endpoint.value)}
+        {@render fact(endpoint.label, `${publicAuthBase}${endpoint.value}`)}
+      {/each}
+    </ul>
+  </section>
+
+  <section id="guide-reference" class="mt-14 scroll-mt-6">
+    <h2 class="border-b border-rule pb-2 text-[1.05rem] font-bold tracking-[-0.015em] text-ink">
+      Interactive reference
+    </h2>
+    <p class="mt-4 max-w-[70ch] text-[13.5px] leading-[1.7] text-muted">
+      Every admin endpoint with its request and response shapes, generated from this build. Admin
+      access is required to call anything from it.
+    </p>
+    <div class="mt-5 flex flex-wrap gap-2">
+      <a class="act act-primary no-underline" href={swaggerURL} target="_blank" rel="noreferrer">
+        Open Swagger UI
+      </a>
+      <a class="act no-underline" href={openapiURL} target="_blank" rel="noreferrer">
+        OpenAPI document
+      </a>
     </div>
-  </div>
-</div>
+  </section>
+</Instrument>
