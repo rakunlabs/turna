@@ -340,7 +340,7 @@ func (m *Session) serveAPIKey(next http.Handler, w http.ResponseWriter, r *http.
 // refreshTokenData refreshes the access token of the provider, either
 // in-process through a registered issuer (auth_middleware) or over HTTP
 // against the provider's token_url.
-func (m *Session) refreshTokenData(ctx context.Context, providerName string, token *TokenData) ([]byte, error) {
+func (m *Session) refreshTokenData(r *http.Request, providerName string, token *TokenData) ([]byte, error) {
 	provider, ok := m.Provider[providerName]
 	if !ok {
 		return nil, fmt.Errorf("cannot find provider %q", providerName)
@@ -366,7 +366,7 @@ func (m *Session) refreshTokenData(ctx context.Context, providerName string, tok
 			form.Set("scope", token.Scope)
 		}
 
-		body, statusCode, err := issuer.IssueToken(ctx, form)
+		body, statusCode, err := issuer.IssueToken(r, form)
 		if err != nil {
 			return nil, err
 		}
@@ -389,7 +389,7 @@ func (m *Session) refreshTokenData(ctx context.Context, providerName string, tok
 
 	requestConfig.Scopes = strings.Fields(token.Scope)
 
-	return m.Action.Token.auth.RefreshToken(ctx, request.RefreshTokenConfig{
+	return m.Action.Token.auth.RefreshToken(r.Context(), request.RefreshTokenConfig{
 		RefreshToken:      token.RefreshToken,
 		AuthRequestConfig: requestConfig,
 	})
@@ -470,7 +470,7 @@ func (m *Session) cookieClaims(w http.ResponseWriter, r *http.Request) (*claims.
 		}
 
 		if v {
-			refreshData, err := m.refreshTokenData(r.Context(), providerName, token)
+			refreshData, err := m.refreshTokenData(r, providerName, token)
 			if err != nil {
 				return nil, "", nil, err
 			}
@@ -715,7 +715,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 			}
 
 			if v {
-				refreshData, err := m.refreshTokenData(r.Context(), providerName, token)
+				refreshData, err := m.refreshTokenData(r, providerName, token)
 				if err != nil {
 					slog.Error("cannot refresh token", "error", err.Error())
 					m.RedirectToLogin(w, r, true, true)
@@ -919,7 +919,7 @@ func (m *Session) IsLogged(w http.ResponseWriter, r *http.Request) (*claims.Cust
 		}
 
 		if v {
-			refreshData, err := m.refreshTokenData(r.Context(), providerName, token)
+			refreshData, err := m.refreshTokenData(r, providerName, token)
 			if err != nil {
 				slog.Error("cannot refresh token", "error", err.Error())
 				return nil, false, err

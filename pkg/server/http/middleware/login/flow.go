@@ -153,7 +153,7 @@ func (m *Login) PasswordFlow(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if provider.AuthMiddleware != "" {
-		data, statusCode, err = m.IssuerPasswordToken(r.Context(), provider.AuthMiddleware, request.Username, request.Password, oauth2)
+		data, statusCode, err = m.IssuerPasswordToken(r, provider.AuthMiddleware, request.Username, request.Password, oauth2)
 	} else {
 		data, statusCode, err = m.PasswordToken(r.Context(), request.Username, request.Password, oauth2)
 	}

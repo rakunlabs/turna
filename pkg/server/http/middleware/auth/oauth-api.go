@@ -162,8 +162,10 @@ func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.
 
 	sn := m.cache.Snapshot()
 	tokenCfg := sn.Token
+	issuer := m.issuerURL(r)
 
 	claimsAccess := map[string]any{
+		"iss":                issuer,
 		"aud":                tokenAudience(resources),
 		"jti":                ulid.Make().String(),
 		"sub":                user.ID,
@@ -240,6 +242,7 @@ func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.
 	}
 
 	claimsRefresh := map[string]any{
+		"iss": issuer,
 		"aud": tokenAudience(resources),
 		"jti": ulid.Make().String(),
 		"sub": user.ID,
@@ -560,7 +563,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 
 		return
 	case "refresh_token":
-		if _, err := m.GetAccessClient(clientID, clientSecret); err != nil {
+		if _, err := m.authorizationClient(r.Context(), clientID, clientSecret); err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_client",
 				ErrorDescription: err.Error(),
@@ -592,7 +595,8 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 		}
 
 		claims := jwt.MapClaims{}
-		if _, err := signer.JWT.Parse(accessTokenRequest.RefreshToken, &claims); err != nil {
+		if _, err := signer.JWT.Parse(accessTokenRequest.RefreshToken, &claims,
+			jwt.WithIssuer(m.issuerURL(r)), jwt.WithAudience("turna-auth")); err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
 				ErrorDescription: err.Error(),
@@ -612,19 +616,54 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// RFC 7009: a revoked refresh token must not mint new tokens
-		if jti, _ := claims["jti"].(string); m.isTokenRevoked(r.Context(), jti) {
+		if azp, _ := claims["azp"].(string); azp == "" || azp != clientID {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
-				ErrorDescription: "token revoked",
+				ErrorDescription: "refresh token was issued to another client",
 				code:             http.StatusUnauthorized,
 			})
 
 			return
 		}
 
-		userID, _ := claims["sub"].(string)
-		user, err := m.cache.GetUser(data.GetUserRequest{ID: userID, AddScopeRoles: true})
+		jti, _ := claims["jti"].(string)
+		exp, err := claims.GetExpirationTime()
+		if err != nil || exp == nil || jti == "" {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_grant",
+				ErrorDescription: "refresh token lacks rotation claims",
+				code:             http.StatusUnauthorized,
+			})
+
+			return
+		}
+
+		subject, _ := claims["sub"].(string)
+		consumed, err := m.store.CreateFlowCodeOnce(r.Context(), flowKindRevoked, jti, revokedToken{
+			Subject:  subject,
+			ClientID: clientID,
+			Type:     "Refresh",
+		}, time.Until(exp.Time))
+		if err != nil {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "server_error",
+				ErrorDescription: err.Error(),
+				code:             http.StatusInternalServerError,
+			})
+
+			return
+		}
+		if !consumed {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_grant",
+				ErrorDescription: "refresh token already used or revoked",
+				code:             http.StatusUnauthorized,
+			})
+
+			return
+		}
+
+		user, err := m.cache.GetUser(data.GetUserRequest{ID: subject, AddScopeRoles: true})
 		if err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
@@ -647,7 +686,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 		var accessClient *AccessClient
 		var err error
 		if accessTokenRequest.CodeVerifier != "" {
-			accessClient, err = m.resolveClient(clientID, clientSecret)
+			accessClient, err = m.authorizationClient(r.Context(), clientID, clientSecret)
 		} else {
 			accessClient, err = m.GetAccessClient(clientID, clientSecret)
 		}
@@ -869,10 +908,20 @@ func (m *Auth) APIUserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	claims := jwt.MapClaims{}
-	if _, err := signer.JWT.Parse(tokenHeader, &claims); err != nil {
+	if _, err := signer.JWT.Parse(tokenHeader, &claims,
+		jwt.WithIssuer(m.issuerURL(r)), jwt.WithAudience("turna-auth")); err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_token",
 			ErrorDescription: err.Error(),
+			code:             http.StatusUnauthorized,
+		})
+
+		return
+	}
+	if typ, _ := claims["typ"].(string); typ != "Bearer" {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_token",
+			ErrorDescription: "access token type must be Bearer",
 			code:             http.StatusUnauthorized,
 		})
 
@@ -1057,16 +1106,17 @@ func (m *Auth) serverMetadata(r *http.Request, custom string) map[string]any {
 	}
 
 	metadata := map[string]any{
-		"issuer":                        issuer,
-		"authorization_endpoint":        issuer + "/authorize",
-		"token_endpoint":                issuer + "/token",
-		"userinfo_endpoint":             userinfoEndpoint,
-		"jwks_uri":                      issuer + "/certs",
-		"device_authorization_endpoint": issuer + "/device_authorization",
-		"revocation_endpoint":           issuer + "/revoke",
-		"introspection_endpoint":        issuer + "/introspect",
-		"response_types_supported":      []string{"code"},
-		"response_modes_supported":      []string{"query"},
+		"issuer": issuer,
+		"authorization_response_iss_parameter_supported": true,
+		"authorization_endpoint":                         issuer + "/authorize",
+		"token_endpoint":                                 issuer + "/token",
+		"userinfo_endpoint":                              userinfoEndpoint,
+		"jwks_uri":                                       issuer + "/certs",
+		"device_authorization_endpoint":                  issuer + "/device_authorization",
+		"revocation_endpoint":                            issuer + "/revoke",
+		"introspection_endpoint":                         issuer + "/introspect",
+		"response_types_supported":                       []string{"code"},
+		"response_modes_supported":                       []string{"query"},
 		"grant_types_supported": []string{
 			"authorization_code", "client_credentials", "password", "refresh_token",
 			grantTypeDeviceCode, grantTypeTokenExchange, grantTypeEmailCode,
@@ -1074,6 +1124,7 @@ func (m *Auth) serverMetadata(r *http.Request, custom string) map[string]any {
 		"subject_types_supported":               []string{"public"},
 		"id_token_signing_alg_values_supported": []string{alg},
 		"code_challenge_methods_supported":      []string{"S256", "plain"},
+		"client_id_metadata_document_supported": true,
 		"scopes_supported":                      []string{"openid"},
 		"token_endpoint_auth_methods_supported": []string{
 			"client_secret_basic", "client_secret_post", "none",

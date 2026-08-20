@@ -17,6 +17,7 @@ import (
 // browser-based authorization code login (consent screen).
 type authorizeFlow struct {
 	ClientID            string   `json:"client_id"`
+	ClientName          string   `json:"client_name,omitempty"`
 	RedirectURI         string   `json:"redirect_uri"`
 	Scope               []string `json:"scope"`
 	State               string   `json:"state"`
@@ -96,7 +97,7 @@ func resourcesAllowed(requested, allowed []string) bool {
 
 // authorizeErrorRedirect sends the browser back to the client with an OAuth
 // error response (only used after the redirect_uri has been validated).
-func authorizeErrorRedirect(w http.ResponseWriter, redirectURI, state, errCode, errDescription string) {
+func (m *Auth) authorizeErrorRedirect(w http.ResponseWriter, r *http.Request, redirectURI, state, errCode, errDescription string) {
 	target, err := url.Parse(redirectURI)
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
@@ -109,6 +110,7 @@ func authorizeErrorRedirect(w http.ResponseWriter, redirectURI, state, errCode, 
 	}
 
 	q := target.Query()
+	q.Set("iss", m.issuerURL(r))
 	q.Set("error", errCode)
 	if errDescription != "" {
 		q.Set("error_description", errDescription)
@@ -150,8 +152,8 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, ok := m.lookupClient(clientID)
-	if !ok {
+	client, err := m.authorizationClient(r.Context(), clientID, "")
+	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_request",
 			ErrorDescription: fmt.Sprintf("client %q not found", clientID),
@@ -177,14 +179,14 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 	state := query.Get("state")
 
 	if query.Get("response_type") != "code" {
-		authorizeErrorRedirect(w, redirectURI, state, "unsupported_response_type", "only response_type=code is supported")
+		m.authorizeErrorRedirect(w, r, redirectURI, state, "unsupported_response_type", "only response_type=code is supported")
 
 		return
 	}
 
 	codeChallenge, codeChallengeMethod, err := pkceParams(r)
 	if err != nil {
-		authorizeErrorRedirect(w, redirectURI, state, "invalid_request", err.Error())
+		m.authorizeErrorRedirect(w, r, redirectURI, state, "invalid_request", err.Error())
 
 		return
 	}
@@ -192,7 +194,7 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 	// public clients prove possession with PKCE; without a secret the code
 	// would otherwise be bearer-redeemable by anyone.
 	if client.ClientSecret == "" && codeChallenge == "" {
-		authorizeErrorRedirect(w, redirectURI, state, "invalid_request", "public clients require PKCE (code_challenge)")
+		m.authorizeErrorRedirect(w, r, redirectURI, state, "invalid_request", "public clients require PKCE (code_challenge)")
 
 		return
 	}
@@ -200,14 +202,14 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 	resources := query["resource"]
 	for _, resource := range resources {
 		if err := validateResource(resource); err != nil {
-			authorizeErrorRedirect(w, redirectURI, state, "invalid_target", err.Error())
+			m.authorizeErrorRedirect(w, r, redirectURI, state, "invalid_target", err.Error())
 
 			return
 		}
 	}
 
 	if !resourcesAllowed(resources, client.Resources) {
-		authorizeErrorRedirect(w, redirectURI, state, "invalid_target", "requested resource not allowed for this client")
+		m.authorizeErrorRedirect(w, r, redirectURI, state, "invalid_target", "requested resource not allowed for this client")
 
 		return
 	}
@@ -215,6 +217,7 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 	flowID := ulid.Make().String()
 	flow := authorizeFlow{
 		ClientID:            clientID,
+		ClientName:          client.ClientName,
 		RedirectURI:         redirectURI,
 		Scope:               strings.Fields(query.Get("scope")),
 		State:               state,
@@ -225,7 +228,7 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := m.store.CreateFlowCode(r.Context(), flowKindAuthorize, flowID, flow, cfg.GetFlowLifetime()); err != nil {
-		authorizeErrorRedirect(w, redirectURI, state, "server_error", err.Error())
+		m.authorizeErrorRedirect(w, r, redirectURI, state, "server_error", err.Error())
 
 		return
 	}
@@ -367,7 +370,9 @@ func (m *Auth) ConsentAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	clientName := flow.ClientID
-	if client != nil && client.ClientName != "" {
+	if flow.ClientName != "" {
+		clientName = flow.ClientName
+	} else if client != nil && client.ClientName != "" {
 		clientName = client.ClientName
 	}
 
@@ -415,7 +420,7 @@ func (m *Auth) finishAuthorize(w http.ResponseWriter, r *http.Request, flowID st
 	_ = m.store.DeleteFlowCode(r.Context(), flowKindAuthorize, flowID)
 
 	if !approved {
-		authorizeErrorRedirect(w, flow.RedirectURI, flow.State, "access_denied", "the user denied the request")
+		m.authorizeErrorRedirect(w, r, flow.RedirectURI, flow.State, "access_denied", "the user denied the request")
 
 		return
 	}
@@ -429,7 +434,7 @@ func (m *Auth) finishAuthorize(w http.ResponseWriter, r *http.Request, flowID st
 
 	codeStore, err := m.codeStoreRuntime(r.Context())
 	if err != nil {
-		authorizeErrorRedirect(w, flow.RedirectURI, flow.State, "server_error", err.Error())
+		m.authorizeErrorRedirect(w, r, flow.RedirectURI, flow.State, "server_error", err.Error())
 
 		return
 	}
@@ -447,13 +452,13 @@ func (m *Auth) finishAuthorize(w http.ResponseWriter, r *http.Request, flowID st
 		Resources:           flow.Resources,
 	})
 	if err != nil {
-		authorizeErrorRedirect(w, flow.RedirectURI, flow.State, "server_error", err.Error())
+		m.authorizeErrorRedirect(w, r, flow.RedirectURI, flow.State, "server_error", err.Error())
 
 		return
 	}
 
 	if err := codeStore.Code.Set(r.Context(), "code_"+codeID, codeValue); err != nil {
-		authorizeErrorRedirect(w, flow.RedirectURI, flow.State, "server_error", err.Error())
+		m.authorizeErrorRedirect(w, r, flow.RedirectURI, flow.State, "server_error", err.Error())
 
 		return
 	}
@@ -467,6 +472,7 @@ func (m *Auth) finishAuthorize(w http.ResponseWriter, r *http.Request, flowID st
 
 	q := target.Query()
 	q.Set("code", codeID)
+	q.Set("iss", m.issuerURL(r))
 	if flow.State != "" {
 		q.Set("state", flow.State)
 	}

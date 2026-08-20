@@ -1,8 +1,9 @@
 package session
 
 import (
-	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 
@@ -22,7 +23,7 @@ func (f *fakeIssuer) Keyfunc(token *jwt.Token) (any, error) {
 	return f.key, nil
 }
 
-func (f *fakeIssuer) IssueToken(_ context.Context, form url.Values) ([]byte, int, error) {
+func (f *fakeIssuer) IssueToken(_ *http.Request, form url.Values) ([]byte, int, error) {
 	return []byte(`{"grant_type":"` + form.Get("grant_type") + `"}`), 200, nil
 }
 
@@ -68,7 +69,8 @@ func TestIssuerRefreshTokenData(t *testing.T) {
 		},
 	}
 
-	body, err := m.refreshTokenData(context.Background(), "turna", &TokenData{RefreshToken: "r1"})
+	r := httptest.NewRequest(http.MethodGet, "https://example.com", nil)
+	body, err := m.refreshTokenData(r, "turna", &TokenData{RefreshToken: "r1"})
 	if err != nil {
 		t.Fatalf("refresh: %v", err)
 	}
@@ -76,7 +78,7 @@ func TestIssuerRefreshTokenData(t *testing.T) {
 		t.Fatalf("body = %s", body)
 	}
 
-	if _, err := m.refreshTokenData(context.Background(), "unknown", &TokenData{}); err == nil {
+	if _, err := m.refreshTokenData(r, "unknown", &TokenData{}); err == nil {
 		t.Fatal("expected error for unknown provider")
 	}
 }

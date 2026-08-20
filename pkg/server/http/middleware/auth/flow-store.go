@@ -40,6 +40,30 @@ func (s *Store) CreateFlowCode(ctx context.Context, kind, id string, payload any
 	return nil
 }
 
+// CreateFlowCodeOnce atomically stores a flow payload unless the id already
+// exists. It is used to consume rotating refresh tokens exactly once.
+func (s *Store) CreateFlowCodeOnce(ctx context.Context, kind, id string, payload any, ttl time.Duration) (bool, error) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return false, err
+	}
+
+	res, err := s.db.ExecContext(ctx, `INSERT INTO auth_flow_codes (id, kind, payload, expires_at)
+		VALUES ($1, $2, $3::jsonb, now() + $4 * interval '1 second')
+		ON CONFLICT (id) DO NOTHING`,
+		kind+":"+id, kind, string(raw), int64(ttl.Seconds()))
+	if err != nil {
+		return false, fmt.Errorf("insert flow code once: %w", err)
+	}
+
+	count, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("flow code rows affected: %w", err)
+	}
+
+	return count == 1, nil
+}
+
 // GetFlowCode loads a flow payload; expired entries count as not found.
 func (s *Store) GetFlowCode(ctx context.Context, kind, id string, payload any) error {
 	var raw []byte

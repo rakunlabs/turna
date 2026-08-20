@@ -118,6 +118,9 @@ func TestAuthMCPIntegration(t *testing.T) {
 					t.Errorf("%s: metadata misses %q", path, key)
 				}
 			}
+			if metadata["authorization_response_iss_parameter_supported"] != true || metadata["client_id_metadata_document_supported"] != true {
+				t.Errorf("%s: MCP authorization metadata flags missing", path)
+			}
 		}
 	})
 
@@ -240,6 +243,9 @@ func TestAuthMCPIntegration(t *testing.T) {
 		if callback.Query().Get("state") != "st-123" {
 			t.Fatalf("callback state: %s", callback.Query().Get("state"))
 		}
+		if callback.Query().Get("iss") != server.URL+"/auth/oauth2" {
+			t.Fatalf("callback iss: %s", callback.Query().Get("iss"))
+		}
 
 		authCode = callback.Query().Get("code")
 		if authCode == "" {
@@ -307,6 +313,13 @@ func TestAuthMCPIntegration(t *testing.T) {
 		if claims["jti"] == nil {
 			t.Error("access token misses jti")
 		}
+		if claims["iss"] != server.URL+"/auth/oauth2" || claims["typ"] != "Bearer" {
+			t.Errorf("access token issuer/type wrong: iss=%v typ=%v", claims["iss"], claims["typ"])
+		}
+		refreshClaims := decodeJWTClaims(t, tokenResponse.RefreshToken)
+		if refreshClaims["iss"] != server.URL+"/auth/oauth2" || refreshClaims["typ"] != "Refresh" || refreshClaims["azp"] != registration.ClientID {
+			t.Errorf("refresh token claims wrong: %v", refreshClaims)
+		}
 	})
 
 	// --- introspection + revocation -------------------------------------
@@ -329,9 +342,39 @@ func TestAuthMCPIntegration(t *testing.T) {
 			t.Fatalf("access token should be active: %v", out)
 		}
 
+		// Refresh tokens rotate: the old token becomes unusable immediately.
+		refreshForm := url.Values{
+			"grant_type":    {"refresh_token"},
+			"refresh_token": {tokenResponse.RefreshToken},
+			"client_id":     {registration.ClientID},
+		}
+		res, err := http.DefaultClient.PostForm(server.URL+"/auth/oauth2/token", refreshForm)
+		if err != nil {
+			t.Fatalf("refresh: %v", err)
+		}
+		var rotated AccessTokenResponse
+		if err := json.NewDecoder(res.Body).Decode(&rotated); err != nil {
+			res.Body.Close()
+			t.Fatalf("refresh decode: %v", err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusOK || rotated.RefreshToken == "" || rotated.RefreshToken == tokenResponse.RefreshToken {
+			t.Fatalf("refresh rotation failed: status=%d token=%+v", res.StatusCode, rotated)
+		}
+
+		res, err = http.DefaultClient.PostForm(server.URL+"/auth/oauth2/token", refreshForm)
+		if err != nil {
+			t.Fatalf("refresh replay: %v", err)
+		}
+		res.Body.Close()
+		if res.StatusCode == http.StatusOK {
+			t.Fatal("used refresh token was accepted")
+		}
+
 		// revoke the refresh token
+		tokenResponse.RefreshToken = rotated.RefreshToken
 		form := url.Values{"token": {tokenResponse.RefreshToken}, "client_id": {registration.ClientID}}
-		res, err := http.DefaultClient.PostForm(server.URL+"/auth/oauth2/revoke", form)
+		res, err = http.DefaultClient.PostForm(server.URL+"/auth/oauth2/revoke", form)
 		if err != nil {
 			t.Fatalf("revoke: %v", err)
 		}
@@ -345,7 +388,7 @@ func TestAuthMCPIntegration(t *testing.T) {
 		}
 
 		// a revoked refresh token must not mint new tokens
-		refreshForm := url.Values{
+		refreshForm = url.Values{
 			"grant_type":    {"refresh_token"},
 			"refresh_token": {tokenResponse.RefreshToken},
 			"client_id":     {registration.ClientID},

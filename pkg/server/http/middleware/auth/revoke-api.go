@@ -209,7 +209,8 @@ func (m *Auth) APIIntrospect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	claims := jwt.MapClaims{}
-	if _, err := signer.JWT.Parse(req.Token, &claims); err != nil {
+	if _, err := signer.JWT.Parse(req.Token, &claims,
+		jwt.WithIssuer(m.issuerURL(r)), jwt.WithAudience("turna-auth")); err != nil {
 		httputil.JSON(w, http.StatusOK, inactive)
 
 		return

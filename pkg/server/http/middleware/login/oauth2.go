@@ -16,7 +16,7 @@ import (
 
 // IssuerPasswordToken runs the password grant in-process against a registered
 // issuer (auth middleware) instead of calling token_url over HTTP.
-func (m *Login) IssuerPasswordToken(ctx context.Context, issuerName, username, password string, oauth2 *session.Oauth2) ([]byte, int, error) {
+func (m *Login) IssuerPasswordToken(r *http.Request, issuerName, username, password string, oauth2 *session.Oauth2) ([]byte, int, error) {
 	issuer := session.IssuerRegistry.Get(issuerName)
 	if issuer == nil {
 		return nil, http.StatusInternalServerError, fmt.Errorf("issuer %q not found", issuerName)
@@ -35,7 +35,7 @@ func (m *Login) IssuerPasswordToken(ctx context.Context, issuerName, username, p
 		uValues.Set("scope", strings.Join(oauth2.Scopes, " "))
 	}
 
-	body, statusCode, err := issuer.IssueToken(ctx, uValues)
+	body, statusCode, err := issuer.IssueToken(r, uValues)
 	if err != nil {
 		return nil, statusCode, err
 	}

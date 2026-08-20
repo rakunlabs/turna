@@ -31,14 +31,21 @@ func (m *Auth) Keyfunc(token *jwt.Token) (any, error) {
 
 // IssueToken runs the OAuth2 token endpoint in-process and returns the raw
 // JSON body with its status code. It implements session.InfIssuer.
-func (m *Auth) IssueToken(ctx context.Context, form url.Values) ([]byte, int, error) {
-	r, err := http.NewRequestWithContext(ctx, http.MethodPost, m.PrefixPath+"/oauth2/token", strings.NewReader(form.Encode()))
+func (m *Auth) IssueToken(orig *http.Request, form url.Values) ([]byte, int, error) {
+	r, err := http.NewRequestWithContext(orig.Context(), http.MethodPost, m.PrefixPath+"/oauth2/token", strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
 
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("Accept", "application/json")
+	r.Host = orig.Host
+	r.TLS = orig.TLS
+	for _, name := range []string{"X-Forwarded-Proto", "X-Forwarded-Host"} {
+		if value := orig.Header.Get(name); value != "" {
+			r.Header.Set(name, value)
+		}
+	}
 
 	rec := &responseRecorder{header: http.Header{}, code: http.StatusOK}
 	m.APIToken(rec, r)

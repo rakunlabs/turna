@@ -33,7 +33,7 @@ func (f *fakeIssuer) Keyfunc(token *jwt.Token) (any, error) {
 	return &f.key.PublicKey, nil
 }
 
-func (f *fakeIssuer) IssueToken(_ context.Context, _ url.Values) ([]byte, int, error) {
+func (f *fakeIssuer) IssueToken(_ *http.Request, _ url.Values) ([]byte, int, error) {
 	return nil, http.StatusNotImplemented, nil
 }
 
@@ -46,6 +46,12 @@ func (f *fakeIssuer) sign(t *testing.T, claims jwt.MapClaims) string {
 
 	if _, ok := claims["exp"]; !ok {
 		claims["exp"] = time.Now().Add(time.Minute).Unix()
+	}
+	if _, ok := claims["iss"]; !ok {
+		claims["iss"] = "https://example.com/auth/oauth2"
+	}
+	if _, ok := claims["typ"]; !ok {
+		claims["typ"] = "Bearer"
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
@@ -263,6 +269,29 @@ func TestProtect(t *testing.T) {
 		}
 		if !strings.Contains(rec.Header().Get("WWW-Authenticate"), "insufficient_scope") {
 			t.Errorf("WWW-Authenticate = %q", rec.Header().Get("WWW-Authenticate"))
+		}
+		if !strings.Contains(rec.Header().Get("WWW-Authenticate"), `scope="mcp"`) {
+			t.Errorf("WWW-Authenticate missing required scope: %q", rec.Header().Get("WWW-Authenticate"))
+		}
+	})
+
+	t.Run("non bearer token", func(t *testing.T) {
+		token := issuer.sign(t, jwt.MapClaims{
+			"typ": "ID", "sub": "u1", "preferred_username": "user1",
+			"aud": []any{"turna-auth", "https://example.com/mcp"}, "scope": "mcp",
+		})
+		if rec := do(t, token); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want 401", rec.Code)
+		}
+	})
+
+	t.Run("wrong issuer", func(t *testing.T) {
+		token := issuer.sign(t, jwt.MapClaims{
+			"iss": "https://evil.example", "sub": "u1", "preferred_username": "user1",
+			"aud": []any{"turna-auth", "https://example.com/mcp"}, "scope": "mcp",
+		})
+		if rec := do(t, token); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want 401", rec.Code)
 		}
 	})
 

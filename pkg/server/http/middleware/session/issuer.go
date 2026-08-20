@@ -20,7 +20,7 @@ type InfIssuer interface {
 	Keyfunc(token *jwt.Token) (any, error)
 	// IssueToken runs an OAuth2 token request (password, refresh_token, ...)
 	// in-process and returns the raw JSON body with its HTTP status code.
-	IssueToken(ctx context.Context, form url.Values) ([]byte, int, error)
+	IssueToken(r *http.Request, form url.Values) ([]byte, int, error)
 }
 
 // InfRevoker is implemented by issuers that keep a token revocation list

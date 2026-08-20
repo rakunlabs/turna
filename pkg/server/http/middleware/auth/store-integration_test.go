@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
@@ -42,6 +43,15 @@ func TestStoreIntegration(t *testing.T) {
 
 	store := NewStore(db, cipher)
 	cache := NewCache(store)
+
+	created, err := store.CreateFlowCodeOnce(ctx, flowKindRevoked, "rotation-test", revokedToken{Type: "Refresh"}, time.Minute)
+	if err != nil || !created {
+		t.Fatalf("create flow once: created=%v err=%v", created, err)
+	}
+	created, err = store.CreateFlowCodeOnce(ctx, flowKindRevoked, "rotation-test", revokedToken{Type: "Refresh"}, time.Minute)
+	if err != nil || created {
+		t.Fatalf("duplicate flow once: created=%v err=%v", created, err)
+	}
 
 	// check settings now live in the database
 	if _, err := store.PutSetting(ctx, "check", json.RawMessage(`{"no_host_check":true}`), "integration"); err != nil {

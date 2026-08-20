@@ -57,7 +57,7 @@ type OAuth2Resource struct {
 	RequiredScopes []string `cfg:"required_scopes"`
 
 	// CheckAudience requires the token aud claim to contain the resource
-	// identifier (RFC 8707 binding). Default true when resource is set.
+	// identifier (RFC 8707 binding). Default true.
 	CheckAudience *bool `cfg:"check_audience"`
 
 	// CheckRevocation consults the issuer's revocation list on every
@@ -76,7 +76,7 @@ func (m *OAuth2Resource) getCheckAudience() bool {
 		return *m.CheckAudience
 	}
 
-	return m.Resource != ""
+	return true
 }
 
 func (m *OAuth2Resource) getCheckRevocation() bool {
@@ -198,6 +198,9 @@ func (m *OAuth2Resource) challenge(w http.ResponseWriter, r *http.Request, code 
 	if description != "" {
 		parts = append(parts, fmt.Sprintf("error_description=%q", description))
 	}
+	if errCode == "insufficient_scope" && len(m.RequiredScopes) > 0 {
+		parts = append(parts, fmt.Sprintf("scope=%q", strings.Join(m.RequiredScopes, " ")))
+	}
 
 	w.Header().Set("WWW-Authenticate", "Bearer "+strings.Join(parts, ", "))
 
@@ -254,15 +257,18 @@ func (m *OAuth2Resource) protect(w http.ResponseWriter, r *http.Request, next ht
 	}
 
 	claims := jwt.MapClaims{}
-	if _, err := jwt.ParseWithClaims(token, claims, issuer.Keyfunc); err != nil {
+	opts := []jwt.ParserOption{jwt.WithIssuer(m.authorizationServers(r)[0])}
+	if m.getCheckAudience() {
+		opts = append(opts, jwt.WithAudience(m.resourceID(r)))
+	}
+	if _, err := jwt.ParseWithClaims(token, claims, issuer.Keyfunc, opts...); err != nil {
 		m.challenge(w, r, http.StatusUnauthorized, "invalid_token", err.Error())
 
 		return
 	}
 
-	// refresh tokens must not be usable as access tokens
-	if typ, _ := claims["typ"].(string); typ == "Refresh" {
-		m.challenge(w, r, http.StatusUnauthorized, "invalid_token", "refresh token not accepted")
+	if typ, _ := claims["typ"].(string); typ != "Bearer" {
+		m.challenge(w, r, http.StatusUnauthorized, "invalid_token", "access token type must be Bearer")
 
 		return
 	}
@@ -274,14 +280,6 @@ func (m *OAuth2Resource) protect(w http.ResponseWriter, r *http.Request, next ht
 
 				return
 			}
-		}
-	}
-
-	if m.getCheckAudience() {
-		if !audienceContains(claims["aud"], m.resourceID(r)) {
-			m.challenge(w, r, http.StatusUnauthorized, "invalid_token", "token audience does not include this resource")
-
-			return
 		}
 	}
 

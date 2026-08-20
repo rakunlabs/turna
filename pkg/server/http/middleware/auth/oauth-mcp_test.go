@@ -1,6 +1,9 @@
 package auth
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 )
@@ -28,6 +31,75 @@ func TestValidateResource(t *testing.T) {
 		if err := validateResource(v); err == nil {
 			t.Errorf("validateResource(%q) = nil, want error", v)
 		}
+	}
+}
+
+func TestValidateClientMetadataURL(t *testing.T) {
+	valid := []string{"https://client.example/app.json", "https://client.example:8443/oauth/client"}
+	for _, clientID := range valid {
+		if _, err := validateClientMetadataURL(clientID); err != nil {
+			t.Errorf("validateClientMetadataURL(%q) = %v", clientID, err)
+		}
+	}
+
+	invalid := []string{
+		"http://client.example/app.json",
+		"https://client.example",
+		"https://client.example/a/../app.json",
+		"https://user@client.example/app.json",
+		"https://client.example/app.json#fragment",
+	}
+	for _, clientID := range invalid {
+		if _, err := validateClientMetadataURL(clientID); err == nil {
+			t.Errorf("validateClientMetadataURL(%q) = nil, want error", clientID)
+		}
+	}
+}
+
+func TestDecodeClientMetadata(t *testing.T) {
+	clientID := "https://client.example/app.json"
+	client, err := decodeClientMetadata(clientID, []byte(`{
+		"client_id":"https://client.example/app.json",
+		"client_name":"Example MCP Client",
+		"redirect_uris":["http://127.0.0.1:3000/callback"],
+		"token_endpoint_auth_method":"none",
+		"grant_types":["authorization_code","refresh_token"],
+		"response_types":["code"]
+	}`))
+	if err != nil {
+		t.Fatalf("decodeClientMetadata: %v", err)
+	}
+	if !client.Public || client.ClientName != "Example MCP Client" || len(client.RedirectURIs) != 1 {
+		t.Fatalf("client = %+v", client)
+	}
+
+	bad := []string{
+		`{"client_id":"https://other.example/app.json","client_name":"x","redirect_uris":["https://app.example/cb"]}`,
+		`{"client_id":"https://client.example/app.json","redirect_uris":["https://app.example/cb"]}`,
+		`{"client_id":"https://client.example/app.json","client_name":"x","redirect_uris":["https://app.example/cb"],"token_endpoint_auth_method":"client_secret_basic"}`,
+	}
+	for _, body := range bad {
+		if _, err := decodeClientMetadata(clientID, []byte(body)); err == nil {
+			t.Errorf("decodeClientMetadata(%s) = nil, want error", body)
+		}
+	}
+}
+
+func TestAuthorizeErrorRedirectIncludesIssuer(t *testing.T) {
+	m := &Auth{PrefixPath: "/auth"}
+	r := httptest.NewRequest(http.MethodGet, "https://auth.example/auth/oauth2/authorize", nil)
+	w := httptest.NewRecorder()
+
+	m.authorizeErrorRedirect(w, r, "https://client.example/callback", "state-1", "invalid_request", "bad request")
+	location, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("parse redirect: %v", err)
+	}
+	if got := location.Query().Get("iss"); got != "https://auth.example/auth/oauth2" {
+		t.Fatalf("iss = %q", got)
+	}
+	if location.Query().Get("state") != "state-1" || location.Query().Get("error") != "invalid_request" {
+		t.Fatalf("redirect query = %v", location.Query())
 	}
 }
 

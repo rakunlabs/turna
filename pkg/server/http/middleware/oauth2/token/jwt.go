@@ -120,14 +120,15 @@ func (t *JWT) Generate(mapClaims map[string]any, expDate int64) (string, error) 
 }
 
 // Parse is validating and getting claims.
-func (t *JWT) Parse(tokenStr string, claims jwt.Claims) (*jwt.Token, error) {
+func (t *JWT) Parse(tokenStr string, claims jwt.Claims, opts ...jwt.ParserOption) (*jwt.Token, error) {
+	opts = append(opts, jwt.WithValidMethods([]string{t.method.Alg()}))
 	token, err := jwt.ParseWithClaims(
 		tokenStr,
 		claims,
 		func(token *jwt.Token) (any, error) {
 			return t.public, nil
 		},
-		jwt.WithValidMethods([]string{t.method.Alg()}),
+		opts...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("token validate: %w", err)

@@ -70,7 +70,8 @@ func (m *Auth) tokenExchangeGrant(w http.ResponseWriter, r *http.Request, req Ac
 	}
 
 	claims := jwt.MapClaims{}
-	if _, err := signer.JWT.Parse(req.SubjectToken, &claims); err != nil {
+	if _, err := signer.JWT.Parse(req.SubjectToken, &claims,
+		jwt.WithIssuer(m.issuerURL(r)), jwt.WithAudience("turna-auth")); err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_grant",
 			ErrorDescription: err.Error(),
@@ -80,8 +81,7 @@ func (m *Auth) tokenExchangeGrant(w http.ResponseWriter, r *http.Request, req Ac
 		return
 	}
 
-	// refresh tokens are not exchangeable
-	if typ, _ := claims["typ"].(string); typ == "Refresh" {
+	if typ, _ := claims["typ"].(string); typ != "Bearer" {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_grant",
 			ErrorDescription: "subject_token must be an access token",
