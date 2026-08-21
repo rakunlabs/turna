@@ -3,8 +3,15 @@ const getRedirectPath = () => {
   // check redirect_path
   const redirectPath = searchParams.get('redirect_path');
 
-  if (!!redirectPath) {
-    return redirectPath;
+  if (redirectPath?.startsWith('/') && !redirectPath.startsWith('//')) {
+    try {
+      const target = new URL(redirectPath, window.location.origin);
+      if (target.origin === window.location.origin) {
+        return `${target.pathname}${target.search}${target.hash}`;
+      }
+    } catch {
+      // Fall through to the safe same-origin default.
+    }
   }
 
   return "/";

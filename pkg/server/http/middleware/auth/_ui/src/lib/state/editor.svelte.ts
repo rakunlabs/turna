@@ -333,13 +333,22 @@ class Editor {
   }
 
   getResourceList(index: number, key: string) {
-    return joinValues(this.resourceAt(index)[key]);
+    const resource = this.resourceAt(index);
+    const value = joinValues(resource[key]);
+
+    if (key === "paths" && !value.trim()) return fieldText(resource.path);
+
+    return value;
   }
 
   setResourceList(index: number, key: string, value: string) {
     const next = this.record();
     const resources = this.resources();
-    resources[index] = { ...this.resourceAt(index), [key]: splitValues(value) };
+    const resource = { ...this.resourceAt(index), [key]: splitValues(value) };
+
+    if (key === "paths") delete resource.path;
+
+    resources[index] = resource;
     next.resources = resources;
     this.setRecord(next);
   }
@@ -391,9 +400,9 @@ class Editor {
     const body: AnyRecord = { role_ids: roleIDs, permission_ids: permissionIDs };
 
     if (!remove) {
-      if (this.temp.startsAt.trim()) body.starts_at = this.temp.startsAt.trim();
+      if (this.temp.startsAt.trim()) body.starts_at = new Date(this.temp.startsAt).toISOString();
       if (this.temp.expiresIn.trim()) body.expires_in = this.temp.expiresIn.trim();
-      else if (this.temp.expiresAt.trim()) body.expires_at = this.temp.expiresAt.trim();
+      else if (this.temp.expiresAt.trim()) body.expires_at = new Date(this.temp.expiresAt).toISOString();
     }
 
     const kind = this.kind;

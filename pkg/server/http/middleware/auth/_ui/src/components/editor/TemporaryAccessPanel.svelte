@@ -63,9 +63,9 @@
       <Entry
         label="Starts at"
         bind:value={editor.temp.startsAt}
-        placeholder="optional RFC3339"
+        type="datetime-local"
         mono
-        hint="Empty starts the grant immediately."
+        hint="Your local time. Empty starts the grant immediately."
       />
       <Entry
         label="Expires in"
@@ -77,9 +77,9 @@
       <Entry
         label="Expires at"
         bind:value={editor.temp.expiresAt}
-        placeholder="optional RFC3339"
+        type="datetime-local"
         mono
-        hint="Used only when no duration is given."
+        hint="Your local time. Used only when no duration is given."
       />
     </div>
 

@@ -16,6 +16,28 @@ type TokenRequest struct {
 	Password string `json:"password"`
 }
 
+const codeFlowSuccessPage = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Sign-in complete</title></head>
+<body>
+<p>Sign-in complete. Returning to the application...</p>
+<script>
+(() => {
+  if (window.opener && !window.opener.closed) {
+    window.opener.postMessage("turna:login:success", window.location.origin);
+  }
+  window.close();
+  window.setTimeout(() => window.location.replace("/"), 500);
+})();
+</script>
+</body>
+</html>`
+
+func writeCodeFlowSuccess(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write([]byte(codeFlowSuccessPage))
+}
+
 func (m *Login) CodeFlowInit(w http.ResponseWriter, r *http.Request, providerName string) {
 	m.RemoveSuccess(w)
 
@@ -107,8 +129,7 @@ func (m *Login) CodeFlow(w http.ResponseWriter, r *http.Request) {
 
 	// pop-up close window
 	m.SetSuccess(w, "true")
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte("<script>window.close();</script>"))
+	writeCodeFlowSuccess(w)
 }
 
 func (m *Login) PasswordFlow(w http.ResponseWriter, r *http.Request) {

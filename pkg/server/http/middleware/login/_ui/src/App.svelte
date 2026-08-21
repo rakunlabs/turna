@@ -314,22 +314,52 @@
   };
 
   const checkWindow = (url: string) => {
-    var win = window.open(url);
+    const win = window.open(url);
+    if (!win) {
+      error = "The sign-in window was blocked. Allow pop-ups and try again.";
+      return;
+    }
 
-    var timer = setInterval(() => {
-      if (win?.closed) {
-        clearInterval(timer);
-        // read cookie of auth_verify
-        const v = Cookies.get("auth_verify");
-        if (v == "true") {
-          if (!isResponseTypeCode()) {
-            // redirect to home
-            window.location.assign(getRedirectPath());
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let closedChecks = 0;
 
-            return;
-          }
+    const cleanup = () => {
+      if (timer) clearInterval(timer);
+      window.removeEventListener("message", onMessage);
+    };
 
-          window.location.replace(window.location.href);
+    const finish = () => {
+      if (Cookies.get("auth_verify") !== "true") return false;
+
+      cleanup();
+      win.close();
+
+      if (!isResponseTypeCode()) {
+        window.location.assign(getRedirectPath());
+      } else {
+        window.location.replace(window.location.href);
+      }
+
+      return true;
+    };
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.data !== "turna:login:success") return;
+      finish();
+    };
+
+    window.addEventListener("message", onMessage);
+
+    timer = setInterval(() => {
+      // The cookie is authoritative. Do not wait for a browser to permit the
+      // callback tab to close before completing the parent login page.
+      if (finish()) return;
+
+      if (win.closed) {
+        closedChecks += 1;
+        if (closedChecks >= 10) {
+          cleanup();
+          error = "The sign-in window closed before authentication completed.";
         }
       }
     }, 500);

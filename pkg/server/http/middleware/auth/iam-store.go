@@ -968,6 +968,7 @@ func (s *Store) CreatePermission(ctx context.Context, permission data.Permission
 	permission.CreatedAt = time.Now().Format(time.RFC3339)
 	permission.UpdatedAt = permission.CreatedAt
 	permission.UpdatedBy = data.CtxUserName(ctx)
+	permission.Resources = normalizeResources(permission.Resources)
 
 	_, err := s.writeTx(ctx, "permissions", "create", permission.ID, func(tx *sql.Tx) error {
 		if err := s.txPermissionNameConflict(ctx, tx, permission.Name, permission.ID); err != nil {
@@ -1009,6 +1010,7 @@ func (s *Store) CreatePermissions(ctx context.Context, permissions []data.Permis
 func (s *Store) PutPermission(ctx context.Context, permission data.Permission) error {
 	permission.UpdatedAt = time.Now().Format(time.RFC3339)
 	permission.UpdatedBy = data.CtxUserName(ctx)
+	permission.Resources = normalizeResources(permission.Resources)
 
 	_, err := s.writeTx(ctx, "permissions", "update", permission.ID, func(tx *sql.Tx) error {
 		found, err := s.txPermissionByID(ctx, tx, permission.ID)
@@ -1048,7 +1050,7 @@ func (s *Store) PatchPermission(ctx context.Context, id string, patch data.Permi
 		}
 
 		if patch.Resources != nil {
-			permission.Resources = *patch.Resources
+			permission.Resources = normalizeResources(*patch.Resources)
 		}
 
 		if patch.Data != nil {

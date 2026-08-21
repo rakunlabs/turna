@@ -951,10 +951,15 @@ func (m *Session) IsLogged(w http.ResponseWriter, r *http.Request) (*claims.Cust
 }
 
 func (m *Session) RedirectToMain(w http.ResponseWriter, r *http.Request) {
-	redirectPath := r.URL.Query().Get("redirect_path")
-	if redirectPath == "" {
-		redirectPath = "/"
+	httputil.Redirect(w, http.StatusTemporaryRedirect, safeRedirectPath(r.URL.Query().Get("redirect_path")))
+}
+
+func safeRedirectPath(value string) string {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" || !strings.HasPrefix(parsed.Path, "/") ||
+		strings.HasPrefix(parsed.Path, "//") || strings.Contains(parsed.Path, `\`) {
+		return "/"
 	}
 
-	httputil.Redirect(w, http.StatusTemporaryRedirect, redirectPath)
+	return parsed.String()
 }

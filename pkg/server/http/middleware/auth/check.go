@@ -8,6 +8,36 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
 
+// normalizeResources folds the deprecated Resource.Path field into Resource.Paths.
+//
+// Path is still accepted on the wire for backwards compatibility, but it is
+// never persisted or served: everything ends up in Paths so callers only have
+// one field to reason about. Excluded is normalized recursively.
+func normalizeResources(resources []data.Resource) []data.Resource {
+	for i := range resources {
+		resources[i] = normalizeResource(resources[i])
+	}
+
+	return resources
+}
+
+func normalizeResource(resource data.Resource) data.Resource {
+	if resource.Path != "" {
+		if !slices.Contains(resource.Paths, resource.Path) {
+			// copy instead of append in place, the backing array may be shared.
+			paths := make([]string, 0, len(resource.Paths)+1)
+			paths = append(paths, resource.Paths...)
+			resource.Paths = append(paths, resource.Path)
+		}
+
+		resource.Path = ""
+	}
+
+	resource.Excluded = normalizeResources(resource.Excluded)
+
+	return resource
+}
+
 // checkAccess reports whether the permission allows host/path/method with the given check config.
 func checkAccess(cfg data.CheckConfig, perm *data.Permission, host, pathRequest, method string) bool {
 	for _, req := range perm.Resources {
