@@ -187,7 +187,7 @@ provider:
 | `oauth2.signup_url` | Remote auth middleware's self-registration endpoint (e.g. `https://auth.example.com/auth/oauth2/signup`); the verify endpoint is derived as `signup_url + "/verify"`. Lets the login page offer "Create account" for remote providers; in-process providers detect it automatically. |
 | `oauth2.password_reset_url` | Remote auth middleware's forgot-password endpoint; the confirm endpoint is derived as `password_reset_url + "/confirm"`. |
 
-On the auth instance, set the `passkey` runtime settings (`rp_id`, `origins`) explicitly when the login page is served from a different domain than the auth host, and keep `/auth/oauth2/*` publicly routable (don't chain `session` in front of the token/JWKS/passkey endpoints).
+On the auth instance, the default `rp_id` is the registrable domain (eTLD+1) of the forwarded host, so login pages on sibling subdomains of the auth host already share the passkey scope; set the `passkey` runtime settings (`rp_id`, `origins`) explicitly only when the login page lives on an unrelated domain. Keep `/auth/oauth2/*` publicly routable (don't chain `session` in front of the token/JWKS/passkey endpoints).
 
 ### API key requests
 

@@ -118,32 +118,40 @@ func (s *Store) GetPasskeyCredentialMeta(ctx context.Context, id string) (*Passk
 	return &meta, nil
 }
 
-// ListPasskeyCredentialIDs returns raw credential IDs for a user, used for
-// allowCredentials in login and excludeCredentials in registration.
-func (s *Store) ListPasskeyCredentialIDs(ctx context.Context, userID string) ([][]byte, error) {
+// ListPasskeyCredentialDescriptors returns credential descriptors (id and
+// registration-time transports) for a user, used for allowCredentials in
+// login and excludeCredentials in registration. Transport hints let the
+// browser route straight to the right authenticator (platform, hybrid,
+// usb) instead of falling back to the generic QR/security-key dialog.
+func (s *Store) ListPasskeyCredentialDescriptors(ctx context.Context, userID string) ([]passkey.PublicKeyCredentialDescriptor, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id FROM auth_passkey_credentials WHERE user_id = $1 ORDER BY created_at`, userID)
+		`SELECT id, credential->'Transports' FROM auth_passkey_credentials WHERE user_id = $1 ORDER BY created_at`, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	ids := [][]byte{}
+	list := []passkey.PublicKeyCredentialDescriptor{}
 	for rows.Next() {
 		var encoded string
-		if err := rows.Scan(&encoded); err != nil {
+		var rawTransports []byte
+		if err := rows.Scan(&encoded, &rawTransports); err != nil {
 			return nil, err
 		}
 
-		raw, err := passkey.Base64URLDecode(encoded)
-		if err != nil {
-			continue
+		var transports []string
+		if len(rawTransports) > 0 {
+			_ = json.Unmarshal(rawTransports, &transports)
 		}
 
-		ids = append(ids, raw)
+		list = append(list, passkey.PublicKeyCredentialDescriptor{
+			Type:       "public-key",
+			ID:         encoded,
+			Transports: transports,
+		})
 	}
 
-	return ids, rows.Err()
+	return list, rows.Err()
 }
 
 // DeletePasskeyCredential removes a stored credential.

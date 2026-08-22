@@ -12,6 +12,7 @@ import (
 	"github.com/rakunlabs/ada/middleware/auth/strategy/passkey"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"golang.org/x/net/publicsuffix"
 )
 
 const (
@@ -41,6 +42,18 @@ func (m *Auth) passkeyEngine(r *http.Request) (*passkey.WebAuthn, error) {
 		rpID = host
 		if hostname, _, err := net.SplitHostPort(host); err == nil {
 			rpID = hostname
+		}
+
+		// Default to the registrable domain (eTLD+1) so passkeys
+		// registered on auth.example.com stay visible when logging in
+		// from app.example.com — a full-host rp_id scopes the credential
+		// to a single subdomain and browsers then only offer the
+		// cross-device (QR/USB) path everywhere else. IPs and single
+		// labels (localhost) keep the raw hostname.
+		if net.ParseIP(rpID) == nil {
+			if domain, err := publicsuffix.EffectiveTLDPlusOne(rpID); err == nil {
+				rpID = domain
+			}
 		}
 	}
 
@@ -127,20 +140,12 @@ func (m *Auth) passkeySessionTake(ctx context.Context, key, sessionID string) (*
 }
 
 func (m *Auth) passkeyExcludeList(ctx context.Context, userID string) []passkey.PublicKeyCredentialDescriptor {
-	ids, err := m.store.ListPasskeyCredentialIDs(ctx, userID)
+	descriptors, err := m.store.ListPasskeyCredentialDescriptors(ctx, userID)
 	if err != nil {
 		return nil
 	}
 
-	exclude := make([]passkey.PublicKeyCredentialDescriptor, 0, len(ids))
-	for _, id := range ids {
-		exclude = append(exclude, passkey.PublicKeyCredentialDescriptor{
-			Type: "public-key",
-			ID:   passkey.Base64URLEncode(id),
-		})
-	}
-
-	return exclude
+	return descriptors
 }
 
 // ////////////////////////////////////////////////////////////////////
@@ -403,9 +408,19 @@ func (m *Auth) APIPasskeyToken(w http.ResponseWriter, r *http.Request) {
 	// begin
 	if len(req.Assertion) == 0 {
 		var allowed [][]byte
+		var descriptors []passkey.PublicKeyCredentialDescriptor
 		if req.Username != "" {
 			if user, err := m.cache.GetUser(data.GetUserRequest{Alias: req.Username}); err == nil {
-				allowed, _ = m.store.ListPasskeyCredentialIDs(r.Context(), user.ID)
+				list, _ := m.store.ListPasskeyCredentialDescriptors(r.Context(), user.ID)
+				for _, d := range list {
+					raw, err := passkey.Base64URLDecode(d.ID)
+					if err != nil {
+						continue
+					}
+
+					allowed = append(allowed, raw)
+					descriptors = append(descriptors, d)
+				}
 			}
 		}
 
@@ -418,6 +433,13 @@ func (m *Auth) APIPasskeyToken(w http.ResponseWriter, r *http.Request) {
 			})
 
 			return
+		}
+
+		// carry the registration-time transport hints into allowCredentials
+		// so browsers offer the matching authenticator (platform passkey,
+		// hybrid) instead of jumping to the QR/security-key dialog.
+		if len(descriptors) > 0 {
+			options.AllowCredentials = descriptors
 		}
 
 		sessionID, err := m.passkeySessionSave(r.Context(), passkeyLoginPrefix, session)

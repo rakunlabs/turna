@@ -48,7 +48,7 @@ Everything else is a settings namespace under `/auth/v1/settings/{namespace}` an
 | `cache` | `poll_interval`, `code_store` | Version poll interval for the in-memory read model and OAuth2 temporary code/state store. `code_store.active` is `memory` or `redis`. |
 | `token` | `token_lifetime`, `refresh_lifetime` | Token lifetimes (default `15m` / `24h`). |
 | `jwt` | `kid`, `private_key` | RS256 signing key (PEM, PKCS#8 or PKCS#1); auto-generated on first start. Editable through the API/UI and applied without restart — the public JWKS key is derived from the private key. Changing or rotating the key invalidates outstanding tokens. |
-| `passkey` | `disabled`, `rp_id`, `rp_display_name`, `origins`, `user_verification` | WebAuthn (passkey) relying party settings. Empty `rp_id`/`origins` are derived from the request host and forwarded scheme. |
+| `passkey` | `disabled`, `rp_id`, `rp_display_name`, `origins`, `user_verification` | WebAuthn (passkey) relying party settings. Empty `rp_id` defaults to the registrable domain (eTLD+1) of the request host — e.g. `auth.example.com` becomes `example.com`, so one passkey works across all subdomains; IPs and single-label hosts (`localhost`) are used as-is. Empty `origins` derives from the forwarded scheme + host. |
 | `password` | `disabled`, `local_disabled`, `ldap_disabled`, `ldap_register_disabled` | Password grant sources. Defaults keep the implicit behavior: local users check bcrypt, non-local users bind against LDAP, unknown aliases are auto-created from LDAP on first login. |
 | `api_key` | `disabled`, `self_service`, `max_lifetime` | Static API key creation and validation. `self_service` (default off) lets any authenticated X-User issue and manage their own keys through `/v1/api-keys` — a "Personal access keys" panel appears on the account page. `max_lifetime` caps the expiry of new keys (duration string); empty means keys may live forever. |
 | `device` | `disabled`, `code_lifetime`, `interval`, `verification_uri` | RFC 8628 device flow. Defaults: codes live `10m`, minimum poll interval `5` seconds, verification URI `<prefix>/ui/device`. |
@@ -384,7 +384,7 @@ Passkey support uses the dependency-free engine from `github.com/rakunlabs/ada/m
 | `DELETE` | `/auth/v1/passkey/credentials/{id}` | Delete a stored passkey. |
 | `POST` | `/auth/oauth2/passkey` | Public login ceremony; finish responds with the standard token JSON. |
 
-Login requests carry `client_id`/`client_secret` like the password grant; `username` scopes `allowCredentials` to a known user, empty uses the discoverable (passwordless) flow. The management UI shows registered passkeys on the user page; admins can enroll a passkey for the selected user, which binds the authenticator present in the operator's browser to that user's account. The self-service Account page enrolls for the signed-in user.
+Login requests carry `client_id`/`client_secret` like the password grant; `username` scopes `allowCredentials` to a known user, empty uses the discoverable (passwordless) flow. `allowCredentials` and `excludeCredentials` include the transports captured at registration (`internal`, `hybrid`, `usb`, ...) so browsers surface the matching authenticator — a synced browser-profile passkey shows up directly instead of the generic QR/security-key dialog. The management UI shows registered passkeys on the user page; admins can enroll a passkey for the selected user, which binds the authenticator present in the operator's browser to that user's account. The self-service Account page enrolls for the signed-in user.
 
 ## Session/login integration
 
@@ -465,7 +465,7 @@ provider:
 Remote notes:
 
 - Keep `/auth/oauth2/*` publicly routable on the auth instance (no `session` in front); normally protect `/auth/v1/*` and `/auth/ui/*` with a session chain. If you intentionally remove the session chain for recovery, `admin.allow_missing_x_user=true` grants break-glass admin access to requests without `X-User`.
-- Set the `passkey` runtime settings (`rp_id`, `origins`) when login pages are served from other domains; with the default derive-from-request behavior the login middleware forwards `X-Forwarded-Host`/`X-Forwarded-Proto`, so same-domain setups work without configuration.
+- Set the `passkey` runtime settings (`rp_id`, `origins`) when login pages are served from an unrelated domain; the default derives `rp_id` as the registrable domain (eTLD+1) of the forwarded host, so auth and login pages on sibling subdomains (`auth.example.com`, `app.example.com`) already share one passkey scope without configuration.
 - The session middleware fetches JWKS from `cert_url` at startup, so the auth instance must be reachable when dependent instances boot.
 
 ## Migration from iam/oauth2
