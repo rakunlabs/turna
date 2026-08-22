@@ -580,6 +580,9 @@ type Snapshot struct {
 	Permissions map[string]*data.Permission
 	PermIDs     []string
 	PermNames   map[string]string
+	// PublicPermIDs are permissions flagged public: their resources are
+	// matched for anonymous requests and for every user.
+	PublicPermIDs []string
 
 	LMaps     map[string]*data.LMap
 	LMapNames []string
@@ -812,8 +815,13 @@ func (c *Cache) Reload(ctx context.Context) error {
 		snap.Permissions[permission.ID] = permission
 		snap.PermIDs = append(snap.PermIDs, permission.ID)
 		snap.PermNames[permission.Name] = permission.ID
+
+		if permission.Public {
+			snap.PublicPermIDs = append(snap.PublicPermIDs, permission.ID)
+		}
 	}
 	sort.Strings(snap.PermIDs)
+	sort.Strings(snap.PublicPermIDs)
 
 	for _, lmap := range lmaps {
 		snap.LMaps[lmap.Name] = lmap
@@ -1847,10 +1855,33 @@ func (c *Cache) Check(req data.CheckRequest) (*data.CheckResponse, error) {
 	}
 
 	if user == nil || user.Disabled {
-		return &data.CheckResponse{Allowed: false}, nil
+		// public resources stay reachable for unknown principals; a disabled
+		// user keeps individual access revoked but public is public.
+		return &data.CheckResponse{Allowed: sn.checkPublic(req.Host, req.Path, req.Method)}, nil
 	}
 
 	return sn.checkUser(user, req), nil
+}
+
+// CheckPublic reports whether the request matches a permission flagged
+// public; no identity involved. Used for anonymous access checks.
+func (c *Cache) CheckPublic(host, path, method string) bool {
+	return c.Snapshot().checkPublic(host, path, method)
+}
+
+func (sn *Snapshot) checkPublic(host, path, method string) bool {
+	for _, permID := range sn.PublicPermIDs {
+		perm, ok := sn.Permissions[permID]
+		if !ok {
+			continue
+		}
+
+		if checkAccess(sn.Check, perm, host, path, method) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (sn *Snapshot) checkUser(user *data.User, req data.CheckRequest) *data.CheckResponse {
@@ -1880,6 +1911,11 @@ func (sn *Snapshot) checkUser(user *data.User, req data.CheckRequest) *data.Chec
 		if checkAccess(sn.Check, perm, req.Host, req.Path, req.Method) {
 			return &data.CheckResponse{Allowed: true}
 		}
+	}
+
+	// what is public for anonymous visitors is public for users too
+	if sn.checkPublic(req.Host, req.Path, req.Method) {
+		return &data.CheckResponse{Allowed: true}
 	}
 
 	return &data.CheckResponse{Allowed: false}

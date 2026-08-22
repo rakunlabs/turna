@@ -879,6 +879,16 @@
         placeholder: "optional",
       })}
     </div>
+
+	<div class="mt-6 border-t border-rule pt-5">
+	  {@render toggle({
+	    label: "Make these resources public",
+	    on: editor.getBool("public"),
+	    set: (value) => editor.setBool("public", value),
+	    consequential: true,
+	    hint: "Anonymous requests and every signed-in user may access matching resources. Host, path, method and excluded-resource rules below still apply.",
+	  })}
+	</div>
   </Section>
 
   <Section

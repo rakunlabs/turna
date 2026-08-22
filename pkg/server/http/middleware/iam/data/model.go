@@ -41,6 +41,10 @@ type Permission struct {
 	Description string              `json:"description"`
 	Data        map[string]any      `json:"data"`
 	Scope       map[string][]string `json:"scope"`
+	// Public opens the resources of this permission to everyone: access
+	// checks match them without a user (anonymous) and for every user,
+	// regardless of role/permission assignment.
+	Public bool `json:"public,omitempty"`
 
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
@@ -59,6 +63,7 @@ type PermissionPatch struct {
 	Description *string             `json:"description"`
 	Data        map[string]any      `json:"data"`
 	Scope       map[string][]string `json:"scope"`
+	Public      *bool               `json:"public"`
 }
 
 type Resource struct {

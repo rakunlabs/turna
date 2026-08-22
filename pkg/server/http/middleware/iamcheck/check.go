@@ -2,7 +2,9 @@ package iamcheck
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -13,13 +15,17 @@ import (
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
 
 type IamCheck struct {
-	CheckAPI  string          `cfg:"check_api"`
-	Public    []data.Resource `cfg:"public"`
-	Responses []Response      `cfg:"responses"`
-	ForceHost string          `cfg:"force_host"`
+	CheckAPI string `cfg:"check_api"`
+	// AuthMiddleware performs checks directly against an auth middleware in
+	// the same process. It takes precedence over CheckAPI.
+	AuthMiddleware string          `cfg:"auth_middleware"`
+	Public         []data.Resource `cfg:"public"`
+	Responses      []Response      `cfg:"responses"`
+	ForceHost      string          `cfg:"force_host"`
 
 	InsecureSkipVerify bool       `cfg:"insecure_skip_verify"`
 	client             *ok.Client `cfg:"-"`
@@ -36,16 +42,21 @@ type Response struct {
 }
 
 func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
-	// set cehck client
-	client, err := ok.New(
-		ok.WithDisableRetry(true),
-		ok.WithInsecureSkipVerify(m.InsecureSkipVerify),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("cannot create ok client: %w", err)
-	}
+	if m.AuthMiddleware == "" {
+		if m.CheckAPI == "" {
+			return nil, fmt.Errorf("check_api or auth_middleware is required")
+		}
 
-	m.client = client
+		client, err := ok.New(
+			ok.WithDisableRetry(true),
+			ok.WithInsecureSkipVerify(m.InsecureSkipVerify),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("cannot create ok client: %w", err)
+		}
+
+		m.client = client
+	}
 
 	// fill paths on public resources
 	for i := range m.Public {
@@ -92,54 +103,13 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 			}
 
 			xUser := r.Header.Get("X-User")
-			if xUser == "" {
-				httputil.HandleError(w, httputil.NewError("", nil, http.StatusUnauthorized))
-				return
-			}
-
-			ctx := r.Context()
-
-			body := data.CheckRequest{
-				Alias:  xUser,
-				Path:   r.URL.Path,
-				Method: r.Method,
-				Host:   hostToCheck,
-			}
-
-			jsonBody, err := json.Marshal(body)
+			allowed, err := m.allowed(r.Context(), xUser, hostToCheck, r.URL.Path, r.Method)
 			if err != nil {
-				httputil.HandleError(w, httputil.NewError("Cannot marshal request", err, http.StatusInternalServerError))
-				return
-			}
-
-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.CheckAPI, bytes.NewReader(jsonBody))
-			if err != nil {
-				httputil.HandleError(w, httputil.NewError("Cannot create request", err, http.StatusInternalServerError))
-				return
-			}
-
-			var resp data.CheckResponse
-			if err := m.client.Do(req, func(r *http.Response) error {
-				if r.StatusCode != http.StatusOK {
-					response := httputil.Response{}
-					if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
-						return httputil.NewError("Cannot decode response", err, http.StatusInternalServerError)
-					}
-
-					return httputil.NewError(response.Msg, nil, http.StatusInternalServerError)
-				}
-
-				if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
-					return httputil.NewError("Cannot decode response", err, http.StatusInternalServerError)
-				}
-
-				return nil
-			}); err != nil {
 				httputil.HandleError(w, httputil.NewErrorAs(err))
 				return
 			}
 
-			if !resp.Allowed {
+			if !allowed {
 				for _, response := range m.Responses {
 					if v, _ := doublestar.Match(response.Path, r.URL.Path); v {
 						if len(response.Methods) == 0 || slices.ContainsFunc(response.Methods, func(cmp string) bool {
@@ -156,11 +126,78 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 					}
 				}
 
-				httputil.HandleError(w, httputil.NewError("", nil, http.StatusForbidden))
+				status := http.StatusForbidden
+				if xUser == "" {
+					status = http.StatusUnauthorized
+				}
+
+				httputil.HandleError(w, httputil.NewError("", nil, status))
 				return
 			}
 
 			next.ServeHTTP(w, r)
 		})
 	}, nil
+}
+
+func (m *IamCheck) allowed(ctx context.Context, alias, host, path, method string) (bool, error) {
+	if m.AuthMiddleware != "" {
+		issuer := session.IssuerRegistry.Get(m.AuthMiddleware)
+		checker, ok := issuer.(session.InfAccessChecker)
+		if !ok {
+			return false, httputil.NewError(
+				fmt.Sprintf("auth middleware %q does not support access checks", m.AuthMiddleware),
+				nil,
+				http.StatusInternalServerError,
+			)
+		}
+
+		return checker.AccessAllowed(ctx, alias, host, path, method)
+	}
+
+	body, err := json.Marshal(data.CheckRequest{Alias: alias, Host: host, Path: path, Method: method})
+	if err != nil {
+		return false, httputil.NewError("cannot marshal check request", err, http.StatusInternalServerError)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.CheckAPI, bytes.NewReader(body))
+	if err != nil {
+		return false, httputil.NewError("cannot create check request", err, http.StatusInternalServerError)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if alias != "" {
+		req.Header.Set("X-User", alias)
+	}
+
+	var resp data.CheckResponse
+	if err := m.client.Do(req, func(r *http.Response) error {
+		if r.StatusCode != http.StatusOK {
+			// Older IAM check APIs require alias/id and answer 4xx for
+			// anonymous checks. Preserve the historic iam_check result (401).
+			if alias == "" && r.StatusCode >= http.StatusBadRequest && r.StatusCode < http.StatusInternalServerError {
+				return nil
+			}
+
+			return httputil.NewError(
+				fmt.Sprintf("check API %q returned %s", m.CheckAPI, r.Status),
+				nil,
+				http.StatusBadGateway,
+			)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
+			return httputil.NewError("check API returned an invalid response", err, http.StatusBadGateway)
+		}
+
+		return nil
+	}); err != nil {
+		var httpErr httputil.Error
+		if errors.As(err, &httpErr) {
+			return false, httpErr
+		}
+
+		return false, httputil.NewError("check API request failed", err, http.StatusBadGateway)
+	}
+
+	return resp.Allowed, nil
 }

@@ -118,12 +118,35 @@ With `prefix_path: /auth`:
 | `GET/PUT/PATCH/DELETE` | `/auth/v1/permissions/{id}` | Manage one permission. |
 | `GET/POST` | `/auth/v1/lmaps` | List/create LDAP maps. |
 | `GET/PUT/DELETE` | `/auth/v1/lmaps/{name}` | Manage one LDAP map. |
-| `POST` | `/auth/v1/check` | Permission check by alias/id + host/path/method. |
-| `POST` | `/auth/check` | Permission check for the `X-User` header identity. |
+| `POST` | `/auth/v1/check` | Permission check by optional alias/id + host/path/method. Without identity, checks public permissions only. |
+| `POST` | `/auth/check` | Permission check for the `X-User` header identity. Without `X-User`, a public match returns allowed; a private request returns 401. |
 | `GET` | `/auth/info` | Identity info for the `X-User` header. |
 | `GET` | `/auth/v1/dashboard` | Totals and extended roles. |
 
 List endpoints parse the query string with [`rakunlabs/query`](https://pkg.go.dev/github.com/rakunlabs/query): use `_limit`/`_offset` for paging (legacy `limit`/`offset` keys still work) plus field filters such as `name=...`, `role_ids=...`, `add_roles=true`.
+
+#### Public permission resources
+
+A permission can be marked `public: true` in the permission editor or API. Its resource list then applies to everyone, including requests without `X-User`. It uses the ordinary permission matcher: `hosts`, doublestar `paths`, case-insensitive `methods`, and `excluded` resources all continue to apply.
+
+```json
+{
+  "name": "public-pages",
+  "public": true,
+  "resources": [
+    {
+      "hosts": ["app.example.com"],
+      "paths": ["/health", "/docs/**"],
+      "methods": ["GET"],
+      "excluded": [
+        {"paths": ["/docs/internal/**"], "methods": ["GET"]}
+      ]
+    }
+  ]
+}
+```
+
+This does not bypass `session` by itself. The application route must let an anonymous request reach `iam_check` (for example through session `skip_paths`); `iam_check` then checks auth directly with `auth_middleware: <name>` (recommended) or calls the remote auth check API without an alias, and passes the request only when a public permission matches. Authenticated users also get public access without having the permission assigned through a role.
 
 ### LDAP
 

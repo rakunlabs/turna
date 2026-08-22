@@ -1061,6 +1061,10 @@ func (s *Store) PatchPermission(ctx context.Context, id string, patch data.Permi
 			permission.Scope = patch.Scope
 		}
 
+		if patch.Public != nil {
+			permission.Public = *patch.Public
+		}
+
 		permission.UpdatedAt = time.Now().Format(time.RFC3339)
 		permission.UpdatedBy = data.CtxUserName(ctx)
 

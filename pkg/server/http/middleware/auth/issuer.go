@@ -15,8 +15,9 @@ import (
 // compile-time checks for the in-process issuer planes the session
 // middleware can consume.
 var (
-	_ session.InfIssuer      = (*Auth)(nil)
-	_ session.InfPublicPaths = (*Auth)(nil)
+	_ session.InfIssuer        = (*Auth)(nil)
+	_ session.InfPublicPaths   = (*Auth)(nil)
+	_ session.InfAccessChecker = (*Auth)(nil)
 )
 
 // Keyfunc returns the public key for access tokens signed by this middleware.

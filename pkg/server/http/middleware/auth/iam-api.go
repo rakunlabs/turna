@@ -803,8 +803,12 @@ func (m *Auth) CheckAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// no identity: an anonymous check against permissions flagged public
 	if body.Alias == "" && body.ID == "" {
-		httputil.HandleError(w, httputil.NewError("alias or id is required", nil, http.StatusBadRequest))
+		httputil.JSON(w, http.StatusOK, &data.CheckResponse{
+			Allowed: m.cache.CheckPublic(body.Host, body.Path, body.Method),
+		})
+
 		return
 	}
 
@@ -850,11 +854,46 @@ func (m *Auth) checkAccess(ctx context.Context, req data.CheckRequest) (*data.Ch
 	return m.cache.Snapshot().checkUser(user.User, req), nil
 }
 
+// AccessAllowed implements session.InfAccessChecker for middleware chains in
+// the same process. It avoids an HTTP call back into Turna (and the routing,
+// session and admin gates that such a self-call would have to cross).
+func (m *Auth) AccessAllowed(ctx context.Context, alias, host, path, method string) (bool, error) {
+	if alias == "" {
+		return m.cache.CheckPublic(host, path, method), nil
+	}
+
+	resp, err := m.checkAccess(ctx, data.CheckRequest{
+		Alias:  alias,
+		Host:   host,
+		Path:   path,
+		Method: method,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return resp.Allowed, nil
+}
+
 // CheckUserAPI checks the X-User header identity against the request body.
+// Anonymous requests (no X-User) are checked against permissions flagged
+// public only; a match answers allowed, anything else stays 401.
 func (m *Auth) CheckUserAPI(w http.ResponseWriter, r *http.Request) {
 	xUser := r.Header.Get("X-User")
 	if xUser == "" {
+		var body data.CheckRequestUser
+		if err := httputil.Decode(r, &body); err != nil {
+			httputil.HandleError(w, httputil.NewError("cannot decode check request", err, http.StatusBadRequest))
+			return
+		}
+
+		if m.cache.CheckPublic(body.Host, body.Path, body.Method) {
+			httputil.JSON(w, http.StatusOK, &data.CheckResponse{Allowed: true})
+			return
+		}
+
 		httputil.HandleError(w, httputil.NewError("X-User header is required", nil, http.StatusUnauthorized))
+
 		return
 	}
 

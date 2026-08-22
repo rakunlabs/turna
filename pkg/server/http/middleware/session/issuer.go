@@ -50,6 +50,13 @@ type InfPublicPaths interface {
 	PublicPathPatterns() []string
 }
 
+// InfAccessChecker is implemented by in-process identity providers that can
+// answer a host/path/method authorization check. An empty alias means an
+// anonymous request and therefore checks public resources only.
+type InfAccessChecker interface {
+	AccessAllowed(ctx context.Context, alias, host, path, method string) (bool, error)
+}
+
 // InfPasskey is implemented by issuers that support WebAuthn (passkey)
 // login. The body is the begin/finish JSON payload; the original request
 // carries host/scheme information for relying-party derivation.
