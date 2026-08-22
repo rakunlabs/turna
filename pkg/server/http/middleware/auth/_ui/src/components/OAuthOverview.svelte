@@ -41,7 +41,7 @@
   ]);
 </script>
 
-{#snippet commit(namespace: "token" | "oauth2" | "password" | "passkey" | "jwt")}
+{#snippet commit(namespace: "token" | "oauth2" | "authorize" | "password" | "passkey" | "jwt")}
   <button
     type="button"
     class="act act-primary"
@@ -58,7 +58,7 @@
 >
   {#snippet custody()}
     <span class="stamp">
-      Namespaces <span class="serial stamp-raw">token · oauth2 · password · passkey · jwt</span>
+      Namespaces <span class="serial stamp-raw">token · oauth2 · authorize · password · passkey · jwt</span>
     </span>
     <span class="serial stamp-raw">{session.oauthBase}/oauth2/token</span>
   {/snippet}
@@ -150,6 +150,61 @@
         bind:checked={
           () => getSettingBool("oauth2", ["insecure_skip_verify"]),
           (value: boolean) => setSettingBool("oauth2", ["insecure_skip_verify"], value)
+        }
+      />
+    </div>
+  </Section>
+
+  <Section
+    title="Local authorization"
+    note="The browser authorization endpoint holds a pending request, sends anonymous visitors to the login screen, then resumes at consent."
+  >
+    {#snippet aside()}{@render commit("authorize")}{/snippet}
+
+    <div class="grid gap-6 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div class="min-w-0">
+        <label class="stamp block" for="authorize-login-url">Anonymous login URL</label>
+        <input
+          id="authorize-login-url"
+          class="entry serial mt-1.5"
+          autocomplete="off"
+          aria-describedby="authorize-login-url-hint"
+          placeholder="/login/"
+          value={getSettingString("authorize", ["login_url"])}
+          oninput={(event) => setSettingString("authorize", ["login_url"], event.currentTarget.value)}
+        />
+        <p id="authorize-login-url-hint" class="mt-1.5 max-w-[70ch] text-[12px] leading-[1.5] text-muted">
+          Same-origin paths and absolute URLs are accepted. Auth appends a
+          <span class="serial">redirect_path</span> back to the pending consent request. Empty leaves
+          anonymous visitors on an authorization error page.
+        </p>
+      </div>
+
+      <div class="min-w-0">
+        <label class="stamp block" for="authorize-flow-lifetime">Pending flow lifetime</label>
+        <input
+          id="authorize-flow-lifetime"
+          class="entry serial mt-1.5"
+          autocomplete="off"
+          aria-describedby="authorize-flow-lifetime-hint"
+          placeholder="10m"
+          value={getSettingString("authorize", ["flow_lifetime"])}
+          oninput={(event) =>
+            setSettingString("authorize", ["flow_lifetime"], event.currentTarget.value)}
+        />
+        <p id="authorize-flow-lifetime-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+          How long a login may take before its consent request expires.
+        </p>
+      </div>
+    </div>
+
+    <div class="mt-7">
+      <Switch
+        label="Disable local authorization"
+        hint="The /oauth2/authorize endpoint stops accepting new browser authorization requests. Pending requests are not deleted."
+        bind:checked={
+          () => getSettingBool("authorize", ["disabled"]),
+          (value: boolean) => setSettingBool("authorize", ["disabled"], value)
         }
       />
     </div>

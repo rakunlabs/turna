@@ -90,6 +90,11 @@ export const settingTemplates = {
     schema: "https",
     insecure_skip_verify: false,
   },
+  authorize: {
+    disabled: false,
+    flow_lifetime: "10m",
+    login_url: "",
+  },
   check: {
     default_hosts: [],
     no_host_check: false,
