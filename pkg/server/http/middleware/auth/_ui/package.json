@@ -19,9 +19,5 @@
     "tslib": "^2.8.1",
     "typescript": "^5.9.3",
     "vite": "^7.1.9"
-  },
-  "dependencies": {
-    "@fontsource-variable/jetbrains-mono": "^5.2.9",
-    "@fontsource-variable/public-sans": "^5.2.9"
   }
 }

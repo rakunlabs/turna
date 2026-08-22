@@ -32,45 +32,45 @@ colors:
   vault-on-seal: "#1a0708"
 typography:
   display:
-    fontFamily: "JetBrains Mono Variable, ui-monospace, monospace"
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace"
     fontSize: "4.5rem"
     fontWeight: 700
     lineHeight: 0.9
     letterSpacing: "-0.035em"
     fontVariant: "tabular-nums"
   headline:
-    fontFamily: "JetBrains Mono Variable, ui-monospace, monospace"
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace"
     fontSize: "2.75rem"
     fontWeight: 700
     lineHeight: 0.95
     letterSpacing: "-0.03em"
     fontVariant: "tabular-nums"
   title:
-    fontFamily: "Public Sans Variable, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     fontSize: "1.85rem"
     fontWeight: 700
     lineHeight: 1.15
     letterSpacing: "-0.02em"
   body:
-    fontFamily: "Public Sans Variable, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     fontSize: "13px"
     fontWeight: 400
     lineHeight: 1.6
     letterSpacing: "normal"
   label:
-    fontFamily: "Public Sans Variable, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     fontSize: "10.5px"
     fontWeight: 600
     lineHeight: 1.4
     letterSpacing: "0.15em"
   label-literal:
-    fontFamily: "Public Sans Variable, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     fontSize: "11px"
     fontWeight: 500
     lineHeight: 1.4
     letterSpacing: "0.01em"
   code:
-    fontFamily: "JetBrains Mono Variable, ui-monospace, monospace"
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace"
     fontSize: "12.5px"
     fontWeight: 400
     lineHeight: 1.65
@@ -295,8 +295,9 @@ surface the visitor cannot reach is not shipped.
 
 ## Typography
 
-**Display / Body Font:** Public Sans Variable (with `ui-sans-serif`, `system-ui`)
-**Serial / Code Font:** JetBrains Mono Variable (with `ui-monospace`, Menlo)
+**Display / Body Font:** the browser's system sans (`ui-sans-serif`, `system-ui`)
+**Serial / Code Font:** the browser's system monospace (`ui-monospace`,
+SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New)
 
 **Character:** A civic-register sans doing all the speaking, and a monospace
 doing all the *swearing to* — the second face is not stylistic, it is a claim
@@ -304,12 +305,11 @@ about provenance. Hierarchy is carried almost entirely by weight and by the
 engraved caps register, not by a wide size ramp: the working range between a
 hint and a section heading is barely 3px.
 
-Both faces are self-hosted, variable, latin + latin-ext only, with no italic
-cuts. That is a hard constraint, not a preference: the built bundle is compiled
-into the Go binary with `go:embed`, which ships every file in `dist/` regardless
-of what a browser would actually fetch. Vietnamese, Cyrillic, Greek and italic
-subsets would roughly quadruple the embedded weight for nothing. Any future font
-decision inherits this.
+Both roles use browser and operating-system fonts. No font files are bundled or
+downloaded, which keeps the `go:embed` payload smaller and lets every supported
+script use the platform's native coverage. Exact glyph metrics vary by platform,
+so hierarchy is defined by role, weight and spacing rather than by one face's
+metrics.
 
 ### Hierarchy
 - **Display** (mono, 700, 4.5rem, lh 0.9, ls −0.035em): exactly one use — the
@@ -333,10 +333,10 @@ decision inherits this.
 ### Named Rules
 
 **The Serial Rule.** Anything that came from the server — an id, a version, a
-key id, a path, a hostname, a count, a timestamp — is set in JetBrains Mono with
-tabular numerals via `.serial`. Prose about that value stays in Public Sans. The
-face change is the boundary between what the console says and what the server
-swore to.
+key id, a path, a hostname, a count, a timestamp — is set in the system
+monospace with tabular numerals via `.serial`. Prose about that value stays in
+the system sans. The face change is the boundary between what the console says
+and what the server swore to.
 
 **The Case-Sensitivity Rule.** `.stamp` uppercases; `.stamp-raw` does not. A
 value whose case is meaningful — an API path, a namespace identifier, a kid, a
@@ -575,8 +575,8 @@ message loses the only statement of why the write did not happen.
   every Tailwind utility — an unlayered `button { color: inherit }` silently
   defeats every text-colour utility applied to a button, which is a defect this
   build actually shipped and fixed.
-- **Do** keep new font subsets out. The bundle is `go:embed`-ed whole; an unused
-  Cyrillic cut still ships in the binary.
+- **Do** keep webfont files out. The bundle is `go:embed`-ed whole, while the
+  system stacks add no binary payload and inherit native script coverage.
 
 ### Don't:
 - **Don't** use seal red for anything reversible. Not for emphasis, not for a
