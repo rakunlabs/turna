@@ -152,7 +152,7 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := m.authorizationClient(r.Context(), clientID, "")
+	client, err := m.authorizationRequestClient(r.Context(), clientID)
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_request",

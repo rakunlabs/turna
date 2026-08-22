@@ -145,6 +145,14 @@ func decodeClientMetadata(clientID string, body []byte) (*AccessClient, error) {
 	}, nil
 }
 
+func (m *Auth) authorizationRequestClient(ctx context.Context, clientID string) (*AccessClient, error) {
+	if client, ok := m.lookupClient(clientID); ok {
+		return client, nil
+	}
+
+	return fetchClientMetadata(ctx, clientID)
+}
+
 func (m *Auth) authorizationClient(ctx context.Context, clientID, clientSecret string) (*AccessClient, error) {
 	if _, ok := m.lookupClient(clientID); ok {
 		return m.resolveClient(clientID, clientSecret)

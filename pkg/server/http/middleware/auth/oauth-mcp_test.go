@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -82,6 +83,22 @@ func TestDecodeClientMetadata(t *testing.T) {
 		if _, err := decodeClientMetadata(clientID, []byte(body)); err == nil {
 			t.Errorf("decodeClientMetadata(%s) = nil, want error", body)
 		}
+	}
+}
+
+func TestAuthorizationRequestClientDoesNotRequireSecret(t *testing.T) {
+	cache := NewCache(nil)
+	cache.snap.Store(&Snapshot{OAuthClients: map[string]AccessClient{
+		"ofs-ui": {ClientSecret: "secret", WhitelistURLs: []string{"https://ofs.example/"}},
+	}})
+	m := &Auth{cache: cache}
+
+	client, err := m.authorizationRequestClient(context.Background(), "ofs-ui")
+	if err != nil {
+		t.Fatalf("authorizationRequestClient: %v", err)
+	}
+	if client.ClientSecret != "secret" {
+		t.Fatalf("client = %+v", client)
 	}
 }
 
