@@ -293,14 +293,15 @@
 
   const info = async () => {
     try {
-      const { data } = await axios.get<AuthInfo>(
-        `./${import.meta.env.VITE_API}?auth_info=true`,
+      const methodsURL = import.meta.env.DEV ? "/login/auth/methods" : "./auth/methods";
+      const { data } = await axios.get<{ payload: AuthInfo }>(
+        methodsURL,
       );
-      if (data.provider.password?.length > 0) {
-        providerSelected = data.provider.password[0].name;
+      if (data.payload.provider.password?.length > 0) {
+        providerSelected = data.payload.provider.password[0].name;
       }
 
-      authInfo = data;
+      authInfo = data.payload;
     } catch (reason: unknown) {
       let errorLog = "";
       if (axios.isAxiosError(reason)) {

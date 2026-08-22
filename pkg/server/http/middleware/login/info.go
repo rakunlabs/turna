@@ -18,6 +18,10 @@ type InfoUIResponse struct {
 	Error    string       `json:"error,omitempty"`
 }
 
+type MethodsResponse struct {
+	Payload InfoUIResponse `json:"payload"`
+}
+
 type InfoProvider struct {
 	Password []Link `json:"password"`
 	Code     []Link `json:"code"`
@@ -48,7 +52,7 @@ func (i Info) value() Info {
 	return i
 }
 
-func (m *Login) InformationUI(w http.ResponseWriter, r *http.Request) {
+func (m *Login) informationUIResponse() InfoUIResponse {
 	info := m.Info.value()
 
 	response := InfoUIResponse{
@@ -123,5 +127,19 @@ func (m *Login) InformationUI(w http.ResponseWriter, r *http.Request) {
 		return response.Provider.Passkey[i].Priority < response.Provider.Passkey[j].Priority
 	})
 
-	httputil.JSON(w, http.StatusOK, response)
+	return response
+}
+
+// Methods returns the canonical login method manifest in the standard API
+// payload envelope.
+func (m *Login) Methods(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	httputil.JSON(w, http.StatusOK, MethodsResponse{Payload: m.informationUIResponse()})
+}
+
+// InformationUI keeps the historic unwrapped response shape for the
+// /auth/info/ui and ?auth_info=true compatibility aliases.
+func (m *Login) InformationUI(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	httputil.JSON(w, http.StatusOK, m.informationUIResponse())
 }

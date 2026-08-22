@@ -52,12 +52,14 @@ type Path struct {
 	Code    string `cfg:"code"`
 	Token   string `cfg:"token"`
 	Passkey string `cfg:"passkey"`
+	Methods string `cfg:"methods"`
 	InfoUI  string `cfg:"info_ui"`
 	Status  string `cfg:"status"`
 }
 
 type PathFixed struct {
 	Code         string
+	Methods      string
 	InfoUI       string
 	Token        string
 	Passkey      string
@@ -138,6 +140,12 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 		m.pathFixed.Passkey = path.Join(m.Path.Base, "auth/passkey")
 	}
 
+	if m.Path.Methods != "" {
+		m.pathFixed.Methods = m.Path.Methods
+	} else {
+		m.pathFixed.Methods = path.Join(m.Path.Base, "auth/methods")
+	}
+
 	if m.Path.InfoUI != "" {
 		m.pathFixed.InfoUI = m.Path.InfoUI
 	} else {
@@ -213,6 +221,12 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 
 			switch method {
 			case http.MethodGet:
+				if urlPath == m.pathFixed.Methods || urlPath == m.pathFixed.Methods+"/" {
+					m.Methods(w, r)
+
+					return
+				}
+
 				if strings.HasPrefix(urlPath, m.pathFixed.Code) {
 					m.CodeFlow(w, r)
 

@@ -44,6 +44,7 @@ server:
 | `path.code` | Override code-flow route. Defaults to `{base}/auth/code`. |
 | `path.token` | Override password-flow route. Defaults to `{base}/auth/token`. |
 | `path.passkey` | Override passkey-flow route. Defaults to `{base}/auth/passkey`. |
+| `path.methods` | Override the login-method manifest route. Defaults to `{base}/auth/methods`. |
 | `path.info_ui` | Override provider-info route. Defaults to `{base}/auth/info/ui`. |
 | `path.status` | Override status route. Defaults to `{base}/auth/status`. |
 | `redirect.base_url` | Fixed external base URL for redirects. |
@@ -62,6 +63,7 @@ For `path.base: /login/`, default routes are:
 
 | Method | Route | Purpose |
 | --- | --- | --- |
+| `GET` | `/login/auth/methods` | Available password, OAuth and passkey methods plus login-page metadata. Canonical endpoint used by the embedded UI. |
 | `GET` | `/login/auth/code/{provider}` | Start or finish OAuth2 authorization code flow. |
 | `POST` | `/login/auth/token/{provider}` | Password flow token login. |
 | `POST` | `/login/auth/passkey/{provider}` | WebAuthn (passkey) begin/finish ceremony; works with providers backed by an in-process [`auth`](./auth) middleware (`auth_middleware` + `passkey: true`). |
@@ -71,6 +73,25 @@ For `path.base: /login/`, default routes are:
 | `POST` | `/login/auth/reset/confirm/{provider}` | Set a new password with a reset code. |
 | `GET` | `/login/auth/info/ui` | Provider list for the UI. |
 | `GET` | `/login/auth/status` | Login status endpoint. |
+
+`/login/auth/info/ui` and `/login/?auth_info=true` remain compatibility aliases for the methods response. New integrations should use `/login/auth/methods`. All methods responses carry `Cache-Control: no-store` because provider and self-service capabilities can change at runtime.
+
+The canonical endpoint uses the standard payload envelope:
+
+```json
+{
+  "payload": {
+    "title": "Login",
+    "provider": {
+      "password": [],
+      "code": [],
+      "passkey": []
+    }
+  }
+}
+```
+
+The two compatibility aliases keep their historic unwrapped `{title, provider}` response.
 
 ## Passkey
 
