@@ -204,6 +204,28 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 	}, nil
 }
 
+// PublicPathPatterns publishes the public plane of this middleware as
+// doublestar globs (session.InfPublicPaths). A session middleware in front
+// with a provider referencing this instance via auth_middleware skips
+// mandatory authentication on these paths automatically — credentials are
+// still honored there (consent relies on that), but machine endpoints like
+// /oauth2/token or the federated /oauth2/code/{provider} callbacks are never
+// redirected to an interactive login.
+func (m *Auth) PublicPathPatterns() []string {
+	prefix := strings.TrimSuffix(m.PrefixPath, "/")
+
+	return []string{
+		prefix + "/oauth2/**",
+		prefix + "/saml/**",
+		// RFC 8414 / OIDC discovery root variants (only reachable when the
+		// router forwards /.well-known to this middleware, harmless otherwise)
+		"/.well-known/oauth-authorization-server",
+		"/.well-known/oauth-authorization-server/**",
+		"/.well-known/openid-configuration",
+		"/.well-known/openid-configuration/**",
+	}
+}
+
 func (m *Auth) MuxSet(prefix string) *ada.Mux {
 	mux := ada.NewMux()
 	admin := m.adminOnly
@@ -313,11 +335,13 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 	mux.GET(prefix+"/v1/passkey/credentials", m.PasskeyCredentialsAPI)
 	mux.DELETE(prefix+"/v1/passkey/credentials/{id}", m.PasskeyCredentialDeleteAPI)
 
-	// api key management (legacy X-User plane + principal admin)
-	mux.GET(prefix+"/v1/api-keys", admin(m.ListAPIKeysAPI))
-	mux.POST(prefix+"/v1/api-keys", admin(m.CreateAPIKeyAPI))
-	mux.PATCH(prefix+"/v1/api-keys/{id}", admin(m.UpdateAPIKeyAPI))
-	mux.DELETE(prefix+"/v1/api-keys/{id}", admin(m.DeleteAPIKeyAPI))
+	// api key management (X-User plane + principal admin); the X-User plane
+	// opens up to non-admins when the api_key.self_service setting is on.
+	selfKeys := m.apiKeySelfOrAdmin
+	mux.GET(prefix+"/v1/api-keys", selfKeys(m.ListAPIKeysAPI))
+	mux.POST(prefix+"/v1/api-keys", selfKeys(m.CreateAPIKeyAPI))
+	mux.PATCH(prefix+"/v1/api-keys/{id}", selfKeys(m.UpdateAPIKeyAPI))
+	mux.DELETE(prefix+"/v1/api-keys/{id}", selfKeys(m.DeleteAPIKeyAPI))
 	mux.GET(prefix+"/v1/api-key-principals", admin(m.ListAPIKeyPrincipalsAPI))
 	mux.POST(prefix+"/v1/api-key-principals", admin(m.CreateAPIKeyPrincipalAPI))
 	mux.PATCH(prefix+"/v1/api-key-principals/{id}", admin(m.UpdateAPIKeyPrincipalAPI))

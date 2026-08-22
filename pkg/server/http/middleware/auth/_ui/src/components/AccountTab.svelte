@@ -52,6 +52,32 @@
   let passkeyLabel = $state("");
   let pendingPasskey = $state("");
 
+  // personal access keys (only when the instance allows self-service issuing)
+  type OwnKeyMeta = {
+    id: string;
+    name: string;
+    disabled: boolean;
+    expires_at?: string;
+    created_at: string;
+    last_used_at?: string;
+  };
+
+  let ownKeys = $state<OwnKeyMeta[]>([]);
+  let ownKeyName = $state("");
+  let ownKeyExpires = $state("720h");
+  let createdOwnKey = $state("");
+  let pendingKeyRevoke = $state("");
+
+  const ownKeyPresets = [
+    { label: "24 hours", value: "24h" },
+    { label: "7 days", value: "168h" },
+    { label: "30 days", value: "720h" },
+    { label: "90 days", value: "2160h" },
+    { label: "No expiry", value: "" },
+  ];
+
+  const patEnabled = $derived(session.capabilities?.api_key_self_service === true);
+
   const webauthnReady = isWebAuthnSupported();
 
   const profileName = $derived(fieldText(me?.details?.name));
@@ -93,7 +119,71 @@
 
   async function loadAll() {
     await loadMe();
-    if (me) await loadPasskeys();
+    if (me) {
+      await loadPasskeys();
+      if (patEnabled) await loadOwnKeys();
+    }
+  }
+
+  // ////////////////////////////////////////////////////////////////
+  // personal access keys
+
+  async function loadOwnKeys() {
+    try {
+      const res = await session.request<OwnKeyMeta[]>("api-keys");
+      ownKeys = res.payload ?? [];
+    } catch {
+      ownKeys = [];
+    }
+  }
+
+  async function createOwnKey() {
+    const ok = await session.run(async () => {
+      const res = await session.request<{ id: string; key: string; expires_at?: string }>(
+        "api-keys",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: ownKeyName.trim(),
+            expires_in: ownKeyExpires.trim(),
+          }),
+        },
+      );
+
+      createdOwnKey = res.payload.key;
+      ownKeyName = "";
+      await loadOwnKeys();
+    }, "Access key create failed");
+
+    if (ok) {
+      docket.commit("Access key issued. Copy it now — it is not stored and cannot be shown again.");
+    }
+  }
+
+  async function revokeOwnKey(id: string) {
+    pendingKeyRevoke = "";
+
+    const ok = await session.run(async () => {
+      await session.request(`api-keys/${encodeURIComponent(id)}`, { method: "DELETE" });
+      await loadOwnKeys();
+    }, "Access key revoke failed");
+
+    if (ok) {
+      docket.commit("Access key revoked. Anything still sending it is refused from now on.");
+    }
+  }
+
+  function ownKeyLabel(key: OwnKeyMeta) {
+    return key.name || key.id;
+  }
+
+  function ownKeyStanding(key: OwnKeyMeta): { label: string; state: "endorsed" | "broken" | "held" } {
+    if (key.disabled) return { label: "Suspended", state: "held" };
+    if (key.expires_at && new Date(key.expires_at).getTime() < Date.now()) {
+      return { label: "Expired", state: "broken" };
+    }
+
+    return { label: "Active", state: "endorsed" };
   }
 
   // ////////////////////////////////////////////////////////////////
@@ -637,5 +727,149 @@
         </p>
       {/if}
     </Section>
+
+    {#if patEnabled}
+      <Section
+        title="Personal access keys"
+        note="A static key for your scripts and tools. It acts as you, carries at most your own access, and is checked against the database on every request — revoking it stops access immediately."
+      >
+        {#snippet aside()}
+          <span class="stamp">{ownKeys.length} on record</span>
+        {/snippet}
+
+        {#if createdOwnKey}
+          <div class="guilloche stamp-in mb-8 border border-seal bg-sheet">
+            <div class="hatch flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-seal/40 px-5 py-3">
+              <span class="stamp text-seal">Issued once</span>
+              <span class="text-[13px] leading-[1.5] text-ink">
+                This is the only time this key will ever be shown.
+              </span>
+            </div>
+
+            <div class="px-5 py-6">
+              <p class="serial break-all text-[15px] font-semibold text-ink">{createdOwnKey}</p>
+
+              <div class="mt-5 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="act act-primary"
+                  onclick={() => void copyText(createdOwnKey, "Access key")}
+                >
+                  {@render copyGlyph()}
+                  Copy key
+                </button>
+                <button type="button" class="act" onclick={() => (createdOwnKey = "")}>
+                  I have stored it
+                </button>
+              </div>
+
+              <p class="mt-4 max-w-[68ch] text-[12.5px] leading-[1.55] text-muted">
+                Only a hash of this key is kept, so it cannot be recovered later. Send it as an
+                <span class="serial">X-API-Key</span> header.
+              </p>
+            </div>
+          </div>
+        {/if}
+
+        {#if ownKeys.length === 0}
+          <div class="border border-dashed border-rule px-6 py-10 text-center">
+            <p class="text-[15px] font-semibold text-ink">No access keys issued</p>
+            <p class="mx-auto mt-2 max-w-[58ch] text-[13px] leading-[1.6] text-muted">
+              An access key lets a script or tool call the API as you, without an interactive
+              sign-in.
+            </p>
+          </div>
+        {:else}
+          <ul class="border-y border-rule">
+            {#each ownKeys as key (key.id)}
+              {@const standing = ownKeyStanding(key)}
+              <li class="border-b border-rule last:border-b-0">
+                <div class="flex flex-wrap items-center gap-x-6 gap-y-2 py-3">
+                  <div class="min-w-0 flex-1 basis-64">
+                    <p class="truncate text-[13.5px] font-medium text-ink">{ownKeyLabel(key)}</p>
+                    <p class="serial mt-0.5 truncate text-[12px] text-muted">
+                      Issued {formatStamp(key.created_at) || key.created_at || "—"} · Expires
+                      {key.expires_at ? formatStamp(key.expires_at) : "never"} ·
+                      {key.last_used_at ? `Last used ${formatStamp(key.last_used_at)}` : "Never used"}
+                    </p>
+                  </div>
+
+                  <Seal state={standing.state} label={standing.label} />
+
+                  <button
+                    type="button"
+                    class="act act-quiet shrink-0 text-seal hover:bg-seal/10 hover:text-seal"
+                    aria-expanded={pendingKeyRevoke === key.id}
+                    onclick={() => (pendingKeyRevoke = pendingKeyRevoke === key.id ? "" : key.id)}
+                  >
+                    Revoke
+                  </button>
+                </div>
+
+                {#if pendingKeyRevoke === key.id}
+                  <div class="pb-4">
+                    <BreakSeal
+                      consequence={`Revoking “${ownKeyLabel(key)}” deletes it permanently. Every script or tool still sending this key is refused on its very next request, and the key cannot be restored — you would have to issue a new one.`}
+                      action="Revoke this key"
+                      disabled={session.busy}
+                      onconfirm={() => void revokeOwnKey(key.id)}
+                    />
+                  </div>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+
+        <div class="mt-8 flex flex-wrap items-end gap-4">
+          <div class="min-w-0 flex-1 basis-64">
+            <label class="stamp block" for="own-key-name">Name for this key</label>
+            <input
+              id="own-key-name"
+              class="entry mt-1.5"
+              placeholder="my-script"
+              autocomplete="off"
+              bind:value={ownKeyName}
+            />
+            <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+              Name it after what will hold it, so you can tell your keys apart later.
+            </p>
+          </div>
+
+          <div class="min-w-0 basis-48">
+            <label class="stamp block" for="own-key-expires">Expires in</label>
+            <input
+              id="own-key-expires"
+              class="entry serial mt-1.5"
+              placeholder="720h"
+              autocomplete="off"
+              bind:value={ownKeyExpires}
+            />
+          </div>
+
+          <button
+            type="button"
+            class="act act-primary shrink-0"
+            disabled={session.busy}
+            onclick={() => void createOwnKey()}
+          >
+            {session.busy ? "Issuing…" : "Issue a key"}
+          </button>
+        </div>
+
+        <div class="mt-3 flex flex-wrap gap-2">
+          {#each ownKeyPresets as preset (preset.label)}
+            <button
+              type="button"
+              class="act {ownKeyExpires === preset.value ? 'act-primary' : ''}"
+              aria-pressed={ownKeyExpires === preset.value}
+              onclick={() => (ownKeyExpires = preset.value)}
+            >
+              {preset.label}
+            </button>
+          {/each}
+        </div>
+      </Section>
+    {/if}
   {/if}
 </Instrument>

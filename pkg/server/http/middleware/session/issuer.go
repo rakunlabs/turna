@@ -38,6 +38,18 @@ type InfAPIKey interface {
 	APIKeyData(ctx context.Context, key string) ([]byte, error)
 }
 
+// InfPublicPaths is implemented by issuers that publish the path patterns
+// (doublestar globs) of their public plane — endpoints that must stay
+// reachable for machine clients and pre-login browsers (token, callbacks,
+// discovery documents, consent, ...).
+//
+// A session middleware whose provider references such an issuer with
+// `auth_middleware` treats these patterns as skip_paths automatically, so
+// operators do not have to enumerate them by hand (and miss one).
+type InfPublicPaths interface {
+	PublicPathPatterns() []string
+}
+
 // InfPasskey is implemented by issuers that support WebAuthn (passkey)
 // login. The body is the begin/finish JSON payload; the original request
 // carries host/scheme information for relying-party derivation.

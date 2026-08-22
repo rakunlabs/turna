@@ -164,6 +164,102 @@ func TestSkipPaths(t *testing.T) {
 	})
 }
 
+// fakePublicPathsIssuer is a fakeIssuer that also publishes a public plane.
+type fakePublicPathsIssuer struct {
+	fakeIssuer
+
+	patterns []string
+}
+
+func (f *fakePublicPathsIssuer) PublicPathPatterns() []string {
+	return f.patterns
+}
+
+func TestIssuerSkipPaths(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	newSession := func(disable bool) *Session {
+		IssuerRegistry.Set("public-auth", &fakePublicPathsIssuer{
+			fakeIssuer: fakeIssuer{kid: "kid-1", key: &key.PublicKey},
+			patterns:   []string{"/auth/oauth2/**", "/.well-known/openid-configuration"},
+		})
+
+		m := &Session{
+			Provider: map[string]Provider{
+				"turna": {AuthMiddleware: "public-auth"},
+			},
+			Action: Action{
+				Token: &Token{LoginPath: "/login/"},
+			},
+			DisableIssuerSkipPaths: disable,
+			store:                  fakeStore{},
+		}
+
+		if err := m.SetAction(); err != nil {
+			t.Fatalf("set action: %v", err)
+		}
+
+		return m
+	}
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	do := func(m *Session, path, authorization string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, path, nil)
+		if authorization != "" {
+			r.Header.Set("Authorization", authorization)
+		}
+
+		rec := httptest.NewRecorder()
+		m.Do(next, rec, r)
+
+		return rec
+	}
+
+	t.Run("issuer public path passes anonymously without config", func(t *testing.T) {
+		if rec := do(newSession(false), "/auth/oauth2/token", ""); rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+	})
+
+	t.Run("federated callback is not captured by login redirect", func(t *testing.T) {
+		if rec := do(newSession(false), "/auth/oauth2/code/gitlab", ""); rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+	})
+
+	t.Run("basic client authentication survives the public plane", func(t *testing.T) {
+		// the token endpoint receives Authorization: Basic <client>; the
+		// session middleware must not answer 401 trying to parse it as a JWT
+		if rec := do(newSession(false), "/auth/oauth2/token", "Basic dHVybmE6c2VjcmV0"); rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+	})
+
+	t.Run("discovery document is reachable", func(t *testing.T) {
+		if rec := do(newSession(false), "/.well-known/openid-configuration", ""); rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+	})
+
+	t.Run("other paths still require authentication", func(t *testing.T) {
+		if rec := do(newSession(false), "/private/page", ""); rec.Code != http.StatusTemporaryRedirect {
+			t.Fatalf("status = %d, want 307", rec.Code)
+		}
+	})
+
+	t.Run("disable_issuer_skip_paths restores the old behavior", func(t *testing.T) {
+		if rec := do(newSession(true), "/auth/oauth2/token", ""); rec.Code != http.StatusTemporaryRedirect {
+			t.Fatalf("status = %d, want 307", rec.Code)
+		}
+	})
+}
+
 func TestLegacyProxyAuth(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {

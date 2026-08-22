@@ -217,6 +217,10 @@ type PasskeySettings struct {
 type APIKeySettings struct {
 	// Disabled turns off api key creation and validation.
 	Disabled bool `json:"disabled"`
+	// SelfService lets any authenticated X-User issue and manage their own
+	// keys through /v1/api-keys without admin permission. Admins keep access
+	// to that plane regardless of this switch. Default off.
+	SelfService bool `json:"self_service"`
 	// MaxLifetime caps the expiry of newly created keys (duration string).
 	// Empty means keys may live forever.
 	MaxLifetime string `json:"max_lifetime"`

@@ -13,6 +13,7 @@ type CapabilitiesResponse struct {
 	AnonymousAdmin            bool   `json:"anonymous_admin"`
 	BootstrapAdmin            bool   `json:"bootstrap_admin"`
 	SelfService               bool   `json:"self_service"`
+	APIKeySelfService         bool   `json:"api_key_self_service"`
 	AdminPermission           string `json:"admin_permission"`
 	AdminPermissionConfigured bool   `json:"admin_permission_configured"`
 	AllowMissingXUser         bool   `json:"allow_missing_x_user"`
@@ -21,7 +22,8 @@ type CapabilitiesResponse struct {
 }
 
 func (m *Auth) capabilitiesForRequest(r *http.Request) CapabilitiesResponse {
-	cfg := m.cache.Snapshot().Admin
+	sn := m.cache.Snapshot()
+	cfg := sn.Admin
 	permission := strings.TrimSpace(cfg.GetPermission())
 	xUser := strings.TrimSpace(r.Header.Get("X-User"))
 
@@ -31,6 +33,7 @@ func (m *Auth) capabilitiesForRequest(r *http.Request) CapabilitiesResponse {
 		AllowMissingXUser:         cfg.GetAllowMissingXUser(),
 		XUser:                     xUser,
 		SelfService:               xUser != "",
+		APIKeySelfService:         xUser != "" && sn.APIKey.SelfService && !sn.APIKey.Disabled,
 	}
 
 	if permission == "" {
@@ -95,6 +98,27 @@ func (m *Auth) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 
 func (m *Auth) adminOnly(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !m.requireAdmin(w, r) {
+			return
+		}
+
+		next(w, r)
+	}
+}
+
+// apiKeySelfOrAdmin admits the /v1/api-keys plane: any authenticated X-User
+// when the api_key.self_service setting is on (the handlers scope every read
+// and write to that X-User), and admins always. With self-service off the
+// plane behaves exactly like before — admin only.
+func (m *Auth) apiKeySelfOrAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := m.cache.Snapshot().APIKey
+		if cfg.SelfService && !cfg.Disabled && strings.TrimSpace(r.Header.Get("X-User")) != "" {
+			next(w, r)
+
+			return
+		}
+
 		if !m.requireAdmin(w, r) {
 			return
 		}

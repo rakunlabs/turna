@@ -50,7 +50,7 @@ Everything else is a settings namespace under `/auth/v1/settings/{namespace}` an
 | `jwt` | `kid`, `private_key` | RS256 signing key (PEM, PKCS#8 or PKCS#1); auto-generated on first start. Editable through the API/UI and applied without restart — the public JWKS key is derived from the private key. Changing or rotating the key invalidates outstanding tokens. |
 | `passkey` | `disabled`, `rp_id`, `rp_display_name`, `origins`, `user_verification` | WebAuthn (passkey) relying party settings. Empty `rp_id`/`origins` are derived from the request host and forwarded scheme. |
 | `password` | `disabled`, `local_disabled`, `ldap_disabled`, `ldap_register_disabled` | Password grant sources. Defaults keep the implicit behavior: local users check bcrypt, non-local users bind against LDAP, unknown aliases are auto-created from LDAP on first login. |
-| `api_key` | `disabled`, `max_lifetime` | Static API key creation and validation. `max_lifetime` caps the expiry of new keys (duration string); empty means keys may live forever. |
+| `api_key` | `disabled`, `self_service`, `max_lifetime` | Static API key creation and validation. `self_service` (default off) lets any authenticated X-User issue and manage their own keys through `/v1/api-keys` — a "Personal access keys" panel appears on the account page. `max_lifetime` caps the expiry of new keys (duration string); empty means keys may live forever. |
 | `device` | `disabled`, `code_lifetime`, `interval`, `verification_uri` | RFC 8628 device flow. Defaults: codes live `10m`, minimum poll interval `5` seconds, verification URI `<prefix>/ui/device`. |
 | `token_exchange` | `disabled` | RFC 8693 token exchange grant. |
 | `totp` | `disabled`, `issuer`, `skew` | TOTP second factor. `issuer` is shown in authenticator apps (default `Turna Auth`), `skew` is the allowed period drift (default `1` = ±30s). Confirming TOTP also issues 8 single-use recovery codes. |
@@ -92,7 +92,7 @@ With `prefix_path: /auth`:
 | Route | Purpose |
 | --- | --- |
 | `/auth/ui/*` | Embedded Svelte management UI (users, roles, permissions, LDAP, OAuth, settings, API keys, email, mTLS, self-service account). |
-| `/auth/ui/#account` | Self-service account page for the current `X-User`: password, TOTP recovery, passkeys, roles and permissions. |
+| `/auth/ui/#account` | Self-service account page for the current `X-User`: password, TOTP recovery, passkeys, roles and permissions. With `api_key.self_service` on it also carries a "Personal access keys" panel for issuing and revoking own API keys. |
 | `/auth/ui/#api-keys` | Admin API key principal management: choose an owner user/service account, create with a lifetime, attach role/permission IDs, copy the one-time key, list/update/revoke existing keys, and edit API key runtime settings. |
 | `/auth/ui/#email` | Email code login settings: SMTP relay, code mail Go-template subject/body editor and preview. |
 | `/auth/ui/#magic-link` | Magic link login settings: enable toggle, magic link mail template editor and preview (shares the `email` SMTP relay). |
@@ -194,7 +194,7 @@ Token notes:
 
 1. The client opens `/auth/oauth2/authorize?response_type=code&client_id=...&redirect_uri=...&scope=...&state=...&code_challenge=...&code_challenge_method=S256[&resource=...]`. Public clients (no stored secret) must send PKCE.
 2. The request is validated (client, redirect target, PKCE, resources), stored as a pending flow and the browser is redirected to `/auth/oauth2/consent?flow=...`.
-3. The consent page needs a logged-in user: it reads `X-User` set by the [`session`](./session) middleware in front. Use session `skip_paths: ["/auth/oauth2/**"]` so machine endpoints stay public while cookie-carrying browsers are still authenticated on the consent page. Anonymous browsers are redirected to `authorize.login_url` (with `?redirect_path=`) when configured. Clients with `skip_consent: true` are auto-approved; everyone else sees an approve/deny screen with client name and scopes.
+3. The consent page needs a logged-in user: it reads `X-User` set by the [`session`](./session) middleware in front. When a session provider references this middleware with `auth_middleware`, the public plane (`/auth/oauth2/**`, `/auth/saml/**`, root discovery documents) is skip-pathed automatically; otherwise use session `skip_paths: ["/auth/oauth2/**"]`. Machine endpoints stay public while cookie-carrying browsers are still authenticated on the consent page. Anonymous browsers are redirected to `authorize.login_url` (with `?redirect_path=`) when configured. Clients with `skip_consent: true` are auto-approved; everyone else sees an approve/deny screen with client name and scopes.
 4. Approval issues a single-use code bound to client + redirect + PKCE + resources and redirects back to `redirect_uri?code=...&state=...`; the client exchanges it at the token endpoint with `code_verifier`.
 
 ### MCP / resource server integration
@@ -203,7 +203,7 @@ The combination of RFC 8414 metadata, dynamic client registration, PKCE, resourc
 
 1. Enable registration: `PUT /auth/v1/settings/registration {"value":{"enabled":true,"client_lifetime":"720h"}}`.
 2. Route `/.well-known/*` to the auth middleware so RFC 8414 discovery works from the issuer root.
-3. Keep the machine endpoints public: either add `skip_paths: ["/auth/oauth2/**", "/.well-known/**"]` to the [`session`](./session) middleware in front (recommended — the consent page still authenticates cookie-carrying browsers, and `authorize.login_url` catches anonymous ones), or split the router so `/auth/oauth2/*` bypasses session.
+3. Keep the machine endpoints public: with a session provider referencing this middleware via `auth_middleware` this happens automatically (issuer skip paths — the consent page still authenticates cookie-carrying browsers, and `authorize.login_url` catches anonymous ones). Otherwise add `skip_paths: ["/auth/oauth2/**", "/.well-known/**"]` to the [`session`](./session) middleware in front, or split the router so `/auth/oauth2/*` bypasses session.
 4. Protect the MCP endpoint with the [`oauth2_resource`](./oauth2_resource) middleware, which serves the RFC 9728 protected resource metadata and validates bearer tokens in-process.
 
 An MCP client then discovers the resource metadata, registers itself (`/oauth2/register`), sends the user through `/oauth2/authorize` + consent, and calls the MCP endpoint with the issued bearer token — no manual client setup per user.
@@ -238,7 +238,7 @@ Mapped roles land in `sync_role_ids` and are managed by the provider on every lo
 | `POST` | `/auth/v1/me/password` | Change own password (`current_password` + `new_password`, min 8 chars). Local users only; verified against the stored bcrypt hash. |
 | `GET` | `/auth/info` | Lighter identity info (details, roles, permissions) — predates `/v1/me`. |
 
-Together with the other X-User plane routes (`/v1/passkey/*`, `/v1/totp*`, `/v1/device`), this gives users self-service over interactive credentials. Recovery codes: `POST /auth/v1/totp/recovery` regenerates the set (old codes become invalid). API keys are managed from the admin *System -> API Keys* page because they are machine principals with explicit owners.
+Together with the other X-User plane routes (`/v1/passkey/*`, `/v1/totp*`, `/v1/device`), this gives users self-service over interactive credentials. Recovery codes: `POST /auth/v1/totp/recovery` regenerates the set (old codes become invalid). API keys are managed from the admin *System -> API Keys* page by default; turning on the `api_key.self_service` setting additionally gives every signed-in user a "Personal access keys" panel on the account page (backed by the owner-scoped `/v1/api-keys` routes).
 
 ### Device flow (RFC 8628)
 
@@ -258,7 +258,7 @@ Static long-lived credentials for scripts and integrations, managed as machine p
 | `GET` | `/auth/v1/api-key-principals` | List all key principals (metadata, owner, role/permission IDs; never the raw key). Optional `user_id` filters to one owner. |
 | `PATCH` | `/auth/v1/api-key-principals/{id}` | Update name, `role_ids`, `permission_ids`, `details` or `disabled`. Changes apply on the next request. |
 | `DELETE` | `/auth/v1/api-key-principals/{id}` | Revoke a key; access stops immediately. |
-| `GET/POST/PATCH/DELETE` | `/auth/v1/api-keys...` | Legacy X-User owner-scoped API kept for compatibility and now admin-gated; the management UI uses `api-key-principals`. |
+| `GET/POST/PATCH/DELETE` | `/auth/v1/api-keys...` | X-User owner-scoped plane (personal access keys). Admin-only by default; with the `api_key.self_service` setting on, any authenticated X-User can issue, list, update and revoke **their own** keys here. A key never carries more than its owner's roles/permissions. The admin management UI uses `api-key-principals`. |
 
 Each key is its own principal: identity claims carry `sub`/`preferred_username` as `api-key:<id>`, `principal_type=api_key`, `api_key_id`, `owner_user_id`, plus the key's own `roles` and `permissions` (IDs and names). `POST /auth/v1/check` accepts `api-key:<id>` as alias. Validation endpoint: `POST /auth/oauth2/api-key` with the `X-API-Key` header returns the claims JSON (`401` when the key is unknown, disabled, expired, or its owner is disabled).
 

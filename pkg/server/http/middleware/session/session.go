@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"sync"
 )
 
 const (
@@ -40,8 +41,16 @@ type Session struct {
 	// of being redirected to login. Useful for public OAuth2/MCP endpoints
 	// that live behind the same router as protected pages.
 	SkipPaths []string `cfg:"skip_paths"`
+	// DisableIssuerSkipPaths turns off the automatic skip_paths that
+	// in-process issuers (providers with auth_middleware) publish for their
+	// public plane (/oauth2/**, discovery documents, ...). With this set,
+	// only the explicit skip_paths above apply.
+	DisableIssuerSkipPaths bool `cfg:"disable_issuer_skip_paths"`
 
 	store StoreInf `cfg:"-"`
+
+	issuerSkipOnce  sync.Once `cfg:"-"`
+	issuerSkipPaths []string  `cfg:"-"`
 }
 
 type HostCookieName struct {

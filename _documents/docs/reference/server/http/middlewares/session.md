@@ -232,6 +232,23 @@ Behavior on a matched path:
 
 This keeps a single `[session, auth]` router while leaving the public OAuth2/MCP endpoints (`/oauth2/token`, `/oauth2/register`, `/oauth2/certs`, discovery documents, ...) reachable for machine clients.
 
+### Automatic issuer skip paths
+
+Hand-listing every public endpoint is error-prone — miss the federated callback (`/auth/oauth2/code/gitlab`) and the login popup bounces back to the login page; miss the token endpoint and the code exchange dies with `401 {"error":"Unauthorized"}` because session tries to parse the client's `Authorization: Basic` header as a bearer JWT.
+
+To avoid that, a provider configured with `auth_middleware: <name>` automatically pulls the issuer's published public plane into the skip set — for the auth middleware that is `<prefix>/oauth2/**`, `<prefix>/saml/**` and the root `/.well-known` discovery documents. Explicit `skip_paths` are still honored on top. Skip-path semantics stay the same: credentials are honored when present (so `/oauth2/consent` still sees `X-User`), anonymous requests pass through stripped.
+
+Set `disable_issuer_skip_paths: true` to turn the automatism off and manage `skip_paths` fully by hand:
+
+```yaml
+session:
+  disable_issuer_skip_paths: true
+  skip_paths:
+    - /auth/oauth2/**
+```
+
+Note: `/oauth2/consent` does **not** need to be excluded from skip paths — skipping makes authentication *optional*, not absent. A logged-in browser still gets its `X-User` on a skipped path, which is exactly what the consent page needs; anonymous visitors fall through to the consent page's own login redirect.
+
 ## Context Flags
 
 Use [`set`](./set) before `session` to change behavior for selected routes.

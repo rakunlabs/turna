@@ -727,6 +727,18 @@
           (value: boolean) => setSettingBool("api_key", ["disabled"], value)
         }
       />
+
+      <div class="mt-6">
+        <Switch
+          label="Let people issue their own keys"
+          disabled={session.busy}
+          hint="Everyone with a signed-in session gets a “Personal access keys” panel on their account page. A key they issue there carries only their own roles and permissions — never more. Off means only administrators can issue keys."
+          bind:checked={
+            () => getSettingBool("api_key", ["self_service"]),
+            (value: boolean) => setSettingBool("api_key", ["self_service"], value)
+          }
+        />
+      </div>
     </Section>
 
     <Section title="Lifetime cap">

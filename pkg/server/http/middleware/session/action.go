@@ -410,7 +410,8 @@ func (m *Session) unauthorized(w http.ResponseWriter) {
 	httputil.JSON(w, status, MetaData{Error: http.StatusText(status)})
 }
 
-// skipPath reports whether the request path matches a skip_paths pattern.
+// skipPath reports whether the request path matches an explicit skip_paths
+// pattern or a public-plane pattern published by an in-process issuer.
 func (m *Session) skipPath(path string) bool {
 	for _, pattern := range m.SkipPaths {
 		if ok, _ := doublestar.Match(pattern, path); ok {
@@ -418,7 +419,53 @@ func (m *Session) skipPath(path string) bool {
 		}
 	}
 
+	for _, pattern := range m.issuerSkipPatterns() {
+		if ok, _ := doublestar.Match(pattern, path); ok {
+			return true
+		}
+	}
+
 	return false
+}
+
+// issuerSkipPatterns collects the public path patterns of every issuer this
+// middleware's providers reference with auth_middleware, so their machine
+// endpoints (token, callbacks, discovery, consent) never get captured by an
+// interactive login redirect.
+//
+// The set is resolved lazily on the first request and then cached: issuers
+// register themselves while middlewares are built and requests only arrive
+// after the server starts (same assumption as issuerKeyFunc).
+func (m *Session) issuerSkipPatterns() []string {
+	if m.DisableIssuerSkipPaths {
+		return nil
+	}
+
+	m.issuerSkipOnce.Do(func() {
+		seen := map[string]struct{}{}
+
+		for _, provider := range m.Provider {
+			if provider.AuthMiddleware == "" {
+				continue
+			}
+
+			issuer, ok := IssuerRegistry.Get(provider.AuthMiddleware).(InfPublicPaths)
+			if !ok {
+				continue
+			}
+
+			for _, pattern := range issuer.PublicPathPatterns() {
+				if _, dup := seen[pattern]; dup || pattern == "" {
+					continue
+				}
+
+				seen[pattern] = struct{}{}
+				m.issuerSkipPaths = append(m.issuerSkipPaths, pattern)
+			}
+		}
+	})
+
+	return m.issuerSkipPaths
 }
 
 // stripIdentityHeaders removes every header the session middleware would set

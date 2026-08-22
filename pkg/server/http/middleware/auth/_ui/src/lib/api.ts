@@ -39,6 +39,7 @@ export type Capabilities = {
   anonymous_admin: boolean;
   bootstrap_admin: boolean;
   self_service: boolean;
+  api_key_self_service: boolean;
   admin_permission: string;
   admin_permission_configured: boolean;
   allow_missing_x_user: boolean;
@@ -136,6 +137,7 @@ export const settingTemplates = {
   },
   api_key: {
     disabled: false,
+    self_service: false,
     max_lifetime: "",
   },
   device: {
