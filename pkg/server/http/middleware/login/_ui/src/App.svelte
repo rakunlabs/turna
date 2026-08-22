@@ -357,9 +357,11 @@
 
       if (win.closed) {
         closedChecks += 1;
-        if (closedChecks >= 10) {
-          cleanup();
-          error = "The sign-in window closed before authentication completed.";
+        // COOP-enabled providers sever the popup handle and report
+        // closed=true while the window is still open, so this is only a
+        // hint: keep polling the cookie and let a late login complete.
+        if (closedChecks === 10) {
+          error = "The sign-in window may have closed before authentication completed.";
         }
       }
     }, 500);

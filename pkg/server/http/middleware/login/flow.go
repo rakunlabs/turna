@@ -20,14 +20,19 @@ const codeFlowSuccessPage = `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Sign-in complete</title></head>
 <body>
-<p>Sign-in complete. Returning to the application...</p>
+<p>Sign-in complete. You can close this window.</p>
 <script>
 (() => {
+  // With COOP-enabled providers the opener reference may be severed; the
+  // parent login page also polls the auth_verify cookie, so the message is
+  // only a fast path.
   if (window.opener && !window.opener.closed) {
     window.opener.postMessage("turna:login:success", window.location.origin);
   }
+  // Browsers may refuse to close this window (e.g. after a COOP
+  // browsing-context swap). Never navigate it anywhere as a fallback; the
+  // parent page owns the post-login navigation.
   window.close();
-  window.setTimeout(() => window.location.replace("/"), 500);
 })();
 </script>
 </body>
