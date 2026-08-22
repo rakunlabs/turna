@@ -12,11 +12,11 @@ run: ## Run the application; CONFIG_FILE to specify a config file
 # go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o $(PROJECT) cmd/$(PROJECT)/main.go
 .PHONY: build
 build: ## Build the binary
-	goreleaser build --snapshot --clean --single-target
+	GOOS=linux GOARCH=amd64 goreleaser build --snapshot --clean --single-target
 
 .PHONY: build-container
 build-container: build ## Build the container image with test tag
-	docker build -t $(PROJECT):test -f ci/alpine.Dockerfile dist/turna_linux_amd64_v1/
+	docker build --platform=linux/amd64 -t $(PROJECT):test -f ci/alpine.Dockerfile dist/turna_linux_amd64_v1/
 
 .PHONY: docs
 docs: ## Run documentation dev server

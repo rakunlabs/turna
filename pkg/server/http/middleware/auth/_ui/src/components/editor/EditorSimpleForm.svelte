@@ -377,6 +377,13 @@
         rows: 4,
         hint: "One per line. A redirect that is not listed here is refused.",
       })}
+      {@render toggle({
+        label: "Skip consent",
+        on: editor.getBool("skip_consent"),
+        set: (value) => editor.setBool("skip_consent", value),
+        hint: "Auto-approve authorization requests after login. Enable only for trusted first-party clients.",
+        consequential: true,
+      })}
     </div>
   </Section>
 {:else if editor.kind === "providers"}
