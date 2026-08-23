@@ -62,9 +62,6 @@ type providerState struct {
 	// keyFunc validates tokens for the merged provider set. Nil when the
 	// initial dynamic build failed; callers fall back to the static keyfunc.
 	keyFunc InfKeyFuncParser
-	// skipPaths are the public path patterns of every issuer referenced by
-	// the merged provider set.
-	skipPaths []string
 
 	// signature identifies the keyfunc-relevant part of the provider set.
 	signature string
@@ -231,8 +228,8 @@ func (m *Session) refreshFromURL(src *ProviderSource) {
 }
 
 // applyDynamic merges the dynamic providers over the static map and swaps in
-// a new state. The keyfunc and skip paths are rebuilt only when the
-// keyfunc-relevant part of the set changed. Callers must hold dynamicM.
+// a new state. The keyfunc is rebuilt only when the keyfunc-relevant part of
+// the set changed. Callers must hold dynamicM.
 func (m *Session) applyDynamic(dynamic map[string]Provider, version uint64, now time.Time) {
 	old := m.dynamic.Load()
 
@@ -253,7 +250,6 @@ func (m *Session) applyDynamic(dynamic map[string]Provider, version uint64, now 
 
 	if old != nil && old.signature == st.signature {
 		st.keyFunc = old.keyFunc
-		st.skipPaths = old.skipPaths
 		m.dynamic.Store(st)
 
 		return
@@ -267,7 +263,6 @@ func (m *Session) applyDynamic(dynamic map[string]Provider, version uint64, now 
 		// next configuration change triggers another rebuild attempt.
 		if old != nil {
 			st.keyFunc = old.keyFunc
-			st.skipPaths = old.skipPaths
 		}
 		m.dynamic.Store(st)
 
@@ -275,7 +270,6 @@ func (m *Session) applyDynamic(dynamic map[string]Provider, version uint64, now 
 	}
 
 	st.keyFunc = keyFunc
-	st.skipPaths = issuerSkipPatternsFor(merged)
 
 	if old != nil && old.keyFunc != nil {
 		if closer, ok := old.keyFunc.(interface{ EndBackground() }); ok {
@@ -287,7 +281,7 @@ func (m *Session) applyDynamic(dynamic map[string]Provider, version uint64, now 
 }
 
 // keyFuncSignature identifies the part of a provider set that the keyfunc
-// and issuer skip paths are built from.
+// is built from.
 func keyFuncSignature(providers map[string]Provider) string {
 	parts := make([]string, 0, len(providers))
 	for name, provider := range providers {

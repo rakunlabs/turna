@@ -30,10 +30,10 @@ server:
             same_site: 2
           # machine endpoints (token, register, certs, discovery) stay public;
           # cookie-carrying browsers are still authenticated on these paths,
-          # so the /auth/oauth2/consent page keeps working.
-          skip_paths:
-            - /auth/oauth2/**
-            - /.well-known/**
+          # so the /auth/oauth2/consent page keeps working. auth_skip_paths
+          # pulls the public plane patterns from the named auth middleware.
+          auth_skip_paths:
+            - auth
           provider:
             turna:
               name: turna
@@ -85,8 +85,8 @@ server:
         middlewares:
           - session
           - auth
-      # single chain: session skip_paths keeps /auth/oauth2/* public for
-      # machine clients while the management API/UI stays protected.
+      # single chain: session auth_skip_paths keeps /auth/oauth2/* public
+      # for machine clients while the management API/UI stays protected.
       auth:
         path: /auth/*
         middlewares:

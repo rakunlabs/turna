@@ -12,6 +12,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
+	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
 )
 
 type fakeAccessIssuer struct {
@@ -154,6 +155,33 @@ func TestCheckAPIErrorKeepsEndpointAndStatus(t *testing.T) {
 		if !strings.Contains(w.Body.String(), want) {
 			t.Fatalf("body does not contain %q: %s", want, w.Body.String())
 		}
+	}
+}
+
+func TestSessionPublicFlagSkipsCheck(t *testing.T) {
+	// unreachable on purpose: the check API must not be contacted when the
+	// session middleware already matched a public permission.
+	m := &IamCheck{CheckAPI: "http://127.0.0.1:1/unreachable"}
+	middleware, err := m.Middleware()
+	if err != nil {
+		t.Fatalf("Middleware: %v", err)
+	}
+
+	called := false
+	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	r := httptest.NewRequest(http.MethodGet, "http://example.com/docs/page", nil)
+	w := httptest.NewRecorder()
+	turna, r := tcontext.New(w, r)
+	turna.Set(session.CtxPublicAccessKey, true)
+
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNoContent || !called {
+		t.Fatalf("status = %d, called = %v; public-flagged request must pass without a check", w.Code, called)
 	}
 }
 

@@ -206,11 +206,11 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 
 // PublicPathPatterns publishes the public plane of this middleware as
 // doublestar globs (session.InfPublicPaths). A session middleware in front
-// with a provider referencing this instance via auth_middleware skips
-// mandatory authentication on these paths automatically — credentials are
-// still honored there (consent relies on that), but machine endpoints like
-// /oauth2/token or the federated /oauth2/code/{provider} callbacks are never
-// redirected to an interactive login.
+// that lists this instance in auth_skip_paths skips mandatory
+// authentication on these paths — credentials are still honored there
+// (consent relies on that), but machine endpoints like /oauth2/token or the
+// federated /oauth2/code/{provider} callbacks are never redirected to an
+// interactive login.
 func (m *Auth) PublicPathPatterns() []string {
 	prefix := strings.TrimSuffix(m.PrefixPath, "/")
 

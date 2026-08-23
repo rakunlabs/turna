@@ -113,6 +113,7 @@ func TestProviderSourceInProcess(t *testing.T) {
 			"keep":   {Name: "Keep"},
 		},
 		ProviderSource: &ProviderSource{AuthMiddleware: "sp-auth"},
+		AuthSkipPaths:  []string{"sp-auth"},
 	}
 
 	providers := m.Providers()
@@ -140,7 +141,7 @@ func TestProviderSourceInProcess(t *testing.T) {
 		t.Fatalf("key = %v", key)
 	}
 
-	// issuer public paths become skip patterns
+	// auth_skip_paths pulls the issuer public paths into the skip patterns
 	if !m.skipPath("/auth/oauth2/token") {
 		t.Fatal("issuer public path not skipped")
 	}

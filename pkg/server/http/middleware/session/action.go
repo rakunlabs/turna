@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/golang-jwt/jwt/v5"
@@ -454,7 +456,8 @@ func (m *Session) unauthorized(w http.ResponseWriter) {
 }
 
 // skipPath reports whether the request path matches an explicit skip_paths
-// pattern or a public-plane pattern published by an in-process issuer.
+// pattern or a public-plane pattern of an auth middleware listed in
+// auth_skip_paths.
 func (m *Session) skipPath(path string) bool {
 	for _, pattern := range m.SkipPaths {
 		if ok, _ := doublestar.Match(pattern, path); ok {
@@ -462,7 +465,7 @@ func (m *Session) skipPath(path string) bool {
 		}
 	}
 
-	for _, pattern := range m.issuerSkipPatterns() {
+	for _, pattern := range m.authSkipPaths() {
 		if ok, _ := doublestar.Match(pattern, path); ok {
 			return true
 		}
@@ -471,47 +474,43 @@ func (m *Session) skipPath(path string) bool {
 	return false
 }
 
-// issuerSkipPatterns collects the public path patterns of every issuer this
-// middleware's providers reference with auth_middleware, so their machine
-// endpoints (token, callbacks, discovery, consent) never get captured by an
-// interactive login redirect.
+// authSkipPaths collects the public path patterns of every auth middleware
+// named in auth_skip_paths, so their machine endpoints (token, callbacks,
+// discovery, consent) never get captured by an interactive login redirect.
 //
-// With a static provider map the set is resolved lazily on the first request
-// and then cached: issuers register themselves while middlewares are built
-// and requests only arrive after the server starts (same assumption as
-// issuerKeyFunc). With a provider_source the set lives in the dynamic state
-// and is recomputed when the provider set changes.
-func (m *Session) issuerSkipPatterns() []string {
-	if m.DisableIssuerSkipPaths {
+// The set is resolved lazily on the first request and then cached: issuers
+// register themselves while middlewares are built and requests only arrive
+// after the server starts (same assumption as issuerKeyFunc).
+func (m *Session) authSkipPaths() []string {
+	if len(m.AuthSkipPaths) == 0 {
 		return nil
 	}
 
-	if m.ProviderSource != nil {
-		if st := m.dynamic.Load(); st != nil {
-			return st.skipPaths
-		}
-	}
-
-	m.issuerSkipOnce.Do(func() {
-		m.issuerSkipPaths = issuerSkipPatternsFor(m.Provider)
+	m.authSkipOnce.Do(func() {
+		m.authSkipPatterns = authSkipPatternsFor(m.AuthSkipPaths)
 	})
 
-	return m.issuerSkipPaths
+	return m.authSkipPatterns
 }
 
-// issuerSkipPatternsFor collects the deduplicated public path patterns of
-// every issuer the given providers reference with auth_middleware.
-func issuerSkipPatternsFor(providers map[string]Provider) []string {
+// authSkipPatternsFor collects the deduplicated public path patterns of the
+// named auth middlewares. URL entries publish no static patterns (a remote
+// auth's public plane lives on the remote host). Unknown names are logged
+// and skipped so a typo is visible instead of silently locking out the
+// public plane.
+func authSkipPatternsFor(names []string) []string {
 	seen := map[string]struct{}{}
 	patterns := []string{}
 
-	for _, provider := range providers {
-		if provider.AuthMiddleware == "" {
+	for _, name := range names {
+		if isCheckURL(name) {
 			continue
 		}
 
-		issuer, ok := IssuerRegistry.Get(provider.AuthMiddleware).(InfPublicPaths)
+		issuer, ok := IssuerRegistry.Get(name).(InfPublicPaths)
 		if !ok {
+			slog.Warn("session: auth_skip_paths references unknown auth middleware", "name", name)
+
 			continue
 		}
 
@@ -526,6 +525,108 @@ func issuerSkipPatternsFor(providers map[string]Provider) []string {
 	}
 
 	return patterns
+}
+
+// authCheckTimeout bounds a remote public-permission check so a slow remote
+// auth cannot stall the request.
+const authCheckTimeout = 5 * time.Second
+
+// isCheckURL reports whether an auth_skip_paths entry is a remote check
+// endpoint URL instead of an in-process middleware name.
+func isCheckURL(entry string) bool {
+	return strings.HasPrefix(entry, "http://") || strings.HasPrefix(entry, "https://")
+}
+
+// authPublicAllowed asks every auth_skip_paths entry whether the request
+// matches a permission flagged public (the UI-managed public addresses of
+// the auth middleware). Name entries check in-process through
+// InfAccessChecker; URL entries POST an anonymous check to a remote auth's
+// <prefix>/check endpoint. Check failures fail closed: the request falls
+// back to regular authentication.
+func (m *Session) authPublicAllowed(r *http.Request) bool {
+	for _, entry := range m.AuthSkipPaths {
+		if isCheckURL(entry) {
+			if m.remotePublicAllowed(r, entry) {
+				return true
+			}
+
+			continue
+		}
+
+		checker, ok := IssuerRegistry.Get(entry).(InfAccessChecker)
+		if !ok {
+			continue
+		}
+
+		allowed, err := checker.AccessAllowed(r.Context(), "", r.Host, r.URL.Path, r.Method)
+		if err != nil {
+			slog.Warn("session: public access check failed", "auth", entry, "error", err.Error())
+
+			continue
+		}
+
+		if allowed {
+			return true
+		}
+	}
+
+	return false
+}
+
+// remotePublicAllowed runs the anonymous public check against a remote auth
+// check endpoint. The endpoint answers 200 {"allowed":true} on a public
+// match and 401 otherwise; non-200 answers and transport failures both mean
+// "not public".
+func (m *Session) remotePublicAllowed(r *http.Request, checkURL string) bool {
+	if m.authCheckClient == nil {
+		return false
+	}
+
+	body, err := json.Marshal(map[string]string{
+		"host":   r.Host,
+		"path":   r.URL.Path,
+		"method": r.Method,
+	})
+	if err != nil {
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), authCheckTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, checkURL, bytes.NewReader(body))
+	if err != nil {
+		slog.Warn("session: cannot create public check request", "url", checkURL, "error", err.Error())
+
+		return false
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	allowed := false
+	if err := m.authCheckClient.Do(req, func(resp *http.Response) error {
+		if resp.StatusCode != http.StatusOK {
+			// 401: anonymous and nothing public matched
+			return nil
+		}
+
+		var parsed struct {
+			Allowed bool `json:"allowed"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+			return err
+		}
+
+		allowed = parsed.Allowed
+
+		return nil
+	}); err != nil {
+		slog.Warn("session: remote public check failed", "url", checkURL, "error", err.Error())
+
+		return false
+	}
+
+	return allowed
 }
 
 // stripIdentityHeaders removes every header the session middleware would set
@@ -719,10 +820,24 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 	// (skip paths, keyfunc, provider lookups) relies on it.
 	m.providerRefresh()
 
-	if m.Action.Active == actionToken && m.skipPath(r.URL.Path) {
-		m.doOptional(next, w, r)
+	if m.Action.Active == actionToken {
+		// authentication is optional on explicit skip_paths patterns and on
+		// the static public plane of auth_skip_paths entries.
+		if m.skipPath(r.URL.Path) {
+			m.doOptional(next, w, r)
 
-		return
+			return
+		}
+
+		// same for permissions flagged public on an auth_skip_paths auth;
+		// the context flag tells a following iam_check that the public
+		// check already matched so it is not run twice.
+		if m.authPublicAllowed(r) {
+			tcontext.Set(r, CtxPublicAccessKey, true)
+			m.doOptional(next, w, r)
+
+			return
+		}
 	}
 
 	if m.Action.Active == actionToken {
@@ -1070,7 +1185,21 @@ func (m *Session) IsLogged(w http.ResponseWriter, r *http.Request) (*claims.Cust
 }
 
 func (m *Session) RedirectToMain(w http.ResponseWriter, r *http.Request) {
-	httputil.Redirect(w, http.StatusTemporaryRedirect, safeRedirectPath(r.URL.Query().Get("redirect_path")))
+	httputil.Redirect(w, http.StatusTemporaryRedirect, postLoginRedirectPath(
+		r.URL.Query().Get("redirect_path"),
+		m.Action.Token.LoginPath,
+	))
+}
+
+func postLoginRedirectPath(value, loginPath string) string {
+	target := safeRedirectPath(value)
+	targetURL, _ := url.Parse(target)
+	loginURL, err := url.Parse(loginPath)
+	if err == nil && strings.TrimRight(targetURL.Path, "/") == strings.TrimRight(loginURL.Path, "/") {
+		return "/"
+	}
+
+	return target
 }
 
 func safeRedirectPath(value string) string {

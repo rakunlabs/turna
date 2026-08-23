@@ -3,11 +3,13 @@ package session
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"sync"
 	"sync/atomic"
 
+	"github.com/rakunlabs/ok"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -16,6 +18,12 @@ const (
 	CtxTokenHeaderDelKey  = "token_header_delete"
 	CtxDisableRedirectKey = "disable_redirect"
 	CtxCookieNameKey      = "cookie_name"
+
+	// CtxPublicAccessKey is set to true by the session middleware when the
+	// request matched a permission flagged public on an auth_skip_paths auth.
+	// A following iam_check reads it and passes the request without running
+	// the same check again.
+	CtxPublicAccessKey = "public_access"
 )
 
 type Session struct {
@@ -48,16 +56,27 @@ type Session struct {
 	// of being redirected to login. Useful for public OAuth2/MCP endpoints
 	// that live behind the same router as protected pages.
 	SkipPaths []string `cfg:"skip_paths"`
-	// DisableIssuerSkipPaths turns off the automatic skip_paths that
-	// in-process issuers (providers with auth_middleware) publish for their
-	// public plane (/oauth2/**, discovery documents, ...). With this set,
-	// only the explicit skip_paths above apply.
-	DisableIssuerSkipPaths bool `cfg:"disable_issuer_skip_paths"`
+	// AuthSkipPaths lists auth middlewares whose public surface is added to
+	// skip_paths. An entry is either an in-process auth middleware name or
+	// the check endpoint URL of a remote auth (e.g.
+	// "https://idp.example.com/auth/check").
+	//
+	// A name contributes two things: the static public plane patterns
+	// (/oauth2/**, /saml/**, discovery documents, ...) and a per-request
+	// anonymous access check against permissions flagged public in the auth
+	// UI. A URL contributes the anonymous public check only. Nothing is
+	// added implicitly; a provider's auth_middleware setting has no effect
+	// on skip paths.
+	AuthSkipPaths []string `cfg:"auth_skip_paths"`
 
 	store StoreInf `cfg:"-"`
 
-	issuerSkipOnce  sync.Once `cfg:"-"`
-	issuerSkipPaths []string  `cfg:"-"`
+	// authCheckClient posts anonymous public checks to URL entries of
+	// AuthSkipPaths; nil when there are none.
+	authCheckClient *ok.Client `cfg:"-"`
+
+	authSkipOnce     sync.Once `cfg:"-"`
+	authSkipPatterns []string  `cfg:"-"`
 
 	// dynamic holds the provider_source state; nil until the first refresh.
 	dynamic  atomic.Pointer[providerState] `cfg:"-"`
@@ -109,6 +128,10 @@ func (m *Session) Init(ctx context.Context, name string) error {
 		return err
 	}
 
+	if err := m.initAuthSkip(); err != nil {
+		return err
+	}
+
 	for k, c := range m.CookieNameHosts {
 		if c.Regex != "" {
 			rgx, err := regexp.Compile(c.Regex)
@@ -119,6 +142,41 @@ func (m *Session) Init(ctx context.Context, name string) error {
 			m.CookieNameHosts[k].rgx = rgx
 		}
 	}
+
+	return nil
+}
+
+// initAuthSkip prepares the HTTP client for remote check endpoint URLs
+// listed in auth_skip_paths. No-op when every entry is an in-process name.
+func (m *Session) initAuthSkip() error {
+	hasURL := false
+	for _, entry := range m.AuthSkipPaths {
+		if isCheckURL(entry) {
+			hasURL = true
+
+			break
+		}
+	}
+
+	if !hasURL {
+		return nil
+	}
+
+	insecureSkipVerify := false
+	if m.Action.Token != nil {
+		insecureSkipVerify = m.Action.Token.InsecureSkipVerify
+	}
+
+	client, err := ok.New(
+		ok.WithDisableRetry(true),
+		ok.WithInsecureSkipVerify(insecureSkipVerify),
+		ok.WithLogger(slog.Default()),
+	)
+	if err != nil {
+		return fmt.Errorf("cannot create auth_skip_paths check client: %w", err)
+	}
+
+	m.authCheckClient = client
 
 	return nil
 }

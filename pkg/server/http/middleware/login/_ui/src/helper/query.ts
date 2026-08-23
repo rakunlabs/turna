@@ -6,7 +6,9 @@ const getRedirectPath = () => {
   if (redirectPath?.startsWith('/') && !redirectPath.startsWith('//')) {
     try {
       const target = new URL(redirectPath, window.location.origin);
-      if (target.origin === window.location.origin) {
+      const targetPath = target.pathname.replace(/\/+$/, '') || '/';
+      const loginPath = window.location.pathname.replace(/\/+$/, '') || '/';
+      if (target.origin === window.location.origin && targetPath !== loginPath) {
         return `${target.pathname}${target.search}${target.hash}`;
       }
     } catch {

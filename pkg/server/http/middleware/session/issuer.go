@@ -43,9 +43,9 @@ type InfAPIKey interface {
 // reachable for machine clients and pre-login browsers (token, callbacks,
 // discovery documents, consent, ...).
 //
-// A session middleware whose provider references such an issuer with
-// `auth_middleware` treats these patterns as skip_paths automatically, so
-// operators do not have to enumerate them by hand (and miss one).
+// A session middleware lists issuers by name in `auth_skip_paths` to treat
+// these patterns as skip_paths, so operators do not have to enumerate them
+// by hand (and miss one).
 type InfPublicPaths interface {
 	PublicPathPatterns() []string
 }
@@ -54,7 +54,7 @@ type InfPublicPaths interface {
 // is managed at runtime (the auth middleware's "session_providers" settings
 // namespace). The returned version advances whenever the issuer's
 // configuration changes, so callers can cache the map and rebuild derived
-// state (keyfuncs, skip paths) only on change.
+// state (keyfuncs) only on change.
 type InfSessionProviders interface {
 	SessionProviders() (map[string]Provider, uint64)
 }

@@ -226,10 +226,9 @@ session:
 | `headers` | | Extra headers for `url` requests (authentication). |
 | `insecure_skip_verify` | `false` | Skip TLS verification for `url` fetches. |
 
-The token validation keyfunc and the automatic issuer skip paths are rebuilt
-only when the provider set actually changes (new/removed providers, changed
-`cert_url` or `auth_middleware`); claim mapping changes apply immediately
-without a rebuild.
+The token validation keyfunc is rebuilt only when the provider set actually
+changes (new/removed providers, changed `cert_url` or `auth_middleware`);
+claim mapping changes apply immediately without a rebuild.
 
 ### API key requests
 
@@ -274,22 +273,46 @@ Behavior on a matched path:
 
 This keeps a single `[session, auth]` router while leaving the public OAuth2/MCP endpoints (`/oauth2/token`, `/oauth2/register`, `/oauth2/certs`, discovery documents, ...) reachable for machine clients.
 
-### Automatic issuer skip paths
+### Auth skip paths
 
 Hand-listing every public endpoint is error-prone — miss the federated callback (`/auth/oauth2/code/gitlab`) and the login popup bounces back to the login page; miss the token endpoint and the code exchange dies with `401 {"error":"Unauthorized"}` because session tries to parse the client's `Authorization: Basic` header as a bearer JWT.
 
-To avoid that, a provider configured with `auth_middleware: <name>` automatically pulls the issuer's published public plane into the skip set — for the auth middleware that is `<prefix>/oauth2/**`, `<prefix>/saml/**` and the root `/.well-known` discovery documents. Explicit `skip_paths` are still honored on top. Skip-path semantics stay the same: credentials are honored when present (so `/oauth2/consent` still sees `X-User`), anonymous requests pass through stripped.
-
-Set `disable_issuer_skip_paths: true` to turn the automatism off and manage `skip_paths` fully by hand:
+Instead of enumerating them, list the in-process auth middleware by name in `auth_skip_paths`; the session pulls the issuer's published public plane into the skip set — for the auth middleware that is `<prefix>/oauth2/**`, `<prefix>/saml/**` and the root `/.well-known` discovery documents:
 
 ```yaml
 session:
-  disable_issuer_skip_paths: true
-  skip_paths:
-    - /auth/oauth2/**
+  auth_skip_paths:
+    - auth  # name of the auth middleware instance
+  action:
+    token:
+      login_path: /login/
 ```
 
+Explicit `skip_paths` are still honored on top. Skip-path semantics stay the same: credentials are honored when present (so `/oauth2/consent` still sees `X-User`), anonymous requests pass through stripped.
+
+Nothing is added implicitly: a provider's `auth_middleware` setting only wires token validation/refresh and has no effect on skip paths. When a session sits in front of an auth middleware, set `auth_skip_paths` (or list the patterns in `skip_paths` by hand) or the auth public plane gets captured by the login redirect.
+
 Note: `/oauth2/consent` does **not** need to be excluded from skip paths — skipping makes authentication *optional*, not absent. A logged-in browser still gets its `X-User` on a skipped path, which is exactly what the consent page needs; anonymous visitors fall through to the consent page's own login redirect.
+
+#### Public permission resources
+
+An `auth_skip_paths` name also covers the auth middleware's [public permissions](./auth#public-permission-resources) — permissions flagged `public: true` in the auth UI/API. On every request the session runs an anonymous access check (host, path, method) against the named auth; a public match makes authentication optional with the usual skip semantics. Public addresses managed in the auth UI therefore apply live, without touching session config.
+
+A public match additionally sets the `public_access` context flag, which a following [`iam_check`](./iam_check) reads to pass the request without running the same check again — the check is paid once per request, not twice. Explicit `skip_paths` pattern matches do not set the flag; `iam_check` still evaluates those requests.
+
+When the auth middleware runs in another process, list its check endpoint URL instead of a name:
+
+```yaml
+session:
+  auth_skip_paths:
+    - auth                                   # in-process: static plane + public permissions
+    - https://idp.example.com/auth/check     # remote: public permissions only
+  action:
+    token:
+      login_path: /login/
+```
+
+A URL entry POSTs `{"host","path","method"}` anonymously to the remote auth's `<prefix>/check` endpoint (`200 {"allowed":true}` = public, `401` = not). URL entries contribute no static patterns — a remote auth's OAuth2 plane lives on the remote host. The check honors the request context with a 5s cap, uses `action.token.insecure_skip_verify` for TLS, and fails closed: an unreachable check endpoint means regular authentication applies.
 
 ## Context Flags
 
@@ -301,3 +324,5 @@ Use [`set`](./set) before `session` to change behavior for selected routes.
 | `token_header_delete` | Delete the `Authorization` header before proxying. |
 | `disable_redirect` | Return `401 Unauthorized` (or `407` with `legacy_proxy_auth`) instead of redirecting to `login_path`. |
 | `cookie_name` | Override the session cookie name for this request. |
+
+Session itself sets one flag for downstream middlewares: `public_access` is `true` when the request matched a permission flagged public on an `auth_skip_paths` auth ([`iam_check`](./iam_check) reads it to avoid a second check).

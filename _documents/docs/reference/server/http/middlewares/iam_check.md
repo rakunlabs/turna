@@ -36,6 +36,8 @@ server:
 
 When `X-User` is missing, `iam_check` asks the check API whether the host/path/method is public. A public match passes; a denial returns `401`. Check APIs from older IAM versions that reject identity-less checks also fall back to `401`. An authenticated denial returns `403` unless a matching custom response redirects.
 
+When a [`session`](./session) middleware in front lists the auth in `auth_skip_paths`, session already runs the anonymous public check itself. On a match it sets the `public_access` context flag and `iam_check` passes the request without repeating the check — a `[session, iam_check]` chain costs one public check, not two. Plain session `skip_paths` matches do **not** set the flag: those requests still go through the full `iam_check` decision.
+
 For auth in the same process, prefer the middleware name so a wrong prefix, a fronting session middleware, or a recursive route cannot break checks:
 
 ```yaml

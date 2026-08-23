@@ -148,7 +148,7 @@ A permission can be marked `public: true` in the permission editor or API. Its r
 }
 ```
 
-This does not bypass `session` by itself. The application route must let an anonymous request reach `iam_check` (for example through session `skip_paths`); `iam_check` then checks auth directly with `auth_middleware: <name>` (recommended) or calls the remote auth check API without an alias, and passes the request only when a public permission matches. Authenticated users also get public access without having the permission assigned through a role.
+A [`session`](./session) middleware in front picks these up when this auth is listed in its `auth_skip_paths`: anonymous requests matching a public permission pass through session with identity headers stripped instead of being redirected to login (remote deployments list the check endpoint URL instead of the name). Alternatively open the route by hand with session `skip_paths`. Behind session, `iam_check` performs the same check — directly with `auth_middleware: <name>` (recommended) or via the remote check API — and passes the request only when a public permission matches. Authenticated users also get public access without having the permission assigned through a role.
 
 ### LDAP
 
@@ -219,7 +219,7 @@ Token notes:
 
 1. The client opens `/auth/oauth2/authorize?response_type=code&client_id=...&redirect_uri=...&scope=...&state=...&code_challenge=...&code_challenge_method=S256[&resource=...]`. Public clients (no stored secret) must send PKCE.
 2. The request is validated (client, redirect target, PKCE, resources), stored as a pending flow and the browser is redirected to `/auth/oauth2/consent?flow=...`.
-3. The consent page needs a logged-in user: it reads `X-User` set by the [`session`](./session) middleware in front. When a session provider references this middleware with `auth_middleware`, the public plane (`/auth/oauth2/**`, `/auth/saml/**`, root discovery documents) is skip-pathed automatically; otherwise use session `skip_paths: ["/auth/oauth2/**"]`. Machine endpoints stay public while cookie-carrying browsers are still authenticated on the consent page. Anonymous browsers are redirected to `authorize.login_url` (with `?redirect_path=`) when configured. Clients with `skip_consent: true` are auto-approved; everyone else sees an approve/deny screen with client name and scopes.
+3. The consent page needs a logged-in user: it reads `X-User` set by the [`session`](./session) middleware in front. List this middleware in session `auth_skip_paths: ["<name>"]` so the public plane (`/auth/oauth2/**`, `/auth/saml/**`, root discovery documents) is skip-pathed; alternatively use session `skip_paths: ["/auth/oauth2/**"]`. Machine endpoints stay public while cookie-carrying browsers are still authenticated on the consent page. Anonymous browsers are redirected to `authorize.login_url` (with `?redirect_path=`) when configured. Clients with `skip_consent: true` are auto-approved; everyone else sees an approve/deny screen with client name and scopes.
 4. Approval issues a single-use code bound to client + redirect + PKCE + resources and redirects back to `redirect_uri?code=...&state=...`; the client exchanges it at the token endpoint with `code_verifier`.
 
 ### MCP / resource server integration
@@ -228,7 +228,7 @@ The combination of RFC 8414 metadata, dynamic client registration, PKCE, resourc
 
 1. Enable registration: `PUT /auth/v1/settings/registration {"value":{"enabled":true,"client_lifetime":"720h"}}`.
 2. Route `/.well-known/*` to the auth middleware so RFC 8414 discovery works from the issuer root.
-3. Keep the machine endpoints public: with a session provider referencing this middleware via `auth_middleware` this happens automatically (issuer skip paths — the consent page still authenticates cookie-carrying browsers, and `authorize.login_url` catches anonymous ones). Otherwise add `skip_paths: ["/auth/oauth2/**", "/.well-known/**"]` to the [`session`](./session) middleware in front, or split the router so `/auth/oauth2/*` bypasses session.
+3. Keep the machine endpoints public: list this middleware in session `auth_skip_paths: ["<name>"]` (the consent page still authenticates cookie-carrying browsers, and `authorize.login_url` catches anonymous ones). Otherwise add `skip_paths: ["/auth/oauth2/**", "/.well-known/**"]` to the [`session`](./session) middleware in front, or split the router so `/auth/oauth2/*` bypasses session.
 4. Protect the MCP endpoint with the [`oauth2_resource`](./oauth2_resource) middleware, which serves the RFC 9728 protected resource metadata and validates bearer tokens in-process.
 
 An MCP client then discovers the resource metadata, registers itself (`/oauth2/register`), sends the user through `/oauth2/authorize` + consent, and calls the MCP endpoint with the issued bearer token — no manual client setup per user.

@@ -16,6 +16,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
+	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
 )
 
 type IamCheck struct {
@@ -67,6 +68,15 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// a session middleware in front already matched a permission
+			// flagged public for this request (auth_skip_paths); do not run
+			// the same check twice.
+			if v, _ := tcontext.Get(r, session.CtxPublicAccessKey).(bool); v {
+				next.ServeHTTP(w, r)
+
+				return
+			}
+
 			hostToCheck := r.Host
 			if m.ForceHost != "" {
 				hostToCheck = m.ForceHost
