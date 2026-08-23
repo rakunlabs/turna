@@ -189,6 +189,48 @@ provider:
 
 On the auth instance, the default `rp_id` is the registrable domain (eTLD+1) of the forwarded host, so login pages on sibling subdomains of the auth host already share the passkey scope; set the `passkey` runtime settings (`rp_id`, `origins`) explicitly only when the login page lives on an unrelated domain. Keep `/auth/oauth2/*` publicly routable (don't chain `session` in front of the token/JWKS/passkey endpoints).
 
+### Dynamic providers from the auth UI (`provider_source`)
+
+Instead of (or on top of) the static `provider` map, the provider list can be
+managed from the [`auth`](./auth) middleware's UI (the `session_providers`
+settings namespace, *Federation → Session providers*). The session middleware
+pulls that list at runtime and applies changes without a restart; a dynamic
+provider overrides a same-named static one.
+
+In-process, referencing the auth middleware by instance name:
+
+```yaml
+session:
+  provider_source:
+    auth_middleware: "auth"   # middleware key of the auth instance
+  provider: {}                # optional static providers to merge under it
+```
+
+Or over HTTP from another turna instance:
+
+```yaml
+session:
+  provider_source:
+    url: https://auth.example.com/auth/v1/session-providers
+    ttl: 30s
+    headers:
+      X-API-Key: "<admin api key>"
+    insecure_skip_verify: false
+```
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `auth_middleware` | | In-process auth middleware instance name. The list is read from its cache; a commit in the UI applies on the next request (no polling, no HTTP). Exactly one of `auth_middleware` or `url` must be set. |
+| `url` | | `GET /v1/session-providers` endpoint of a remote auth middleware. The endpoint is admin-protected because the payload carries provider client secrets. |
+| `ttl` | `30s` | Refresh interval for `url` sources. Between refreshes the last fetched list is served; a failed refresh keeps the last known list and backs off one TTL window. |
+| `headers` | | Extra headers for `url` requests (authentication). |
+| `insecure_skip_verify` | `false` | Skip TLS verification for `url` fetches. |
+
+The token validation keyfunc and the automatic issuer skip paths are rebuilt
+only when the provider set actually changes (new/removed providers, changed
+`cert_url` or `auth_middleware`); claim mapping changes apply immediately
+without a rebuild.
+
 ### API key requests
 
 When `api_key: true` is set on a provider, `session` checks the configured API key header after bearer-token validation and before cookie redirects. If present, the static key is validated directly — in-process via `auth_middleware`, or with a request to `oauth2.api_key_url` on a remote auth instance. On success the raw key header is deleted and the key principal's claims and `X-User: api-key:<id>` headers are set; no JWT is involved.

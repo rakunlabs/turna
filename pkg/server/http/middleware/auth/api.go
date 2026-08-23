@@ -180,6 +180,14 @@ func (m *Auth) PutSetting(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if namespace == "session_providers" {
+		var setting SessionProviderSettings
+		if err := json.Unmarshal(req.Value, &setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("cannot decode session_providers setting", err, http.StatusBadRequest))
+			return
+		}
+	}
+
 	if namespace == "authorize" {
 		var setting AuthorizeSettings
 		if err := json.Unmarshal(req.Value, &setting); err != nil {

@@ -62,7 +62,7 @@ func (m *Login) CodeFlowInit(w http.ResponseWriter, r *http.Request, providerNam
 		return
 	}
 
-	provider := sessionM.Provider[providerName]
+	provider, _ := sessionM.GetProvider(providerName)
 	if provider.Oauth2 == nil {
 		writeError(w, http.StatusNotFound, fmt.Sprintf("provider %q not found", providerName))
 
@@ -91,7 +91,7 @@ func (m *Login) CodeFlow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var oauth2 *session.Oauth2
-	if v, ok := sessionM.Provider[providerName]; ok && v.Oauth2 != nil {
+	if v, ok := sessionM.GetProvider(providerName); ok && v.Oauth2 != nil {
 		oauth2 = v.Oauth2
 	}
 
@@ -149,7 +149,7 @@ func (m *Login) PasswordFlow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, providerOK := sessionM.Provider[providerName]
+	provider, providerOK := sessionM.GetProvider(providerName)
 
 	var oauth2 *session.Oauth2
 	if providerOK && provider.Oauth2 != nil {
@@ -212,7 +212,7 @@ func (m *Login) PasskeyFlow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, ok := sessionM.Provider[providerName]
+	provider, ok := sessionM.GetProvider(providerName)
 	if !ok || provider.Oauth2 == nil || (provider.AuthMiddleware == "" && provider.Oauth2.PasskeyURL == "") {
 		writeError(w, http.StatusNotFound, fmt.Sprintf("provider %q not found", providerName))
 

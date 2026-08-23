@@ -1157,6 +1157,18 @@ func (m *Auth) APIAuthServerMetadata(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Auth) issuerURL(r *http.Request) string {
+	// oauth2.base_url is the canonical external origin of this auth
+	// instance. Use it for the issuer as well as upstream code callbacks so
+	// tokens issued through one application host can be refreshed through
+	// another host without an issuer mismatch.
+	if m.cache != nil {
+		if baseURL := strings.TrimSpace(m.cache.Snapshot().OAuth2.BaseURL); baseURL != "" {
+			if parsed, err := url.Parse(baseURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+				return fmt.Sprintf("%s://%s%s/oauth2", parsed.Scheme, parsed.Host, m.PrefixPath)
+			}
+		}
+	}
+
 	scheme := r.Header.Get("X-Forwarded-Proto")
 	host := r.Header.Get("X-Forwarded-Host")
 

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/rakunlabs/ok"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
@@ -48,38 +50,38 @@ func (t *Token) GetKeyFunc() InfKeyFuncParser {
 }
 
 type Provider struct {
-	Name   string  `cfg:"name"`
-	Oauth2 *Oauth2 `cfg:"oauth2"`
+	Name   string  `cfg:"name" json:"name,omitempty"`
+	Oauth2 *Oauth2 `cfg:"oauth2" json:"oauth2,omitempty"`
 	// AuthMiddleware is the name of an in-process auth middleware instance.
 	// When set, token validation and refresh go directly to that middleware
 	// instead of cert_url/token_url over HTTP. oauth2.client_id should match
 	// an OAuth client registered in the auth middleware.
-	AuthMiddleware string `cfg:"auth_middleware"`
+	AuthMiddleware string `cfg:"auth_middleware" json:"auth_middleware,omitempty"`
 	// Passkey advertises WebAuthn login on the login page for this provider.
 	// Requires auth_middleware (in-process) or oauth2.passkey_url (remote).
-	Passkey bool `cfg:"passkey"`
+	Passkey bool `cfg:"passkey" json:"passkey,omitempty"`
 	// XUser header set from token claims. Default is email and preferred_username.
 	// It set first found value.
-	XUser []string `cfg:"x_user"`
+	XUser []string `cfg:"x_user" json:"x_user,omitempty"`
 	// ClaimHeader is use to map claim to header.
 	//   - Example: claim_header = {"X-User-Id": "preferred_username", "X-User-Email": "email"}
 	//   - Default is adding "X-User-Id" header with "preferred_username" claim.
 	//   - Set empty value to delete the header.
-	ClaimHeader      map[string]string `cfg:"claim_header"`
-	EmailVerifyCheck bool              `cfg:"email_verify_check"`
+	ClaimHeader      map[string]string `cfg:"claim_header" json:"claim_header,omitempty"`
+	EmailVerifyCheck bool              `cfg:"email_verify_check" json:"email_verify_check,omitempty"`
 	// PasswordFlow is use password flow to get token.
-	PasswordFlow bool `cfg:"password_flow"`
+	PasswordFlow bool `cfg:"password_flow" json:"password_flow,omitempty"`
 	// APIKey enables static X-API-Key authentication at the session layer.
 	// The key is validated directly (in-process via auth_middleware or over
 	// oauth2.api_key_url); no token exchange happens and downstream services
 	// receive the key principal's claims/X-User.
-	APIKey bool `cfg:"api_key"`
+	APIKey bool `cfg:"api_key" json:"api_key,omitempty"`
 	// APIKeyHeader is the header carrying the raw API key. Default X-API-Key.
-	APIKeyHeader string `cfg:"api_key_header"`
+	APIKeyHeader string `cfg:"api_key_header" json:"api_key_header,omitempty"`
 	// Priority is use to sort provider.
-	Priority int `cfg:"priority"`
+	Priority int `cfg:"priority" json:"priority,omitempty"`
 	// Hide is use to hide provider.
-	Hide bool `cfg:"hide"`
+	Hide bool `cfg:"hide" json:"hide,omitempty"`
 }
 
 type ProviderWrapper struct {
@@ -93,6 +95,45 @@ func (p *ProviderWrapper) GetCertURL() string {
 
 func (p *ProviderWrapper) GetName() string {
 	return p.Name
+}
+
+// buildKeyFunc builds the token validation keyfunc for a provider map:
+// remote JWKS keyfuncs for providers with oauth2.cert_url and an in-process
+// issuer keyfunc for providers referencing an auth_middleware.
+func buildKeyFunc(providerMap map[string]Provider) (*JwkKeyFuncParse, error) {
+	providerList := make([]InfProviderCert, 0, len(providerMap))
+	issuerProviders := make(map[string]string)
+	for k, v := range providerMap {
+		// issuer-backed providers validate tokens in-process; no cert_url needed
+		if v.AuthMiddleware != "" {
+			issuerProviders[k] = v.AuthMiddleware
+
+			continue
+		}
+
+		if v.Oauth2 == nil {
+			continue
+		}
+
+		providerList = append(providerList, &ProviderWrapper{
+			Generic: &providers.Generic{
+				CertURL: v.Oauth2.CertURL,
+			},
+			Name: k,
+		})
+	}
+
+	opts := []OptionJWK{}
+	if len(issuerProviders) > 0 {
+		opts = append(opts, WithKeyFunc(&issuerKeyFunc{providers: issuerProviders}))
+	}
+
+	jwksMulti, err := MultiJWTKeyFunc(providerList, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create keyfunc: %w", err)
+	}
+
+	return jwksMulti, nil
 }
 
 func (m *Session) SetAction() error {
@@ -109,39 +150,24 @@ func (m *Session) SetAction() error {
 
 		m.Action.Token.auth.Client = client.HTTP
 
-		providerList := make([]InfProviderCert, 0, len(m.Provider))
-		issuerProviders := make(map[string]string)
-		for k, v := range m.Provider {
-			// issuer-backed providers validate tokens in-process; no cert_url needed
-			if v.AuthMiddleware != "" {
-				issuerProviders[k] = v.AuthMiddleware
-
-				continue
-			}
-
-			if v.Oauth2 == nil {
-				continue
-			}
-
-			providerList = append(providerList, &ProviderWrapper{
-				Generic: &providers.Generic{
-					CertURL: v.Oauth2.CertURL,
-				},
-				Name: k,
-			})
-		}
-
-		opts := []OptionJWK{}
-		if len(issuerProviders) > 0 {
-			opts = append(opts, WithKeyFunc(&issuerKeyFunc{providers: issuerProviders}))
-		}
-
-		jwksMulti, err := MultiJWTKeyFunc(providerList, opts...)
+		jwksMulti, err := buildKeyFunc(m.Provider)
 		if err != nil {
-			return fmt.Errorf("cannot create keyfunc: %w", err)
+			// A provider_source is resolved lazily because the referenced auth
+			// middleware may register after this session middleware. Allow a
+			// source-only configuration to start with an empty static provider
+			// map; Do refreshes the source before the keyfunc is used.
+			if m.ProviderSource != nil && len(m.Provider) == 0 {
+				m.Action.Token.keyFunc = &JwkKeyFuncParse{
+					KeyFunc: func(_ *jwt.Token) (any, error) {
+						return nil, ErrKIDNotFound
+					},
+				}
+			} else {
+				return err
+			}
+		} else {
+			m.Action.Token.keyFunc = jwksMulti
 		}
-
-		m.Action.Token.keyFunc = jwksMulti
 	}
 
 	// set active action
@@ -235,8 +261,10 @@ func apiKeyHeader(provider Provider) string {
 }
 
 func (m *Session) apiKeyRequest(r *http.Request) (providerName string, provider Provider, headerName string, key string, ok bool) {
+	providerMap := m.Providers()
+
 	if m.SetProvider != "" {
-		p, exists := m.Provider[m.SetProvider]
+		p, exists := providerMap[m.SetProvider]
 		if !exists || !p.APIKey {
 			return "", Provider{}, "", "", false
 		}
@@ -247,15 +275,15 @@ func (m *Session) apiKeyRequest(r *http.Request) (providerName string, provider 
 		return m.SetProvider, p, header, key, key != ""
 	}
 
-	names := make([]string, 0, len(m.Provider))
-	for name, provider := range m.Provider {
+	names := make([]string, 0, len(providerMap))
+	for name, provider := range providerMap {
 		if provider.APIKey {
 			names = append(names, name)
 		}
 	}
 	sort.Slice(names, func(i, j int) bool {
-		left := m.Provider[names[i]]
-		right := m.Provider[names[j]]
+		left := providerMap[names[i]]
+		right := providerMap[names[j]]
 		if left.Priority == right.Priority {
 			return names[i] < names[j]
 		}
@@ -264,7 +292,7 @@ func (m *Session) apiKeyRequest(r *http.Request) (providerName string, provider 
 	})
 
 	for _, name := range names {
-		provider := m.Provider[name]
+		provider := providerMap[name]
 		header := apiKeyHeader(provider)
 		key := r.Header.Get(header)
 		if key != "" {
@@ -341,7 +369,22 @@ func (m *Session) serveAPIKey(next http.Handler, w http.ResponseWriter, r *http.
 // in-process through a registered issuer (auth_middleware) or over HTTP
 // against the provider's token_url.
 func (m *Session) refreshTokenData(r *http.Request, providerName string, token *TokenData) ([]byte, error) {
-	provider, ok := m.Provider[providerName]
+	// Auth rotates refresh tokens and rejects reuse. Collapse simultaneous
+	// requests carrying the same session cookie so they all receive the one
+	// successful refresh response instead of racing each other.
+	key := fmt.Sprintf("%s:%x", providerName, sha256.Sum256([]byte(token.RefreshToken)))
+	value, err, _ := m.refreshGroup.Do(key, func() (any, error) {
+		return m.refreshTokenDataOnce(r, providerName, token)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return value.([]byte), nil
+}
+
+func (m *Session) refreshTokenDataOnce(r *http.Request, providerName string, token *TokenData) ([]byte, error) {
+	provider, ok := m.GetProvider(providerName)
 	if !ok {
 		return nil, fmt.Errorf("cannot find provider %q", providerName)
 	}
@@ -433,39 +476,56 @@ func (m *Session) skipPath(path string) bool {
 // endpoints (token, callbacks, discovery, consent) never get captured by an
 // interactive login redirect.
 //
-// The set is resolved lazily on the first request and then cached: issuers
-// register themselves while middlewares are built and requests only arrive
-// after the server starts (same assumption as issuerKeyFunc).
+// With a static provider map the set is resolved lazily on the first request
+// and then cached: issuers register themselves while middlewares are built
+// and requests only arrive after the server starts (same assumption as
+// issuerKeyFunc). With a provider_source the set lives in the dynamic state
+// and is recomputed when the provider set changes.
 func (m *Session) issuerSkipPatterns() []string {
 	if m.DisableIssuerSkipPaths {
 		return nil
 	}
 
-	m.issuerSkipOnce.Do(func() {
-		seen := map[string]struct{}{}
-
-		for _, provider := range m.Provider {
-			if provider.AuthMiddleware == "" {
-				continue
-			}
-
-			issuer, ok := IssuerRegistry.Get(provider.AuthMiddleware).(InfPublicPaths)
-			if !ok {
-				continue
-			}
-
-			for _, pattern := range issuer.PublicPathPatterns() {
-				if _, dup := seen[pattern]; dup || pattern == "" {
-					continue
-				}
-
-				seen[pattern] = struct{}{}
-				m.issuerSkipPaths = append(m.issuerSkipPaths, pattern)
-			}
+	if m.ProviderSource != nil {
+		if st := m.dynamic.Load(); st != nil {
+			return st.skipPaths
 		}
+	}
+
+	m.issuerSkipOnce.Do(func() {
+		m.issuerSkipPaths = issuerSkipPatternsFor(m.Provider)
 	})
 
 	return m.issuerSkipPaths
+}
+
+// issuerSkipPatternsFor collects the deduplicated public path patterns of
+// every issuer the given providers reference with auth_middleware.
+func issuerSkipPatternsFor(providers map[string]Provider) []string {
+	seen := map[string]struct{}{}
+	patterns := []string{}
+
+	for _, provider := range providers {
+		if provider.AuthMiddleware == "" {
+			continue
+		}
+
+		issuer, ok := IssuerRegistry.Get(provider.AuthMiddleware).(InfPublicPaths)
+		if !ok {
+			continue
+		}
+
+		for _, pattern := range issuer.PublicPathPatterns() {
+			if _, dup := seen[pattern]; dup || pattern == "" {
+				continue
+			}
+
+			seen[pattern] = struct{}{}
+			patterns = append(patterns, pattern)
+		}
+	}
+
+	return patterns
 }
 
 // stripIdentityHeaders removes every header the session middleware would set
@@ -474,7 +534,7 @@ func (m *Session) stripIdentityHeaders(r *http.Request) {
 	r.Header.Del("X-User")
 	r.Header.Del("X-User-Id")
 
-	for _, provider := range m.Provider {
+	for _, provider := range m.Providers() {
 		for k := range provider.ClaimHeader {
 			r.Header.Del(k)
 		}
@@ -534,7 +594,7 @@ func (m *Session) cookieClaims(w http.ResponseWriter, r *http.Request) (*claims.
 	}
 
 	customClaims := &claims.Custom{}
-	jwtToken, err := m.Action.Token.keyFunc.ParseWithClaims(token.AccessToken, customClaims)
+	jwtToken, err := m.KeyFuncParser().ParseWithClaims(token.AccessToken, customClaims)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -567,7 +627,7 @@ func (m *Session) doOptional(next http.Handler, w http.ResponseWriter, r *http.R
 		}
 
 		customClaims := &claims.Custom{}
-		jwtToken, err := m.Action.Token.keyFunc.ParseWithClaims(token, customClaims)
+		jwtToken, err := m.KeyFuncParser().ParseWithClaims(token, customClaims)
 		if err != nil {
 			anonymous()
 
@@ -585,9 +645,11 @@ func (m *Session) doOptional(next http.Handler, w http.ResponseWriter, r *http.R
 			providerName, _ = jwtToken.Header["provider_name"].(string)
 		}
 
+		provider, _ := m.GetProvider(providerName)
+
 		tcontext.Set(r, "claims", customClaims)
 		tcontext.Set(r, "provider", providerName)
-		addXUserHeader(r, customClaims, m.Provider[providerName].XUser, m.Provider[providerName].EmailVerifyCheck, m.Provider[providerName].ClaimHeader)
+		addXUserHeader(r, customClaims, provider.XUser, provider.EmailVerifyCheck, provider.ClaimHeader)
 
 		if v, _ := tcontext.Get(r, CtxTokenHeaderKey).(bool); v {
 			r.Header.Del("Authorization")
@@ -635,9 +697,11 @@ func (m *Session) doOptional(next http.Handler, w http.ResponseWriter, r *http.R
 		return
 	}
 
+	provider, _ := m.GetProvider(providerName)
+
 	tcontext.Set(r, "claims", customClaims)
 	tcontext.Set(r, "provider", providerName)
-	addXUserHeader(r, customClaims, m.Provider[providerName].XUser, m.Provider[providerName].EmailVerifyCheck, m.Provider[providerName].ClaimHeader)
+	addXUserHeader(r, customClaims, provider.XUser, provider.EmailVerifyCheck, provider.ClaimHeader)
 
 	if v, _ := tcontext.Get(r, CtxTokenHeaderKey).(bool); v {
 		r.Header.Set("Authorization", "Bearer "+token.AccessToken)
@@ -651,6 +715,10 @@ func (m *Session) doOptional(next http.Handler, w http.ResponseWriter, r *http.R
 }
 
 func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) {
+	// bring the dynamic provider list up to date before any decision below
+	// (skip paths, keyfunc, provider lookups) relies on it.
+	m.providerRefresh()
+
 	if m.Action.Active == actionToken && m.skipPath(r.URL.Path) {
 		m.doOptional(next, w, r)
 
@@ -663,7 +731,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 			if token := strings.TrimPrefix(authorizationHeader, "Bearer "); token != "" {
 				// validate token, check if token is valid
 				customClaims := &claims.Custom{}
-				jwtToken, err := m.Action.Token.keyFunc.ParseWithClaims(token, customClaims)
+				jwtToken, err := m.KeyFuncParser().ParseWithClaims(token, customClaims)
 				if err != nil {
 					slog.Debug("token is not valid", "error", err.Error())
 
@@ -696,9 +764,11 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 					providerName, _ = jwtToken.Header["provider_name"].(string)
 				}
 
+				provider, _ := m.GetProvider(providerName)
+
 				tcontext.Set(r, "claims", customClaims)
 				tcontext.Set(r, "provider", providerName)
-				addXUserHeader(r, customClaims, m.Provider[providerName].XUser, m.Provider[providerName].EmailVerifyCheck, m.Provider[providerName].ClaimHeader)
+				addXUserHeader(r, customClaims, provider.XUser, provider.EmailVerifyCheck, provider.ClaimHeader)
 
 				if v, _ := tcontext.Get(r, CtxTokenHeaderKey).(bool); v {
 					r.Header.Del("Authorization")
@@ -791,7 +861,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 
 		// check if token is valid
 		customClaims := &claims.Custom{}
-		jwtToken, err := m.Action.Token.keyFunc.ParseWithClaims(token.AccessToken, customClaims)
+		jwtToken, err := m.KeyFuncParser().ParseWithClaims(token.AccessToken, customClaims)
 		if err != nil {
 			slog.Debug("token is not valid", "error", err.Error())
 			m.RedirectToLogin(w, r, true, true)
@@ -806,10 +876,12 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 			providerName, _ = jwtToken.Header["provider_name"].(string)
 		}
 
+		provider, _ := m.GetProvider(providerName)
+
 		tcontext.Set(r, "claims", customClaims)
 		tcontext.Set(r, "provider", providerName)
 
-		addXUserHeader(r, customClaims, m.Provider[providerName].XUser, m.Provider[providerName].EmailVerifyCheck, m.Provider[providerName].ClaimHeader)
+		addXUserHeader(r, customClaims, provider.XUser, provider.EmailVerifyCheck, provider.ClaimHeader)
 
 		// add the access token to the request
 		if v, _ := tcontext.Get(r, CtxTokenHeaderKey).(bool); v {
@@ -893,7 +965,7 @@ func (m *Session) GetToken(r *http.Request) (*TokenData, *Oauth2, error) {
 		return nil, nil, err
 	}
 
-	provider, ok := m.Provider[providerName]
+	provider, ok := m.GetProvider(providerName)
 	if !ok || provider.Oauth2 == nil {
 		slog.Error("cannot find provider", "provider", providerName)
 		return nil, nil, fmt.Errorf("cannot find provider %q", providerName)
@@ -989,7 +1061,7 @@ func (m *Session) IsLogged(w http.ResponseWriter, r *http.Request) (*claims.Cust
 
 	// check if token is valid
 	customClaim := &claims.Custom{}
-	if _, err := m.Action.Token.keyFunc.ParseWithClaims(token.AccessToken, customClaim); err != nil {
+	if _, err := m.KeyFuncParser().ParseWithClaims(token.AccessToken, customClaim); err != nil {
 		slog.Debug("token is not valid", "error", err.Error())
 		return nil, false, err
 	}

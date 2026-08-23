@@ -102,6 +102,16 @@ func (p ProviderConfig) Session() *session.Oauth2 {
 	}
 }
 
+// SessionProviderSettings is the decoded "session_providers" setting
+// namespace: a session middleware provider list managed from the auth UI.
+// Map keys are provider names and values use the session middleware's own
+// provider model. A session middleware pulls this list with
+// `provider_source.auth_middleware` (in-process) or over
+// GET /v1/session-providers (remote).
+type SessionProviderSettings struct {
+	Providers map[string]session.Provider `json:"providers"`
+}
+
 // LDAPSettings is the decoded LDAP config stored in auth_ldap_configs.
 type LDAPSettings struct {
 	Addr string `json:"addr"`
@@ -122,7 +132,8 @@ type LDAPSettings struct {
 // OAuth2Settings is the decoded "oauth2" setting namespace.
 // It controls the code-flow redirect behavior for upstream providers.
 type OAuth2Settings struct {
-	// BaseURL for redirect URLs. Default is the request host.
+	// BaseURL is the canonical external origin used for redirect URLs and
+	// the token issuer. Default is the request host.
 	BaseURL string `json:"base_url"`
 	// Schema for redirect URLs when base_url is empty. Default https.
 	Schema string `json:"schema"`
@@ -611,6 +622,10 @@ type Snapshot struct {
 	CustomInfo    CustomInfoSettings
 	Authorize     AuthorizeSettings
 	Registration  RegistrationSettings
+
+	// SessionProviders is the UI-managed session middleware provider list
+	// ("session_providers" namespace); read-only, replaced on reload.
+	SessionProviders map[string]session.Provider
 }
 
 // Cache keeps the snapshot up to date with polling and explicit reloads.
@@ -769,6 +784,11 @@ func (c *Cache) Reload(ctx context.Context) error {
 	registrationRaw, err := c.store.GetSettingValue(ctx, "registration")
 	if err != nil {
 		return fmt.Errorf("load registration settings: %w", err)
+	}
+
+	sessionProvidersRaw, err := c.store.GetSettingValue(ctx, "session_providers")
+	if err != nil {
+		return fmt.Errorf("load session_providers settings: %w", err)
 	}
 
 	samlProvidersRaw, err := c.store.LoadConfigResources(ctx, samlProviderKind)
@@ -1024,6 +1044,16 @@ func (c *Cache) Reload(ctx context.Context) error {
 	if snap.Registration.ClientLifetime != "" {
 		if d, err := str2duration.ParseDuration(snap.Registration.ClientLifetime); err == nil {
 			snap.Registration.clientLifetime = d
+		}
+	}
+
+	snap.SessionProviders = map[string]session.Provider{}
+	if sessionProvidersRaw != nil {
+		var sessionProviders SessionProviderSettings
+		if err := json.Unmarshal(sessionProvidersRaw, &sessionProviders); err != nil {
+			slog.Warn("invalid session_providers settings", slog.String("error", err.Error()))
+		} else if sessionProviders.Providers != nil {
+			snap.SessionProviders = sessionProviders.Providers
 		}
 	}
 

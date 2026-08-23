@@ -2875,6 +2875,32 @@
     }
    }
   },
+  "/v1/session-providers": {
+   "get": {
+    "tags": [
+     "settings"
+    ],
+    "summary": "Get the UI-managed session middleware provider list",
+    "description": "Session provider map from the session_providers settings namespace with the auth version in meta.version. Remote turna instances poll this through the session middleware's provider_source.url. Admin-protected: the payload carries provider client secrets.",
+    "produces": [
+     "application/json"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "schema": {
+       "type": "object"
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "schema": {
+       "$ref": "#/definitions/httputil.Error"
+      }
+     }
+    }
+   }
+  },
   "/v1/settings": {
    "get": {
     "tags": [

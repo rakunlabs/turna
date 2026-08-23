@@ -59,39 +59,39 @@ func (m *Login) informationUIResponse() InfoUIResponse {
 		Title: info.Title,
 	}
 
-	for providerName := range m.session.Provider {
-		if m.session.Provider[providerName].Hide {
+	for providerName, provider := range m.session.Providers() {
+		if provider.Hide {
 			continue
 		}
 
-		oauth2 := m.session.Provider[providerName].Oauth2
+		oauth2 := provider.Oauth2
 		if oauth2 == nil {
 			continue
 		}
 
 		name := providerName
-		if m.session.Provider[providerName].Name != "" {
-			name = m.session.Provider[providerName].Name
+		if provider.Name != "" {
+			name = provider.Name
 		}
 
-		if m.session.Provider[providerName].Passkey && (m.session.Provider[providerName].AuthMiddleware != "" || oauth2.PasskeyURL != "") {
+		if provider.Passkey && (provider.AuthMiddleware != "" || oauth2.PasskeyURL != "") {
 			response.Provider.Passkey = append(response.Provider.Passkey, Link{
 				Name:     name,
 				URL:      m.Path.BaseURL + path.Join(m.pathFixed.Passkey, providerName),
-				Priority: m.session.Provider[providerName].Priority,
+				Priority: provider.Priority,
 			})
 		}
 
-		if m.session.Provider[providerName].PasswordFlow {
+		if provider.PasswordFlow {
 			link := Link{
 				Name:     name,
 				URL:      m.Path.BaseURL + path.Join(m.pathFixed.Token, providerName),
-				Priority: m.session.Provider[providerName].Priority,
+				Priority: provider.Priority,
 			}
 
 			// advertise signup/forgot-password when the auth middleware
 			// enables them; checked live so UI toggles apply immediately.
-			features, _ := providerSignup(m.session.Provider[providerName])
+			features, _ := providerSignup(provider)
 			link.PasswordMinLength = features.PasswordMinLength
 			if features.Signup {
 				link.SignupURL = m.Path.BaseURL + path.Join(m.pathFixed.Signup, providerName)
@@ -110,7 +110,7 @@ func (m *Login) informationUIResponse() InfoUIResponse {
 		response.Provider.Code = append(response.Provider.Code, Link{
 			Name:     name,
 			URL:      m.Path.BaseURL + path.Join(m.pathFixed.Code, providerName),
-			Priority: m.session.Provider[providerName].Priority,
+			Priority: provider.Priority,
 		})
 	}
 

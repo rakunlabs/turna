@@ -20,6 +20,7 @@ export type Tab =
   | "token-exchange"
   | "totp"
   | "custom-info"
+  | "session-providers"
   | ResourceKind;
 
 export type NavItem = { id: Tab; label: string };
@@ -70,6 +71,7 @@ export const navGroups: NavGroup[] = [
       { id: "clients", label: "Server clients" },
       { id: "providers", label: "OAuth providers" },
       { id: "saml", label: "SAML providers" },
+      { id: "session-providers", label: "Session providers" },
     ],
   },
   {
@@ -119,6 +121,7 @@ const FIXED_TABS: Tab[] = [
   "token-exchange",
   "totp",
   "custom-info",
+  "session-providers",
 ];
 
 /** Resource tabs are the ones backed by a generic record list plus editor. */

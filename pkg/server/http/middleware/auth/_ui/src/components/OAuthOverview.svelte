@@ -103,7 +103,7 @@
 
   <Section
     title="Code flow redirects"
-    note="How this instance addresses itself when it sends a browser to an upstream provider and back."
+    note="How this instance addresses itself when it sends a browser to an upstream provider and back. The same origin is the canonical token issuer."
   >
     {#snippet aside()}{@render commit("oauth2")}{/snippet}
 
@@ -120,8 +120,9 @@
           oninput={(event) => setSettingString("oauth2", ["base_url"], event.currentTarget.value)}
         />
         <p id="oauth2-base-url-hint" class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
-          Empty means the address is derived from the incoming request. Set it explicitly when this
-          instance sits behind a proxy that rewrites the host.
+          Empty means the address and token issuer are derived from each incoming request. Set it
+          explicitly when this instance sits behind a proxy or serves sessions on more than one
+          host, so tokens issued on one host can be refreshed through another.
         </p>
       </div>
 

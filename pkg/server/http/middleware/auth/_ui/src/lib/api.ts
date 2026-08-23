@@ -201,6 +201,9 @@ export const settingTemplates = {
       },
     },
   },
+  session_providers: {
+    providers: {},
+  },
 } as const;
 
 // settings namespaces listed and editable on the Settings tab

@@ -70,7 +70,7 @@ func (m *Info) Info(w http.ResponseWriter, r *http.Request) {
 
 	// check if token is valid
 	claim := claims.Custom{}
-	if _, err := sessionM.Action.Token.GetKeyFunc().ParseWithClaims(token.AccessToken, &claim); err != nil {
+	if _, err := sessionM.KeyFuncParser().ParseWithClaims(token.AccessToken, &claim); err != nil {
 		httputil.JSON(w, http.StatusForbidden, model.MetaData{Message: err.Error()})
 
 		return

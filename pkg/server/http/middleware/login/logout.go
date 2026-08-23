@@ -21,7 +21,7 @@ func (m *Login) revokeSessionTokens(r *http.Request) {
 		return
 	}
 
-	provider, ok := m.session.Provider[providerName]
+	provider, ok := m.session.GetProvider(providerName)
 	if !ok {
 		return
 	}

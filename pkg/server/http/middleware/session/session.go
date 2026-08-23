@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"regexp"
 	"sync"
+	"sync/atomic"
+
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -31,6 +34,10 @@ type Session struct {
 
 	Action   Action              `cfg:"action"`
 	Provider map[string]Provider `cfg:"provider"`
+	// ProviderSource pulls the provider list of an auth middleware
+	// (UI-managed "session_providers" namespace) on top of the static
+	// provider map; dynamic providers overlay same-named static ones.
+	ProviderSource *ProviderSource `cfg:"provider_source"`
 	// SetProvider is the default provider to set for refresing tokens.
 	SetProvider string `cfg:"set_provider"`
 
@@ -51,6 +58,16 @@ type Session struct {
 
 	issuerSkipOnce  sync.Once `cfg:"-"`
 	issuerSkipPaths []string  `cfg:"-"`
+
+	// dynamic holds the provider_source state; nil until the first refresh.
+	dynamic  atomic.Pointer[providerState] `cfg:"-"`
+	dynamicM sync.Mutex                    `cfg:"-"`
+
+	// refreshGroup collapses concurrent refreshes of the same rotating
+	// refresh token. Auth refresh tokens are single-use; without this, a page
+	// loading several protected resources at expiry could consume the token
+	// once and make the remaining requests fall back to login.
+	refreshGroup singleflight.Group `cfg:"-"`
 }
 
 type HostCookieName struct {
@@ -83,6 +100,10 @@ func (m *Session) Init(ctx context.Context, name string) error {
 	}
 
 	GlobalRegistry.Set(name, m)
+
+	if err := m.InitProviderSource(); err != nil {
+		return err
+	}
 
 	if err := m.SetAction(); err != nil {
 		return err

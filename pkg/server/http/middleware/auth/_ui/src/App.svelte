@@ -18,6 +18,7 @@
   import MTLSTab from "./components/MTLSTab.svelte";
   import TotpTab from "./components/TotpTab.svelte";
   import CustomInfoTab from "./components/CustomInfoTab.svelte";
+  import SessionProvidersTab from "./components/SessionProvidersTab.svelte";
   import DeviceSettingsTab from "./components/DeviceSettingsTab.svelte";
   import TokenExchangeTab from "./components/TokenExchangeTab.svelte";
   import AdminTab from "./components/AdminTab.svelte";
@@ -208,6 +209,8 @@
           <TotpTab />
         {:else if route.tab === "custom-info"}
           <CustomInfoTab />
+        {:else if route.tab === "session-providers"}
+          <SessionProvidersTab />
         {:else if route.tab === "device-settings"}
           <DeviceSettingsTab />
         {:else if route.tab === "token-exchange"}

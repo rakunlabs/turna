@@ -34,6 +34,18 @@ type InfKeyFuncParser interface {
 
 type JwkKeyFuncParse struct {
 	KeyFunc func(token *jwt.Token) (any, error)
+
+	// close stops the background refresh goroutines of the remote JWK Sets
+	// behind this keyfunc, if any.
+	close func()
+}
+
+// EndBackground stops the background refresh goroutines of the remote JWK
+// Sets behind this keyfunc, if any. Call it when the keyfunc is replaced.
+func (j *JwkKeyFuncParse) EndBackground() {
+	if j.close != nil {
+		j.close()
+	}
 }
 
 func (j *JwkKeyFuncParse) Keyfunc(token *jwt.Token) (any, error) {
@@ -148,6 +160,7 @@ func MultiJWTKeyFunc(providers []InfProviderCert, opts ...OptionJWK) (*JwkKeyFun
 
 	return &JwkKeyFuncParse{
 		KeyFunc: multiKeyFunc.Keyfunc,
+		close:   jwks.EndBackground,
 	}, nil
 }
 
@@ -269,6 +282,14 @@ type MultipleJWKS struct {
 // Keyfunc matches the signature of github.com/golang-jwt/jwt/v5's jwt.Keyfunc function.
 func (m *MultipleJWKS) Keyfunc(token *jwt.Token) (any, error) {
 	return m.keySelector(m, token)
+}
+
+// EndBackground stops the background refresh goroutine of every remote JWK
+// Set in this group.
+func (m *MultipleJWKS) EndBackground() {
+	for _, set := range m.sets {
+		set.EndBackground()
+	}
 }
 
 type MultipleJWKSKey struct {

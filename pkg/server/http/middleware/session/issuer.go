@@ -50,6 +50,15 @@ type InfPublicPaths interface {
 	PublicPathPatterns() []string
 }
 
+// InfSessionProviders is implemented by issuers whose session provider list
+// is managed at runtime (the auth middleware's "session_providers" settings
+// namespace). The returned version advances whenever the issuer's
+// configuration changes, so callers can cache the map and rebuild derived
+// state (keyfuncs, skip paths) only on change.
+type InfSessionProviders interface {
+	SessionProviders() (map[string]Provider, uint64)
+}
+
 // InfAccessChecker is implemented by in-process identity providers that can
 // answer a host/path/method authorization check. An empty alias means an
 // anonymous request and therefore checks public resources only.

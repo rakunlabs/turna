@@ -5,14 +5,20 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
 type fakeIssuer struct {
-	kid string
-	key any
+	kid      string
+	key      any
+	lastForm url.Values
+	issueM   sync.Mutex
+	issues   int
+	delay    time.Duration
 }
 
 func (f *fakeIssuer) Keyfunc(token *jwt.Token) (any, error) {
@@ -24,7 +30,21 @@ func (f *fakeIssuer) Keyfunc(token *jwt.Token) (any, error) {
 }
 
 func (f *fakeIssuer) IssueToken(_ *http.Request, form url.Values) ([]byte, int, error) {
+	f.issueM.Lock()
+	f.lastForm = form
+	f.issues++
+	f.issueM.Unlock()
+
+	time.Sleep(f.delay)
+
 	return []byte(`{"grant_type":"` + form.Get("grant_type") + `"}`), 200, nil
+}
+
+func (f *fakeIssuer) issueCount() int {
+	f.issueM.Lock()
+	defer f.issueM.Unlock()
+
+	return f.issues
 }
 
 func TestIssuerKeyFunc(t *testing.T) {
@@ -58,13 +78,14 @@ func TestIssuerKeyFunc(t *testing.T) {
 }
 
 func TestIssuerRefreshTokenData(t *testing.T) {
-	IssuerRegistry.Set("refresh-auth", &fakeIssuer{kid: "kid-1", key: "public-key"})
+	issuer := &fakeIssuer{kid: "kid-1", key: "public-key"}
+	IssuerRegistry.Set("refresh-auth", issuer)
 
 	m := &Session{
 		Provider: map[string]Provider{
 			"turna": {
 				AuthMiddleware: "refresh-auth",
-				Oauth2:         &Oauth2{ClientID: "ui"},
+				Oauth2:         &Oauth2{ClientID: "ui", ClientSecret: "secret"},
 			},
 		},
 	}
@@ -77,8 +98,53 @@ func TestIssuerRefreshTokenData(t *testing.T) {
 	if string(body) != `{"grant_type":"refresh_token"}` {
 		t.Fatalf("body = %s", body)
 	}
+	if issuer.lastForm.Get("refresh_token") != "r1" || issuer.lastForm.Get("client_id") != "ui" ||
+		issuer.lastForm.Get("client_secret") != "secret" {
+		t.Fatalf("refresh form = %v", issuer.lastForm)
+	}
 
 	if _, err := m.refreshTokenData(r, "unknown", &TokenData{}); err == nil {
 		t.Fatal("expected error for unknown provider")
+	}
+}
+
+func TestIssuerRefreshTokenDataCollapsesConcurrentRefresh(t *testing.T) {
+	issuer := &fakeIssuer{kid: "kid-1", key: "public-key", delay: 20 * time.Millisecond}
+	IssuerRegistry.Set("concurrent-refresh-auth", issuer)
+
+	m := &Session{
+		Provider: map[string]Provider{
+			"turna": {
+				AuthMiddleware: "concurrent-refresh-auth",
+				Oauth2:         &Oauth2{ClientID: "ui"},
+			},
+		},
+	}
+	r := httptest.NewRequest(http.MethodGet, "https://example.com", nil)
+	token := &TokenData{RefreshToken: "single-use-refresh-token"}
+
+	const requests = 8
+	var wg sync.WaitGroup
+	errC := make(chan error, requests)
+	for range requests {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			_, err := m.refreshTokenData(r, "turna", token)
+			errC <- err
+		}()
+	}
+
+	wg.Wait()
+	close(errC)
+	for err := range errC {
+		if err != nil {
+			t.Fatalf("refresh: %v", err)
+		}
+	}
+
+	if got := issuer.issueCount(); got != 1 {
+		t.Fatalf("issuer calls = %d, want 1", got)
 	}
 }

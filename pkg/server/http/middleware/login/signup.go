@@ -71,7 +71,7 @@ func (m *Login) SignupFlow(w http.ResponseWriter, r *http.Request, action string
 		return
 	}
 
-	provider, ok := sessionM.Provider[providerName]
+	provider, ok := sessionM.GetProvider(providerName)
 	if !ok || provider.Oauth2 == nil {
 		writeError(w, http.StatusNotFound, fmt.Sprintf("provider %q not found", providerName))
 

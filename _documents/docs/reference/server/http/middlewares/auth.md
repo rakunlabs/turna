@@ -43,7 +43,7 @@ Everything else is a settings namespace under `/auth/v1/settings/{namespace}` an
 | Namespace | Keys | Description |
 | --- | --- | --- |
 | `admin` | `permission`, `allow_missing_x_user` | Management API/UI authorization. Empty `permission` keeps bootstrap-open behavior. When set, `X-User` must have that permission ID/name. `allow_missing_x_user` defaults to `true` for break-glass access when the session chain is removed and no `X-User` is present. Do not expose this route publicly when break-glass is enabled. |
-| `oauth2` | `base_url`, `schema`, `insecure_skip_verify` | Code-flow redirect behavior for upstream providers. `schema` defaults to `https`. |
+| `oauth2` | `base_url`, `schema`, `insecure_skip_verify` | Code-flow redirect behavior for upstream providers and the canonical token issuer. `schema` defaults to `https`. Set `base_url` when one auth instance serves session/login flows through multiple hosts, so a token issued through one host can be refreshed through another without an issuer mismatch. |
 | `check` | `default_hosts`, `no_host_check` | Host rules for permission evaluation. |
 | `cache` | `poll_interval`, `code_store` | Version poll interval for the in-memory read model and OAuth2 temporary code/state store. `code_store.active` is `memory` or `redis`. |
 | `token` | `token_lifetime`, `refresh_lifetime` | Token lifetimes (default `15m` / `24h`). |
@@ -61,6 +61,7 @@ Everything else is a settings namespace under `/auth/v1/settings/{namespace}` an
 | `authorize` | `disabled`, `flow_lifetime`, `login_url` | Local browser-based authorization code flow (`/oauth2/authorize` + consent screen). Pending consents live `10m` by default. `login_url` redirects anonymous browsers to a login page (with `?redirect_path=` back reference, the [`login`](./login) middleware convention); empty shows an error asking to log in first. |
 | `registration` | `enabled`, `client_lifetime`, `default_scope`, `max_clients` | RFC 7591 dynamic client registration (`/oauth2/register`). Off by default because registration is anonymous. `client_lifetime` expires dynamic clients (empty keeps them forever), `max_clients` caps stored dynamic clients (default `1000`). |
 | `custom_info` | `disabled`, `sets` | Per-name userinfo claim templates served at `/oauth2/userinfo/{custom}` (and advertised by `/oauth2/openid/{custom}/.well-known/openid-configuration`). `sets.<name>.claims` maps an output claim to a Go `text/template`; templates receive <code v-pre>{{ .claims }}</code> (the base userinfo claims) and <code v-pre>{{ .user }}</code> (the full user record). A template whose key is new adds a claim, an existing key overwrites it, and a template that renders empty (e.g. `""` or trimmed with <code v-pre>{{- -}}</code>) removes the claim. Templates are validated on save. Managed in the UI under *Custom Info*. |
+| `session_providers` | `providers` | A [`session`](./session) middleware provider list managed from the UI (*Federation → Session providers*) instead of static YAML. `providers` is a map keyed by provider name using the session middleware's provider model (`name`, `auth_middleware`, `oauth2.*`, `passkey`, `password_flow`, `api_key`, `x_user`, `claim_header`, `priority`, `hide`, ...). A session middleware pulls it with `provider_source.auth_middleware` (in-process, applied on the next request after a commit) or over `GET /v1/session-providers` with `provider_source.url` (remote, TTL polled). Dynamic providers override same-named static ones. |
 
 Example:
 
@@ -75,7 +76,7 @@ curl -X PUT /auth/v1/settings/cache -d '{"value":{"poll_interval":"5s","code_sto
 Migrations are embedded and run through `github.com/rakunlabs/muz` with a PostgreSQL advisory lock. The schema includes:
 
 - `auth_versions`, `auth_events` — monotonic change version and durable event log.
-- `auth_settings` — encrypted JSON settings namespaces. Reserved: `admin`, `jwt`, `token`, `oauth2`, `check`, `cache`, `api_key`, `device`, `token_exchange`, `totp`, `email`, `signup`, `mtls`, `saml`, `custom_info`, `authorize`, `registration` (see [Runtime settings](#runtime-settings-stored-in-postgresql)).
+- `auth_settings` — encrypted JSON settings namespaces. Reserved: `admin`, `jwt`, `token`, `oauth2`, `check`, `cache`, `api_key`, `device`, `token_exchange`, `totp`, `email`, `signup`, `mtls`, `saml`, `custom_info`, `authorize`, `registration`, `session_providers` (see [Runtime settings](#runtime-settings-stored-in-postgresql)).
 - `auth_oauth_clients`, `auth_oauth_providers`, `auth_ldap_configs`, `auth_saml_providers` — encrypted config records.
 - `auth_users` — IAM users; the `details` map is encrypted at rest, passwords are bcrypt hashed.
 - `auth_roles`, `auth_permissions`, `auth_lmaps` — IAM model.
@@ -100,6 +101,7 @@ With `prefix_path: /auth`:
 | `/auth/ui/device?user_code=XXXX-XXXX` | RFC 8628 device approval/deny page; `user_code` is optional and pre-fills the form when present. |
 | `/auth/ui/#mtls` | Global mTLS settings and workflow guide; certificate bindings live on service account records. |
 | `/auth/ui/#custom-info` | Custom userinfo template sets: per-name claim template editor (add/overwrite/remove claims) with a live preview against sample claims and user details. |
+| `/auth/ui/#session-providers` | Session middleware provider list (`session_providers` namespace): per-provider editor (auth middleware binding, OAuth2 endpoints, passkey/password/API key toggles, claim headers) with wiring examples for `provider_source`. |
 | `/auth/swagger/*` | Swagger UI for the auth API (served with the ada swagger handler; spec at `/auth/swagger/swagger.json`). |
 
 ### IAM
@@ -354,6 +356,7 @@ Session integration is token based: mTLS authenticates the token request, not th
 | `GET` | `/auth/v1/info` | Prefix, storage type, and current auth version. |
 | `GET` | `/auth/v1/capabilities` | Current request capabilities (`is_admin`, `anonymous_admin`, configured admin permission). The UI uses this to hide admin pages from normal users. |
 | `GET/PUT/DELETE` | `/auth/v1/settings`, `/auth/v1/settings/{namespace}` | Encrypted JSON settings. Writes apply immediately on the handling instance; the `jwt` namespace is validated (parseable private key + kid) before saving. |
+| `GET` | `/auth/v1/session-providers` | The UI-managed session middleware provider list (`session_providers` namespace) with the auth version in `meta.version`. Remote turna instances poll it through the session middleware's `provider_source.url`; admin-protected because provider client secrets travel in the payload. |
 | `POST` | `/auth/v1/custom-info/preview` | Render an unsaved `custom_info` set against sample claims and user details; returns the resulting claims and validates the templates (used by the UI). |
 | `POST` | `/auth/v1/jwt/rotate` | Generate and activate a fresh RSA signing key (new `kid`); outstanding tokens become invalid. |
 | `GET/PUT/DELETE` | `/auth/v1/oauth/clients`, `/auth/v1/oauth/clients/{id}` | OAuth client records. |

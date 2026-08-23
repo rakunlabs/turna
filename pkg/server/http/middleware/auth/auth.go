@@ -240,6 +240,11 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 	mux.PUT(prefix+"/v1/settings/{namespace}", admin(m.PutSetting))
 	mux.DELETE(prefix+"/v1/settings/{namespace}", admin(m.DeleteSetting))
 
+	// session middleware provider list managed from the UI
+	// ("session_providers" namespace); remote instances poll it with
+	// provider_source.url, in-process ones read the cache directly.
+	mux.GET(prefix+"/v1/session-providers", admin(m.SessionProvidersAPI))
+
 	// oauth config
 	mux.GET(prefix+"/v1/oauth/clients", admin(m.ListOAuthClients))
 	mux.GET(prefix+"/v1/oauth/clients/{id}", admin(m.GetOAuthClient))
