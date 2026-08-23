@@ -196,17 +196,43 @@ func TestProtectedResource(t *testing.T) {
 		}
 	})
 
-	t.Run("challenge carries resource_metadata", func(t *testing.T) {
+	t.Run("challenge carries path-inserted resource_metadata", func(t *testing.T) {
 		m := newResourceSession(t, key, &ProtectedResource{}, false)
 
-		rec := do(m, "https://app.example.com/mcp", map[string]string{"Accept": "application/json, text/event-stream"})
+		rec := do(m, "https://app.example.com/krabby/mcp", map[string]string{"Accept": "application/json, text/event-stream"})
 		if rec.Code != http.StatusUnauthorized {
 			t.Fatalf("status = %d, want 401", rec.Code)
 		}
 
-		want := `Bearer resource_metadata="https://app.example.com/.well-known/oauth-protected-resource"`
+		want := `Bearer resource_metadata="https://app.example.com/.well-known/oauth-protected-resource/krabby/mcp"`
 		if got := rec.Header().Get("WWW-Authenticate"); got != want {
 			t.Errorf("WWW-Authenticate = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("per-path metadata documents describe their own resource", func(t *testing.T) {
+		m := newResourceSession(t, key, &ProtectedResource{}, false)
+
+		for _, path := range []string{"/krabby/mcp", "/krabby/mcp/admin"} {
+			rec := do(m, "https://app.example.com/.well-known/oauth-protected-resource"+path, nil)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", rec.Code)
+			}
+
+			var doc struct {
+				Resource             string   `json:"resource"`
+				AuthorizationServers []string `json:"authorization_servers"`
+			}
+			if err := json.NewDecoder(rec.Body).Decode(&doc); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+
+			if want := "https://app.example.com" + path; doc.Resource != want {
+				t.Errorf("resource = %q, want %q", doc.Resource, want)
+			}
+			if len(doc.AuthorizationServers) != 1 || doc.AuthorizationServers[0] != "https://idp.example.com/auth/oauth2" {
+				t.Errorf("authorization_servers = %v", doc.AuthorizationServers)
+			}
 		}
 	})
 

@@ -276,12 +276,14 @@ session:
 
 With the block present:
 
-- Requests under `/.well-known/oauth-protected-resource` answer the metadata document without authentication.
-- Every `401` challenge becomes `WWW-Authenticate: Bearer resource_metadata="{resource}/.well-known/oauth-protected-resource"`.
+- Requests under `/.well-known/oauth-protected-resource` answer the metadata document without authentication, RFC 9728 path-insertion style: `/.well-known/oauth-protected-resource/krabby/mcp` describes the resource `https://{host}/krabby/mcp`.
+- Every `401` challenge points at the metadata of the requested path: a challenge on `/krabby/mcp` answers `WWW-Authenticate: Bearer resource_metadata="https://{host}/.well-known/oauth-protected-resource/krabby/mcp"`.
+
+Several MCP endpoints behind one session (`/krabby/mcp`, `/krabby/mcp/admin`, ...) therefore each get their own resource identifier and metadata URL without any per-endpoint configuration — both the challenge-driven discovery and clients that build the well-known URL themselves from the server URL (the MCP spec) land on the right document.
 
 | Field | Default | Description |
 | --- | --- | --- |
-| `resource` | `{scheme}://{host}` per request | Canonical RFC 8707/9728 resource identifier (honors `X-Forwarded-Proto`/`X-Forwarded-Host`). A path suffix moves the metadata URL RFC 9728 path-insertion style (`https://x/mcp` → `/.well-known/oauth-protected-resource/mcp`). |
+| `resource` | `{scheme}://{host}{path}` per request | Pins one canonical RFC 8707/9728 resource identifier for the whole surface (honors `X-Forwarded-Proto`/`X-Forwarded-Host` when deriving). Leave empty for per-path resources. |
 | `authorization_servers` | derived | Issuer URLs listed in the metadata. Empty derives them from every provider backed by an in-process `auth_middleware` (the auth middleware's canonical issuer URL, honoring its `oauth2.base_url`). Set explicitly for remote/oauth2 providers. |
 | `scopes_supported` | | Advertised scopes. |
 

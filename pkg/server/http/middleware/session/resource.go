@@ -24,13 +24,17 @@ type InfIssuerURL interface {
 
 // ProtectedResource publishes this session-protected surface as an OAuth2
 // protected resource (RFC 9728): the metadata document is served under
-// /.well-known/oauth-protected-resource and 401 challenges carry a
-// resource_metadata pointer so discovery-driven clients (MCP) find the
-// authorization server behind the login redirect.
+// /.well-known/oauth-protected-resource (path-insertion style, so
+// /krabby/mcp answers on /.well-known/oauth-protected-resource/krabby/mcp)
+// and 401 challenges carry a resource_metadata pointer so discovery-driven
+// clients (MCP) find the authorization server behind the login redirect.
 type ProtectedResource struct {
-	// Resource is the canonical RFC 8707/9728 resource identifier
-	// (e.g. https://example.com). Empty derives {scheme}://{host} from each
-	// request honoring X-Forwarded-Proto/Host.
+	// Resource pins one canonical RFC 8707/9728 resource identifier
+	// (e.g. https://example.com/mcp) for the whole surface. Empty derives
+	// {scheme}://{host}{request path} per request honoring
+	// X-Forwarded-Proto/Host, so every protected path (e.g. /krabby/mcp,
+	// /krabby/mcp/admin) is its own resource with its own path-inserted
+	// metadata URL.
 	Resource string `cfg:"resource"`
 
 	// AuthorizationServers overrides the issuer URLs listed in the
@@ -61,19 +65,22 @@ func requestBase(r *http.Request) string {
 	return scheme + "://" + host
 }
 
-// resourceID returns the canonical resource identifier for this request.
-func (m *Session) resourceID(r *http.Request) string {
+// resourceIDForPath returns the canonical resource identifier for a
+// resource path: the configured resource when pinned, otherwise
+// {scheme}://{host}{path} derived from the request.
+func (m *Session) resourceIDForPath(r *http.Request, path string) string {
 	if m.ProtectedResource != nil && m.ProtectedResource.Resource != "" {
 		return m.ProtectedResource.Resource
 	}
 
-	return requestBase(r)
+	return requestBase(r) + strings.TrimSuffix(path, "/")
 }
 
-// resourceMetadataURL builds the RFC 9728 metadata URL for the resource by
-// path-insertion on the resource identifier (RFC 9728 §3.1).
+// resourceMetadataURL builds the RFC 9728 metadata URL for the resource of
+// this request by path-insertion on the resource identifier (RFC 9728 §3.1):
+// https://host/krabby/mcp -> https://host/.well-known/oauth-protected-resource/krabby/mcp.
 func (m *Session) resourceMetadataURL(r *http.Request) string {
-	resource := m.resourceID(r)
+	resource := m.resourceIDForPath(r, r.URL.Path)
 
 	rest := resource
 	if idx := strings.Index(resource, "://"); idx >= 0 {
@@ -143,9 +150,14 @@ func (m *Session) resourceAuthorizationServers(r *http.Request) []string {
 }
 
 // serveProtectedResourceMetadata answers the RFC 9728 metadata document.
+// The resource path is taken from the path-insertion suffix of the request:
+// /.well-known/oauth-protected-resource/krabby/mcp describes the resource
+// {scheme}://{host}/krabby/mcp.
 func (m *Session) serveProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {
+	suffix := strings.TrimPrefix(r.URL.Path, wellKnownProtectedResource)
+
 	doc := map[string]any{
-		"resource":                 m.resourceID(r),
+		"resource":                 m.resourceIDForPath(r, suffix),
 		"authorization_servers":    m.resourceAuthorizationServers(r),
 		"bearer_methods_supported": []string{"header"},
 	}
