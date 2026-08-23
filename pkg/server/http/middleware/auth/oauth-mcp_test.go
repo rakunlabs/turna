@@ -57,6 +57,64 @@ func TestValidateClientMetadataURL(t *testing.T) {
 	}
 }
 
+func TestIsClientMetadataURL(t *testing.T) {
+	if !isClientMetadataURL("https://claude.ai/oauth/claude-code-client-metadata") {
+		t.Error("URL client_id must be detected as metadata client")
+	}
+	if isClientMetadataURL("my-client") {
+		t.Error("plain client_id must not be detected as metadata client")
+	}
+	if isClientMetadataURL("http://claude.ai/oauth/x") {
+		t.Error("plain http client_id must not be detected as metadata client")
+	}
+}
+
+func TestOverlayStoredClient(t *testing.T) {
+	fetched := &AccessClient{
+		ClientName:   "Claude Code",
+		RedirectURIs: []string{"https://claude.ai/api/mcp/auth_callback"},
+		Public:       true,
+	}
+
+	stored := &AccessClient{
+		Resources:   []string{"https://app.example.com/krabby/mcp"},
+		Scope:       []string{"openid"},
+		SkipConsent: true,
+		RolesClaim:  "custom.roles",
+		// identity fields in the stored record must NOT override the live doc
+		ClientName:   "ignored",
+		RedirectURIs: []string{"https://evil.example.com/cb"},
+	}
+
+	got := overlayStoredClient(fetched, stored)
+
+	if len(got.Resources) != 1 || got.Resources[0] != "https://app.example.com/krabby/mcp" {
+		t.Errorf("resources = %v", got.Resources)
+	}
+	if len(got.Scope) != 1 || got.Scope[0] != "openid" {
+		t.Errorf("scope = %v", got.Scope)
+	}
+	if !got.SkipConsent {
+		t.Error("skip_consent must overlay")
+	}
+	if got.RolesClaim != "custom.roles" {
+		t.Errorf("roles_claim = %q", got.RolesClaim)
+	}
+	if got.ClientName != "Claude Code" {
+		t.Errorf("client_name = %q, live document must stay authoritative", got.ClientName)
+	}
+	if len(got.RedirectURIs) != 1 || got.RedirectURIs[0] != "https://claude.ai/api/mcp/auth_callback" {
+		t.Errorf("redirect_uris = %v, live document must stay authoritative", got.RedirectURIs)
+	}
+	if !got.Public {
+		t.Error("metadata client must stay public")
+	}
+
+	if got := overlayStoredClient(fetched, nil); got != fetched {
+		t.Error("nil stored record must return the fetched document unchanged")
+	}
+}
+
 func TestDecodeClientMetadata(t *testing.T) {
 	clientID := "https://client.example/app.json"
 	client, err := decodeClientMetadata(clientID, []byte(`{

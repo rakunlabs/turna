@@ -247,10 +247,13 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 	mux.GET(prefix+"/v1/session-providers", admin(m.SessionProvidersAPI))
 
 	// oauth config
+	// {id...} is a greedy wildcard: client ids may be URLs (OAuth Client ID
+	// Metadata Documents, e.g. https://claude.ai/oauth/...) whose slashes
+	// would never match a single {id} segment.
 	mux.GET(prefix+"/v1/oauth/clients", admin(m.ListOAuthClients))
-	mux.GET(prefix+"/v1/oauth/clients/{id}", admin(m.GetOAuthClient))
-	mux.PUT(prefix+"/v1/oauth/clients/{id}", admin(m.PutOAuthClient))
-	mux.DELETE(prefix+"/v1/oauth/clients/{id}", admin(m.DeleteOAuthClient))
+	mux.GET(prefix+"/v1/oauth/clients/{id...}", admin(m.GetOAuthClient))
+	mux.PUT(prefix+"/v1/oauth/clients/{id...}", admin(m.PutOAuthClient))
+	mux.DELETE(prefix+"/v1/oauth/clients/{id...}", admin(m.DeleteOAuthClient))
 	mux.GET(prefix+"/v1/oauth/providers", admin(m.ListOAuthProviders))
 	mux.GET(prefix+"/v1/oauth/providers/{id}", admin(m.GetOAuthProvider))
 	mux.PUT(prefix+"/v1/oauth/providers/{id}", admin(m.PutOAuthProvider))

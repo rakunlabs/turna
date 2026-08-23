@@ -145,7 +145,75 @@ func decodeClientMetadata(clientID string, body []byte) (*AccessClient, error) {
 	}, nil
 }
 
+// isClientMetadataURL reports whether the client_id is an OAuth Client ID
+// Metadata Document URL (HTTPS URL with a path).
+func isClientMetadataURL(clientID string) bool {
+	_, err := validateClientMetadataURL(clientID)
+
+	return err == nil
+}
+
+// overlayStoredClient applies locally stored policy fields of a URL-id
+// client record onto the fetched metadata document. Administrators pin
+// resources, scope, skip_consent and roles_claim for a metadata client
+// (store a record whose id is the metadata URL) without maintaining its
+// redirect_uris — identity and redirect targets stay authoritative in the
+// live document.
+func overlayStoredClient(fetched, stored *AccessClient) *AccessClient {
+	if stored == nil {
+		return fetched
+	}
+
+	if len(stored.Resources) > 0 {
+		fetched.Resources = stored.Resources
+	}
+	if len(stored.Scope) > 0 {
+		fetched.Scope = stored.Scope
+	}
+	if stored.SkipConsent {
+		fetched.SkipConsent = true
+	}
+	if stored.RolesClaim != "" {
+		fetched.RolesClaim = stored.RolesClaim
+	}
+
+	return fetched
+}
+
+// metadataClient resolves a URL client_id: the live metadata document is
+// fetched and a same-id stored record overlays its policy fields. When the
+// fetch fails, a stored record (carrying its own redirect_uris or
+// whitelist_urls) keeps the client usable as a full fallback.
+func (m *Auth) metadataClient(ctx context.Context, clientID string) (*AccessClient, error) {
+	stored, hasStored := m.lookupClient(clientID)
+
+	fetched, err := fetchClientMetadata(ctx, clientID)
+	if err != nil {
+		if hasStored {
+			// metadata clients never authenticate with a secret; a
+			// secretless fallback record stays a public (PKCE) client
+			if stored.ClientSecret == "" {
+				stored.Public = true
+			}
+
+			return stored, nil
+		}
+
+		return nil, err
+	}
+
+	if hasStored {
+		return overlayStoredClient(fetched, stored), nil
+	}
+
+	return fetched, nil
+}
+
 func (m *Auth) authorizationRequestClient(ctx context.Context, clientID string) (*AccessClient, error) {
+	if isClientMetadataURL(clientID) {
+		return m.metadataClient(ctx, clientID)
+	}
+
 	if client, ok := m.lookupClient(clientID); ok {
 		return client, nil
 	}
@@ -154,6 +222,14 @@ func (m *Auth) authorizationRequestClient(ctx context.Context, clientID string) 
 }
 
 func (m *Auth) authorizationClient(ctx context.Context, clientID, clientSecret string) (*AccessClient, error) {
+	if isClientMetadataURL(clientID) {
+		if clientSecret != "" {
+			return nil, fmt.Errorf("client metadata clients do not use a shared secret")
+		}
+
+		return m.metadataClient(ctx, clientID)
+	}
+
 	if _, ok := m.lookupClient(clientID); ok {
 		return m.resolveClient(clientID, clientSecret)
 	}

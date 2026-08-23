@@ -280,6 +280,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
       client_secret: "change-me",
       scope: ["openid", "profile"],
       whitelist_urls: ["https://app.example.com/callback"],
+      resources: [],
       skip_consent: false,
     },
   },

@@ -354,7 +354,10 @@
     </Section>
   {/if}
 {:else if editor.kind === "clients"}
-  <Section title="Credentials" note="What this client presents at the token endpoint.">
+  <Section
+    title="Credentials"
+    note="What this client presents at the token endpoint. A client ID that is an HTTPS URL (OAuth Client ID Metadata Document, e.g. Claude Code) is fetched live; a record saved under that URL only overlays allowed resources, scopes, skip consent and roles claim — redirect URIs stay in the live document."
+  >
     <div class="grid gap-6 sm:grid-cols-2">
       {@render line({
         label: "Client secret",
@@ -376,6 +379,14 @@
         placeholder: "https://app.example.com/callback",
         rows: 4,
         hint: "One per line. A redirect that is not listed here is refused.",
+      })}
+      {@render exhibit({
+        label: "Allowed resources",
+        value: editor.getList("resources"),
+        set: (value) => editor.setList("resources", value),
+        placeholder: "https://app.example.com/krabby/mcp",
+        rows: 4,
+        hint: "RFC 8707 resource indicators this client may request (one per line, prefix match). Empty allows any resource. Granted resources become token audiences (aud).",
       })}
       {@render toggle({
         label: "Skip consent",

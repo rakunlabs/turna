@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // fakeIssuerURLIssuer is a fakeIssuer that also knows its external issuer
@@ -256,6 +258,19 @@ func TestProtectedResource(t *testing.T) {
 		want := `Bearer resource_metadata="https://app.example.com/.well-known/oauth-protected-resource/mcp"`
 		if got := rec.Header().Get("WWW-Authenticate"); got != want {
 			t.Errorf("WWW-Authenticate = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("protected resource does not enforce bearer audience", func(t *testing.T) {
+		m := newResourceSession(t, key, &ProtectedResource{}, false)
+		token := signSkipToken(t, key, jwt.MapClaims{
+			"preferred_username": "user1",
+			"aud":                "turna-auth",
+		})
+
+		rec := do(m, "https://app.example.com/krabby/mcp", map[string]string{"Authorization": "Bearer " + token})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
 		}
 	})
 
