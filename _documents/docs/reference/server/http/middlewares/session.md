@@ -246,11 +246,46 @@ action:
     disable_refresh: false
     insecure_skip_verify: false
     legacy_proxy_auth: false
+    redirect_always: false
 ```
 
 Bearer access tokens are validated directly. Session-stored access tokens are refreshed when they are within 10 seconds of expiry unless `disable_refresh` is true.
 
+### Redirect vs 401 challenge
+
+Only **interactive** anonymous requests are redirected to `login_path`: those whose `Accept` header offers HTML (`text/html`, `application/xhtml+xml`) or that carry a browser navigation header (`Sec-Fetch-Dest: document`). Everything else — curl, fetch/XHR without an HTML accept, MCP clients — answers **`401 Unauthorized`** with a `WWW-Authenticate: Bearer` challenge, which is what machine clients need to start an OAuth2 discovery flow instead of choking on a login page redirect.
+
+Set `redirect_always: true` to restore the historic unconditional redirect for deployments whose clients depended on it.
+
 Authentication failures on API-style requests (invalid bearer token, invalid API key, or `disable_redirect` routes) answer **`401 Unauthorized`** with a `WWW-Authenticate: Bearer` header. Set `legacy_proxy_auth: true` to restore the historic `407 Proxy Authentication Required` of the legacy `iam` stack for old deployments whose clients still expect 407.
+
+## Protected resource metadata (RFC 9728)
+
+Discovery-driven clients (the MCP spec) find the authorization server of a protected surface through the `WWW-Authenticate` challenge: `401` answers carry `resource_metadata="..."` pointing at a `/.well-known/oauth-protected-resource` document that lists the `authorization_servers`. Configure `protected_resource` to publish the session-protected surface that way:
+
+```yaml
+session:
+  protected_resource: {}        # enable with everything derived
+  provider:
+    turna:
+      auth_middleware: auth
+  action:
+    token:
+      login_path: /login/
+```
+
+With the block present:
+
+- Requests under `/.well-known/oauth-protected-resource` answer the metadata document without authentication.
+- Every `401` challenge becomes `WWW-Authenticate: Bearer resource_metadata="{resource}/.well-known/oauth-protected-resource"`.
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `resource` | `{scheme}://{host}` per request | Canonical RFC 8707/9728 resource identifier (honors `X-Forwarded-Proto`/`X-Forwarded-Host`). A path suffix moves the metadata URL RFC 9728 path-insertion style (`https://x/mcp` → `/.well-known/oauth-protected-resource/mcp`). |
+| `authorization_servers` | derived | Issuer URLs listed in the metadata. Empty derives them from every provider backed by an in-process `auth_middleware` (the auth middleware's canonical issuer URL, honoring its `oauth2.base_url`). Set explicitly for remote/oauth2 providers. |
+| `scopes_supported` | | Advertised scopes. |
+
+A typical MCP flow behind session: the client calls the protected endpoint, gets `401` with the metadata pointer, reads `authorization_servers`, runs dynamic client registration + PKCE code flow against the auth middleware (keep its public plane reachable with `auth_skip_paths`), and retries with the bearer token — which session validates as usual.
 
 ## Skip paths
 

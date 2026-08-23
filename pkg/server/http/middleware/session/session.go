@@ -56,6 +56,14 @@ type Session struct {
 	// of being redirected to login. Useful for public OAuth2/MCP endpoints
 	// that live behind the same router as protected pages.
 	SkipPaths []string `cfg:"skip_paths"`
+	// ProtectedResource publishes this surface as an RFC 9728 OAuth2
+	// protected resource: the metadata document is served under
+	// /.well-known/oauth-protected-resource and 401 challenges point
+	// discovery-driven clients (MCP) at it via WWW-Authenticate
+	// resource_metadata. authorization_servers derive automatically from
+	// providers backed by an in-process auth middleware.
+	ProtectedResource *ProtectedResource `cfg:"protected_resource"`
+
 	// AuthSkipPaths lists auth middlewares whose public surface is added to
 	// skip_paths. An entry is either an in-process auth middleware name or
 	// the check endpoint URL of a remote auth (e.g.

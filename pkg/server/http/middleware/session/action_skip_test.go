@@ -88,6 +88,8 @@ func TestSkipPaths(t *testing.T) {
 		called, gotUser = false, ""
 
 		r := httptest.NewRequest(http.MethodGet, path, nil)
+		// browser navigation; machine clients get 401 instead of redirect
+		r.Header.Set("Accept", "text/html,application/xhtml+xml")
 		// spoofing attempt: must never survive
 		r.Header.Set("X-User", "spoofed")
 		if bearer != "" {
@@ -217,6 +219,7 @@ func TestAuthSkipPaths(t *testing.T) {
 
 	do := func(m *Session, path, authorization string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodGet, path, nil)
+		r.Header.Set("Accept", "text/html,application/xhtml+xml")
 		if authorization != "" {
 			r.Header.Set("Authorization", authorization)
 		}
@@ -325,6 +328,7 @@ func TestAuthPublicCheck(t *testing.T) {
 		gotUser = ""
 
 		r := httptest.NewRequest(http.MethodGet, path, nil)
+		r.Header.Set("Accept", "text/html,application/xhtml+xml")
 		r.Header.Set("X-User", "spoofed")
 		if bearer != "" {
 			r.Header.Set("Authorization", "Bearer "+bearer)
@@ -454,6 +458,7 @@ func TestAuthPublicCheckRemote(t *testing.T) {
 
 	do := func(path string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodGet, path, nil)
+		r.Header.Set("Accept", "text/html,application/xhtml+xml")
 		rec := httptest.NewRecorder()
 		m.Do(next, rec, r)
 

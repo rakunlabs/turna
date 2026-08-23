@@ -43,6 +43,13 @@ type Token struct {
 	// clients still expect 407.
 	LegacyProxyAuth bool `cfg:"legacy_proxy_auth"`
 
+	// RedirectAlways restores the historic unconditional login redirect for
+	// anonymous requests. By default only interactive requests (Accept
+	// containing text/html or a browser navigation) are redirected to the
+	// login page; machine clients (curl, MCP, fetch) receive 401 with a
+	// WWW-Authenticate Bearer challenge instead.
+	RedirectAlways bool `cfg:"redirect_always"`
+
 	auth    request.Auth     `cfg:"-"`
 	keyFunc InfKeyFuncParser `cfg:"-"`
 }
@@ -345,7 +352,7 @@ func (m *Session) serveAPIKey(next http.Handler, w http.ResponseWriter, r *http.
 	body, err := m.apiKeyClaimsData(r.Context(), providerName, provider, key)
 	if err != nil {
 		slog.Debug("api key validation failed", "error", err.Error())
-		m.unauthorized(w)
+		m.unauthorized(w, r)
 
 		return
 	}
@@ -353,7 +360,7 @@ func (m *Session) serveAPIKey(next http.Handler, w http.ResponseWriter, r *http.
 	customClaims := &claims.Custom{}
 	if err := json.Unmarshal(body, customClaims); err != nil {
 		slog.Debug("cannot parse api key claims", "error", err.Error())
-		m.unauthorized(w)
+		m.unauthorized(w, r)
 
 		return
 	}
@@ -442,17 +449,52 @@ func (m *Session) refreshTokenDataOnce(r *http.Request, providerName string, tok
 
 // unauthorized answers an authentication failure: standard 401 with a
 // Bearer challenge by default, or the historic 407 Proxy Authentication
-// Required when legacy_proxy_auth is enabled.
-func (m *Session) unauthorized(w http.ResponseWriter) {
+// Required when legacy_proxy_auth is enabled. With protected_resource
+// configured the challenge carries the RFC 9728 resource_metadata pointer
+// so discovery-driven clients (MCP) find the authorization server.
+func (m *Session) unauthorized(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusUnauthorized
 
 	if m.Action.Token != nil && m.Action.Token.LegacyProxyAuth {
 		status = http.StatusProxyAuthRequired
 	} else {
-		w.Header().Set("WWW-Authenticate", "Bearer")
+		w.Header().Set("WWW-Authenticate", m.bearerChallenge(r))
 	}
 
 	httputil.JSON(w, status, MetaData{Error: http.StatusText(status)})
+}
+
+// acceptsHTML reports whether the request comes from an interactive browser
+// context: an Accept header offering HTML or a navigation fetch. Only these
+// requests are worth a login page redirect; everything else is a machine
+// client that handles 401 challenges.
+func acceptsHTML(r *http.Request) bool {
+	accept := r.Header.Get("Accept")
+	if strings.Contains(accept, "text/html") || strings.Contains(accept, "application/xhtml+xml") {
+		return true
+	}
+
+	return r.Header.Get("Sec-Fetch-Dest") == "document"
+}
+
+// redirectToLoginOrChallenge decides how an anonymous or failed-auth request
+// is answered: interactive requests (acceptsHTML) are redirected to the
+// login page, machine clients receive the 401 bearer challenge. redirect_always
+// restores the unconditional redirect.
+func (m *Session) redirectToLoginOrChallenge(w http.ResponseWriter, r *http.Request, addRedirectPath bool, removeSession bool) {
+	if m.Action.Token != nil && !m.Action.Token.RedirectAlways && !acceptsHTML(r) {
+		if removeSession {
+			if err := m.DelToken(w, r); err != nil {
+				slog.Error("cannot remove session", "error", err.Error())
+			}
+		}
+
+		m.unauthorized(w, r)
+
+		return
+	}
+
+	m.RedirectToLogin(w, r, addRedirectPath, removeSession)
 }
 
 // skipPath reports whether the request path matches an explicit skip_paths
@@ -820,6 +862,14 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 	// (skip paths, keyfunc, provider lookups) relies on it.
 	m.providerRefresh()
 
+	// the RFC 9728 protected resource metadata document is public by
+	// definition; serve it before any authentication decision.
+	if m.ProtectedResource != nil && strings.HasPrefix(r.URL.Path, wellKnownProtectedResource) {
+		m.serveProtectedResourceMetadata(w, r)
+
+		return
+	}
+
 	if m.Action.Active == actionToken {
 		// authentication is optional on explicit skip_paths patterns and on
 		// the static public plane of auth_skip_paths entries.
@@ -850,7 +900,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 				if err != nil {
 					slog.Debug("token is not valid", "error", err.Error())
 
-					m.unauthorized(w)
+					m.unauthorized(w, r)
 
 					return
 				}
@@ -858,14 +908,14 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 				if typ, _ := customClaims.Map["typ"].(string); typ != "" {
 					if typ == "Refresh" {
 						slog.Debug("token is refresh token")
-						m.unauthorized(w)
+						m.unauthorized(w, r)
 
 						return
 					}
 
 					if typ == "ID" {
 						slog.Debug("token is id token")
-						m.unauthorized(w)
+						m.unauthorized(w, r)
 
 						return
 					}
@@ -921,8 +971,9 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 				slog.Error("cannot get session", "error", err.Error())
 			}
 
-			// cookie not found, redirect to login page
-			m.RedirectToLogin(w, r, true, false)
+			// cookie not found, redirect browsers to the login page and
+			// challenge machine clients with 401
+			m.redirectToLoginOrChallenge(w, r, true, false)
 
 			return
 		}
@@ -931,7 +982,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 		token, err := ParseToken64(token64)
 		if err != nil {
 			slog.Error("cannot parse token", "error", err.Error())
-			m.RedirectToLogin(w, r, true, true)
+			m.redirectToLoginOrChallenge(w, r, true, true)
 
 			return
 		}
@@ -941,7 +992,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 			v, err := IsRefreshNeed(token.AccessToken)
 			if err != nil {
 				slog.Error("cannot check if token is expired", "error", err.Error())
-				m.RedirectToLogin(w, r, true, true)
+				m.redirectToLoginOrChallenge(w, r, true, true)
 
 				return
 			}
@@ -950,7 +1001,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 				refreshData, err := m.refreshTokenData(r, providerName, token)
 				if err != nil {
 					slog.Error("cannot refresh token", "error", err.Error())
-					m.RedirectToLogin(w, r, true, true)
+					m.redirectToLoginOrChallenge(w, r, true, true)
 
 					return
 				}
@@ -958,7 +1009,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 				// set new token to the store
 				if err := m.SetToken(w, r, refreshData, providerName); err != nil {
 					slog.Error("cannot set session", "error", err.Error())
-					m.RedirectToLogin(w, r, true, true)
+					m.redirectToLoginOrChallenge(w, r, true, true)
 
 					return
 				}
@@ -967,7 +1018,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 				token, err = ParseToken(refreshData)
 				if err != nil {
 					slog.Error("cannot parse token", "error", err.Error())
-					m.RedirectToLogin(w, r, true, true)
+					m.redirectToLoginOrChallenge(w, r, true, true)
 
 					return
 				}
@@ -979,7 +1030,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 		jwtToken, err := m.KeyFuncParser().ParseWithClaims(token.AccessToken, customClaims)
 		if err != nil {
 			slog.Debug("token is not valid", "error", err.Error())
-			m.RedirectToLogin(w, r, true, true)
+			m.redirectToLoginOrChallenge(w, r, true, true)
 
 			return
 		}
@@ -1018,7 +1069,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 func (m *Session) RedirectToLogin(w http.ResponseWriter, r *http.Request, addRedirectPath bool, removeSession bool) {
 	// check redirection is disabled
 	if v, _ := tcontext.Get(r, CtxDisableRedirectKey).(bool); v {
-		m.unauthorized(w)
+		m.unauthorized(w, r)
 
 		return
 	}

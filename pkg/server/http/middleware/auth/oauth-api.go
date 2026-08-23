@@ -1269,6 +1269,13 @@ func (m *Auth) APIAuthServerMetadata(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, m.serverMetadata(r, ""))
 }
 
+// IssuerURL exposes the canonical external issuer URL of this auth
+// instance (session.InfIssuerURL); session middlewares use it to derive
+// authorization_servers of their RFC 9728 protected resource metadata.
+func (m *Auth) IssuerURL(r *http.Request) string {
+	return m.issuerURL(r)
+}
+
 func (m *Auth) issuerURL(r *http.Request) string {
 	// oauth2.base_url is the canonical external origin of this auth
 	// instance. Use it for the issuer as well as upstream code callbacks so
