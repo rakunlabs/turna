@@ -9,10 +9,18 @@ export const PAGE_SIZE = 50;
 export type ListStanding = {
   offset: number;
   search: string;
+  /** Extra server-side filters (param → value), e.g. path/method/description on permissions. */
+  filters: Record<string, string>;
   total: number;
 };
 
-const restingStanding: ListStanding = { offset: 0, search: "", total: 0 };
+const restingStanding: ListStanding = { offset: 0, search: "", filters: {}, total: 0 };
+
+/** Two filter sets ask the server the same question iff every param and value agrees. */
+const sameFilters = (a: Record<string, string>, b: Record<string, string>) => {
+  const aKeys = Object.keys(a);
+  return aKeys.length === Object.keys(b).length && aKeys.every((key) => a[key] === b[key]);
+};
 
 /**
  * The registry is the console's index of issued instruments: one row list per
@@ -55,6 +63,9 @@ class Registry {
       params.set("_limit", String(PAGE_SIZE));
       if (standing.offset > 0) params.set("_offset", String(standing.offset));
       if (standing.search) params.set("search", standing.search);
+      for (const [param, value] of Object.entries(standing.filters ?? {})) {
+        if (value) params.set(param, value);
+      }
 
       query = `?${params.toString()}`;
     }
@@ -102,6 +113,15 @@ class Registry {
     if (standing.search === search && standing.offset === 0) return;
 
     this.standingByKind = { ...this.standingByKind, [kind]: { ...standing, search, offset: 0 } };
+    await session.run(() => this.loadKind(kind));
+  }
+
+  /** Apply extra server-side filters to a paginated register; resets to page one. */
+  async applyFilters(kind: ResourceKind, filters: Record<string, string>) {
+    const standing = this.standing(kind);
+    if (sameFilters(standing.filters ?? {}, filters) && standing.offset === 0) return;
+
+    this.standingByKind = { ...this.standingByKind, [kind]: { ...standing, filters, offset: 0 } };
     await session.run(() => this.loadKind(kind));
   }
 

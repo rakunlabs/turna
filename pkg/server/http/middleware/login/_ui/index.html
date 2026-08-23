@@ -5,6 +5,19 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="icon" type="image/svg+xml" href="./logo.svg" />
+  <style>
+    html { color-scheme: light; background-color: #f9fafb; }
+    html.dark { color-scheme: dark; background-color: #030712; }
+  </style>
+  <script>
+    // Apply the stored theme before first paint to avoid a light flash.
+    try {
+      var t = localStorage.getItem("login-theme");
+      if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+        document.documentElement.classList.add("dark");
+      }
+    } catch (e) { /* storage unavailable: stay light */ }
+  </script>
   <script type="module" src="./src/main.ts" defer></script>
 
   <title>Login</title>

@@ -7,3 +7,13 @@ html,
 body {
   @apply h-full w-full;
 }
+
+html {
+  color-scheme: light;
+  background-color: #f9fafb; // gray-50
+}
+
+html.dark {
+  color-scheme: dark;
+  background-color: #030712; // gray-950
+}

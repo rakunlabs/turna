@@ -16,18 +16,61 @@
   let mounted = false;
   let rememberMe = false;
 
+  // theme: user choice persisted in localStorage; "system" follows the OS.
+  type Theme = "light" | "dark" | "system";
+  const themeKey = "login-theme";
+  let theme: Theme = "system";
+
+  const applyTheme = (t: Theme) => {
+    const dark =
+      t === "dark" ||
+      (t === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.classList.toggle("dark", dark);
+  };
+
+  const setTheme = (t: Theme) => {
+    theme = t;
+    try {
+      localStorage.setItem(themeKey, t);
+    } catch {
+      // storage unavailable: theme lives for this page only
+    }
+    applyTheme(t);
+  };
+
+  const cycleTheme = () => {
+    setTheme(theme === "system" ? "light" : theme === "light" ? "dark" : "system");
+  };
+
+  const initTheme = () => {
+    try {
+      const stored = localStorage.getItem(themeKey);
+      if (stored === "light" || stored === "dark" || stored === "system") {
+        theme = stored;
+      }
+    } catch {
+      // storage unavailable
+    }
+    applyTheme(theme);
+    window
+      .matchMedia("(prefers-color-scheme: dark)")
+      .addEventListener("change", () => {
+        if (theme === "system") applyTheme("system");
+      });
+  };
+
   type View = "signin" | "signup" | "verify" | "reset" | "reset-confirm";
   let view: View = "signin";
   let verifyCode = "";
   let resetCode = "";
 
   const inputClass =
-    "py-1.5 px-3 border rounded-md border-gray-300 focus:border-blue-300 focus:outline-none focus:ring focus:ring-blue-200 focus:ring-opacity-50 disabled:bg-gray-100 mt-1 block w-full";
+    "py-1.5 px-3 border rounded-md border-gray-300 bg-white text-gray-900 focus:border-blue-300 focus:outline-none focus:ring focus:ring-blue-200 focus:ring-opacity-50 disabled:bg-gray-100 mt-1 block w-full dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-blue-700 dark:focus:ring-blue-800 dark:disabled:bg-gray-800";
   const submitClass =
-    "block w-full text-center px-4 py-1.5 bg-[#615fff] border rounded-md border-transparent font-semibold capitalize text-white hover:bg-blue-500 active:bg-blue-500 focus:outline-none focus:border-blue-500 focus:ring focus:ring-blue-200 disabled:bg-gray-400 transition";
+    "block w-full text-center px-4 py-1.5 bg-[#615fff] border rounded-md border-transparent font-semibold capitalize text-white hover:bg-blue-500 active:bg-blue-500 focus:outline-none focus:border-blue-500 focus:ring focus:ring-blue-200 disabled:bg-gray-400 transition dark:focus:ring-blue-800 dark:disabled:bg-gray-600";
   const secondaryClass =
-    "block w-full text-center px-4 py-1.5 bg-white border border-gray-300 rounded-md font-semibold text-black hover:bg-gray-50 active:bg-blue-50 focus:outline-none focus:border-blue-500 focus:ring focus:ring-blue-200 disabled:bg-gray-400 transition";
-  const linkClass = "text-sm text-blue-600 hover:underline cursor-pointer bg-transparent border-0 p-0";
+    "block w-full text-center px-4 py-1.5 bg-white border border-gray-300 rounded-md font-semibold text-black hover:bg-gray-50 active:bg-blue-50 focus:outline-none focus:border-blue-500 focus:ring focus:ring-blue-200 disabled:bg-gray-400 transition dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800 dark:active:bg-gray-800 dark:focus:ring-blue-800 dark:disabled:bg-gray-700";
+  const linkClass = "text-sm text-blue-600 hover:underline cursor-pointer bg-transparent border-0 p-0 dark:text-blue-400";
 
   let authInfo: AuthInfo = {
     title: "Login",
@@ -374,6 +417,7 @@
   };
 
   onMount(async () => {
+    initTheme();
     await info();
 
     // if query has title
@@ -405,32 +449,17 @@
   });
 </script>
 
-<div class="w-full min-h-screen bg-gray-50 flex flex-col items-center sm:pt-6">
+<div class="login-bg w-full min-h-screen bg-gray-50 flex flex-col items-center sm:pt-6 dark:bg-gray-950">
   <div class="w-full sm:max-w-md sm:p-5 mx-auto">
-    <div class="border p-4 bg-white relative sm:rounded-md">
-      <h2 class="mb-2 text-xl font-bold [line-height:1.2]">
+    <div class="border border-gray-200 p-4 bg-white text-gray-900 relative shadow-sm sm:rounded-md dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100">
+      <h2 class="mb-2 pr-10 text-xl font-bold [line-height:1.2]">
         <span class={mounted ? "" : "invisible"}>{authInfo.title}</span>
       </h2>
-      <hr class="mb-2" />
-      {#if view === "signin" && (authInfo.provider.password?.length || authInfo.provider.passkey?.length || authInfo.provider.code?.length)}
-        <label class="mb-5 flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5">
-          <input
-            type="checkbox"
-            bind:checked={rememberMe}
-            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#615fff] focus:ring-2 focus:ring-blue-200"
-          />
-          <span class="min-w-0">
-            <span class="block text-sm font-semibold text-gray-900">Remember me</span>
-            <span class="mt-0.5 block text-xs leading-5 text-gray-600">
-              Keep this sign-in active while you use the site, subject to the server's maximum session lifetime.
-            </span>
-          </span>
-        </label>
-      {/if}
+      <hr class="mb-2 border-gray-200 dark:border-gray-800" />
       {#if authInfo.provider.password?.length && view === "signin"}
         {#if authInfo.provider.password?.length > 1}
           <div class="float-right">
-            <select bind:value={providerSelected} class="border rounded-md border-gray-300 px-2 py-1 text-sm focus:border-blue-300 focus:outline-none focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+            <select bind:value={providerSelected} class="border rounded-md border-gray-300 bg-white px-2 py-1 text-sm focus:border-blue-300 focus:outline-none focus:ring focus:ring-blue-200 focus:ring-opacity-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-blue-700 dark:focus:ring-blue-800">
               {#each authInfo.provider.password as provider}
                 <option value={provider.name}>
                   {provider.name}
@@ -589,7 +618,7 @@
       {/if}
       {#if view === "signin" && authInfo.provider.passkey?.length && isWebAuthnSupported()}
         {#if authInfo.provider.password?.length}
-          <hr class="mt-8 mb-6 custom-hr" />
+          <hr class="mt-8 mb-6 custom-hr border-gray-200 text-gray-600 dark:border-gray-800 dark:text-gray-400" />
         {/if}
         {#each authInfo.provider.passkey as provider}
           <button
@@ -620,7 +649,7 @@
       {/if}
       {#if view === "signin" && authInfo.provider.code?.length}
         {#if authInfo.provider.password?.length || authInfo.provider.passkey?.length}
-          <hr class="mt-8 mb-6 custom-hr" />
+          <hr class="mt-8 mb-6 custom-hr border-gray-200 text-gray-600 dark:border-gray-800 dark:text-gray-400" />
         {/if}
         {#each authInfo.provider.code as provider}
           <button
@@ -634,23 +663,75 @@
           </button>
         {/each}
       {/if}
+      {#if view === "signin" && !authInfo.disable_remember_me && (authInfo.provider.password?.length || authInfo.provider.passkey?.length || authInfo.provider.code?.length)}
+        <label class="mt-6 flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-800 dark:bg-gray-950">
+          <input
+            type="checkbox"
+            bind:checked={rememberMe}
+            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#615fff] focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-900 dark:focus:ring-blue-800"
+          />
+          <span class="min-w-0">
+            <span class="block text-sm font-semibold text-gray-900 dark:text-gray-100">Remember me</span>
+            <span class="mt-0.5 block text-xs leading-5 text-gray-600 dark:text-gray-400">
+              Keep this sign-in active while you use the site, subject to the server's maximum session lifetime.
+            </span>
+          </span>
+        </label>
+      {/if}
       {#if notice != ""}
-        <div class="mt-4 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
+        <div class="mt-4 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
           <span class="break-all">{notice}</span>
         </div>
       {/if}
       {#if error != ""}
-        <div class="mt-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <div class="mt-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
           <span class="break-all">{error}</span>
         </div>
       {/if}
+      <button
+        type="button"
+        on:click={cycleTheme}
+        aria-label={`Theme: ${theme} — click to switch`}
+        title={`Theme: ${theme}`}
+        class="absolute right-2.5 top-2.5 flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring focus:ring-blue-200 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200 dark:focus:ring-blue-800"
+      >
+        <!-- lucide sun / moon / monitor -->
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          {#if theme === "light"}
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2"></path>
+            <path d="M12 20v2"></path>
+            <path d="m4.93 4.93 1.41 1.41"></path>
+            <path d="m17.66 17.66 1.41 1.41"></path>
+            <path d="M2 12h2"></path>
+            <path d="M20 12h2"></path>
+            <path d="m6.34 17.66-1.41 1.41"></path>
+            <path d="m19.07 4.93-1.41 1.41"></path>
+          {:else if theme === "dark"}
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+          {:else}
+            <rect width="20" height="14" x="2" y="3" rx="2"></rect>
+            <line x1="8" x2="16" y1="21" y2="21"></line>
+            <line x1="12" x2="12" y1="17" y2="21"></line>
+          {/if}
+        </svg>
+      </button>
     </div>
   </div>
 </div>
 
 <style lang="scss">
   .custom-hr {
-    @apply text-black text-center overflow-visible;
+    @apply text-center overflow-visible;
 
     &::after {
       content: "Or continue with";
@@ -658,5 +739,30 @@
 
       @apply bg-white relative px-2;
     }
+  }
+
+  :global(html.dark) .custom-hr::after {
+    background-color: #111827; // gray-900, matches the card
+  }
+
+  // WhatsApp-style faint doodle wallpaper: auth-themed lucide outlines
+  // (key, lock, fingerprint, shield, at-sign, user, phone, badge, mail)
+  // tiled at low opacity, plus a soft brand-tinted glow at the top.
+  @function doodles($stroke, $opacity) {
+    @return url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260' viewBox='0 0 260 260'%3E%3Cg fill='none' stroke='#{$stroke}' stroke-opacity='#{$opacity}' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg transform='translate(18 16) rotate(-12 12 12)'%3E%3Cpath d='M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z'/%3E%3Ccircle cx='16.5' cy='7.5' r='.5'/%3E%3C/g%3E%3Cg transform='translate(112 26) rotate(9 12 12)'%3E%3Crect width='18' height='11' x='3' y='11' rx='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/g%3E%3Cg transform='translate(198 12) rotate(-7 12 12)'%3E%3Cpath d='M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4'/%3E%3Cpath d='M14 13.12c0 2.38 0 6.38-1 8.88'/%3E%3Cpath d='M17.29 21.02c.12-.6.43-2.3.5-3.02'/%3E%3Cpath d='M2 12a10 10 0 0 1 18-6'/%3E%3Cpath d='M2 16h.01'/%3E%3Cpath d='M21.8 16c.2-2 .131-5.354 0-6'/%3E%3Cpath d='M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2'/%3E%3Cpath d='M8.65 22c.21-.66.45-1.32.57-2'/%3E%3Cpath d='M9 6.8a6 6 0 0 1 9 5.2v2'/%3E%3C/g%3E%3Cg transform='translate(58 102) rotate(7 12 12)'%3E%3Cpath d='M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1 1 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z'/%3E%3C/g%3E%3Cg transform='translate(148 94) rotate(-11 12 12)'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8'/%3E%3C/g%3E%3Cg transform='translate(226 108) rotate(10 12 12)'%3E%3Ccircle cx='12' cy='8' r='5'/%3E%3Cpath d='M20 21a8 8 0 0 0-16 0'/%3E%3C/g%3E%3Cg transform='translate(22 194) rotate(8 12 12)'%3E%3Crect width='14' height='20' x='5' y='2' rx='2'/%3E%3Cpath d='M12 18h.01'/%3E%3C/g%3E%3Cg transform='translate(116 206) rotate(-9 12 12)'%3E%3Cpath d='M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z'/%3E%3Cpath d='m9 12 2 2 4-4'/%3E%3C/g%3E%3Cg transform='translate(202 198) rotate(6 12 12)'%3E%3Crect width='20' height='16' x='2' y='4' rx='2'/%3E%3Cpath d='m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+
+  .login-bg {
+    background-image:
+      radial-gradient(48rem 26rem at 50% -8rem, rgb(97 95 255 / 0.07), transparent 70%),
+      doodles("%23475569", ".09");
+    background-repeat: no-repeat, repeat;
+    background-size: auto, 260px 260px;
+  }
+
+  :global(html.dark) .login-bg {
+    background-image:
+      radial-gradient(48rem 26rem at 50% -8rem, rgb(97 95 255 / 0.13), transparent 70%),
+      doodles("%2394a3b8", ".055");
   }
 </style>

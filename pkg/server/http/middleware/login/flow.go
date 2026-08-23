@@ -56,7 +56,7 @@ func (m *Login) CodeFlowInit(w http.ResponseWriter, r *http.Request, providerNam
 	}
 
 	rememberMe, _ := strconv.ParseBool(r.URL.Query().Get("remember_me"))
-	m.SetState(w, state, rememberMe)
+	m.SetState(w, state, m.rememberMe(rememberMe))
 
 	sessionM := session.GlobalRegistry.Get(m.SessionMiddleware)
 	if sessionM == nil {
@@ -123,7 +123,7 @@ func (m *Login) CodeFlow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// get token from provider
-	data, statusCode, err := m.CodeToken(r, code, providerName, oauth2, rememberMe)
+	data, statusCode, err := m.CodeToken(r, code, providerName, oauth2, m.rememberMe(rememberMe))
 	if err != nil {
 		respondUpstreamError(w, statusCode, err)
 
@@ -182,10 +182,12 @@ func (m *Login) PasswordFlow(w http.ResponseWriter, r *http.Request) {
 		err        error
 	)
 
+	rememberMe := m.rememberMe(request.RememberMe)
+
 	if provider.AuthMiddleware != "" {
-		data, statusCode, err = m.IssuerPasswordToken(r, provider.AuthMiddleware, request.Username, request.Password, request.RememberMe, oauth2)
+		data, statusCode, err = m.IssuerPasswordToken(r, provider.AuthMiddleware, request.Username, request.Password, rememberMe, oauth2)
 	} else {
-		data, statusCode, err = m.PasswordToken(r.Context(), request.Username, request.Password, request.RememberMe, oauth2)
+		data, statusCode, err = m.PasswordToken(r.Context(), request.Username, request.Password, rememberMe, oauth2)
 	}
 
 	if err != nil {
@@ -229,6 +231,12 @@ func (m *Login) PasskeyFlow(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 
 		return
+	}
+
+	if m.Info.DisableRememberMe {
+		// the auth middleware reads remember_me from the proxied ceremony
+		// payload; absent means a standard session.
+		delete(payload, "remember_me")
 	}
 
 	payload["client_id"] = provider.Oauth2.ClientID

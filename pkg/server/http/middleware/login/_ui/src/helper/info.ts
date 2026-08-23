@@ -1,5 +1,7 @@
 type AuthInfo = {
   title: string;
+  /** Server-side switch (info.disable_remember_me) hiding the remember-me choice. */
+  disable_remember_me?: boolean;
   provider: Provider;
   error?: string;
 };

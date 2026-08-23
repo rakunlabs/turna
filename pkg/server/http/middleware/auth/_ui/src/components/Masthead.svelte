@@ -15,7 +15,11 @@
   ];
 </script>
 
-<header class="z-30 flex min-h-[56px] items-stretch gap-2 border-b border-rule bg-sheet px-2.5 sm:gap-4 sm:px-5">
+<!-- The console chrome stays in vault colours whichever theme the pages use. -->
+<header
+  data-theme="dark"
+  class="z-30 flex min-h-[56px] items-stretch gap-2 border-b border-rule bg-sheet px-2.5 sm:gap-4 sm:px-5"
+>
   <button
     type="button"
     class="act act-quiet -ml-1 shrink-0 self-center lg:hidden"

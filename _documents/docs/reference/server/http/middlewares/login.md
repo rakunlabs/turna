@@ -51,6 +51,7 @@ server:
 | `redirect.schema` | Default redirect scheme. Defaults to `https` unless forwarded headers are set. |
 | `ui.external_folder` | Forward GET UI requests to the next middleware instead of serving embedded UI. |
 | `info.title` | Login UI title. |
+| `info.disable_remember_me` | Hide the remember-me choice on the login page and ignore `remember_me` in every flow; all sign-ins become standard sessions. Defaults to `false`. |
 | `request.insecure_skip_verify` | Skip TLS verification for token requests. |
 | `state_cookie` | Cookie settings for OAuth2 state. |
 | `success_cookie` | Cookie settings for login success marker. |
@@ -98,6 +99,8 @@ The two compatibility aliases keep their historic unwrapped `{title, provider}` 
 The embedded login page exposes one **Remember me** choice shared by password, passkey and authorization-code buttons. The login middleware carries `remember_me=true` to the provider's token mint; it does not calculate token lifetimes itself.
 
 The built-in [`auth`](./auth) issuer treats an unchecked login as a fixed refresh session (default `24h`). A checked login uses a sliding refresh window (default `24h`) up to `token.refresh_absolute_lifetime` (default `720h`, 30 days). The choice is signed into the refresh token and cannot be turned on later by adding a field to a refresh request. External OAuth providers may ignore this Turna extension.
+
+Setting `info.disable_remember_me: true` removes the choice: the checkbox disappears from the embedded page (the methods response advertises `disable_remember_me: true`), and the middleware forces `remember_me` off in the password, passkey and code flows even if a client sends it explicitly.
 
 ## Passkey
 

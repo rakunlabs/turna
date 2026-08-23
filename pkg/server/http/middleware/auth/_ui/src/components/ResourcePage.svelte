@@ -17,8 +17,10 @@
   }: { kind: ResourceKind; oncommitted: () => Promise<void>; extra?: Snippet } = $props();
 
   let filter = $state("");
+  let extraFilters = $state<Record<string, string>>({});
   let pendingRevoke = $state("");
   let searchTimer = 0;
+  let filterTimer = 0;
 
   const spec = $derived(kindSpecs[kind]);
   const rows = $derived(registry.rows(kind));
@@ -37,7 +39,10 @@
       : rows,
   );
 
-  const filterable = $derived(paginated ? standing.total > 8 || standing.search !== "" : rows.length > 8);
+  const filtersActive = $derived(Object.values(standing.filters ?? {}).some((value) => value !== ""));
+  const filterable = $derived(
+    paginated ? standing.total > 8 || standing.search !== "" || filtersActive : rows.length > 8,
+  );
   const pageable = $derived(paginated && standing.total > PAGE_SIZE);
   const rangeEnd = $derived(standing.offset + rows.length);
 
@@ -46,8 +51,10 @@
     void kind;
     pendingRevoke = "";
     window.clearTimeout(searchTimer);
-    // A paginated register keeps its search term across visits; show it.
+    window.clearTimeout(filterTimer);
+    // A paginated register keeps its search term and filters across visits; show them.
     filter = kindSpecs[kind].paginated ? registry.standing(kind).search : "";
+    extraFilters = kindSpecs[kind].paginated ? { ...registry.standing(kind).filters } : {};
   });
 
   $effect(() => {
@@ -58,6 +65,28 @@
 
     window.clearTimeout(searchTimer);
     searchTimer = window.setTimeout(() => void registry.applySearch(kind, term), 300);
+  });
+
+  $effect(() => {
+    if (!paginated || !spec.extraFilters?.length) return;
+
+    const next: Record<string, string> = {};
+    for (const field of spec.extraFilters) {
+      const value = (extraFilters[field.param] ?? "").trim();
+      if (value) next[field.param] = value;
+    }
+
+    const current = registry.standing(kind).filters ?? {};
+    const currentKeys = Object.keys(current);
+    if (
+      currentKeys.length === Object.keys(next).length &&
+      currentKeys.every((key) => current[key] === next[key])
+    ) {
+      return;
+    }
+
+    window.clearTimeout(filterTimer);
+    filterTimer = window.setTimeout(() => void registry.applyFilters(kind, next), 300);
   });
 
   function revoke(id: string) {
@@ -79,7 +108,7 @@
         {standing.total}
         {standing.total === 1 ? "record" : "records"}{standing.search
           ? ` matching “${standing.search}”`
-          : ""}
+          : ""}{filtersActive ? " · filtered" : ""}
       </span>
     {:else}
       <span class="stamp">
@@ -93,16 +122,52 @@
   {/snippet}
 
   {#if filterable}
-    <div class="mb-6 max-w-md">
-      <label class="stamp block" for="register-filter">{paginated ? "Search" : "Filter"}</label>
-      <input
-        id="register-filter"
-        class="entry mt-1"
-        type="search"
-        placeholder="{spec.primaryLabel} or {spec.secondaryLabel.toLowerCase()}"
-        autocomplete="off"
-        bind:value={filter}
-      />
+    <div class="mb-6">
+      <div class="max-w-md">
+        <label class="stamp block" for="register-filter">{paginated ? "Search" : "Filter"}</label>
+        <input
+          id="register-filter"
+          class="entry mt-1"
+          type="search"
+          placeholder="{spec.primaryLabel} or {spec.secondaryLabel.toLowerCase()}"
+          autocomplete="off"
+          bind:value={filter}
+        />
+      </div>
+
+      {#if paginated && spec.extraFilters?.length}
+        <div class="mt-4 grid max-w-2xl gap-x-4 gap-y-4 sm:grid-cols-3">
+          {#each spec.extraFilters as field (field.param)}
+            <div class="min-w-0">
+              <label class="stamp block" for={`register-filter-${field.param}`}>{field.label}</label>
+              <input
+                id={`register-filter-${field.param}`}
+                class="entry mt-1 {field.mono ? 'serial' : ''}"
+                type="search"
+                list={field.options ? `register-filter-${field.param}-options` : undefined}
+                placeholder={field.placeholder}
+                autocomplete="off"
+                aria-describedby={`register-filter-${field.param}-hint`}
+                bind:value={extraFilters[field.param]}
+              />
+              {#if field.options}
+                <datalist id={`register-filter-${field.param}-options`}>
+                  {#each field.options as option (option)}
+                    <option value={option}></option>
+                  {/each}
+                </datalist>
+              {/if}
+              <p
+                id={`register-filter-${field.param}-hint`}
+                class="mt-1.5 text-[12px] leading-[1.5] text-muted"
+              >
+                {field.hint}
+              </p>
+            </div>
+          {/each}
+        </div>
+      {/if}
+
       {#if paginated}
         <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
           Searched on the server across every record, not just this page.
@@ -111,7 +176,7 @@
     </div>
   {/if}
 
-  {#if rows.length === 0 && !(paginated && standing.search)}
+  {#if rows.length === 0 && !(paginated && (standing.search || filtersActive))}
     <div class="border border-dashed border-rule px-6 py-14 text-center">
       <p class="text-[15px] font-semibold text-ink">Nothing issued yet</p>
       <p class="mx-auto mt-2 max-w-[52ch] text-[13px] leading-[1.6] text-muted">
@@ -125,7 +190,7 @@
     </div>
   {:else if shown.length === 0}
     <p class="border border-dashed border-rule px-6 py-12 text-center text-[13px] text-muted">
-      No record matches “{filter}”.
+      {filter.trim() ? `No record matches “${filter}”.` : "No record matches the current filters."}
     </p>
   {:else}
     <div class="border border-rule bg-sheet">

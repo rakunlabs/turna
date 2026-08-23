@@ -153,7 +153,7 @@
           aria-label="Close index"
           onclick={() => (menuOpen = false)}
         ></button>
-        <div class="absolute inset-y-0 left-0 w-[17rem] max-w-[85vw] border-r border-rule shadow-2xl">
+        <div data-theme="dark" class="absolute inset-y-0 left-0 w-[17rem] max-w-[85vw] border-r border-rule shadow-2xl">
           <IndexRail groups={visibleGroups} active={route.tab} onselect={selectTab} bind:search />
         </div>
       </div>

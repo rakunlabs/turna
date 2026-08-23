@@ -54,7 +54,12 @@
   }
 </script>
 
-<nav class="flex h-full min-h-0 flex-col bg-sheet lg:border-r lg:border-rule" aria-label="Console index">
+<!-- The console chrome stays in vault colours whichever theme the pages use. -->
+<nav
+  data-theme="dark"
+  class="flex h-full min-h-0 flex-col bg-sheet lg:border-r lg:border-rule"
+  aria-label="Console index"
+>
   <div class="shrink-0 border-b border-rule px-3 py-3">
     <label class="stamp block" for="index-search">Find</label>
     <input

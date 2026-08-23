@@ -10,12 +10,16 @@ import (
 
 type Info struct {
 	Title string `cfg:"title"`
+	// DisableRememberMe hides the remember-me choice on the embedded login
+	// page; every sign-in then proceeds as a standard (non-remembered) session.
+	DisableRememberMe bool `cfg:"disable_remember_me"`
 }
 
 type InfoUIResponse struct {
-	Title    string       `json:"title"`
-	Provider InfoProvider `json:"provider"`
-	Error    string       `json:"error,omitempty"`
+	Title             string       `json:"title"`
+	DisableRememberMe bool         `json:"disable_remember_me,omitempty"`
+	Provider          InfoProvider `json:"provider"`
+	Error             string       `json:"error,omitempty"`
 }
 
 type MethodsResponse struct {
@@ -52,11 +56,22 @@ func (i Info) value() Info {
 	return i
 }
 
+// rememberMe applies the disable_remember_me switch to a requested value, so a
+// hand-crafted remember_me=true cannot bypass the hidden checkbox.
+func (m *Login) rememberMe(requested bool) bool {
+	if m.Info.DisableRememberMe {
+		return false
+	}
+
+	return requested
+}
+
 func (m *Login) informationUIResponse() InfoUIResponse {
 	info := m.Info.value()
 
 	response := InfoUIResponse{
-		Title: info.Title,
+		Title:             info.Title,
+		DisableRememberMe: info.DisableRememberMe,
 	}
 
 	for providerName, provider := range m.session.Providers() {

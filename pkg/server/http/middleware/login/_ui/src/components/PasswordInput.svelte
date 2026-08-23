@@ -10,7 +10,7 @@
   let show = false;
 
   const inputClass =
-    "py-1.5 pl-3 pr-10 border rounded-md border-gray-300 focus:border-blue-300 focus:outline-none focus:ring focus:ring-blue-200 focus:ring-opacity-50 disabled:bg-gray-100 mt-1 block w-full";
+    "py-1.5 pl-3 pr-10 border rounded-md border-gray-300 bg-white text-gray-900 focus:border-blue-300 focus:outline-none focus:ring focus:ring-blue-200 focus:ring-opacity-50 disabled:bg-gray-100 mt-1 block w-full dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-blue-700 dark:focus:ring-blue-800 dark:disabled:bg-gray-800";
 </script>
 
 <div class="relative">
@@ -29,7 +29,7 @@
     type="button"
     aria-label={show ? "Hide password" : "Show password"}
     on:click={() => (show = !show)}
-    class="absolute inset-y-0 end-0 flex items-center z-20 px-3 cursor-pointer text-gray-400 rounded-e-md focus:outline-none focus:text-blue-600"
+    class="absolute inset-y-0 end-0 flex items-center z-20 px-3 cursor-pointer text-gray-400 rounded-e-md focus:outline-none focus:text-blue-600 dark:text-gray-500 dark:focus:text-blue-400"
   >
     <svg
       class="shrink-0 size-3.5"

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
 
 func TestLoginStateCarriesRememberMe(t *testing.T) {
@@ -28,6 +29,24 @@ func TestLoginStateCarriesRememberMe(t *testing.T) {
 	}
 	if !rememberMe {
 		t.Fatal("remember_me was not carried through state")
+	}
+}
+
+func TestDisableRememberMeForcesOff(t *testing.T) {
+	m := &Login{Info: Info{DisableRememberMe: true}}
+	m.session = &session.Session{Provider: map[string]session.Provider{}}
+
+	if m.rememberMe(true) {
+		t.Fatal("disable_remember_me must override a requested remember_me")
+	}
+
+	if got := m.informationUIResponse(); !got.DisableRememberMe {
+		t.Fatal("methods response must advertise disable_remember_me")
+	}
+
+	enabled := &Login{}
+	if !enabled.rememberMe(true) || enabled.rememberMe(false) {
+		t.Fatal("without the switch, the requested value must pass through")
 	}
 }
 

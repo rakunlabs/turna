@@ -62,6 +62,19 @@ export type ResourceKind =
   | "permissions"
   | "lmaps";
 
+/** An extra server-side filter rendered beside a paginated register's search box. */
+export type ListFilter = {
+  /** Query parameter sent to the list endpoint. */
+  param: string;
+  label: string;
+  placeholder: string;
+  hint: string;
+  /** Render in the serial (mono) face — paths, verbs. */
+  mono?: boolean;
+  /** Datalist suggestions; free text is still accepted. */
+  options?: string[];
+};
+
 export type KindSpec = {
   title: string;
   description: string;
@@ -80,6 +93,8 @@ export type KindSpec = {
    * with `search`. Everything else is short enough to fetch whole.
    */
   paginated?: boolean;
+  /** Extra server-side list filters (paginated kinds only). */
+  extraFilters?: ListFilter[];
   canCreate: boolean;
   example: unknown;
   // per-namespace JSON templates (settings only)
@@ -428,6 +443,29 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     idField: "id",
     body: "raw",
     paginated: true,
+    extraFilters: [
+      {
+        param: "path",
+        label: "Path",
+        placeholder: "/api/users",
+        hint: "Permissions whose path patterns cover this request path.",
+        mono: true,
+      },
+      {
+        param: "method",
+        label: "Method",
+        placeholder: "GET",
+        hint: "Permissions whose methods allow this verb.",
+        mono: true,
+        options: ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+      },
+      {
+        param: "description",
+        label: "Description",
+        placeholder: "contains text",
+        hint: "Case-insensitive match inside the description.",
+      },
+    ],
     canCreate: true,
     example: {
       name: "my-permission",

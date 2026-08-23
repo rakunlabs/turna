@@ -43,13 +43,16 @@
 :root,
 :root[data-theme="light"] {
   color-scheme: light;
-  --w-ground: #dce1db;
-  --w-sheet: #f2f4f0;
-  --w-raised: #e8ebe4;
+  /* Three grounds, three clear steps: the desk (ground) sits well below the
+     paper (sheet), and raised is far enough from sheet that a hovered or
+     selected row reads at a glance. All four stay in the same sage family. */
+  --w-ground: #d5dad2;
+  --w-sheet: #f7f8f4;
+  --w-raised: #e5e9e0;
   --w-ink: #16191a;
   --w-muted: #565f59;
   --w-faint: #6f7872;
-  --w-rule: #c2c9bf;
+  --w-rule: #b2bbae;
   --w-rule-strong: #16191a;
   --w-seal: #a3252b;
   --w-carbon: #2a4674;
@@ -64,8 +67,12 @@
   --w-hatch-alpha: 0.14;
 }
 
-/* --- Vault: the same instruments in the archive, low light --------------- */
-:root[data-theme="dark"] {
+/* --- Vault: the same instruments in the archive, low light ---------------
+   The bare attribute selector (not :root-scoped) lets any container carry
+   data-theme="dark" and become a dark region: every token-driven utility and
+   component class inside re-resolves against these values. The chrome
+   (masthead + index rail) uses this to stay in vault colours in both themes. */
+[data-theme="dark"] {
   color-scheme: dark;
   --w-ground: #101311;
   --w-sheet: #181c19;
@@ -113,6 +120,22 @@
   select {
     font: inherit;
     color: inherit;
+  }
+
+  /* Tailwind 4 preflight leaves buttons on the default arrow cursor; every
+     enabled control here is clickable and says so. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  select:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  select:disabled {
+    cursor: not-allowed;
   }
 
   /* --- Browser surfaces: the parts we did not draw still carry the design - */
