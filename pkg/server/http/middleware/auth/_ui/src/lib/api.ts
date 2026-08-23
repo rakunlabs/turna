@@ -121,6 +121,12 @@ export const settingTemplates = {
     flow_lifetime: "10m",
     login_url: "",
   },
+  registration: {
+    enabled: false,
+    client_lifetime: "720h",
+    default_scope: [],
+    max_clients: 1000,
+  },
   check: {
     default_hosts: [],
     no_host_check: false,

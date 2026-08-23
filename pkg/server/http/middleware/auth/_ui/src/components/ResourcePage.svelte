@@ -17,10 +17,9 @@
   }: { kind: ResourceKind; oncommitted: () => Promise<void>; extra?: Snippet } = $props();
 
   let filter = $state("");
+  let appliedFilter = $state("");
   let extraFilters = $state<Record<string, string>>({});
   let pendingRevoke = $state("");
-  let searchTimer = 0;
-  let filterTimer = 0;
 
   const spec = $derived(kindSpecs[kind]);
   const rows = $derived(registry.rows(kind));
@@ -28,14 +27,15 @@
   /**
    * The IAM registers are paged and searched on the server: the filter box is
    * a search term the API resolves against the whole register, not just the
-   * page on screen. Short registers keep the instant client-side filter.
+   * page on screen. Short registers apply the same explicit search action
+   * against their in-memory rows.
    */
   const paginated = $derived(spec.paginated === true);
   const standing = $derived(registry.standing(kind));
 
   const shown = $derived(
-    !paginated && filter.trim()
-      ? rows.filter((row) => `${row.id} ${row.sub}`.toLowerCase().includes(filter.trim().toLowerCase()))
+    !paginated && appliedFilter
+      ? rows.filter((row) => `${row.id} ${row.sub}`.toLowerCase().includes(appliedFilter.toLowerCase()))
       : rows,
   );
 
@@ -47,47 +47,31 @@
   const rangeEnd = $derived(standing.offset + rows.length);
 
   $effect(() => {
-    // Changing page must not carry a half-armed revoke or a stale search debounce.
+    // Changing page must not carry a half-armed revoke or draft values from another register.
     void kind;
     pendingRevoke = "";
-    window.clearTimeout(searchTimer);
-    window.clearTimeout(filterTimer);
     // A paginated register keeps its search term and filters across visits; show them.
-    filter = kindSpecs[kind].paginated ? registry.standing(kind).search : "";
+    const search = kindSpecs[kind].paginated ? registry.standing(kind).search : "";
+    filter = search;
+    appliedFilter = search;
     extraFilters = kindSpecs[kind].paginated ? { ...registry.standing(kind).filters } : {};
   });
 
-  $effect(() => {
-    if (!paginated) return;
-
+  async function search() {
     const term = filter.trim();
-    if (term === registry.standing(kind).search) return;
-
-    window.clearTimeout(searchTimer);
-    searchTimer = window.setTimeout(() => void registry.applySearch(kind, term), 300);
-  });
-
-  $effect(() => {
-    if (!paginated || !spec.extraFilters?.length) return;
-
     const next: Record<string, string> = {};
-    for (const field of spec.extraFilters) {
+    for (const field of spec.extraFilters ?? []) {
       const value = (extraFilters[field.param] ?? "").trim();
       if (value) next[field.param] = value;
     }
 
-    const current = registry.standing(kind).filters ?? {};
-    const currentKeys = Object.keys(current);
-    if (
-      currentKeys.length === Object.keys(next).length &&
-      currentKeys.every((key) => current[key] === next[key])
-    ) {
+    if (paginated) {
+      await registry.applyQuery(kind, term, next);
       return;
     }
 
-    window.clearTimeout(filterTimer);
-    filterTimer = window.setTimeout(() => void registry.applyFilters(kind, next), 300);
-  });
+    appliedFilter = term;
+  }
 
   function revoke(id: string) {
     void editor.remove(kind, id, oncommitted);
@@ -113,7 +97,7 @@
     {:else}
       <span class="stamp">
         {rows.length}
-        {rows.length === 1 ? "record" : "records"}{filter.trim() && shown.length !== rows.length
+        {rows.length === 1 ? "record" : "records"}{appliedFilter && shown.length !== rows.length
           ? ` · ${shown.length} shown`
           : ""}
       </span>
@@ -122,7 +106,13 @@
   {/snippet}
 
   {#if filterable}
-    <div class="mb-6">
+    <form
+      class="mb-6"
+      onsubmit={(event) => {
+        event.preventDefault();
+        void search();
+      }}
+    >
       <div class="max-w-md">
         <label class="stamp block" for="register-filter">{paginated ? "Search" : "Filter"}</label>
         <input
@@ -170,10 +160,14 @@
 
       {#if paginated}
         <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
-          Searched on the server across every record, not just this page.
+          Search runs on the server across every record, not just this page.
         </p>
       {/if}
-    </div>
+
+      <button type="submit" class="act act-primary mt-4" disabled={session.busy}>
+        {session.busy ? "Searching…" : "Search"}
+      </button>
+    </form>
   {/if}
 
   {#if rows.length === 0 && !(paginated && (standing.search || filtersActive))}
@@ -190,7 +184,9 @@
     </div>
   {:else if shown.length === 0}
     <p class="border border-dashed border-rule px-6 py-12 text-center text-[13px] text-muted">
-      {filter.trim() ? `No record matches “${filter}”.` : "No record matches the current filters."}
+      {appliedFilter || standing.search
+        ? `No record matches “${appliedFilter || standing.search}”.`
+        : "No record matches the current filters."}
     </p>
   {:else}
     <div class="border border-rule bg-sheet">

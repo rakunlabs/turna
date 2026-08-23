@@ -13,6 +13,8 @@
     setSettingBool,
     getSettingList,
     setSettingList,
+    getSettingNumber,
+    setSettingNumber,
     saveSetting,
   } from "../lib/state/settings.svelte";
   import { fieldText } from "../lib/records";
@@ -54,7 +56,7 @@
   }
 </script>
 
-{#snippet commit(namespace: "token" | "oauth2" | "authorize" | "password" | "passkey" | "jwt")}
+{#snippet commit(namespace: "token" | "oauth2" | "authorize" | "registration" | "password" | "passkey" | "jwt")}
   <button
     type="button"
     class="act act-primary"
@@ -71,7 +73,7 @@
 >
   {#snippet custody()}
     <span class="stamp">
-      Namespaces <span class="serial stamp-raw">token · oauth2 · authorize · password · passkey · jwt</span>
+      Namespaces <span class="serial stamp-raw">token · oauth2 · authorize · registration · password · passkey · jwt</span>
     </span>
     <span class="serial stamp-raw">{session.oauthBase}/oauth2/token</span>
   {/snippet}
@@ -245,6 +247,78 @@
         bind:checked={
           () => getSettingBool("authorize", ["disabled"]),
           (value: boolean) => setSettingBool("authorize", ["disabled"], value)
+        }
+      />
+    </div>
+  </Section>
+
+  <Section
+    title="Dynamic client registration"
+    note="RFC 7591 lets remote MCP clients such as OpenCode register a public PKCE client automatically. Registration is anonymous, so keep registrations short-lived and capped."
+  >
+    {#snippet aside()}{@render commit("registration")}{/snippet}
+
+    <div class="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+      <div class="min-w-0">
+        <label class="stamp block" for="registration-client-lifetime">Client lifetime</label>
+        <input
+          id="registration-client-lifetime"
+          class="entry serial mt-1.5"
+          autocomplete="off"
+          aria-describedby="registration-client-lifetime-hint"
+          placeholder="720h"
+          value={getSettingString("registration", ["client_lifetime"])}
+          oninput={(event) =>
+            setSettingString("registration", ["client_lifetime"], event.currentTarget.value)}
+        />
+        <p id="registration-client-lifetime-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+          A Go duration. Empty keeps dynamic clients indefinitely; 720h is 30 days.
+        </p>
+      </div>
+
+      <div class="min-w-0">
+        <label class="stamp block" for="registration-max-clients">Maximum clients</label>
+        <input
+          id="registration-max-clients"
+          class="entry serial mt-1.5"
+          type="number"
+          min="1"
+          aria-describedby="registration-max-clients-hint"
+          value={getSettingNumber("registration", ["max_clients"], 1000)}
+          oninput={(event) =>
+            setSettingNumber("registration", ["max_clients"], event.currentTarget.value)}
+        />
+        <p id="registration-max-clients-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+          Caps stored dynamic clients. Expired registrations are pruned before the limit is enforced.
+        </p>
+      </div>
+
+      <div class="min-w-0 sm:col-span-2 xl:col-span-1">
+        <label class="stamp block" for="registration-default-scope">Default scopes</label>
+        <input
+          id="registration-default-scope"
+          class="entry serial mt-1.5"
+          autocomplete="off"
+          aria-describedby="registration-default-scope-hint"
+          placeholder="openid, profile"
+          value={getSettingList("registration", ["default_scope"])}
+          oninput={(event) =>
+            setSettingList("registration", ["default_scope"], event.currentTarget.value)}
+        />
+        <p id="registration-default-scope-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+          Comma separated. Used only when a registering client does not request a scope.
+        </p>
+      </div>
+    </div>
+
+    <div class="mt-7 border-t border-rule pt-5">
+      <Switch
+        label="Accept dynamic client registration"
+        consequential
+        hint="Publishes registration_endpoint and accepts anonymous POST requests at /oauth2/register. OpenCode stores and reuses the returned client ID for this MCP server."
+        bind:checked={
+          () => getSettingBool("registration", ["enabled"]),
+          (value: boolean) => setSettingBool("registration", ["enabled"], value)
         }
       />
     </div>

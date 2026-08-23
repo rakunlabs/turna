@@ -107,21 +107,21 @@ class Registry {
     await session.run(() => this.loadKind(kind));
   }
 
-  /** Apply a server-side search term to a paginated register; resets to page one. */
-  async applySearch(kind: ResourceKind, search: string) {
+  /** Apply a register's server-side search and filters together; resets to page one. */
+  async applyQuery(kind: ResourceKind, search: string, filters: Record<string, string>) {
     const standing = this.standing(kind);
-    if (standing.search === search && standing.offset === 0) return;
+    if (
+      standing.search === search &&
+      sameFilters(standing.filters ?? {}, filters) &&
+      standing.offset === 0
+    ) {
+      return;
+    }
 
-    this.standingByKind = { ...this.standingByKind, [kind]: { ...standing, search, offset: 0 } };
-    await session.run(() => this.loadKind(kind));
-  }
-
-  /** Apply extra server-side filters to a paginated register; resets to page one. */
-  async applyFilters(kind: ResourceKind, filters: Record<string, string>) {
-    const standing = this.standing(kind);
-    if (sameFilters(standing.filters ?? {}, filters) && standing.offset === 0) return;
-
-    this.standingByKind = { ...this.standingByKind, [kind]: { ...standing, filters, offset: 0 } };
+    this.standingByKind = {
+      ...this.standingByKind,
+      [kind]: { ...standing, search, filters, offset: 0 },
+    };
     await session.run(() => this.loadKind(kind));
   }
 
