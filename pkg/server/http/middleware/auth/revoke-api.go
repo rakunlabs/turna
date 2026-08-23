@@ -2,14 +2,17 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
 
-// revokedToken is the payload stored in auth_flow_codes for a revoked jti.
+// revokedToken is the payload stored for a revoked token jti or session sid.
 type revokedToken struct {
 	Subject  string `json:"sub,omitempty"`
 	ClientID string `json:"azp,omitempty"`
@@ -18,13 +21,54 @@ type revokedToken struct {
 
 // isTokenRevoked reports whether the jti is on the revocation list.
 func (m *Auth) isTokenRevoked(ctx context.Context, jti string) bool {
-	if jti == "" {
-		return false
+	revoked, _ := m.revocationStatus(ctx, flowKindRevoked, jti)
+
+	return revoked
+}
+
+func (m *Auth) revocationStatus(ctx context.Context, kind, id string) (bool, error) {
+	if id == "" {
+		return false, nil
 	}
 
 	var payload revokedToken
+	err := m.store.GetFlowCode(ctx, kind, id, &payload)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, data.ErrNotFound) {
+		return false, nil
+	}
 
-	return m.store.GetFlowCode(ctx, flowKindRevoked, jti, &payload) == nil
+	return false, err
+}
+
+func (m *Auth) claimsRevoked(ctx context.Context, claims jwt.MapClaims) (bool, error) {
+	jti, _ := claims["jti"].(string)
+	sid, _ := claims["sid"].(string)
+	revoked, err := m.revocationStatus(ctx, flowKindRevoked, jti)
+	if err != nil || revoked {
+		return revoked, err
+	}
+
+	return m.revocationStatus(ctx, flowKindRevokedSession, sid)
+}
+
+func claimInt64(value any) int64 {
+	switch v := value.(type) {
+	case int:
+		return int64(v)
+	case int64:
+		return v
+	case float64:
+		return int64(v)
+	case json.Number:
+		n, _ := v.Int64()
+
+		return n
+	default:
+		return 0
+	}
 }
 
 // TokenRevoked exposes the revocation list to other middlewares (e.g. the
@@ -33,9 +77,20 @@ func (m *Auth) TokenRevoked(ctx context.Context, jti string) bool {
 	return m.isTokenRevoked(ctx, jti)
 }
 
-// revokeRawToken parses a token issued by this middleware and puts its jti
-// on the denylist until the token expires. Invalid or already expired
-// tokens are a no-op (RFC 7009 semantics).
+// TokenClaimsRevoked checks both a token and its session family. Resource
+// middleware uses the error to fail closed when PostgreSQL is unavailable.
+func (m *Auth) TokenClaimsRevoked(ctx context.Context, jti, sid string) (bool, error) {
+	revoked, err := m.revocationStatus(ctx, flowKindRevoked, jti)
+	if err != nil || revoked {
+		return revoked, err
+	}
+
+	return m.revocationStatus(ctx, flowKindRevokedSession, sid)
+}
+
+// revokeRawToken parses a token issued by this middleware. Access tokens put
+// their jti on the denylist; refresh tokens revoke the complete sid family.
+// Invalid or already expired tokens are a no-op (RFC 7009 semantics).
 func (m *Auth) revokeRawToken(ctx context.Context, token string) error {
 	signer, err := m.jwtRuntime(ctx)
 	if err != nil {
@@ -48,25 +103,50 @@ func (m *Auth) revokeRawToken(ctx context.Context, token string) error {
 	}
 
 	jti, _ := claims["jti"].(string)
-	exp, _ := claims["exp"].(float64)
+	sid, _ := claims["sid"].(string)
+	typ, _ := claims["typ"].(string)
+	exp := claimInt64(claims["exp"])
 	if jti == "" || exp <= 0 {
 		return nil
 	}
 
-	ttl := time.Until(time.Unix(int64(exp), 0))
+	kind := flowKindRevoked
+	id := jti
+	if typ == "Refresh" {
+		if sid == "" {
+			sid = jti
+		}
+		kind = flowKindRevokedSession
+		id = sid
+		if sessionExp := claimInt64(claims["session_exp"]); sessionExp > exp {
+			exp = sessionExp
+		}
+	}
+
+	ttl := time.Until(time.Unix(exp, 0))
 	if ttl <= 0 {
 		return nil
 	}
 
 	sub, _ := claims["sub"].(string)
 	azp, _ := claims["azp"].(string)
-	typ, _ := claims["typ"].(string)
 
-	return m.store.CreateFlowCode(ctx, flowKindRevoked, jti, revokedToken{
+	payload := revokedToken{
 		Subject:  sub,
 		ClientID: azp,
 		Type:     typ,
-	}, ttl)
+	}
+	_, err = m.store.CreateFlowCodeOnce(ctx, kind, id, payload, ttl)
+	if err != nil {
+		return err
+	}
+
+	// Keep rolling upgrades safe: older replicas only know the per-JTI list.
+	if kind == flowKindRevokedSession {
+		_, err = m.store.CreateFlowCodeOnce(ctx, flowKindRevoked, jti, payload, ttl)
+	}
+
+	return err
 }
 
 // RevokeToken implements session.InfRevoker so the login middleware can
@@ -216,8 +296,17 @@ func (m *Auth) APIIntrospect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jti, _ := claims["jti"].(string)
-	if m.isTokenRevoked(r.Context(), jti) {
+	revoked, err := m.claimsRevoked(r.Context(), claims)
+	if err != nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "server_error",
+			ErrorDescription: err.Error(),
+			code:             http.StatusInternalServerError,
+		})
+
+		return
+	}
+	if revoked {
 		httputil.JSON(w, http.StatusOK, inactive)
 
 		return

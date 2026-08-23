@@ -3,36 +3,43 @@ package login
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
 )
 
-func (m *Login) SetState(w http.ResponseWriter, state string) {
+func (m *Login) SetState(w http.ResponseWriter, state string, rememberMe bool) {
+	if rememberMe {
+		state += ".remember"
+	}
+
 	auth.SetCookie(w, state, &m.StateCookie)
 }
 
-func (m *Login) GetState(r *http.Request) (string, error) {
+func (m *Login) GetState(r *http.Request) (string, bool, error) {
 	cookie, err := r.Cookie(m.StateCookie.CookieName)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
-	return cookie.Value, nil
+	state, rememberMe := strings.CutSuffix(cookie.Value, ".remember")
+
+	return state, rememberMe, nil
 }
 
-func (m *Login) CheckState(w http.ResponseWriter, r *http.Request, check string) error {
-	state, err := m.GetState(r)
+func (m *Login) CheckState(w http.ResponseWriter, r *http.Request, check string) (bool, error) {
+	state, rememberMe, err := m.GetState(r)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	m.RemoveState(w)
 
 	if state != check {
-		return fmt.Errorf("state is not valid")
+		return false, fmt.Errorf("state is not valid")
 	}
 
-	return nil
+	return rememberMe, nil
 }
 
 func (m *Login) RemoveState(w http.ResponseWriter) {

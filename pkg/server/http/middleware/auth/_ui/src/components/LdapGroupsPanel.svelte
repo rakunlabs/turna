@@ -39,9 +39,11 @@
     problem = "";
 
     try {
+      // Lookup tables, not registers: every map and every role name is needed
+      // to caption the group list, so read them whole (_limit=0 is unlimited).
       const [lmapsRes, rolesRes] = await Promise.all([
-        session.request<LMap[]>("lmaps?_limit=1000"),
-        session.request<Role[]>("roles?_limit=1000"),
+        session.request<LMap[]>("lmaps?_limit=0"),
+        session.request<Role[]>("roles?add_roles=false&_limit=0"),
       ]);
 
       const maps: Record<string, LMap> = {};

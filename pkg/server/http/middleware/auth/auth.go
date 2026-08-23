@@ -190,6 +190,7 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 
 	go m.cache.Watch(ctx)
 	go m.watchLDAP(ctx)
+	go m.watchFlowCleanup(ctx)
 
 	// register as in-process token issuer so session providers can use
 	// `auth_middleware: <name>` for keyfunc/refresh without HTTP self-calls.
@@ -331,6 +332,7 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 
 	// jwt signing key
 	mux.POST(prefix+"/v1/jwt/rotate", admin(m.RotateJWTAPI))
+	mux.POST(prefix+"/v1/maintenance/flow-codes/purge", admin(m.PurgeFlowCodesAPI))
 
 	// record encryption key rotation (re-encrypts all encrypted columns)
 	mux.POST(prefix+"/v1/encryption/rotate", admin(m.RotateEncryptionAPI))
@@ -362,6 +364,7 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 	// self-service account (X-User plane)
 	mux.GET(prefix+"/v1/me", m.MeAPI)
 	mux.POST(prefix+"/v1/me/password", m.MePasswordAPI)
+	mux.POST(prefix+"/v1/me/check", m.CheckUserAPI)
 
 	// device flow approval (X-User plane)
 	mux.GET(prefix+"/v1/device/{user_code}", m.DeviceInfoAPI)

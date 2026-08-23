@@ -324,6 +324,9 @@ type GetUserRequest struct {
 	Name     string `json:"name"`
 	Email    string `json:"email"`
 	RoleType string `json:"role_type"`
+	// Search is a case-insensitive substring match across aliases and the
+	// name/email/uid detail fields — one box on the UI, one parameter here.
+	Search string `json:"search"`
 
 	Path        string   `json:"path"`
 	Method      string   `json:"method"`
@@ -351,6 +354,8 @@ type GetPermissionRequest struct {
 	Path        string `json:"path"`
 	Method      string `json:"method"`
 	Description string `json:"description"`
+	// Search is a case-insensitive substring match on name or description.
+	Search string `json:"search"`
 
 	Limit  int64 `json:"limit"`
 	Offset int64 `json:"offset"`
@@ -371,6 +376,8 @@ type GetRoleRequest struct {
 	Method      string   `json:"method"`
 	Description string   `json:"description"`
 	Permissions []string `json:"permissions"`
+	// Search is a case-insensitive substring match on name or description.
+	Search string `json:"search"`
 
 	Limit  int64 `json:"limit"`
 	Offset int64 `json:"offset"`

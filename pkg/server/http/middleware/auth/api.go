@@ -122,6 +122,18 @@ func (m *Auth) PutSetting(w http.ResponseWriter, r *http.Request) {
 
 	namespace := r.PathValue("namespace")
 
+	if namespace == "token" {
+		var setting TokenSettings
+		if err := json.Unmarshal(req.Value, &setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("cannot decode token setting", err, http.StatusBadRequest))
+			return
+		}
+		if err := validateTokenSettings(setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("invalid token setting", err, http.StatusBadRequest))
+			return
+		}
+	}
+
 	// the jwt namespace carries the signing key; reject broken material early
 	if namespace == jwtSettingNamespace {
 		var setting jwtSetting

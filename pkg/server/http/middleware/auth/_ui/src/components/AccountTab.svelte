@@ -36,6 +36,32 @@
   let me = $state<Me | null>(null);
   let loadError = $state("");
 
+  // roles / permissions lists: long grants collapse behind a count so the page
+  // stays readable for an account that carries hundreds of permissions.
+  const grantCap = 15;
+  let showAllRoles = $state(false);
+  let showAllPermissions = $state(false);
+  const visibleRoles = $derived(
+    showAllRoles ? (me?.roles ?? []) : (me?.roles ?? []).slice(0, grantCap),
+  );
+  const visiblePermissions = $derived(
+    showAllPermissions ? (me?.permissions ?? []) : (me?.permissions ?? []).slice(0, grantCap),
+  );
+
+  // self access check
+  let checkHost = $state("");
+  let checkPath = $state("/");
+  let checkMethod = $state("GET");
+  let checkRunning = $state(false);
+  let checkVerdict = $state<{
+    allowed: boolean;
+    host: string;
+    path: string;
+    method: string;
+  } | null>(null);
+
+  const checkMethodOptions = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+
   // password
   let currentPassword = $state("");
   let newPassword = $state("");
@@ -313,6 +339,30 @@
     return passkey.name || passkey.id;
   }
 
+  // ////////////////////////////////////////////////////////////////
+  // self access check
+
+  async function runSelfCheck() {
+    checkRunning = true;
+    docket.clearRejections();
+
+    const terms = { host: checkHost.trim(), path: checkPath.trim(), method: checkMethod.trim() };
+
+    try {
+      const body = await session.raw<{ allowed: boolean }>("me/check", {
+        method: "POST",
+        body: JSON.stringify(terms),
+      });
+
+      checkVerdict = { allowed: Boolean(body.allowed), ...terms };
+    } catch (err) {
+      checkVerdict = null;
+      docket.reject(messageOf(err, "Access check failed"));
+    } finally {
+      checkRunning = false;
+    }
+  }
+
   onMount(() => {
     void loadAll();
   });
@@ -413,10 +463,20 @@
             <p class="mt-2 text-[13px] text-muted">No roles granted.</p>
           {:else}
             <ul class="mt-2 divide-y divide-rule border-t border-rule">
-              {#each me.roles as role (role)}
+              {#each visibleRoles as role (role)}
                 <li class="serial break-all py-1.5 text-[12.5px] text-ink">{role}</li>
               {/each}
             </ul>
+            {#if me.roles.length > grantCap}
+              <button
+                type="button"
+                class="act act-quiet mt-2"
+                aria-expanded={showAllRoles}
+                onclick={() => (showAllRoles = !showAllRoles)}
+              >
+                {showAllRoles ? "Show fewer" : `Show all ${me.roles.length} roles`}
+              </button>
+            {/if}
           {/if}
         </div>
 
@@ -426,12 +486,117 @@
             <p class="mt-2 text-[13px] text-muted">No permissions granted.</p>
           {:else}
             <ul class="mt-2 divide-y divide-rule border-t border-rule">
-              {#each me.permissions as permission (permission)}
+              {#each visiblePermissions as permission (permission)}
                 <li class="serial break-all py-1.5 text-[12.5px] text-ink">{permission}</li>
               {/each}
             </ul>
+            {#if me.permissions.length > grantCap}
+              <button
+                type="button"
+                class="act act-quiet mt-2"
+                aria-expanded={showAllPermissions}
+                onclick={() => (showAllPermissions = !showAllPermissions)}
+              >
+                {showAllPermissions ? "Show fewer" : `Show all ${me.permissions.length} permissions`}
+              </button>
+            {/if}
           {/if}
         </div>
+      </div>
+    </Section>
+
+    <Section
+      title="Check your access"
+      note="Ask whether your sign-in would be allowed to make a given request. Nothing is written — this asks the same permission graph the middleware asks on every request."
+    >
+      <div class="grid gap-5 sm:grid-cols-3">
+        <Entry
+          label="Host"
+          bind:value={checkHost}
+          placeholder="api.example.com"
+          mono
+          hint="Left empty, only permissions that match an empty host can pass."
+        />
+
+        <Entry
+          label="Path"
+          bind:value={checkPath}
+          placeholder="/path/to/check"
+          mono
+          hint="The request path, as the service would see it."
+        />
+
+        <div class="min-w-0">
+          <label class="stamp block" for="self-check-method">Method</label>
+          <input
+            id="self-check-method"
+            class="entry serial mt-1.5"
+            list="self-check-methods"
+            autocomplete="off"
+            placeholder="GET or custom method"
+            bind:value={checkMethod}
+          />
+          <datalist id="self-check-methods">
+            {#each checkMethodOptions as option (option)}
+              <option value={option}></option>
+            {/each}
+          </datalist>
+          <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+            Compared case-insensitively; a custom verb is accepted.
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-6 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          class="act act-primary"
+          disabled={checkRunning || !checkPath.trim()}
+          onclick={() => void runSelfCheck()}
+        >
+          {checkRunning ? "Checking…" : "Run check"}
+        </button>
+
+        {#if checkVerdict}
+          <button
+            type="button"
+            class="act act-quiet"
+            disabled={checkRunning}
+            onclick={() => (checkVerdict = null)}
+          >
+            Clear verdict
+          </button>
+        {/if}
+      </div>
+
+      <div role="status" aria-live="polite">
+        {#if checkVerdict}
+          <div class="mt-6 border border-rule bg-sheet px-5 py-5">
+            <div class="flex items-center gap-3">
+              <Seal
+                state={checkVerdict.allowed ? "endorsed" : "broken"}
+                label={checkVerdict.allowed ? "Allowed" : "Denied"}
+              />
+              <p class="text-[13.5px] leading-[1.6] text-ink">
+                {#if checkVerdict.allowed}
+                  Your sign-in holds a permission that covers
+                  <span class="serial">{checkVerdict.method || "—"}</span>
+                  <span class="serial">{checkVerdict.path || "—"}</span>{checkVerdict.host
+                    ? " on "
+                    : ""}{#if checkVerdict.host}<span class="serial">{checkVerdict.host}</span
+                    >{/if}.
+                {:else}
+                  Nothing granted to you covers
+                  <span class="serial">{checkVerdict.method || "—"}</span>
+                  <span class="serial">{checkVerdict.path || "—"}</span>{checkVerdict.host
+                    ? " on "
+                    : ""}{#if checkVerdict.host}<span class="serial">{checkVerdict.host}</span
+                    >{/if}.
+                {/if}
+              </p>
+            </div>
+          </div>
+        {/if}
       </div>
     </Section>
 

@@ -371,9 +371,9 @@ func (m *Session) serveAPIKey(next http.Handler, w http.ResponseWriter, r *http.
 // in-process through a registered issuer (auth_middleware) or over HTTP
 // against the provider's token_url.
 func (m *Session) refreshTokenData(r *http.Request, providerName string, token *TokenData) ([]byte, error) {
-	// Auth rotates refresh tokens and rejects reuse. Collapse simultaneous
-	// requests carrying the same session cookie so they all receive the one
-	// successful refresh response instead of racing each other.
+	// Some remote providers rotate refresh tokens and reject reuse. Collapse
+	// simultaneous requests carrying the same session cookie so they all
+	// receive one successful refresh response instead of racing each other.
 	key := fmt.Sprintf("%s:%x", providerName, sha256.Sum256([]byte(token.RefreshToken)))
 	value, err, _ := m.refreshGroup.Do(key, func() (any, error) {
 		return m.refreshTokenDataOnce(r, providerName, token)

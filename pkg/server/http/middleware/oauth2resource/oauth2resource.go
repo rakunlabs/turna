@@ -31,6 +31,10 @@ type revocationChecker interface {
 	TokenRevoked(ctx context.Context, jti string) bool
 }
 
+type familyRevocationChecker interface {
+	TokenClaimsRevoked(ctx context.Context, jti, sid string) (bool, error)
+}
+
 type OAuth2Resource struct {
 	// AuthMiddleware is the name of the auth middleware whose tokens are
 	// accepted; validation runs in-process through the issuer registry.
@@ -274,12 +278,24 @@ func (m *OAuth2Resource) protect(w http.ResponseWriter, r *http.Request, next ht
 	}
 
 	if m.getCheckRevocation() {
-		if checker, ok := issuer.(revocationChecker); ok {
-			if jti, _ := claims["jti"].(string); checker.TokenRevoked(r.Context(), jti) {
+		jti, _ := claims["jti"].(string)
+		sid, _ := claims["sid"].(string)
+		if checker, ok := issuer.(familyRevocationChecker); ok {
+			revoked, err := checker.TokenClaimsRevoked(r.Context(), jti, sid)
+			if err != nil {
+				httputil.HandleError(w, httputil.NewError("cannot check token revocation", err, http.StatusServiceUnavailable))
+
+				return
+			}
+			if revoked {
 				m.challenge(w, r, http.StatusUnauthorized, "invalid_token", "token revoked")
 
 				return
 			}
+		} else if checker, ok := issuer.(revocationChecker); ok && checker.TokenRevoked(r.Context(), jti) {
+			m.challenge(w, r, http.StatusUnauthorized, "invalid_token", "token revoked")
+
+			return
 		}
 	}
 

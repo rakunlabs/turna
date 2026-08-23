@@ -360,6 +360,7 @@ func (m *Auth) PasskeyCredentialDeleteAPI(w http.ResponseWriter, r *http.Request
 type PasskeyTokenRequest struct {
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
+	RememberMe   bool   `json:"remember_me"`
 	// Username scopes allowCredentials to a known user; empty uses the
 	// discoverable (passwordless) flow.
 	Username  string `json:"username"`
@@ -530,5 +531,7 @@ func (m *Auth) APIPasskeyToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m.writeToken(w, r, user, req.ClientID, splitFields(req.Scope), accessClient.Scope)
+	m.writeTokenWithOptions(w, r, user, req.ClientID, splitFields(req.Scope), accessClient.Scope, tokenIssueOptions{
+		RememberMe: req.RememberMe,
+	})
 }

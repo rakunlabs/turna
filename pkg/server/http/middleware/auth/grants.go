@@ -92,7 +92,17 @@ func (m *Auth) tokenExchangeGrant(w http.ResponseWriter, r *http.Request, req Ac
 	}
 
 	// revoked subject tokens must not be exchangeable
-	if jti, _ := claims["jti"].(string); m.isTokenRevoked(r.Context(), jti) {
+	revoked, err := m.claimsRevoked(r.Context(), claims)
+	if err != nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "server_error",
+			ErrorDescription: err.Error(),
+			code:             http.StatusInternalServerError,
+		})
+
+		return
+	}
+	if revoked {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_grant",
 			ErrorDescription: "token revoked",

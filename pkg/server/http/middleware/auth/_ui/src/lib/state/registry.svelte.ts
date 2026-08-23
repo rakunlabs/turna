@@ -2,18 +2,39 @@ import { editableSettingNamespaces, kindSpecs, rowFromItem, type AnyRecord, type
 import { docket, session } from "./session.svelte";
 import { settings } from "./settings.svelte";
 
+/** Rows fetched per page on the paginated (IAM) registers. */
+export const PAGE_SIZE = 50;
+
+/** Where a paginated register currently stands: which page, which search, how many records exist. */
+export type ListStanding = {
+  offset: number;
+  search: string;
+  total: number;
+};
+
+const restingStanding: ListStanding = { offset: 0, search: "", total: 0 };
+
 /**
  * The registry is the console's index of issued instruments: one row list per
  * record kind, plus the published signing keys. Admin bulk data is deferred
  * until a page needs it so a self-service visit stays quiet.
+ *
+ * The IAM registers (users, service accounts, roles, permissions) can hold
+ * thousands of records, so they are read one page at a time and searched on
+ * the server; everything else is short enough to fetch whole.
  */
 class Registry {
   rowsByKind = $state<Partial<Record<ResourceKind, Row[]>>>({});
+  standingByKind = $state<Partial<Record<ResourceKind, ListStanding>>>({});
   jwks = $state<AnyRecord[]>([]);
   loaded = $state(false);
 
   rows(kind: ResourceKind) {
     return this.rowsByKind[kind] ?? [];
+  }
+
+  standing(kind: ResourceKind): ListStanding {
+    return this.standingByKind[kind] ?? restingStanding;
   }
 
   signingKey = $derived(this.jwks[0] ?? ({} as AnyRecord));
@@ -23,9 +44,21 @@ class Registry {
 
   async loadKind(kind: ResourceKind) {
     const spec = kindSpecs[kind];
-    // Identity lists are the only ones that can be large; skip role expansion
-    // and cap the page so the index stays responsive on a populated instance.
-    const query = kind === "users" || kind === "service-accounts" ? "?add_roles=false&_limit=500" : "";
+    let query = "";
+
+    if (spec.paginated) {
+      const standing = this.standing(kind);
+      const params = new URLSearchParams();
+
+      // Identity lists skip role expansion so the index stays light.
+      if (kind === "users" || kind === "service-accounts") params.set("add_roles", "false");
+      params.set("_limit", String(PAGE_SIZE));
+      if (standing.offset > 0) params.set("_offset", String(standing.offset));
+      if (standing.search) params.set("search", standing.search);
+
+      query = `?${params.toString()}`;
+    }
+
     const res = await session.request<Record<string, unknown>[]>(`${spec.listPath}${query}`);
 
     let rows = (res.payload ?? []).map((item) => rowFromItem(kind, item));
@@ -34,6 +67,42 @@ class Registry {
     }
 
     this.rowsByKind = { ...this.rowsByKind, [kind]: rows };
+
+    if (spec.paginated) {
+      const standing = this.standing(kind);
+      const total = res.meta?.total_item_count ?? 0;
+
+      // A delete can strand the offset past the end (an empty page with
+      // records still on file). Step back onto the last real page.
+      if (total > 0 && standing.offset >= total) {
+        const offset = Math.floor((total - 1) / PAGE_SIZE) * PAGE_SIZE;
+        this.standingByKind = { ...this.standingByKind, [kind]: { ...standing, offset, total } };
+        await this.loadKind(kind);
+        return;
+      }
+
+      this.standingByKind = { ...this.standingByKind, [kind]: { ...standing, total } };
+    }
+  }
+
+  /** Turn to a page of a paginated register. Offsets are clamped at zero. */
+  async turnPage(kind: ResourceKind, offset: number) {
+    const standing = this.standing(kind);
+    this.standingByKind = {
+      ...this.standingByKind,
+      [kind]: { ...standing, offset: Math.max(0, offset) },
+    };
+
+    await session.run(() => this.loadKind(kind));
+  }
+
+  /** Apply a server-side search term to a paginated register; resets to page one. */
+  async applySearch(kind: ResourceKind, search: string) {
+    const standing = this.standing(kind);
+    if (standing.search === search && standing.offset === 0) return;
+
+    this.standingByKind = { ...this.standingByKind, [kind]: { ...standing, search, offset: 0 } };
+    await session.run(() => this.loadKind(kind));
   }
 
   async loadJWKS() {

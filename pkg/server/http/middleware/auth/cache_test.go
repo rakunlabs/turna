@@ -194,6 +194,90 @@ func TestCacheGetUsersFilter(t *testing.T) {
 	}
 }
 
+func TestCacheGetUsersSearch(t *testing.T) {
+	c := testCache()
+
+	cases := []struct {
+		name   string
+		search string
+		want   []string
+	}{
+		{name: "matches alias substring", search: "my-us", want: []string{"user-1"}},
+		{name: "matches email substring", search: "my@user", want: []string{"user-1"}},
+		{name: "matches detail name fold", search: "MY USER", want: []string{"user-1"}},
+		{name: "matches across users", search: "user", want: []string{"user-1", "user-2"}},
+		{name: "no match", search: "nobody-here", want: nil},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := c.GetUsers(data.GetUserRequest{Search: tc.search})
+			if err != nil {
+				t.Fatalf("GetUsers() error = %v", err)
+			}
+
+			if int(res.Meta.TotalItemCount) != len(tc.want) {
+				t.Fatalf("expected %d users, got %d", len(tc.want), res.Meta.TotalItemCount)
+			}
+
+			for i, id := range tc.want {
+				if res.Payload[i].ID != id {
+					t.Fatalf("expected user %s at %d, got %s", id, i, res.Payload[i].ID)
+				}
+			}
+		})
+	}
+}
+
+func TestCacheSearchRolesAndPermissions(t *testing.T) {
+	c := testCache()
+
+	roles, err := c.GetRoles(data.GetRoleRequest{Search: "PARENT"})
+	if err != nil {
+		t.Fatalf("GetRoles() error = %v", err)
+	}
+
+	if roles.Meta.TotalItemCount != 1 || roles.Payload[0].ID != "role-parent" {
+		t.Fatalf("expected role-parent, got %v", roles.Payload)
+	}
+
+	perms, err := c.GetPermissions(data.GetPermissionRequest{Search: "PER"})
+	if err != nil {
+		t.Fatalf("GetPermissions() error = %v", err)
+	}
+
+	if perms.Meta.TotalItemCount != 1 || perms.Payload[0].ID != "perm-1" {
+		t.Fatalf("expected perm-1, got %v", perms.Payload)
+	}
+
+	perms, err = c.GetPermissions(data.GetPermissionRequest{Search: "no-such"})
+	if err != nil {
+		t.Fatalf("GetPermissions() error = %v", err)
+	}
+
+	if perms.Meta.TotalItemCount != 0 {
+		t.Fatalf("expected no permissions, got %d", perms.Meta.TotalItemCount)
+	}
+}
+
+func TestCacheGetUsersSearchPaged(t *testing.T) {
+	c := testCache()
+
+	// search + windowing together: total counts every match, payload is the page
+	res, err := c.GetUsers(data.GetUserRequest{Search: "user", Limit: 1, Offset: 1})
+	if err != nil {
+		t.Fatalf("GetUsers() error = %v", err)
+	}
+
+	if res.Meta.TotalItemCount != 2 {
+		t.Fatalf("expected total 2, got %d", res.Meta.TotalItemCount)
+	}
+
+	if len(res.Payload) != 1 || res.Payload[0].ID != "user-2" {
+		t.Fatalf("expected page holding user-2, got %v", res.Payload)
+	}
+}
+
 func TestCacheGetRolesByPermission(t *testing.T) {
 	c := testCache()
 

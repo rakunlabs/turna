@@ -1,6 +1,9 @@
 export type ApiResponse<T> = {
   payload: T;
+  // Server-side `omitempty`: zero-valued fields are absent from the JSON.
   meta?: {
+    offset?: number;
+    limit?: number;
     total_item_count?: number;
     version?: number;
   };
@@ -71,6 +74,12 @@ export type KindSpec = {
   idField: string;
   // settings wrap {value}, config wraps {enabled, config}, iam sends the raw JSON document
   body: "value" | "config" | "raw";
+  /**
+   * IAM registers can hold thousands of records, so their list endpoints are
+   * read one page at a time with `_limit`/`_offset` and searched server-side
+   * with `search`. Everything else is short enough to fetch whole.
+   */
+  paginated?: boolean;
   canCreate: boolean;
   example: unknown;
   // per-namespace JSON templates (settings only)
@@ -81,6 +90,7 @@ export const settingTemplates = {
   token: {
     token_lifetime: "15m",
     refresh_lifetime: "24h",
+    refresh_absolute_lifetime: "720h",
   },
   admin: {
     permission: "",
@@ -348,6 +358,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     listPath: "users",
     idField: "id",
     body: "raw",
+    paginated: true,
     canCreate: true,
     example: {
       id: "generated-on-create",
@@ -372,6 +383,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     listPath: "service-accounts",
     idField: "id",
     body: "raw",
+    paginated: true,
     canCreate: true,
     example: {
       id: "generated-on-create",
@@ -395,6 +407,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     listPath: "roles",
     idField: "id",
     body: "raw",
+    paginated: true,
     canCreate: true,
     example: {
       name: "my-role",
@@ -414,6 +427,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     listPath: "permissions",
     idField: "id",
     body: "raw",
+    paginated: true,
     canCreate: true,
     example: {
       name: "my-permission",

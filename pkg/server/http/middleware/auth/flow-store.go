@@ -13,14 +13,15 @@ import (
 
 // flow code kinds stored in auth_flow_codes.
 const (
-	flowKindDevice        = "device"         // id: device_code, payload: deviceFlow
-	flowKindDeviceUser    = "device_user"    // id: user_code, payload: {"device_code": ...}
-	flowKindEmail         = "email"          // id: sha256(code), payload: emailFlow
-	flowKindSAMLRelay     = "saml_relay"     // id: relay state, payload: samlRelay
-	flowKindSignup        = "signup"         // id: sha256(code), payload: signupFlow
-	flowKindPasswordReset = "password_reset" // id: sha256(code), payload: resetFlow
-	flowKindAuthorize     = "authorize"      // id: flow id, payload: authorizeFlow
-	flowKindRevoked       = "revoked"        // id: jti, payload: revokedToken
+	flowKindDevice         = "device"          // id: device_code, payload: deviceFlow
+	flowKindDeviceUser     = "device_user"     // id: user_code, payload: {"device_code": ...}
+	flowKindEmail          = "email"           // id: sha256(code), payload: emailFlow
+	flowKindSAMLRelay      = "saml_relay"      // id: relay state, payload: samlRelay
+	flowKindSignup         = "signup"          // id: sha256(code), payload: signupFlow
+	flowKindPasswordReset  = "password_reset"  // id: sha256(code), payload: resetFlow
+	flowKindAuthorize      = "authorize"       // id: flow id, payload: authorizeFlow
+	flowKindRevoked        = "revoked"         // id: jti, payload: revokedToken
+	flowKindRevokedSession = "revoked_session" // id: sid, payload: revokedToken
 )
 
 // CreateFlowCode stores a short-lived flow payload with an absolute expiry.
@@ -41,7 +42,7 @@ func (s *Store) CreateFlowCode(ctx context.Context, kind, id string, payload any
 }
 
 // CreateFlowCodeOnce atomically stores a flow payload unless the id already
-// exists. It is used to consume rotating refresh tokens exactly once.
+// exists. Revocation uses it to keep repeated RFC 7009 calls idempotent.
 func (s *Store) CreateFlowCodeOnce(ctx context.Context, kind, id string, payload any, ttl time.Duration) (bool, error) {
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -115,4 +116,28 @@ func (s *Store) DeleteFlowCode(ctx context.Context, kind, id string) error {
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM auth_flow_codes WHERE expires_at <= now()`)
 
 	return nil
+}
+
+// PruneExpiredFlowCodes removes one bounded batch. SKIP LOCKED lets multiple
+// auth replicas run maintenance without blocking each other.
+func (s *Store) PruneExpiredFlowCodes(ctx context.Context, limit int) (int64, error) {
+	if limit <= 0 {
+		limit = 1000
+	}
+
+	res, err := s.db.ExecContext(ctx, `WITH expired AS (
+		SELECT id FROM auth_flow_codes
+		WHERE expires_at <= now()
+		ORDER BY expires_at
+		LIMIT $1
+		FOR UPDATE SKIP LOCKED
+	)
+	DELETE FROM auth_flow_codes AS flow
+	USING expired
+	WHERE flow.id = expired.id`, limit)
+	if err != nil {
+		return 0, fmt.Errorf("prune expired flow codes: %w", err)
+	}
+
+	return res.RowsAffected()
 }

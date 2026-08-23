@@ -299,6 +299,41 @@ func validateDuration(v string) error {
 	return err
 }
 
+func validateTokenSettings(setting TokenSettings) error {
+	parse := func(name, value string, fallback time.Duration) (time.Duration, error) {
+		if value == "" {
+			return fallback, nil
+		}
+
+		d, err := str2duration.ParseDuration(value)
+		if err != nil {
+			return 0, fmt.Errorf("%s: %w", name, err)
+		}
+		if d <= 0 {
+			return 0, fmt.Errorf("%s must be positive", name)
+		}
+
+		return d, nil
+	}
+
+	if _, err := parse("token_lifetime", setting.TokenLifetime, 15*time.Minute); err != nil {
+		return err
+	}
+	refresh, err := parse("refresh_lifetime", setting.RefreshLifetime, 24*time.Hour)
+	if err != nil {
+		return err
+	}
+	absolute, err := parse("refresh_absolute_lifetime", setting.RefreshAbsoluteLifetime, 30*24*time.Hour)
+	if err != nil {
+		return err
+	}
+	if absolute < refresh {
+		return fmt.Errorf("refresh_absolute_lifetime must be at least refresh_lifetime")
+	}
+
+	return nil
+}
+
 func (a AuthorizeSettings) GetFlowLifetime() time.Duration {
 	if a.flowLifetime > 0 {
 		return a.flowLifetime
@@ -509,8 +544,9 @@ type MTLSSettings struct {
 
 // TokenSettings is the decoded "token" setting namespace.
 type TokenSettings struct {
-	TokenLifetime   string `json:"token_lifetime"`
-	RefreshLifetime string `json:"refresh_lifetime"`
+	TokenLifetime           string `json:"token_lifetime"`
+	RefreshLifetime         string `json:"refresh_lifetime"`
+	RefreshAbsoluteLifetime string `json:"refresh_absolute_lifetime"`
 	// RolesClaim is the dot path where the scope-derived roles are written
 	// in the access token. Empty defaults to "roles" (flat top-level array).
 	// Use "realm_access.roles" for Keycloak-style nesting, or any dot path
@@ -518,8 +554,9 @@ type TokenSettings struct {
 	// AccessClient.RolesClaim takes precedence when set.
 	RolesClaim string `json:"roles_claim"`
 
-	tokenLifetime   time.Duration
-	refreshLifetime time.Duration
+	tokenLifetime           time.Duration
+	refreshLifetime         time.Duration
+	refreshAbsoluteLifetime time.Duration
 }
 
 func (t TokenSettings) GetTokenLifetime() time.Duration {
@@ -536,6 +573,14 @@ func (t TokenSettings) GetRefreshLifetime() time.Duration {
 	}
 
 	return 24 * time.Hour
+}
+
+func (t TokenSettings) GetRefreshAbsoluteLifetime() time.Duration {
+	if t.refreshAbsoluteLifetime > 0 {
+		return t.refreshAbsoluteLifetime
+	}
+
+	return 30 * 24 * time.Hour
 }
 
 // GetRolesClaim returns the configured dot path for the roles claim, or the
@@ -898,6 +943,11 @@ func (c *Cache) Reload(ctx context.Context) error {
 	if snap.Token.RefreshLifetime != "" {
 		if d, err := str2duration.ParseDuration(snap.Token.RefreshLifetime); err == nil {
 			snap.Token.refreshLifetime = d
+		}
+	}
+	if snap.Token.RefreshAbsoluteLifetime != "" {
+		if d, err := str2duration.ParseDuration(snap.Token.RefreshAbsoluteLifetime); err == nil {
+			snap.Token.refreshAbsoluteLifetime = d
 		}
 	}
 
@@ -1292,6 +1342,9 @@ func (sn *Snapshot) filterUsers(req data.GetUserRequest) ([]*data.User, error) {
 		if req.UID != "" && !containsFold(castString(user.Details["uid"]), req.UID) {
 			continue
 		}
+		if req.Search != "" && !matchUserSearch(user, req.Search) {
+			continue
+		}
 
 		switch req.RoleType {
 		case "PERMANENT":
@@ -1328,6 +1381,24 @@ func castString(v any) string {
 	s, _ := v.(string)
 
 	return s
+}
+
+// matchUserSearch is the one-box search: a case-insensitive substring match
+// across every alias and the name/email/uid detail fields.
+func matchUserSearch(user *data.User, term string) bool {
+	for _, alias := range user.Alias {
+		if containsFold(alias, term) {
+			return true
+		}
+	}
+
+	for _, key := range []string{"name", "email", "uid"} {
+		if containsFold(castString(user.Details[key]), term) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func matchUserFlags(user *data.User, req data.GetUserRequest) bool {
@@ -1646,6 +1717,10 @@ func (c *Cache) GetRoles(req data.GetRoleRequest) (*data.Response[[]data.RoleExt
 				continue
 			}
 
+			if req.Search != "" && !containsFold(role.Name, req.Search) && !containsFold(role.Description, req.Search) {
+				continue
+			}
+
 			if len(permSet) > 0 && !anyInSet(permSet, role.PermissionIDs) {
 				continue
 			}
@@ -1743,6 +1818,10 @@ func (c *Cache) GetPermissions(req data.GetPermissionRequest) (*data.Response[[]
 			}
 
 			if req.Description != "" && !containsFold(permission.Description, req.Description) {
+				continue
+			}
+
+			if req.Search != "" && !containsFold(permission.Name, req.Search) && !containsFold(permission.Description, req.Search) {
 				continue
 			}
 

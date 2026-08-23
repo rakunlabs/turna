@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
@@ -12,8 +13,9 @@ import (
 )
 
 type TokenRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username   string `json:"username"`
+	Password   string `json:"password"`
+	RememberMe bool   `json:"remember_me"`
 }
 
 const codeFlowSuccessPage = `<!doctype html>
@@ -53,7 +55,8 @@ func (m *Login) CodeFlowInit(w http.ResponseWriter, r *http.Request, providerNam
 		return
 	}
 
-	m.SetState(w, state)
+	rememberMe, _ := strconv.ParseBool(r.URL.Query().Get("remember_me"))
+	m.SetState(w, state, rememberMe)
 
 	sessionM := session.GlobalRegistry.Get(m.SessionMiddleware)
 	if sessionM == nil {
@@ -112,14 +115,15 @@ func (m *Login) CodeFlow(w http.ResponseWriter, r *http.Request) {
 
 	state := query.Get("state")
 	// check state
-	if m.CheckState(w, r, state) != nil {
+	rememberMe, err := m.CheckState(w, r, state)
+	if err != nil {
 		writeError(w, http.StatusUnauthorized, "state is not valid")
 
 		return
 	}
 
 	// get token from provider
-	data, statusCode, err := m.CodeToken(r, code, providerName, oauth2)
+	data, statusCode, err := m.CodeToken(r, code, providerName, oauth2, rememberMe)
 	if err != nil {
 		respondUpstreamError(w, statusCode, err)
 
@@ -179,9 +183,9 @@ func (m *Login) PasswordFlow(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if provider.AuthMiddleware != "" {
-		data, statusCode, err = m.IssuerPasswordToken(r, provider.AuthMiddleware, request.Username, request.Password, oauth2)
+		data, statusCode, err = m.IssuerPasswordToken(r, provider.AuthMiddleware, request.Username, request.Password, request.RememberMe, oauth2)
 	} else {
-		data, statusCode, err = m.PasswordToken(r.Context(), request.Username, request.Password, oauth2)
+		data, statusCode, err = m.PasswordToken(r.Context(), request.Username, request.Password, request.RememberMe, oauth2)
 	}
 
 	if err != nil {

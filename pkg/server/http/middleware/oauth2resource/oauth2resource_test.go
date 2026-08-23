@@ -19,9 +19,10 @@ import (
 // fakeIssuer signs and validates tokens with a test RSA key; it optionally
 // keeps a revocation list.
 type fakeIssuer struct {
-	key     *rsa.PrivateKey
-	kid     string
-	revoked map[string]bool
+	key      *rsa.PrivateKey
+	kid      string
+	revoked  map[string]bool
+	sessions map[string]bool
 }
 
 func (f *fakeIssuer) Keyfunc(token *jwt.Token) (any, error) {
@@ -39,6 +40,10 @@ func (f *fakeIssuer) IssueToken(_ *http.Request, _ url.Values) ([]byte, int, err
 
 func (f *fakeIssuer) TokenRevoked(_ context.Context, jti string) bool {
 	return f.revoked[jti]
+}
+
+func (f *fakeIssuer) TokenClaimsRevoked(_ context.Context, jti, sid string) (bool, error) {
+	return f.revoked[jti] || f.sessions[sid], nil
 }
 
 func (f *fakeIssuer) sign(t *testing.T, claims jwt.MapClaims) string {
@@ -73,7 +78,7 @@ func newFakeIssuer(t *testing.T) *fakeIssuer {
 		t.Fatalf("generate key: %v", err)
 	}
 
-	return &fakeIssuer{key: key, kid: "test-kid", revoked: map[string]bool{}}
+	return &fakeIssuer{key: key, kid: "test-kid", revoked: map[string]bool{}, sessions: map[string]bool{}}
 }
 
 func newHandler(t *testing.T, m *OAuth2Resource, next http.Handler) http.Handler {
@@ -299,6 +304,17 @@ func TestProtect(t *testing.T) {
 		issuer.revoked["revoked-jti"] = true
 		token := issuer.sign(t, jwt.MapClaims{
 			"jti": "revoked-jti", "sub": "u1", "preferred_username": "user1",
+			"aud": []any{"turna-auth", "https://example.com/mcp"}, "scope": "mcp",
+		})
+		if rec := do(t, token); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want 401", rec.Code)
+		}
+	})
+
+	t.Run("revoked session family", func(t *testing.T) {
+		issuer.sessions["revoked-sid"] = true
+		token := issuer.sign(t, jwt.MapClaims{
+			"jti": "family-jti", "sid": "revoked-sid", "sub": "u1", "preferred_username": "user1",
 			"aud": []any{"turna-auth", "https://example.com/mcp"}, "scope": "mcp",
 		})
 		if rec := do(t, token); rec.Code != http.StatusUnauthorized {

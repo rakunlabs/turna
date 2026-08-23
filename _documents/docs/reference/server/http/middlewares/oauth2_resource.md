@@ -87,7 +87,7 @@ Every other request must carry `Authorization: Bearer <access token>`:
 
 | Case | Response |
 | --- | --- |
-| Missing/invalid/expired token, refresh token, revoked `jti`, wrong audience | `401` + `WWW-Authenticate: Bearer resource_metadata="...", error="invalid_token"` |
+| Missing/invalid/expired token, refresh token, revoked `jti`/`sid` family, wrong audience | `401` + `WWW-Authenticate: Bearer resource_metadata="...", error="invalid_token"` |
 | Missing required scope | `403` + `WWW-Authenticate: ... error="insufficient_scope"` |
 | Valid token | Upstream is called with `user_header` set from `preferred_username` (fallback `sub`); incoming values of that header are always stripped first. |
 

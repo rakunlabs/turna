@@ -32,6 +32,7 @@
     roles?: AccessRef[];
     permissions?: AccessRef[];
     is_active?: boolean;
+    service_account?: boolean;
   };
 
   type APIKeyMeta = {
@@ -77,6 +78,38 @@
   const selectedOwner = $derived(ownerByID.get(selectedOwnerID) ?? null);
   const apiKeysDisabled = $derived(getSettingBool("api_key", ["disabled"]));
   const maxLifetime = $derived(getSettingString("api_key", ["max_lifetime"]));
+
+  /**
+   * The owner index is read whole but light — names and aliases only. The
+   * roles and permissions of the one owner being considered are read on
+   * selection, so choosing from thousands stays cheap.
+   */
+  let ownerDetail = $state<Owner | null>(null);
+  let ownerDetailLoading = $state(false);
+
+  async function loadOwnerDetail(id: string) {
+    ownerDetail = null;
+    const owner = ownerByID.get(id);
+    if (!owner) return;
+
+    const base = owner.service_account ? "service-accounts" : "users";
+    ownerDetailLoading = true;
+
+    try {
+      const res = await session.request<Owner>(
+        `${base}/${encodeURIComponent(id)}?add_roles=true&add_permissions=true`,
+      );
+      if (selectedOwnerID === id) ownerDetail = res.payload;
+    } catch {
+      // display only — a real fault surfaces when the key is issued
+    } finally {
+      ownerDetailLoading = false;
+    }
+  }
+
+  $effect(() => {
+    void loadOwnerDetail(selectedOwnerID);
+  });
 
   async function copyText(value: string, what: string) {
     try {
@@ -140,8 +173,8 @@
   /** The bare read, so a write that reloads reports under its own wording. */
   async function fetchAll() {
     const [userOwners, serviceOwners, keyList] = await Promise.all([
-      session.request<Owner[]>("users?add_roles=true&add_permissions=true&_limit=500"),
-      session.request<Owner[]>("service-accounts?add_roles=true&add_permissions=true&_limit=500"),
+      session.request<Owner[]>("users?add_roles=false&_limit=0"),
+      session.request<Owner[]>("service-accounts?add_roles=false&_limit=0"),
       session.request<APIKeyMeta[]>("api-key-principals"),
     ]);
 
@@ -509,20 +542,26 @@
       </div>
 
       {#if selectedOwner}
-        <dl class="mt-5 max-w-[80ch] divide-y divide-rule border-y border-rule">
-          <div class="grid gap-x-4 gap-y-0.5 py-2 sm:grid-cols-[9rem_minmax(0,1fr)]">
-            <dt class="stamp sm:pt-[3px]">Their roles</dt>
-            <dd class="serial min-w-0 break-all text-[12.5px] text-ink">
-              {accessIDs(selectedOwner, "roles")}
-            </dd>
-          </div>
-          <div class="grid gap-x-4 gap-y-0.5 py-2 sm:grid-cols-[9rem_minmax(0,1fr)]">
-            <dt class="stamp sm:pt-[3px]">Their permissions</dt>
-            <dd class="serial min-w-0 break-all text-[12.5px] text-ink">
-              {accessIDs(selectedOwner, "permissions")}
-            </dd>
-          </div>
-        </dl>
+        {#if ownerDetailLoading}
+          <p class="mt-5 text-[12.5px] text-muted" role="status" aria-live="polite">
+            Reading their access…
+          </p>
+        {:else if ownerDetail}
+          <dl class="mt-5 max-w-[80ch] divide-y divide-rule border-y border-rule">
+            <div class="grid gap-x-4 gap-y-0.5 py-2 sm:grid-cols-[9rem_minmax(0,1fr)]">
+              <dt class="stamp sm:pt-[3px]">Their roles</dt>
+              <dd class="serial min-w-0 break-all text-[12.5px] text-ink">
+                {accessIDs(ownerDetail, "roles")}
+              </dd>
+            </div>
+            <div class="grid gap-x-4 gap-y-0.5 py-2 sm:grid-cols-[9rem_minmax(0,1fr)]">
+              <dt class="stamp sm:pt-[3px]">Their permissions</dt>
+              <dd class="serial min-w-0 break-all text-[12.5px] text-ink">
+                {accessIDs(ownerDetail, "permissions")}
+              </dd>
+            </div>
+          </dl>
+        {/if}
       {/if}
     </Section>
 

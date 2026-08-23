@@ -82,10 +82,9 @@ type Session struct {
 	dynamic  atomic.Pointer[providerState] `cfg:"-"`
 	dynamicM sync.Mutex                    `cfg:"-"`
 
-	// refreshGroup collapses concurrent refreshes of the same rotating
-	// refresh token. Auth refresh tokens are single-use; without this, a page
-	// loading several protected resources at expiry could consume the token
-	// once and make the remaining requests fall back to login.
+	// refreshGroup collapses concurrent refreshes of the same token. Remote
+	// providers may rotate refresh tokens as single-use credentials, so one
+	// browser page load must not send the same token upstream several times.
 	refreshGroup singleflight.Group `cfg:"-"`
 }
 

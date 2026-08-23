@@ -1,10 +1,35 @@
 package login
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
 )
+
+func TestLoginStateCarriesRememberMe(t *testing.T) {
+	m := &Login{StateCookie: auth.Cookie{CookieName: "state", Path: "/"}}
+	recorder := httptest.NewRecorder()
+	m.SetState(recorder, "random-state", true)
+
+	result := recorder.Result()
+	if len(result.Cookies()) != 1 {
+		t.Fatalf("cookies = %d", len(result.Cookies()))
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "https://example.com/callback?state=random-state", nil)
+	request.AddCookie(result.Cookies()[0])
+	checkRecorder := httptest.NewRecorder()
+	rememberMe, err := m.CheckState(checkRecorder, request, "random-state")
+	if err != nil {
+		t.Fatalf("check state: %v", err)
+	}
+	if !rememberMe {
+		t.Fatal("remember_me was not carried through state")
+	}
+}
 
 func TestWriteCodeFlowSuccess(t *testing.T) {
 	recorder := httptest.NewRecorder()

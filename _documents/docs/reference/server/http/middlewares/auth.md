@@ -46,7 +46,7 @@ Everything else is a settings namespace under `/auth/v1/settings/{namespace}` an
 | `oauth2` | `base_url`, `schema`, `insecure_skip_verify` | Code-flow redirect behavior for upstream providers and the canonical token issuer. `schema` defaults to `https`. Set `base_url` when one auth instance serves session/login flows through multiple hosts, so a token issued through one host can be refreshed through another without an issuer mismatch. |
 | `check` | `default_hosts`, `no_host_check` | Host rules for permission evaluation. |
 | `cache` | `poll_interval`, `code_store` | Version poll interval for the in-memory read model and OAuth2 temporary code/state store. `code_store.active` is `memory` or `redis`. |
-| `token` | `token_lifetime`, `refresh_lifetime` | Token lifetimes (default `15m` / `24h`). |
+| `token` | `token_lifetime`, `refresh_lifetime`, `refresh_absolute_lifetime` | Access lifetime, refresh idle window and remembered-session ceiling (defaults `15m` / `24h` / `720h`). |
 | `jwt` | `kid`, `private_key` | RS256 signing key (PEM, PKCS#8 or PKCS#1); auto-generated on first start. Editable through the API/UI and applied without restart — the public JWKS key is derived from the private key. Changing or rotating the key invalidates outstanding tokens. |
 | `passkey` | `disabled`, `rp_id`, `rp_display_name`, `origins`, `user_verification` | WebAuthn (passkey) relying party settings. Empty `rp_id` defaults to the registrable domain (eTLD+1) of the request host — e.g. `auth.example.com` becomes `example.com`, so one passkey works across all subdomains; IPs and single-label hosts (`localhost`) are used as-is. Empty `origins` derives from the forwarded scheme + host. |
 | `password` | `disabled`, `local_disabled`, `ldap_disabled`, `ldap_register_disabled` | Password grant sources. Defaults keep the implicit behavior: local users check bcrypt, non-local users bind against LDAP, unknown aliases are auto-created from LDAP on first login. |
@@ -190,7 +190,7 @@ Attach more roles to an LDAP group by editing its group map. The management UI s
 | `GET` | `/auth/oauth2/certs` | JWKS for the auto-generated RS256 signing key. |
 | `GET` | `/auth/oauth2/userinfo` | Userinfo for a bearer access token. |
 | `GET` | `/auth/oauth2/userinfo/{custom}` | Userinfo with the named `custom_info` claim templates applied (add or overwrite claims). |
-| `POST` | `/auth/oauth2/revoke` | RFC 7009 token revocation. Tokens are stateless JWTs, so the `jti` goes on a denylist (in `auth_flow_codes`) until expiry; refresh, token exchange, userinfo and introspection honor it. |
+| `POST` | `/auth/oauth2/revoke` | RFC 7009 token revocation. Access tokens are denied by `jti`; refresh tokens revoke their complete `sid` session family. |
 | `POST` | `/auth/oauth2/introspect` | RFC 7662 token introspection (client-authenticated); returns `active` plus token claims. |
 | `POST` | `/auth/oauth2/register` | RFC 7591 dynamic client registration (requires the `registration` setting). |
 | `GET/PUT/DELETE` | `/auth/oauth2/register/{client_id}` | RFC 7592 client management with the `registration_access_token` returned at registration. |
@@ -205,13 +205,15 @@ Token notes:
 - The `password` settings namespace makes those sources explicit and switchable: `disabled` rejects the grant entirely, `local_disabled`/`ldap_disabled` block one source, `ldap_register_disabled` stops auto-creating unknown users from LDAP. Managed in the UI under *OAuth2 → Password Login*.
 - Users with a confirmed TOTP secret must send a `totp` form field on the password grant; a missing code answers `401` with `error=mfa_required`. A single-use recovery code is accepted in place of the TOTP code.
 - OAuth clients come from `/auth/v1/oauth/clients`; service accounts work as a client fallback.
-- Token lifetimes come from the `token` settings namespace (default `15m` / `24h`).
+- Token lifetimes come from the `token` settings namespace (default access `15m`, refresh idle `24h`, remembered-session maximum `720h` / 30 days).
+- Initial grants accept the `remember_me` extension parameter. Without it, the original refresh token remains reusable until its fixed `refresh_lifetime` expiry. With it, refreshes mint a new refresh token with a sliding `refresh_lifetime` window, capped by the family's immutable `refresh_absolute_lifetime` boundary. Refresh requests cannot change this choice; the signed token claim is authoritative.
+- Access, ID and refresh tokens carry a shared `sid`, `auth_time` and `session_exp`. This keeps parallel browser refreshes in one revocable family and gives every family a fixed absolute boundary.
 - An `id_token` is issued whenever the granted scope contains `openid`; the `nonce` from the authorization request is embedded for code-flow logins.
 - **PKCE (RFC 7636):** `/auth/oauth2/auth/{provider}` and `/auth/saml/{provider}/login` accept `code_challenge` (+ `code_challenge_method`, `S256` or `plain`); the `authorization_code` grant then requires a matching `code_verifier`. With a valid verifier public clients (no stored secret) may exchange codes without a client secret.
 - **Redirect whitelist:** authorization and SAML login requests validate `redirect_uri` against the client's `whitelist_urls` (prefix match). Pass `client_id` to pin a specific client; without one the URI must match some client's whitelist when at least one is configured. Whitelist-free setups stay open for backwards compatibility. Clients with registered `redirect_uris` (dynamic registration or manual config) use exact matching instead.
 - **Code binding:** authorization codes issued by the local `/oauth2/authorize` endpoint are bound to the requesting `client_id` and `redirect_uri`; the token endpoint rejects redemption by another client or with a different redirect target. Federated codes bind the `client_id` when the authorization request carried one.
 - **Resource indicators (RFC 8707):** `resource` parameters on `/oauth2/authorize`, `/oauth2/auth/{provider}` and the token endpoint land in the access token `aud` claim (next to `turna-auth`), so resource servers can require their own identifier. A client record may pin allowed resources with `resources` (prefix match; empty allows any).
-- **Revocation:** access and refresh tokens carry a `jti`; `/oauth2/revoke` puts it on a shared denylist until the token expires.
+- **Revocation:** access tokens use their `jti`; revoking a refresh token stores one `revoked_session` record for its `sid`, invalidating old and new family members together. Expired flow/revoke rows are purged at startup, hourly, or manually with `POST /auth/v1/maintenance/flow-codes/purge`.
 
 ### Local authorize + consent
 

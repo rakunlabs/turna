@@ -6,7 +6,7 @@
   import BreakSeal from "./ui/BreakSeal.svelte";
   import { kindSpecs, type ResourceKind } from "../lib/api";
   import { formatStamp } from "../lib/records";
-  import { registry } from "../lib/state/registry.svelte";
+  import { PAGE_SIZE, registry } from "../lib/state/registry.svelte";
   import { editor } from "../lib/state/editor.svelte";
   import { session } from "../lib/state/session.svelte";
 
@@ -18,24 +18,46 @@
 
   let filter = $state("");
   let pendingRevoke = $state("");
+  let searchTimer = 0;
 
   const spec = $derived(kindSpecs[kind]);
   const rows = $derived(registry.rows(kind));
 
+  /**
+   * The IAM registers are paged and searched on the server: the filter box is
+   * a search term the API resolves against the whole register, not just the
+   * page on screen. Short registers keep the instant client-side filter.
+   */
+  const paginated = $derived(spec.paginated === true);
+  const standing = $derived(registry.standing(kind));
+
   const shown = $derived(
-    filter.trim()
+    !paginated && filter.trim()
       ? rows.filter((row) => `${row.id} ${row.sub}`.toLowerCase().includes(filter.trim().toLowerCase()))
       : rows,
   );
 
-  // Identity lists reach the paging cap; anything else is short enough to read.
-  const filterable = $derived(rows.length > 8);
+  const filterable = $derived(paginated ? standing.total > 8 || standing.search !== "" : rows.length > 8);
+  const pageable = $derived(paginated && standing.total > PAGE_SIZE);
+  const rangeEnd = $derived(standing.offset + rows.length);
 
   $effect(() => {
-    // Changing page must not carry a half-armed revoke with it.
+    // Changing page must not carry a half-armed revoke or a stale search debounce.
     void kind;
     pendingRevoke = "";
-    filter = "";
+    window.clearTimeout(searchTimer);
+    // A paginated register keeps its search term across visits; show it.
+    filter = kindSpecs[kind].paginated ? registry.standing(kind).search : "";
+  });
+
+  $effect(() => {
+    if (!paginated) return;
+
+    const term = filter.trim();
+    if (term === registry.standing(kind).search) return;
+
+    window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => void registry.applySearch(kind, term), 300);
   });
 
   function revoke(id: string) {
@@ -52,18 +74,27 @@
   {/snippet}
 
   {#snippet custody()}
-    <span class="stamp">
-      {rows.length}
-      {rows.length === 1 ? "record" : "records"}{filter.trim() && shown.length !== rows.length
-        ? ` · ${shown.length} shown`
-        : ""}
-    </span>
+    {#if paginated}
+      <span class="stamp">
+        {standing.total}
+        {standing.total === 1 ? "record" : "records"}{standing.search
+          ? ` matching “${standing.search}”`
+          : ""}
+      </span>
+    {:else}
+      <span class="stamp">
+        {rows.length}
+        {rows.length === 1 ? "record" : "records"}{filter.trim() && shown.length !== rows.length
+          ? ` · ${shown.length} shown`
+          : ""}
+      </span>
+    {/if}
     <span class="serial stamp-raw">{session.apiBase}/{spec.listPath}</span>
   {/snippet}
 
   {#if filterable}
     <div class="mb-6 max-w-md">
-      <label class="stamp block" for="register-filter">Filter</label>
+      <label class="stamp block" for="register-filter">{paginated ? "Search" : "Filter"}</label>
       <input
         id="register-filter"
         class="entry mt-1"
@@ -72,10 +103,15 @@
         autocomplete="off"
         bind:value={filter}
       />
+      {#if paginated}
+        <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+          Searched on the server across every record, not just this page.
+        </p>
+      {/if}
     </div>
   {/if}
 
-  {#if rows.length === 0}
+  {#if rows.length === 0 && !(paginated && standing.search)}
     <div class="border border-dashed border-rule px-6 py-14 text-center">
       <p class="text-[15px] font-semibold text-ink">Nothing issued yet</p>
       <p class="mx-auto mt-2 max-w-[52ch] text-[13px] leading-[1.6] text-muted">
@@ -153,6 +189,32 @@
         {/each}
       </ul>
     </div>
+
+    {#if pageable}
+      <div class="mt-5 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          class="act"
+          disabled={session.busy || standing.offset === 0}
+          onclick={() => void registry.turnPage(kind, standing.offset - PAGE_SIZE)}
+        >
+          ← Previous
+        </button>
+
+        <span class="stamp" role="status" aria-live="polite">
+          {standing.offset + 1}–{rangeEnd} of {standing.total}
+        </span>
+
+        <button
+          type="button"
+          class="act"
+          disabled={session.busy || rangeEnd >= standing.total}
+          onclick={() => void registry.turnPage(kind, standing.offset + PAGE_SIZE)}
+        >
+          Next →
+        </button>
+      </div>
+    {/if}
   {/if}
 
   {#if extra}

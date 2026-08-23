@@ -279,6 +279,7 @@ func TestAuthMCPIntegration(t *testing.T) {
 		form.Set("client_id", registration.ClientID)
 		form.Set("code", authCode)
 		form.Set("resource", resource)
+		form.Set("remember_me", "true")
 
 		res, err = http.DefaultClient.PostForm(server.URL+"/auth/oauth2/token", form)
 		if err != nil {
@@ -320,6 +321,9 @@ func TestAuthMCPIntegration(t *testing.T) {
 		if refreshClaims["iss"] != server.URL+"/auth/oauth2" || refreshClaims["typ"] != "Refresh" || refreshClaims["azp"] != registration.ClientID {
 			t.Errorf("refresh token claims wrong: %v", refreshClaims)
 		}
+		if refreshClaims["remember_me"] != true || refreshClaims["sid"] == nil || refreshClaims["session_exp"] == nil {
+			t.Errorf("remembered session claims missing: %v", refreshClaims)
+		}
 	})
 
 	// --- introspection + revocation -------------------------------------
@@ -342,7 +346,9 @@ func TestAuthMCPIntegration(t *testing.T) {
 			t.Fatalf("access token should be active: %v", out)
 		}
 
-		// Refresh tokens rotate: the old token becomes unusable immediately.
+		// Remembered sessions slide: a refresh returns a new token in the same
+		// family, while the previous token remains usable until its own expiry.
+		originalRefresh := tokenResponse.RefreshToken
 		refreshForm := url.Values{
 			"grant_type":    {"refresh_token"},
 			"refresh_token": {tokenResponse.RefreshToken},
@@ -359,16 +365,23 @@ func TestAuthMCPIntegration(t *testing.T) {
 		}
 		res.Body.Close()
 		if res.StatusCode != http.StatusOK || rotated.RefreshToken == "" || rotated.RefreshToken == tokenResponse.RefreshToken {
-			t.Fatalf("refresh rotation failed: status=%d token=%+v", res.StatusCode, rotated)
+			t.Fatalf("sliding refresh failed: status=%d token=%+v", res.StatusCode, rotated)
+		}
+		originalClaims := decodeJWTClaims(t, originalRefresh)
+		rotatedClaims := decodeJWTClaims(t, rotated.RefreshToken)
+		if originalClaims["sid"] != rotatedClaims["sid"] || originalClaims["session_exp"] != rotatedClaims["session_exp"] {
+			t.Fatalf("refresh left its session family: old=%v new=%v", originalClaims, rotatedClaims)
 		}
 
 		res, err = http.DefaultClient.PostForm(server.URL+"/auth/oauth2/token", refreshForm)
 		if err != nil {
-			t.Fatalf("refresh replay: %v", err)
+			t.Fatalf("concurrent-style refresh: %v", err)
 		}
+		var parallel AccessTokenResponse
+		_ = json.NewDecoder(res.Body).Decode(&parallel)
 		res.Body.Close()
-		if res.StatusCode == http.StatusOK {
-			t.Fatal("used refresh token was accepted")
+		if res.StatusCode != http.StatusOK || parallel.RefreshToken == "" {
+			t.Fatalf("previous refresh token was not reusable: status=%d token=%+v", res.StatusCode, parallel)
 		}
 
 		// revoke the refresh token
@@ -386,6 +399,9 @@ func TestAuthMCPIntegration(t *testing.T) {
 		if out := introspect(tokenResponse.RefreshToken); out["active"] != false {
 			t.Fatalf("revoked refresh token should be inactive: %v", out)
 		}
+		if out := introspect(originalRefresh); out["active"] != false {
+			t.Fatalf("revoking one family member must revoke the original: %v", out)
+		}
 
 		// a revoked refresh token must not mint new tokens
 		refreshForm = url.Values{
@@ -399,7 +415,7 @@ func TestAuthMCPIntegration(t *testing.T) {
 		}
 		res.Body.Close()
 		if res.StatusCode == http.StatusOK {
-			t.Fatal("revoked refresh token was accepted")
+			t.Fatal("revoked refresh token family was accepted")
 		}
 	})
 

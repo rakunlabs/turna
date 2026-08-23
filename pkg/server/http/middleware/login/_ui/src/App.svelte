@@ -14,6 +14,7 @@
   let notice = "";
   let working = false;
   let mounted = false;
+  let rememberMe = false;
 
   type View = "signin" | "signup" | "verify" | "reset" | "reset-confirm";
   let view: View = "signin";
@@ -225,7 +226,7 @@
         throw new Error("Provider not found");
       }
 
-      await login(url, data);
+      await login(url, { ...data, remember_me: rememberMe });
 
       // redirect to home
       if (!isResponseTypeCode()) {
@@ -259,7 +260,7 @@
       const begin = await axios.post<{
         session_id: string;
         options: ServerRequestOptions;
-      }>(url, username ? { username } : {});
+      }>(url, { ...(username ? { username } : {}), remember_me: rememberMe });
 
       const assertion = await startAuthentication(begin.data.options);
       if (!assertion) {
@@ -269,6 +270,7 @@
       await axios.post(url, {
         session_id: begin.data.session_id,
         assertion,
+        remember_me: rememberMe,
       });
 
       if (!isResponseTypeCode()) {
@@ -315,7 +317,10 @@
   };
 
   const checkWindow = (url: string) => {
-    const win = window.open(url);
+    const target = new URL(url, window.location.origin);
+    if (rememberMe) target.searchParams.set("remember_me", "true");
+
+    const win = window.open(target.toString());
     if (!win) {
       error = "The sign-in window was blocked. Allow pop-ups and try again.";
       return;
@@ -407,6 +412,21 @@
         <span class={mounted ? "" : "invisible"}>{authInfo.title}</span>
       </h2>
       <hr class="mb-2" />
+      {#if view === "signin" && (authInfo.provider.password?.length || authInfo.provider.passkey?.length || authInfo.provider.code?.length)}
+        <label class="mb-5 flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5">
+          <input
+            type="checkbox"
+            bind:checked={rememberMe}
+            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#615fff] focus:ring-2 focus:ring-blue-200"
+          />
+          <span class="min-w-0">
+            <span class="block text-sm font-semibold text-gray-900">Remember me</span>
+            <span class="mt-0.5 block text-xs leading-5 text-gray-600">
+              Keep this sign-in active while you use the site, subject to the server's maximum session lifetime.
+            </span>
+          </span>
+        </label>
+      {/if}
       {#if authInfo.provider.password?.length && view === "signin"}
         {#if authInfo.provider.password?.length > 1}
           <div class="float-right">

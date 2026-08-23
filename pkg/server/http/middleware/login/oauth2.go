@@ -16,7 +16,7 @@ import (
 
 // IssuerPasswordToken runs the password grant in-process against a registered
 // issuer (auth middleware) instead of calling token_url over HTTP.
-func (m *Login) IssuerPasswordToken(r *http.Request, issuerName, username, password string, oauth2 *session.Oauth2) ([]byte, int, error) {
+func (m *Login) IssuerPasswordToken(r *http.Request, issuerName, username, password string, rememberMe bool, oauth2 *session.Oauth2) ([]byte, int, error) {
 	issuer := session.IssuerRegistry.Get(issuerName)
 	if issuer == nil {
 		return nil, http.StatusInternalServerError, fmt.Errorf("issuer %q not found", issuerName)
@@ -33,6 +33,9 @@ func (m *Login) IssuerPasswordToken(r *http.Request, issuerName, username, passw
 	}
 	if len(oauth2.Scopes) > 0 {
 		uValues.Set("scope", strings.Join(oauth2.Scopes, " "))
+	}
+	if rememberMe {
+		uValues.Set("remember_me", "true")
 	}
 
 	body, statusCode, err := issuer.IssueToken(r, uValues)
@@ -93,7 +96,7 @@ func (m *Login) RemotePasskeyToken(r *http.Request, passkeyURL string, body []by
 	return respBody, statusCode, nil
 }
 
-func (m *Login) PasswordToken(ctx context.Context, username, password string, oauth2 *session.Oauth2) ([]byte, int, error) {
+func (m *Login) PasswordToken(ctx context.Context, username, password string, rememberMe bool, oauth2 *session.Oauth2) ([]byte, int, error) {
 	uValues := url.Values{
 		"grant_type": {"password"},
 		"username":   {username},
@@ -101,6 +104,9 @@ func (m *Login) PasswordToken(ctx context.Context, username, password string, oa
 	}
 	if len(oauth2.Scopes) > 0 {
 		uValues.Set("scope", strings.Join(oauth2.Scopes, " "))
+	}
+	if rememberMe {
+		uValues.Set("remember_me", "true")
 	}
 
 	encodedData := uValues.Encode()
@@ -139,7 +145,7 @@ func (m *Login) PasswordToken(ctx context.Context, username, password string, oa
 }
 
 // CodeToken get token and set the cookie/session.
-func (m *Login) CodeToken(r *http.Request, code, providerName string, oauth2 *session.Oauth2) ([]byte, int, error) {
+func (m *Login) CodeToken(r *http.Request, code, providerName string, oauth2 *session.Oauth2, rememberMe bool) ([]byte, int, error) {
 	ctx := r.Context()
 	redirectURI, err := m.AuthCodeRedirectURL(r, providerName)
 	if err != nil {
@@ -153,6 +159,9 @@ func (m *Login) CodeToken(r *http.Request, code, providerName string, oauth2 *se
 
 	if redirectURI != "" {
 		uValues.Set("redirect_uri", redirectURI)
+	}
+	if rememberMe {
+		uValues.Set("remember_me", "true")
 	}
 
 	encodedData := uValues.Encode()

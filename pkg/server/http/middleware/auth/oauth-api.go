@@ -30,6 +30,7 @@ type AccessTokenRequest struct {
 	RefreshToken string `form:"refresh_token" json:"refresh_token"`
 	Username     string `form:"username"      json:"username"`
 	Password     string `form:"password"      json:"password"`
+	RememberMe   bool   `form:"remember_me"   json:"remember_me"`
 	Scope        string `form:"scope"         json:"scope"`
 	// TOTP second factor for the password grant.
 	TOTP string `form:"totp" json:"totp"`
@@ -144,10 +145,30 @@ func (m *Auth) writeToken(w http.ResponseWriter, r *http.Request, user *data.Use
 	m.writeTokenExt(w, r, user, clientID, scope, defScope, "", "", nil)
 }
 
+type tokenIssueOptions struct {
+	IssuedTokenType string
+	Nonce           string
+	Resources       []string
+	RememberMe      bool
+	SID             string
+	AuthTime        int64
+	SessionExpires  int64
+	RefreshToken    string
+	RefreshExpires  int64
+}
+
 // writeTokenExt issues access+refresh tokens for the user, optionally
 // tagging the response with an RFC 8693 issued_token_type, embedding
 // the OIDC nonce in the id_token and adding RFC 8707 resource audiences.
 func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.UserExtended, clientID string, scope, defScope []string, issuedTokenType, nonce string, resources []string) {
+	m.writeTokenWithOptions(w, r, user, clientID, scope, defScope, tokenIssueOptions{
+		IssuedTokenType: issuedTokenType,
+		Nonce:           nonce,
+		Resources:       resources,
+	})
+}
+
+func (m *Auth) writeTokenWithOptions(w http.ResponseWriter, r *http.Request, user *data.UserExtended, clientID string, scope, defScope []string, options tokenIssueOptions) {
 	ctx := r.Context()
 	signer, err := m.jwtRuntime(ctx)
 	if err != nil {
@@ -163,13 +184,43 @@ func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.
 	sn := m.cache.Snapshot()
 	tokenCfg := sn.Token
 	issuer := m.issuerURL(r)
+	now := time.Now()
+
+	if options.SID == "" {
+		options.SID = ulid.Make().String()
+	}
+	if options.AuthTime == 0 {
+		options.AuthTime = now.Unix()
+	}
+	if options.SessionExpires == 0 {
+		lifetime := tokenCfg.GetRefreshLifetime()
+		if options.RememberMe {
+			lifetime = tokenCfg.GetRefreshAbsoluteLifetime()
+		}
+		options.SessionExpires = now.Add(lifetime).Unix()
+	}
+	if options.SessionExpires <= now.Unix() {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_grant",
+			ErrorDescription: "session maximum lifetime exceeded",
+			code:             http.StatusUnauthorized,
+		})
+
+		return
+	}
+
+	accessExpires := min(now.Add(tokenCfg.GetTokenLifetime()).Unix(), options.SessionExpires)
 
 	claimsAccess := map[string]any{
 		"iss":                issuer,
-		"aud":                tokenAudience(resources),
+		"aud":                tokenAudience(options.Resources),
 		"jti":                ulid.Make().String(),
 		"sub":                user.ID,
 		"azp":                clientID,
+		"sid":                options.SID,
+		"auth_time":          options.AuthTime,
+		"session_exp":        options.SessionExpires,
+		"remember_me":        options.RememberMe,
 		"name":               user.Details["name"],
 		"preferred_username": user.Details["name"],
 	}
@@ -230,7 +281,7 @@ func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.
 		setClaimByPath(claimsAccess, rolesClaim, rolesList)
 	}
 
-	accessToken, err := signer.JWT.Generate(claimsAccess, nowAdd(tokenCfg.GetTokenLifetime()))
+	accessToken, err := signer.JWT.Generate(claimsAccess, accessExpires)
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "server_error",
@@ -241,28 +292,37 @@ func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.
 		return
 	}
 
-	claimsRefresh := map[string]any{
-		"iss": issuer,
-		"aud": tokenAudience(resources),
-		"jti": ulid.Make().String(),
-		"sub": user.ID,
-		"azp": clientID,
-		"typ": "Refresh",
-	}
+	refreshToken := options.RefreshToken
+	refreshExpires := options.RefreshExpires
+	if refreshToken == "" || options.RememberMe {
+		refreshExpires = min(now.Add(tokenCfg.GetRefreshLifetime()).Unix(), options.SessionExpires)
+		claimsRefresh := map[string]any{
+			"iss":         issuer,
+			"aud":         tokenAudience(options.Resources),
+			"jti":         ulid.Make().String(),
+			"sub":         user.ID,
+			"azp":         clientID,
+			"typ":         "Refresh",
+			"sid":         options.SID,
+			"auth_time":   options.AuthTime,
+			"session_exp": options.SessionExpires,
+			"remember_me": options.RememberMe,
+		}
 
-	if len(scopeList) > 0 {
-		claimsRefresh["scope"] = strings.Join(scopeList, " ")
-	}
+		if len(scopeList) > 0 {
+			claimsRefresh["scope"] = strings.Join(scopeList, " ")
+		}
 
-	refreshToken, err := signer.JWT.Generate(claimsRefresh, nowAdd(tokenCfg.GetRefreshLifetime()))
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
+		refreshToken, err = signer.JWT.Generate(claimsRefresh, refreshExpires)
+		if err != nil {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "server_error",
+				ErrorDescription: err.Error(),
+				code:             http.StatusInternalServerError,
+			})
 
-		return
+			return
+		}
 	}
 
 	// id_token for OIDC clients
@@ -273,6 +333,8 @@ func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.
 			"aud":                clientID,
 			"azp":                clientID,
 			"sub":                user.ID,
+			"sid":                options.SID,
+			"auth_time":          options.AuthTime,
 			"iat":                time.Now().Unix(),
 			"name":               user.Details["name"],
 			"preferred_username": claimsAccess["preferred_username"],
@@ -287,11 +349,11 @@ func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.
 		if v, ok := user.Details["family_name"]; ok {
 			claimsID["family_name"] = v
 		}
-		if nonce != "" {
-			claimsID["nonce"] = nonce
+		if options.Nonce != "" {
+			claimsID["nonce"] = options.Nonce
 		}
 
-		idToken, err = signer.JWT.Generate(claimsID, nowAdd(tokenCfg.GetTokenLifetime()))
+		idToken, err = signer.JWT.Generate(claimsID, accessExpires)
 		if err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "server_error",
@@ -309,12 +371,12 @@ func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.
 	httputil.JSON(w, http.StatusOK, AccessTokenResponse{
 		TokenType:             "Bearer",
 		AccessToken:           accessToken,
-		ExpiresIn:             int64(tokenCfg.GetTokenLifetime().Seconds()),
+		ExpiresIn:             max(accessExpires-now.Unix(), 0),
 		RefreshToken:          refreshToken,
-		RefreshTokenExpiresIn: int64(tokenCfg.GetRefreshLifetime().Seconds()),
+		RefreshTokenExpiresIn: max(refreshExpires-now.Unix(), 0),
 		Scope:                 strings.Join(scopeList, " "),
 		IDToken:               idToken,
-		IssuedTokenType:       issuedTokenType,
+		IssuedTokenType:       options.IssuedTokenType,
 	})
 }
 
@@ -559,7 +621,10 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		m.writeTokenExt(w, r, user, clientID, splitFields(accessTokenRequest.Scope), accessClient.Scope, "", "", reqResources)
+		m.writeTokenWithOptions(w, r, user, clientID, splitFields(accessTokenRequest.Scope), accessClient.Scope, tokenIssueOptions{
+			Resources:  reqResources,
+			RememberMe: accessTokenRequest.RememberMe,
+		})
 
 		return
 	case "refresh_token":
@@ -631,19 +696,14 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 		if err != nil || exp == nil || jti == "" {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
-				ErrorDescription: "refresh token lacks rotation claims",
+				ErrorDescription: "refresh token lacks session claims",
 				code:             http.StatusUnauthorized,
 			})
 
 			return
 		}
 
-		subject, _ := claims["sub"].(string)
-		consumed, err := m.store.CreateFlowCodeOnce(r.Context(), flowKindRevoked, jti, revokedToken{
-			Subject:  subject,
-			ClientID: clientID,
-			Type:     "Refresh",
-		}, time.Until(exp.Time))
+		revoked, err := m.claimsRevoked(r.Context(), claims)
 		if err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "server_error",
@@ -653,16 +713,47 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 
 			return
 		}
-		if !consumed {
+		if revoked {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
-				ErrorDescription: "refresh token already used or revoked",
+				ErrorDescription: "refresh token revoked",
 				code:             http.StatusUnauthorized,
 			})
 
 			return
 		}
 
+		rememberMe, _ := claims["remember_me"].(bool)
+		sid, _ := claims["sid"].(string)
+		if sid == "" {
+			sid = jti
+		}
+		authTime := claimInt64(claims["auth_time"])
+		if authTime == 0 {
+			authTime = claimInt64(claims["iat"])
+		}
+		if authTime == 0 {
+			authTime = time.Now().Unix()
+		}
+		sessionExpires := claimInt64(claims["session_exp"])
+		if sessionExpires == 0 {
+			if rememberMe {
+				sessionExpires = time.Unix(authTime, 0).Add(m.cache.Snapshot().Token.GetRefreshAbsoluteLifetime()).Unix()
+			} else {
+				sessionExpires = exp.Time.Unix()
+			}
+		}
+		if sessionExpires <= time.Now().Unix() {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_grant",
+				ErrorDescription: "session maximum lifetime exceeded",
+				code:             http.StatusUnauthorized,
+			})
+
+			return
+		}
+
+		subject, _ := claims["sub"].(string)
 		user, err := m.cache.GetUser(data.GetUserRequest{ID: subject, AddScopeRoles: true})
 		if err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
@@ -677,7 +768,15 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 		scope, _ := claims["scope"].(string)
 
 		// resource audiences granted at login survive the refresh
-		m.writeTokenExt(w, r, user, clientID, splitFields(scope), nil, "", "", audienceResources(claims["aud"]))
+		m.writeTokenWithOptions(w, r, user, clientID, splitFields(scope), nil, tokenIssueOptions{
+			Resources:      audienceResources(claims["aud"]),
+			RememberMe:     rememberMe,
+			SID:            sid,
+			AuthTime:       authTime,
+			SessionExpires: sessionExpires,
+			RefreshToken:   accessTokenRequest.RefreshToken,
+			RefreshExpires: exp.Time.Unix(),
+		})
 
 		return
 	case "authorization_code":
@@ -829,7 +928,11 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// nonce from the original authorization request lands in the id_token
-		m.writeTokenExt(w, r, user, clientID, codeValue.Scope, accessClient.Scope, "", codeValue.Nonce, resources)
+		m.writeTokenWithOptions(w, r, user, clientID, codeValue.Scope, accessClient.Scope, tokenIssueOptions{
+			Nonce:      codeValue.Nonce,
+			Resources:  resources,
+			RememberMe: accessTokenRequest.RememberMe,
+		})
 
 		return
 	case grantTypeDeviceCode:
@@ -928,7 +1031,17 @@ func (m *Auth) APIUserInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if jti, _ := claims["jti"].(string); m.isTokenRevoked(r.Context(), jti) {
+	revoked, err := m.claimsRevoked(r.Context(), claims)
+	if err != nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "server_error",
+			ErrorDescription: err.Error(),
+			code:             http.StatusInternalServerError,
+		})
+
+		return
+	}
+	if revoked {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_token",
 			ErrorDescription: "token revoked",

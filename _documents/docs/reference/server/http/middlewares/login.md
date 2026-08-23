@@ -93,6 +93,12 @@ The canonical endpoint uses the standard payload envelope:
 
 The two compatibility aliases keep their historic unwrapped `{title, provider}` response.
 
+## Remember me
+
+The embedded login page exposes one **Remember me** choice shared by password, passkey and authorization-code buttons. The login middleware carries `remember_me=true` to the provider's token mint; it does not calculate token lifetimes itself.
+
+The built-in [`auth`](./auth) issuer treats an unchecked login as a fixed refresh session (default `24h`). A checked login uses a sliding refresh window (default `24h`) up to `token.refresh_absolute_lifetime` (default `720h`, 30 days). The choice is signed into the refresh token and cannot be turned on later by adding a field to a refresh request. External OAuth providers may ignore this Turna extension.
+
 ## Passkey
 
 When a session provider sets `passkey: true` together with `auth_middleware` (in-process) or `oauth2.passkey_url` (remote auth instance), the login UI shows a "Sign in with a passkey" button. The login middleware proxies WebAuthn begin/finish payloads to the auth middleware — in-process or over HTTP with the original host/scheme forwarded — injects the provider's `client_id`/`client_secret`/`scopes`, and stores the issued tokens in the session on success. Passkeys are registered through the auth middleware (`/auth/v1/passkey/register`, available in its management UI).

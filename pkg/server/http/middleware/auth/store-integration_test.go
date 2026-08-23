@@ -53,6 +53,22 @@ func TestStoreIntegration(t *testing.T) {
 		t.Fatalf("duplicate flow once: created=%v err=%v", created, err)
 	}
 
+	if err := store.CreateFlowCode(ctx, flowKindRevoked, "expired-cleanup-test", revokedToken{}, -time.Second); err != nil {
+		t.Fatalf("create expired flow: %v", err)
+	}
+	if err := store.CreateFlowCode(ctx, flowKindRevoked, "active-cleanup-test", revokedToken{}, time.Minute); err != nil {
+		t.Fatalf("create active flow: %v", err)
+	}
+	deleted, err := store.PruneExpiredFlowCodes(ctx, 1000)
+	if err != nil || deleted < 1 {
+		t.Fatalf("prune expired flows: deleted=%d err=%v", deleted, err)
+	}
+	var active revokedToken
+	if err := store.GetFlowCode(ctx, flowKindRevoked, "active-cleanup-test", &active); err != nil {
+		t.Fatalf("active flow was pruned: %v", err)
+	}
+	_ = store.DeleteFlowCode(ctx, flowKindRevoked, "active-cleanup-test")
+
 	// check settings now live in the database
 	if _, err := store.PutSetting(ctx, "check", json.RawMessage(`{"no_host_check":true}`), "integration"); err != nil {
 		t.Fatalf("put check setting: %v", err)

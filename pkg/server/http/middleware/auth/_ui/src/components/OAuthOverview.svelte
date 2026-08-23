@@ -4,7 +4,7 @@
   import Serial from "./ui/Serial.svelte";
   import Switch from "./ui/Switch.svelte";
   import BreakSeal from "./ui/BreakSeal.svelte";
-  import { session } from "../lib/state/session.svelte";
+  import { docket, session } from "../lib/state/session.svelte";
   import { registry } from "../lib/state/registry.svelte";
   import {
     getSettingString,
@@ -39,6 +39,19 @@
       href: `${session.oauthBase}/oauth2/.well-known/openid-configuration`,
     },
   ]);
+
+  async function purgeExpiredAuthRecords() {
+    let deleted = 0;
+    const ok = await session.run(async () => {
+      const response = await session.request<{ deleted: number }>("maintenance/flow-codes/purge", {
+        method: "POST",
+        body: "{}",
+      });
+      deleted = response.payload.deleted;
+    }, "Expired auth records could not be purged");
+
+    if (ok) docket.commit(`${deleted} expired auth record${deleted === 1 ? "" : "s"} purged`);
+  }
 </script>
 
 {#snippet commit(namespace: "token" | "oauth2" | "authorize" | "password" | "passkey" | "jwt")}
@@ -66,7 +79,7 @@
   <Section title="Token lifetimes" note="How long an issued token stays good. Duration strings, e.g. 15m, 24h." first>
     {#snippet aside()}{@render commit("token")}{/snippet}
 
-    <div class="grid gap-6 sm:grid-cols-2">
+    <div class="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
       <div class="min-w-0">
         <label class="stamp block" for="token-lifetime">Access token lifetime</label>
         <input
@@ -84,7 +97,7 @@
       </div>
 
       <div class="min-w-0">
-        <label class="stamp block" for="refresh-lifetime">Refresh token lifetime</label>
+        <label class="stamp block" for="refresh-lifetime">Refresh idle lifetime</label>
         <input
           id="refresh-lifetime"
           class="entry serial mt-1.5"
@@ -95,9 +108,35 @@
           oninput={(event) => setSettingString("token", ["refresh_lifetime"], event.currentTarget.value)}
         />
         <p id="refresh-lifetime-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
-          The outer bound on a session that is never re-authenticated.
+          Remembered sessions slide by this window whenever a refresh succeeds. Standard sessions keep a fixed window.
         </p>
       </div>
+
+      <div class="min-w-0">
+        <label class="stamp block" for="refresh-absolute-lifetime">Maximum session lifetime</label>
+        <input
+          id="refresh-absolute-lifetime"
+          class="entry serial mt-1.5"
+          autocomplete="off"
+          aria-describedby="refresh-absolute-lifetime-hint"
+          placeholder="720h"
+          value={getSettingString("token", ["refresh_absolute_lifetime"])}
+          oninput={(event) =>
+            setSettingString("token", ["refresh_absolute_lifetime"], event.currentTarget.value)}
+        />
+        <p id="refresh-absolute-lifetime-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+          Remembered sessions cannot slide past this boundary. Default 720h (30 days).
+        </p>
+      </div>
+    </div>
+
+    <div class="mt-7 flex flex-wrap items-center justify-between gap-4 border-t border-rule pt-5">
+      <p class="max-w-[68ch] text-[12px] leading-[1.6] text-muted">
+        Expired authorization state and revoke records are removed hourly. Run the same indexed, batch-safe cleanup now.
+      </p>
+      <button type="button" class="act" disabled={session.busy} onclick={() => void purgeExpiredAuthRecords()}>
+        Purge expired records
+      </button>
     </div>
   </Section>
 
