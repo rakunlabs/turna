@@ -11,7 +11,7 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-@theme {
+@theme inline {
   --color-ground: var(--w-ground);
   --color-sheet: var(--w-sheet);
   --color-raised: var(--w-raised);

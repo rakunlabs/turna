@@ -664,18 +664,16 @@
         {/each}
       {/if}
       {#if view === "signin" && !authInfo.disable_remember_me && (authInfo.provider.password?.length || authInfo.provider.passkey?.length || authInfo.provider.code?.length)}
-        <label class="mt-6 flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-800 dark:bg-gray-950">
+        <label
+          title="Keep this sign-in active while you use the site, subject to the server's maximum session lifetime."
+          class="mt-6 flex cursor-pointer items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-800 dark:bg-gray-950"
+        >
           <input
             type="checkbox"
             bind:checked={rememberMe}
-            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#615fff] focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-900 dark:focus:ring-blue-800"
+            class="h-4 w-4 rounded border-gray-300 text-[#615fff] focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-900 dark:focus:ring-blue-800"
           />
-          <span class="min-w-0">
-            <span class="block text-sm font-semibold text-gray-900 dark:text-gray-100">Remember me</span>
-            <span class="mt-0.5 block text-xs leading-5 text-gray-600 dark:text-gray-400">
-              Keep this sign-in active while you use the site, subject to the server's maximum session lifetime.
-            </span>
-          </span>
+          <span class="min-w-0 text-sm font-semibold text-gray-900 dark:text-gray-100">Remember me</span>
         </label>
       {/if}
       {#if notice != ""}
@@ -731,13 +729,15 @@
 
 <style lang="scss">
   .custom-hr {
-    @apply text-center overflow-visible;
+    overflow: visible;
+    text-align: center;
 
     &::after {
+      position: relative;
       content: "Or continue with";
       top: -13px;
-
-      @apply bg-white relative px-2;
+      padding-inline: 0.5rem;
+      background-color: #fff;
     }
   }
 
