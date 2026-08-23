@@ -265,7 +265,11 @@ Discovery-driven clients (the MCP spec) find the authorization server of a prote
 
 ```yaml
 session:
-  protected_resource: {}        # enable with everything derived
+  protected_resource:
+    # Optional: require resource-bound aud only for these OAuth clients.
+    # Empty or omitted disables audience enforcement.
+    check_audience_azp:
+      - https://claude.ai/oauth/claude-code-client-metadata
   provider:
     turna:
       auth_middleware: auth
@@ -286,8 +290,9 @@ Several MCP endpoints behind one session (`/krabby/mcp`, `/krabby/mcp/admin`, ..
 | `resource` | `{scheme}://{host}{path}` per request | Pins one canonical RFC 8707/9728 resource identifier for the whole surface (honors `X-Forwarded-Proto`/`X-Forwarded-Host` when deriving). Leave empty for per-path resources. |
 | `authorization_servers` | derived | Issuer URLs listed in the metadata. Empty derives them from every provider backed by an in-process `auth_middleware` (the auth middleware's canonical issuer URL, honoring its `oauth2.base_url`). Set explicitly for remote/oauth2 providers. |
 | `scopes_supported` | | Advertised scopes. |
+| `check_audience_azp` | empty | OAuth client IDs (`azp` claims) whose bearer tokens must contain the exact requested resource identifier in `aud`. Matching is exact. Empty disables audience enforcement; unlisted clients continue to downstream `iam_check` normally. A listed client with a missing/wrong audience gets `401` + `error="invalid_token"` and the resource metadata pointer. |
 
-A typical MCP flow behind session: the client calls the protected endpoint, gets `401` with the metadata pointer, reads `authorization_servers`, runs dynamic client registration + PKCE code flow against the auth middleware (keep its public plane reachable with `auth_skip_paths`), and retries with the bearer token — which session validates as usual.
+A typical MCP flow behind session: the client calls the protected endpoint, gets `401` with the metadata pointer, reads `authorization_servers`, runs dynamic client registration + PKCE code flow against the auth middleware (keep its public plane reachable with `auth_skip_paths`), and retries with the bearer token. Session validates the token, conditionally checks its resource audience when its `azp` is listed, then sets `X-User`; a following `iam_check` still makes the user/path/method authorization decision.
 
 ## Skip paths
 

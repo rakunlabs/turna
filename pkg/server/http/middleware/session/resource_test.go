@@ -261,16 +261,54 @@ func TestProtectedResource(t *testing.T) {
 		}
 	})
 
-	t.Run("protected resource does not enforce bearer audience", func(t *testing.T) {
-		m := newResourceSession(t, key, &ProtectedResource{}, false)
-		token := signSkipToken(t, key, jwt.MapClaims{
-			"preferred_username": "user1",
-			"aud":                "turna-auth",
-		})
+	t.Run("audience enforcement is scoped by azp", func(t *testing.T) {
+		const claudeAZP = "https://claude.ai/oauth/claude-code-client-metadata"
 
-		rec := do(m, "https://app.example.com/krabby/mcp", map[string]string{"Authorization": "Bearer " + token})
+		token := func(azp string, aud any) string {
+			return signSkipToken(t, key, jwt.MapClaims{
+				"preferred_username": "user1",
+				"azp":                azp,
+				"aud":                aud,
+			})
+		}
+
+		// Empty list disables audience enforcement even for Claude.
+		m := newResourceSession(t, key, &ProtectedResource{}, false)
+		rec := do(m, "https://app.example.com/krabby/mcp", map[string]string{
+			"Authorization": "Bearer " + token(claudeAZP, "turna-auth"),
+		})
 		if rec.Code != http.StatusOK {
-			t.Fatalf("status = %d, want 200", rec.Code)
+			t.Fatalf("empty list status = %d, want 200", rec.Code)
+		}
+
+		m = newResourceSession(t, key, &ProtectedResource{CheckAudienceAZP: []string{claudeAZP}}, false)
+
+		// A listed client must carry the exact requested resource in aud.
+		rec = do(m, "https://app.example.com/krabby/mcp", map[string]string{
+			"Authorization": "Bearer " + token(claudeAZP, "turna-auth"),
+		})
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("listed azp with wrong aud status = %d, want 401", rec.Code)
+		}
+		challenge := rec.Header().Get("WWW-Authenticate")
+		if !strings.Contains(challenge, `error="invalid_token"`) ||
+			!strings.Contains(challenge, `resource_metadata="https://app.example.com/.well-known/oauth-protected-resource/krabby/mcp"`) {
+			t.Errorf("WWW-Authenticate = %q", challenge)
+		}
+
+		rec = do(m, "https://app.example.com/krabby/mcp", map[string]string{
+			"Authorization": "Bearer " + token(claudeAZP, []string{"turna-auth", "https://app.example.com/krabby/mcp"}),
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("listed azp with correct aud status = %d, want 200", rec.Code)
+		}
+
+		// Other clients continue to iam_check/downstream without an aud gate.
+		rec = do(m, "https://app.example.com/krabby/mcp", map[string]string{
+			"Authorization": "Bearer " + token("browser-client", "turna-auth"),
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("unlisted azp status = %d, want 200", rec.Code)
 		}
 	})
 

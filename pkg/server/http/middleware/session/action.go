@@ -921,6 +921,15 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 					}
 				}
 
+				// Apply RFC 8707 resource binding only to OAuth clients
+				// explicitly selected by protected_resource.check_audience_azp.
+				if !m.bearerAudienceAllowed(r, customClaims.Map) {
+					slog.Debug("token audience does not cover resource", "azp", customClaims.Map["azp"], "path", r.URL.Path)
+					m.invalidTokenChallenge(w, r, "token audience does not cover this resource")
+
+					return
+				}
+
 				// next middlewares can check roles
 				var providerName string
 				if m.SetProvider != "" {

@@ -44,6 +44,13 @@ type ProtectedResource struct {
 
 	// ScopesSupported advertised in the metadata document.
 	ScopesSupported []string `cfg:"scopes_supported"`
+
+	// CheckAudienceAZP limits RFC 8707 audience enforcement to bearer
+	// tokens issued to one of these OAuth client IDs (the token's azp
+	// claim). Empty disables audience enforcement. Matching is exact.
+	// This lets MCP clients use resource-bound tokens while ordinary
+	// browser/session clients continue through iam_check unchanged.
+	CheckAudienceAZP []string `cfg:"check_audience_azp"`
 }
 
 // requestBase returns {scheme}://{host} honoring forwarded headers.
@@ -180,4 +187,60 @@ func (m *Session) bearerChallenge(r *http.Request) string {
 	}
 
 	return fmt.Sprintf("Bearer resource_metadata=%q", m.resourceMetadataURL(r))
+}
+
+// audienceContains checks a string-or-list aud claim for an exact resource
+// identifier match.
+func audienceContains(aud any, resource string) bool {
+	switch v := aud.(type) {
+	case string:
+		return v == resource
+	case []any:
+		for _, item := range v {
+			if s, ok := item.(string); ok && s == resource {
+				return true
+			}
+		}
+	case []string:
+		for _, s := range v {
+			if s == resource {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// bearerAudienceAllowed enforces RFC 8707 resource binding only when the
+// token's azp is explicitly listed in check_audience_azp. An empty list or
+// an unlisted client leaves authorization to the following iam_check.
+func (m *Session) bearerAudienceAllowed(r *http.Request, claims map[string]any) bool {
+	if m.ProtectedResource == nil || len(m.ProtectedResource.CheckAudienceAZP) == 0 {
+		return true
+	}
+
+	azp, _ := claims["azp"].(string)
+	matched := false
+	for _, allowedAZP := range m.ProtectedResource.CheckAudienceAZP {
+		if allowedAZP != "" && azp == allowedAZP {
+			matched = true
+
+			break
+		}
+	}
+	if !matched {
+		return true
+	}
+
+	return audienceContains(claims["aud"], m.resourceIDForPath(r, r.URL.Path))
+}
+
+// invalidTokenChallenge answers 401 with an RFC 6750 error challenge while
+// retaining the resource_metadata pointer used by MCP discovery.
+func (m *Session) invalidTokenChallenge(w http.ResponseWriter, r *http.Request, description string) {
+	w.Header().Set("WWW-Authenticate", fmt.Sprintf(
+		"%s, error=%q, error_description=%q", m.bearerChallenge(r), "invalid_token", description))
+
+	httputil.JSON(w, http.StatusUnauthorized, MetaData{Error: description})
 }
