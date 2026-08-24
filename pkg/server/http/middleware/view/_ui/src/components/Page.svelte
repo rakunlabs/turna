@@ -18,5 +18,5 @@
   class="w-full h-full"
   src="./page/{params?.wild}"
   title={params?.wild}
-  on:load={loadFinish}
-/>
+  onload={loadFinish}
+></iframe>

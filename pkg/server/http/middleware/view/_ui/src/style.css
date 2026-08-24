@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+/* Tailwind 4 shortened its default sans stack; keep the previous one so the
+   UI keeps rendering in the same face and weight it always had. */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+@layer base {
+  html,
+  body,
+  #app {
+    height: 100%;
+    width: 100%;
+  }
+
+  body {
+    margin: 0;
+  }
+
+  button,
+  input {
+    font: inherit;
+  }
+
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  ul {
+    list-style-type: square;
+  }
+
+  ol {
+    list-style-type: decimal;
+  }
+}

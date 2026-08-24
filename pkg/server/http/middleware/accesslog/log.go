@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 )
 
 type AccessLog struct {
@@ -122,6 +124,14 @@ func (m *AccessLog) Middleware() (func(http.Handler) http.Handler, error) {
 
 			// Check if this is an SSE request - skip buffering to allow streaming
 			if *m.SkipSSE && r.Header.Get("Accept") == "text/event-stream" {
+				next.ServeHTTP(w, r)
+
+				return
+			}
+
+			// WebSocket upgrades need the raw ResponseWriter so the proxy can
+			// hijack the connection; buffering would break the upgrade.
+			if httputil.IsWebSocket(r) {
 				next.ServeHTTP(w, r)
 
 				return
@@ -298,6 +308,12 @@ func (r *customResponseRecorder) Flush() {
 			f.Flush()
 		}
 	}
+}
+
+// Unwrap lets http.ResponseController reach the underlying writer,
+// e.g. to hijack the connection for protocol upgrades.
+func (r *customResponseRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
 }
 
 var _ http.Flusher = (*customResponseRecorder)(nil)

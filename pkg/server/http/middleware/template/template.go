@@ -104,6 +104,14 @@ func (s *Template) Middleware() (func(http.Handler) http.Handler, error) {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// WebSocket upgrades need the raw ResponseWriter so the proxy can
+			// hijack the connection; buffering would break the upgrade.
+			if httputil.IsWebSocket(r) {
+				next.ServeHTTP(w, r)
+
+				return
+			}
+
 			rec := &customResponseRecorder{
 				ResponseWriter: w,
 				body:           new(bytes.Buffer),
@@ -180,6 +188,12 @@ func (r *customResponseRecorder) WriteHeader(code int) {
 
 func (r *customResponseRecorder) Flush() {
 	// no-op
+}
+
+// Unwrap lets http.ResponseController reach the underlying writer,
+// e.g. to hijack the connection for protocol upgrades.
+func (r *customResponseRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
 }
 
 var _ http.Flusher = (*customResponseRecorder)(nil)

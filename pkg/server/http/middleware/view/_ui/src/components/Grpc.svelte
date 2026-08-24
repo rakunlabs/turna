@@ -32,5 +32,5 @@
   class="w-full h-full"
   src="./grpc/{params?.wild}/"
   title={params?.wild}
-  on:load={modifyIframeContent}
-/>
+  onload={modifyIframeContent}
+></iframe>

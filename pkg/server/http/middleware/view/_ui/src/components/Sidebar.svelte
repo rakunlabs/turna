@@ -1,25 +1,54 @@
 <script lang="ts">
-  import active from "svelte-spa-router/active";
+  import { router } from "svelte-spa-router";
   import { storeInfo } from "@/store/store";
   import Link from "./Link.svelte";
   import Group from "./Group.svelte";
+  import OverlayScroll from "./OverlayScroll.svelte";
+
+  let {
+    shortcutPrefix = "Ctrl",
+    onsearch,
+    oncollapse,
+  }: {
+    shortcutPrefix?: string;
+    onsearch: () => void;
+    oncollapse: () => void;
+  } = $props();
+
+  const home = $derived(router.location === "/");
 </script>
 
-<div class="sidebar-bg border-r border-black">
-  <div class="sticky top-0 overflow-auto max-h-svh no-scrollbar">
-    <div class="border-b border-black">
-      <a
-        href="#/"
-        class="block"
-        use:active={{
-          path: `/`,
-          className: "bg-black text-white",
-          inactiveClassName: "bg-white text-black hover:bg-gray-100",
-        }}
-      >
-        <span class="block px-2 py-1">View</span>
-      </a>
-    </div>
+<aside class="sidebar-bg flex h-full min-h-0 flex-col border-r border-black">
+  <div
+    class={`flex h-8 shrink-0 items-stretch border-b border-black ${home ? "bg-black text-white" : "bg-white text-black"}`}
+  >
+    <a
+      href="#/"
+      class={`flex min-w-0 flex-1 items-center px-2 ${home ? "" : "hover:bg-gray-100"}`}
+    >
+      View
+    </a>
+    <button
+      type="button"
+      class={`grid w-8 place-items-center ${home ? "hover:bg-white/20" : "hover:bg-gray-100"} focus-visible:bg-yellow-100 focus-visible:text-black focus-visible:outline-none`}
+      title={`Search (${shortcutPrefix} K)`}
+      aria-label="Search View"
+      onclick={onsearch}
+    >
+      <i class="lni lni-search-1 text-2xl!" aria-hidden="true"></i>
+    </button>
+    <button
+      type="button"
+      class={`grid w-8 place-items-center ${home ? "hover:bg-white/20" : "hover:bg-gray-100"} focus-visible:bg-yellow-100 focus-visible:text-black focus-visible:outline-none`}
+      title={`Close sidebar (${shortcutPrefix} B)`}
+      aria-label="Close sidebar"
+      onclick={oncollapse}
+    >
+      <i class="lni lni-chevron-left text-2xl!" aria-hidden="true"></i>
+    </button>
+  </div>
+
+  <OverlayScroll class="min-h-0 flex-1">
     {#if ($storeInfo.iframe || []).length > 0}
       <div>
         <span
@@ -73,35 +102,27 @@
       </div>
     {/if}
     <Group groups={$storeInfo.groups} />
-  </div>
-</div>
+  </OverlayScroll>
+</aside>
 
-<style lang="scss">
+<style>
   .sidebar-bg {
     background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAAXNSR0IArs4c6QAAAB1JREFUKFNjvHjx4n99fX1GBgKAcVQhvhCifvAAAM43KAsXWPfwAAAAAElFTkSuQmCC)
       repeat;
-    @apply bg-gray-50;
+    background-color: #f9fafb;
   }
 
   :global(.sb-link-active) {
-    @apply bg-black text-white;
-    > span {
-      @apply border-green-500;
-    }
+    background-color: #000;
+    color: #fff;
+  }
+
+  :global(.sb-link-active > span) {
+    border-color: #22c55e;
   }
 
   :global(.sb-link-inactive) {
-    @apply bg-white text-black;
-  }
-
-  /* Hide scrollbar for Chrome, Safari and Opera */
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* Hide scrollbar for IE, Edge and Firefox */
-  .no-scrollbar {
-    -ms-overflow-style: none; /* IE and Edge */
-    scrollbar-width: none; /* Firefox */
+    background-color: #fff;
+    color: #000;
   }
 </style>

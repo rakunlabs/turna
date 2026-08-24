@@ -179,4 +179,4 @@
   </p>
 </div>
 
-<div bind:this={swaggerNode} class={!!msg ? "hidden" : ""} />
+<div bind:this={swaggerNode} class={!!msg ? "hidden" : ""}></div>

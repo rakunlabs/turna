@@ -1,26 +1,20 @@
 <script lang="ts">
   import active from "svelte-spa-router/active";
-
-  type PosTypes = "grpc" | "swagger" | "page" | "iframe";
+  import { routeHref, routePath, type NavigationType } from "@/navigation";
 
   export let name: string | undefined = undefined;
   export let path: string | undefined = undefined;
 
   export let icon = false;
-  export let type: PosTypes;
-
-  const sanitizePath = (v: string) => {
-    // remove only leading slash
-    return v.replace(/^\/+/, "");
-  };
+  export let type: NavigationType;
 </script>
 
 {#if path}
   <a
-    href={`#/${type.toString()}/${sanitizePath(path)}`}
+    href={routeHref(type, path)}
     class="block border-b border-black h-7 leading-7 box-content"
     use:active={{
-      path: `/${type.toString()}/${encodeURI(sanitizePath(path))}`,
+      path: routePath(type, path),
       className: "sb-link-active",
       inactiveClassName: "sb-link-inactive hover:bg-gray-100",
     }}

@@ -65,8 +65,8 @@ server:
       view:
         view:
           prefix_path: /view/
-          info_url: http://localhost:8082/info
-          info_url_type: YAML
+          # info_url: http://localhost:8082/info
+          # info_url_type: YAML
           info:
             grpc:
               - name: "greet"

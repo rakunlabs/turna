@@ -78,5 +78,5 @@
     </p>
   </div>
 {:else}
-  <iframe class="w-full h-full" {src} title={params?.wild} />
+  <iframe class="w-full h-full" {src} title={params?.wild}></iframe>
 {/if}

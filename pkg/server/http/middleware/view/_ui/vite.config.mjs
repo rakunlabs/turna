@@ -1,7 +1,7 @@
-import * as path from "path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
-import { createHtmlPlugin } from "vite-plugin-html";
+import tailwindcss from "@tailwindcss/vite";
 
 let redirectConfig = {
   target: "http://localhost:8082/",
@@ -14,19 +14,14 @@ let redirectConfig = {
 // https://vitejs.dev/config/
 export default defineConfig({
   base: "./", // set /view/ as base for dev server
-  plugins: [
-    svelte(),
-    createHtmlPlugin({
-      minify: process.env.NODE_ENV == "production",
-    }),
-  ],
+  plugins: [tailwindcss(), svelte()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "src"),
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
   build: {
-    sourcemap: process.env.NODE_ENV == "production" ? false : true,
+    sourcemap: false,
   },
   server: {
     proxy: {

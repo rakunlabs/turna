@@ -84,6 +84,7 @@ export const storeInfo = writable(config);
 export const storeTrigger = writable(false);
 
 export type {
+  Config,
   Service,
   Group,
   Swagger,

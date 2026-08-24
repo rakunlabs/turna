@@ -1,10 +1,7 @@
-import "@/style/global.scss";
-import 'github-markdown-css/github-markdown.css';
-import 'lineicons/dist/lineicons.css';
+import "@/style.css";
+import "github-markdown-css/github-markdown.css";
+import "lineicons/dist/lineicons.css";
+import { mount } from "svelte";
 import App from "@/App.svelte";
 
-const app = new App({
-  target: document.body,
-});
-
-export default app;
+export default mount(App, { target: document.getElementById("app")! });
