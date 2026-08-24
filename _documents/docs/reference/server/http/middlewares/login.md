@@ -102,6 +102,8 @@ The built-in [`auth`](./auth) issuer treats an unchecked login as a fixed refres
 
 Setting `info.disable_remember_me: true` removes the choice: the checkbox disappears from the embedded page (the methods response advertises `disable_remember_me: true`), and the middleware forces `remember_me` off in the password, passkey and code flows even if a client sends it explicitly.
 
+Custom login UIs should use the same field from `GET /login/auth/methods`: hide the choice when `payload.disable_remember_me` is `true`. The field is omitted when it is `false`, so a missing value means the choice may be shown. The compatibility aliases expose the field at the response root instead of under `payload`.
+
 ## Passkey
 
 When a session provider sets `passkey: true` together with `auth_middleware` (in-process) or `oauth2.passkey_url` (remote auth instance), the login UI shows a "Sign in with a passkey" button. The login middleware proxies WebAuthn begin/finish payloads to the auth middleware — in-process or over HTTP with the original host/scheme forwarded — injects the provider's `client_id`/`client_secret`/`scopes`, and stores the issued tokens in the session on success. Passkeys are registered through the auth middleware (`/auth/v1/passkey/register`, available in its management UI).

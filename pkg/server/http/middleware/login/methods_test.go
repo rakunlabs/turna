@@ -19,7 +19,7 @@ func TestMethodsEndpointAndLegacyInfoAlias(t *testing.T) {
 	m := &Login{
 		Path:              Path{Base: "/login/"},
 		SessionMiddleware: sessionName,
-		Info:              Info{Title: "Test Login"},
+		Info:              Info{Title: "Test Login", DisableRememberMe: true},
 	}
 	if err := m.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
@@ -68,6 +68,9 @@ func TestMethodsEndpointAndLegacyInfoAlias(t *testing.T) {
 			}
 			if response.Title != "Test Login" {
 				t.Fatalf("title = %q, want Test Login", response.Title)
+			}
+			if !response.DisableRememberMe {
+				t.Fatal("disable_remember_me = false, want true")
 			}
 		})
 	}
