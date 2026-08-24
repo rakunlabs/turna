@@ -223,7 +223,7 @@ func (r *rewriter) modifyRequest(req *http.Request) {
 		return
 	}
 
-	if r.cfg.Origin && req.Header.Get(httputil.HeaderOrigin) != "" && r.target != nil && r.target.Host != "" {
+	if httputil.IsWebSocket(req) && req.Header.Get(httputil.HeaderOrigin) != "" && r.target != nil && r.target.Host != "" {
 		req.Header.Set(httputil.HeaderOrigin, r.target.Scheme+"://"+r.target.Host)
 	}
 

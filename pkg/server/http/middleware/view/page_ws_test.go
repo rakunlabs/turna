@@ -129,7 +129,6 @@ func testPageWebSocketUpgrade(t *testing.T, wrappers []func(http.Handler) http.H
 					Rewrite: &Rewrite{
 						Base:     true,
 						Absolute: true,
-						Origin:   true,
 					},
 				},
 			},
