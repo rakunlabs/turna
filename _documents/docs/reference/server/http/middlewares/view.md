@@ -57,7 +57,7 @@ root so it can run under the view page prefix.
 | --- | --- |
 | `base` | Inject a `<base>` tag into HTML so relative references resolve under the page prefix. |
 | `absolute` | Prefix root-absolute HTML and CSS references such as `/assets/app.js`. Protocol-relative URLs are unchanged. |
-| `origin` | Replace references to the configured backend origin with the page prefix, including JSON-escaped origins. |
+| `origin` | Replace references to the configured backend origin with the page prefix, including JSON-escaped origins, and adapt request `Origin` for upstream WebSocket checks. |
 | `location` | Rewrite same-backend absolute and root-relative `Location` headers. |
 | `cookie` | Prefix `Set-Cookie` paths and remove backend `Domain` attributes. |
 | `frame` | Remove `X-Frame-Options` and only the CSP `frame-ancestors` directive. |

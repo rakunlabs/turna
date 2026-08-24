@@ -98,8 +98,15 @@ func TestPageWebSocketUpgradeThroughWrappers(t *testing.T) {
 func testPageWebSocketUpgrade(t *testing.T, wrappers []func(http.Handler) http.Handler) {
 	t.Helper()
 
+	var upstreamURL string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/ws" {
+			if got := r.Header.Get("Origin"); got != upstreamURL {
+				http.Error(w, "unexpected websocket origin: "+got, http.StatusForbidden)
+
+				return
+			}
+
 			wsEchoHandler(w, r)
 
 			return
@@ -109,6 +116,7 @@ func testPageWebSocketUpgrade(t *testing.T, wrappers []func(http.Handler) http.H
 		_, _ = w.Write([]byte(`<html><head></head><body><a href="/ws">ws</a></body></html>`))
 	}))
 	defer upstream.Close()
+	upstreamURL = upstream.URL
 
 	m := &View{
 		PrefixPath: "/view",
@@ -121,6 +129,7 @@ func testPageWebSocketUpgrade(t *testing.T, wrappers []func(http.Handler) http.H
 					Rewrite: &Rewrite{
 						Base:     true,
 						Absolute: true,
+						Origin:   true,
 					},
 				},
 			},
@@ -158,6 +167,7 @@ func testPageWebSocketUpgrade(t *testing.T, wrappers []func(http.Handler) http.H
 	_, err = fmt.Fprintf(conn,
 		"GET /view/page/myapp/ws HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"+
 			"Accept-Encoding: gzip, deflate, br\r\n"+
+			"Origin: https://public.example\r\n"+
 			"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
 		u.Host)
 	if err != nil {

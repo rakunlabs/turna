@@ -109,12 +109,16 @@ func TestRewriterModifyResponse(t *testing.T) {
 
 	req := &http.Request{Header: make(http.Header)}
 	req.Header.Set("Accept-Encoding", "gzip, br")
+	req.Header.Set("Origin", "https://public.example")
 	r.modifyRequest(req)
 	if got := req.Header.Get("Accept-Encoding"); got != "identity" {
 		t.Errorf("Accept-Encoding = %q", got)
 	}
 	if got := req.Header.Get("X-Forwarded-Prefix"); got != "/view/page/admin" {
 		t.Errorf("X-Forwarded-Prefix = %q", got)
+	}
+	if got := req.Header.Get("Origin"); got != "https://backend.example" {
+		t.Errorf("Origin = %q", got)
 	}
 }
 
