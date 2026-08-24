@@ -647,7 +647,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
 				ErrorDescription: err.Error(),
-				code:             http.StatusUnauthorized,
+				code:             http.StatusBadRequest,
 			})
 
 			return
@@ -661,7 +661,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 					httputil.HandleError(w, AccessTokenErrorResponse{
 						Error:            "invalid_grant",
 						ErrorDescription: "exceed password retry limit",
-						code:             http.StatusUnauthorized,
+						code:             http.StatusBadRequest,
 					})
 
 					return
@@ -680,7 +680,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 				httputil.HandleError(w, AccessTokenErrorResponse{
 					Error:            "invalid_grant",
 					ErrorDescription: "password not match",
-					code:             http.StatusUnauthorized,
+					code:             http.StatusBadRequest,
 				})
 
 				return
@@ -702,7 +702,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 				httputil.HandleError(w, AccessTokenErrorResponse{
 					Error:            "invalid_grant",
 					ErrorDescription: "password not match",
-					code:             http.StatusUnauthorized,
+					code:             http.StatusBadRequest,
 				})
 
 				return
