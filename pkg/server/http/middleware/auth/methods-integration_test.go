@@ -476,6 +476,26 @@ func TestAuthMethodsIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("password grant invalid credentials", func(t *testing.T) {
+		for name, form := range map[string]url.Values{
+			"unknown user": {
+				"grant_type": {"password"}, "client_id": {"it-m-client"}, "client_secret": {"it-m-secret"},
+				"username": {"it-m-unknown"}, "password": {"it-m-pass"},
+			},
+			"wrong password": {
+				"grant_type": {"password"}, "client_id": {"it-m-client"}, "client_secret": {"it-m-secret"},
+				"username": {"it-m-user"}, "password": {"wrong"},
+			},
+		} {
+			t.Run(name, func(t *testing.T) {
+				status, _, fail := tokenCall(t, form, nil)
+				if status != http.StatusBadRequest || fail.Error != "invalid_grant" {
+					t.Fatalf("status=%d error=%s desc=%s", status, fail.Error, fail.ErrorDescription)
+				}
+			})
+		}
+	})
+
 	// ////////////////////////////////////////////////////////////////
 	t.Run("signup and password reset", func(t *testing.T) {
 		deleteSignupUser := func(alias string) {
@@ -645,7 +665,7 @@ func TestAuthMethodsIntegration(t *testing.T) {
 		if status, _, _ := tokenCall(t, url.Values{
 			"grant_type": {"password"}, "client_id": {"it-m-client"}, "client_secret": {"it-m-secret"},
 			"username": {"it-su2@example.com"}, "password": {"signup-pass-2"},
-		}, nil); status != http.StatusUnauthorized {
+		}, nil); status != http.StatusBadRequest {
 			t.Fatalf("old password after reset status=%d", status)
 		}
 		if status, _, fail := tokenCall(t, url.Values{
@@ -816,7 +836,7 @@ func TestAuthMethodsIntegration(t *testing.T) {
 			"grant_type": {"password"}, "client_id": {"it-m-client"}, "client_secret": {"it-m-secret"},
 			"username": {"it-m-user"}, "password": {"it-m-pass"},
 		}, nil)
-		if status != http.StatusUnauthorized {
+		if status != http.StatusBadRequest {
 			t.Fatalf("old password status=%d", status)
 		}
 

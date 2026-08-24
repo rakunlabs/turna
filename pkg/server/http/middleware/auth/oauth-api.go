@@ -524,7 +524,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
 				ErrorDescription: "user not found",
-				code:             http.StatusUnauthorized,
+				code:             http.StatusBadRequest,
 			})
 
 			return
@@ -546,7 +546,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 				httputil.HandleError(w, AccessTokenErrorResponse{
 					Error:            "invalid_grant",
 					ErrorDescription: "password not match",
-					code:             http.StatusUnauthorized,
+					code:             http.StatusBadRequest,
 				})
 
 				return
@@ -577,7 +577,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 				httputil.HandleError(w, AccessTokenErrorResponse{
 					Error:            "invalid_grant",
 					ErrorDescription: "password not match",
-					code:             http.StatusUnauthorized,
+					code:             http.StatusBadRequest,
 				})
 
 				return
