@@ -94,6 +94,256 @@ The canonical endpoint uses the standard payload envelope:
 
 The two compatibility aliases keep their historic unwrapped `{title, provider}` response.
 
+## Custom login UI
+
+Set `ui.external_folder: true` to keep the login API routes but serve your own HTML, CSS and JavaScript through the next middleware. For example, this serves a single-page application from `./login-ui`:
+
+```yaml
+server:
+  http:
+    middlewares:
+      login:
+        login:
+          session_middleware: session
+          path:
+            base: /login/
+          ui:
+            external_folder: true
+
+      custom_login_ui:
+        folder:
+          path: ./login-ui
+          prefix_path: /login/
+          index: true
+          spa: true
+
+    routers:
+      login:
+        path: /login/*
+        middlewares:
+          - login
+          - custom_login_ui
+```
+
+The `login` middleware handles its reserved `/login/auth/*` routes first and forwards other `GET` requests to `custom_login_ui`. Keep custom assets outside the `auth` subpath.
+
+### Discover the available methods
+
+Do not hard-code provider names or endpoint URLs. Fetch the method manifest when the page loads:
+
+```ts
+type LoginLink = {
+  name: string
+  url: string
+  signup_url?: string
+  signup_verify_url?: string
+  password_reset_url?: string
+  password_reset_confirm_url?: string
+  password_min_length?: number
+}
+
+type LoginMethods = {
+  title: string
+  disable_remember_me?: boolean
+  provider: {
+    password: LoginLink[] | null
+    code: LoginLink[] | null
+    passkey: LoginLink[] | null
+  }
+}
+
+const response = await fetch('/login/auth/methods', {
+  credentials: 'same-origin',
+})
+if (!response.ok) throw new Error('Cannot load login methods')
+
+const { payload: methods }: { payload: LoginMethods } = await response.json()
+const passwordMethods = methods.provider.password ?? []
+const codeMethods = methods.provider.code ?? []
+const passkeyMethods = methods.provider.passkey ?? []
+```
+
+Each item is a login choice. Render `name` as its label and send the flow to its `url`. Use the link object itself as the selected value; `name` is a display label and is not guaranteed to be unique. The optional signup and reset URLs only appear when that provider supports those features.
+
+The following helper handles the standard `{message, error}` error response and the OAuth-shaped errors that a proxied provider may return:
+
+```ts
+async function postJSON(url: string, body: unknown) {
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    const problem = await response.json().catch(() => ({}))
+    throw new Error(
+      problem.message ?? problem.error_description ?? problem.error ?? 'Sign-in failed',
+    )
+  }
+
+  return response.status === 204 ? undefined : response.json()
+}
+```
+
+### Password flow
+
+POST the credentials to the selected password link. A successful request returns `204`; the login middleware stores the provider tokens and sets the configured session cookie.
+
+```ts
+async function signInWithPassword(
+  provider: LoginLink,
+  username: string,
+  password: string,
+  rememberMe: boolean,
+) {
+  await postJSON(provider.url, {
+    username,
+    password,
+    remember_me: rememberMe,
+  })
+
+  finishLogin()
+}
+```
+
+### Authorization code flow
+
+Open the selected code link in a popup. Add `remember_me=true` before opening it; the middleware binds the choice to the OAuth state and uses it when the callback exchanges the code.
+
+```ts
+function signInWithCode(provider: LoginLink, rememberMe: boolean) {
+  const target = new URL(provider.url, window.location.origin)
+  if (rememberMe) target.searchParams.set('remember_me', 'true')
+
+  const popup = window.open(target, 'turna-login', 'width=520,height=720')
+  if (!popup) throw new Error('The sign-in popup was blocked')
+
+  let timer = 0
+  const cleanup = () => {
+    window.removeEventListener('message', onMessage)
+    window.clearInterval(timer)
+  }
+  const complete = () => {
+    cleanup()
+    popup.close()
+    finishLogin()
+  }
+  const onMessage = (event: MessageEvent) => {
+    if (
+      event.origin === window.location.origin &&
+      event.data === 'turna:login:success'
+    ) complete()
+  }
+
+  window.addEventListener('message', onMessage)
+  timer = window.setInterval(() => {
+    // The short-lived, non-HttpOnly marker is the fallback when an upstream
+    // provider's COOP policy disconnects window.opener.
+    const succeeded = document.cookie
+      .split('; ')
+      .some((cookie) => cookie === 'auth_verify=true')
+    if (succeeded) complete()
+  }, 500)
+}
+```
+
+The callback page sends `turna:login:success` and also sets the short-lived `auth_verify=true` marker. Check the message origin exactly as shown. Polling the marker makes the flow work with providers whose Cross-Origin-Opener-Policy severs `window.opener`.
+
+### Passkey flow
+
+Passkey login is a two-request WebAuthn ceremony. The first request returns a `session_id` and browser credential options. Convert the base64url fields to byte arrays, call `navigator.credentials.get`, then return the serialized assertion in the second request:
+
+```ts
+function fromBase64URL(value: string): Uint8Array {
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = base64.padEnd(base64.length + ((4 - base64.length % 4) % 4), '=')
+  return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0))
+}
+
+function toBase64URL(value: ArrayBuffer | null): string | undefined {
+  if (!value) return undefined
+  const bytes = new Uint8Array(value)
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+async function signInWithPasskey(
+  provider: LoginLink,
+  username: string,
+  rememberMe: boolean,
+) {
+  if (!window.PublicKeyCredential) throw new Error('Passkeys are not supported')
+
+  const begin = await postJSON(provider.url, {
+    ...(username ? { username } : {}),
+    remember_me: rememberMe,
+  })
+  const options = begin.options
+
+  const credential = await navigator.credentials.get({
+    publicKey: {
+      ...options,
+      challenge: fromBase64URL(options.challenge),
+      allowCredentials: (options.allowCredentials ?? []).map((item: any) => ({
+        ...item,
+        id: fromBase64URL(item.id),
+      })),
+    },
+  }) as PublicKeyCredential | null
+  if (!credential) throw new Error('Passkey sign-in was cancelled')
+
+  const assertion = credential.response as AuthenticatorAssertionResponse
+  await postJSON(provider.url, {
+    session_id: begin.session_id,
+    remember_me: rememberMe,
+    assertion: {
+      id: credential.id,
+      rawId: toBase64URL(credential.rawId),
+      type: credential.type,
+      response: {
+        clientDataJSON: toBase64URL(assertion.clientDataJSON),
+        authenticatorData: toBase64URL(assertion.authenticatorData),
+        signature: toBase64URL(assertion.signature),
+        userHandle: toBase64URL(assertion.userHandle),
+      },
+    },
+  })
+
+  finishLogin()
+}
+```
+
+An empty `username` starts a discoverable, username-less passkey flow. Passkeys require a secure browser context (HTTPS, with the usual localhost exception). Send the same `remember_me` value on both passkey requests; the finish request controls the issued session.
+
+### Finish the login
+
+After password or passkey returns `204`, or the code popup reports success, navigate to the requested application path. When the login page is being used as part of Turna's own authorization-code flow, reload it instead so the middleware can return the pending code.
+
+```ts
+function finishLogin() {
+  const query = new URLSearchParams(window.location.search)
+  if (query.get('response_type') === 'code') {
+    window.location.reload()
+    return
+  }
+
+  const requested = query.get('redirect_path') ?? '/'
+  const target = new URL(requested, window.location.origin)
+  const targetPath = target.pathname.replace(/\/+$/, '') || '/'
+  const loginPath = window.location.pathname.replace(/\/+$/, '') || '/'
+  const safeTarget = target.origin === window.location.origin &&
+    !requested.startsWith('//') && targetPath !== loginPath
+    ? `${target.pathname}${target.search}${target.hash}`
+    : '/'
+  window.location.assign(safeTarget)
+}
+```
+
+Serve the custom page and login endpoints from the same origin unless you explicitly add and audit a CORS layer. Never expose the provider `client_secret` or store returned tokens in browser storage; the middleware injects provider credentials server-side and owns the session cookie.
+
 ## Remember me
 
 The embedded login page exposes one **Remember me** choice shared by password, passkey and authorization-code buttons. The login middleware carries `remember_me=true` to the provider's token mint; it does not calculate token lifetimes itself.
@@ -103,6 +353,14 @@ The built-in [`auth`](./auth) issuer treats an unchecked login as a fixed refres
 Setting `info.disable_remember_me: true` removes the choice: the checkbox disappears from the embedded page (the methods response advertises `disable_remember_me: true`), and the middleware forces `remember_me` off in the password, passkey and code flows even if a client sends it explicitly.
 
 Custom login UIs should use the same field from `GET /login/auth/methods`: hide the choice when `payload.disable_remember_me` is `true`. The field is omitted when it is `false`, so a missing value means the choice may be shown. The compatibility aliases expose the field at the response root instead of under `payload`.
+
+Use one checkbox for every method and derive its effective value before starting a flow:
+
+```ts
+const effectiveRememberMe = !methods.disable_remember_me && rememberCheckbox.checked
+```
+
+Do not implement "remember me" by saving the username, password or tokens in `localStorage`. It is a token-lifetime choice sent to the issuer; the session cookie and token storage remain owned by the `session` middleware.
 
 ## Passkey
 
