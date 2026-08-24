@@ -180,3 +180,19 @@
 </div>
 
 <div bind:this={swaggerNode} class={!!msg ? "hidden" : ""}></div>
+
+<style>
+  /* Swagger UI 5.32 renders an SVG over this button's legacy background icon. */
+  :global(
+    .swagger-ui
+      .opblock-summary
+      .view-line-link.copy-to-clipboard
+      button
+  ) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    background-image: none;
+  }
+</style>
