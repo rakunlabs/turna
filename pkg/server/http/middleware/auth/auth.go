@@ -11,6 +11,7 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/ada"
 	"github.com/rakunlabs/into"
 	oauth2store "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
@@ -35,7 +36,9 @@ type Auth struct {
 	PrefixPath string     `cfg:"prefix_path"`
 	Database   Database   `cfg:"database"`
 	Encryption Encryption `cfg:"encryption"`
+	LDAP       LDAPStatic `cfg:"ldap"`
 
+	instanceID   string                  `cfg:"-"`
 	db           *sql.DB                 `cfg:"-"`
 	cipher       *Cipher                 `cfg:"-"`
 	store        *Store                  `cfg:"-"`
@@ -85,6 +88,16 @@ type Encryption struct {
 	Key string `cfg:"key" log:"-"`
 }
 
+// LDAPStatic is the static (config-file) side of LDAP behavior. Everything
+// else about LDAP lives in the database; this only controls whether this
+// instance takes part in the periodic sync, so single instances can be kept
+// out of the rotation without touching the shared settings.
+type LDAPStatic struct {
+	// DisableSync keeps this instance out of the periodic LDAP sync loop.
+	// The manual sync API keeps working. Config-file only, by design.
+	DisableSync bool `cfg:"disable_sync"`
+}
+
 func nowAdd(d time.Duration) int64 {
 	return time.Now().Add(d).Unix()
 }
@@ -98,6 +111,9 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 	if m.Database.DSN == "" {
 		return nil, errors.New("auth database dsn is required")
 	}
+
+	// identifies this process in fleet-wide records such as auth_sync_locks
+	m.instanceID = ulid.Make().String()
 
 	cipher, err := NewCipher(m.Encryption.Key)
 	if err != nil {

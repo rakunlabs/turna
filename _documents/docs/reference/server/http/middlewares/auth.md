@@ -35,6 +35,7 @@ server:
 | `database.migration.table` | Migration tracking table. Defaults to `auth_migrations`. |
 | `database.migration.lock_key` | PostgreSQL advisory lock key. Defaults to `muz:postgres:turna:auth_migrations`. |
 | `encryption.key` | Required encryption key for secrets stored in PostgreSQL. Raw strings are SHA-256 derived; base64 16/24/32-byte keys are used directly. |
+| `ldap.disable_sync` | Keep this instance out of the periodic LDAP sync loop; the manual sync API keeps working. Config-file only. Instances that do participate coordinate through the `auth_sync_locks` table, so a fleet sharing one database syncs once per `sync_duration` instead of once per instance. |
 
 ## Runtime settings (stored in PostgreSQL)
 

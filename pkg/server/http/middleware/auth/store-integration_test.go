@@ -171,6 +171,30 @@ func TestStoreIntegration(t *testing.T) {
 		t.Fatalf("expected decrypted oauth client in snapshot, got %+v", client)
 	}
 
+	// sync lock: one claim per lease window across the fleet
+	acquired, err := store.AcquireSyncLock(ctx, "it-sync", "inst-1", 30*time.Second)
+	if err != nil || !acquired {
+		t.Fatalf("first sync lock claim: acquired=%v err=%v", acquired, err)
+	}
+	acquired, err = store.AcquireSyncLock(ctx, "it-sync", "inst-2", 30*time.Second)
+	if err != nil || acquired {
+		t.Fatalf("second sync lock claim inside lease: acquired=%v err=%v", acquired, err)
+	}
+	acquired, err = store.AcquireSyncLock(ctx, "it-sync", "inst-2", 0)
+	if err != nil || !acquired {
+		t.Fatalf("stale sync lock claim: acquired=%v err=%v", acquired, err)
+	}
+	if err := store.TouchSyncLock(ctx, "it-sync", "inst-1"); err != nil {
+		t.Fatalf("touch sync lock: %v", err)
+	}
+	acquired, err = store.AcquireSyncLock(ctx, "it-sync", "inst-2", 30*time.Second)
+	if err != nil || acquired {
+		t.Fatalf("sync lock claim after touch: acquired=%v err=%v", acquired, err)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM auth_sync_locks WHERE name = 'it-sync'`); err != nil {
+		t.Fatalf("cleanup sync lock: %v", err)
+	}
+
 	// lmap ensure
 	if err := store.EnsureLMaps(ctx, []data.LMapCheckCreate{{Name: "it-group"}}); err != nil {
 		t.Fatalf("ensure lmaps: %v", err)

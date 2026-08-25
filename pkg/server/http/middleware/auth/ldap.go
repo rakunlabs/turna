@@ -304,15 +304,32 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 		}
 	}
 
+	// stamp the fleet-wide sync clock on a completed full sync so the next
+	// periodic run waits a full interval; manual syncs count too. Single-user
+	// syncs are left out — they do not cover the whole directory.
+	if uid == "" {
+		if err := m.store.TouchSyncLock(ctx, ldapSyncLockName, m.instanceID); err != nil {
+			slog.Warn("ldap sync lock touch failed", slog.String("error", err.Error()))
+		}
+	}
+
 	return m.cache.Reload(ctx)
 }
 
 // watchLDAP periodically syncs LDAP when an enabled config exists.
+//
+// The schedule is coordinated across instances through the auth_sync_locks
+// table: each tick at most one instance claims the lease and runs the sync,
+// so a fleet of N instances sharing one database still syncs once per
+// sync_duration instead of N times.
 func (m *Auth) watchLDAP(ctx context.Context) {
+	if m.LDAP.DisableSync {
+		slog.Info("periodic ldap sync is disabled for this instance")
+		return
+	}
+
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
-
-	var lastSync time.Time
 
 	for {
 		select {
@@ -324,15 +341,26 @@ func (m *Auth) watchLDAP(ctx context.Context) {
 				continue
 			}
 
-			if time.Since(lastSync) < runtime.SyncDuration {
+			// The lease runs slightly short of the interval so a tick landing
+			// a few seconds early still claims it; floored so tiny intervals
+			// keep a sane guard window against doubled syncs.
+			lease := runtime.SyncDuration - 30*time.Second
+			if lease < 30*time.Second {
+				lease = 30 * time.Second
+			}
+
+			acquired, err := m.store.AcquireSyncLock(ctx, ldapSyncLockName, m.instanceID, lease)
+			if err != nil {
+				slog.Error("ldap sync lock failed", slog.String("error", err.Error()))
+				continue
+			}
+			if !acquired {
 				continue
 			}
 
 			if err := m.LdapSync(ctx, false, ""); err != nil {
 				slog.Error("ldap sync failed", slog.String("error", err.Error()))
 			}
-
-			lastSync = time.Now()
 		}
 	}
 }
