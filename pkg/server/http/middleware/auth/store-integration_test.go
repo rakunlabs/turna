@@ -175,6 +175,20 @@ func TestStoreIntegration(t *testing.T) {
 	if err := store.EnsureLMaps(ctx, []data.LMapCheckCreate{{Name: "it-group"}}); err != nil {
 		t.Fatalf("ensure lmaps: %v", err)
 	}
+	versionBeforeNoop, err := store.Version(ctx)
+	if err != nil {
+		t.Fatalf("version before no-op lmap ensure: %v", err)
+	}
+	if err := store.EnsureLMaps(ctx, []data.LMapCheckCreate{{Name: "it-group"}}); err != nil {
+		t.Fatalf("repeat ensure lmaps: %v", err)
+	}
+	versionAfterNoop, err := store.Version(ctx)
+	if err != nil {
+		t.Fatalf("version after no-op lmap ensure: %v", err)
+	}
+	if versionAfterNoop != versionBeforeNoop {
+		t.Fatalf("no-op lmap ensure advanced version from %d to %d", versionBeforeNoop, versionAfterNoop)
+	}
 	_ = cache.Reload(ctx)
 
 	lmap, err := cache.GetLMap("it-group")

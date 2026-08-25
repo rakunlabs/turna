@@ -344,7 +344,8 @@ type GetUserRequest struct {
 	AddData        bool `json:"add_data"`
 	AddScopeRoles  bool `json:"add_scope_roles"`
 
-	Sanitize bool `json:"sanitize"`
+	Sanitize      bool `json:"sanitize"`
+	IncludeSecret bool `json:"include_secret"`
 }
 
 type GetPermissionRequest struct {

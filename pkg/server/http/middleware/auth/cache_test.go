@@ -43,7 +43,12 @@ func testSnapshot() *Snapshot {
 		ID:      "user-1",
 		Alias:   []string{"my-user"},
 		RoleIDs: []string{"role-parent"},
-		Details: map[string]any{"name": "My User", "email": "my@user.com"},
+		Details: map[string]any{
+			"name":     "My User",
+			"email":    "my@user.com",
+			"password": "password-hash",
+			"secret":   "client-secret",
+		},
 	}
 
 	disabledUser := &data.User{
@@ -275,6 +280,39 @@ func TestCacheGetUsersSearchPaged(t *testing.T) {
 
 	if len(res.Payload) != 1 || res.Payload[0].ID != "user-2" {
 		t.Fatalf("expected page holding user-2, got %v", res.Payload)
+	}
+}
+
+func TestCacheSanitizesUserCredentials(t *testing.T) {
+	c := testCache()
+
+	user, err := c.GetUser(data.GetUserRequest{ID: "user-1", Sanitize: true})
+	if err != nil {
+		t.Fatalf("GetUser() error = %v", err)
+	}
+	if user.Details["password"] != nil || user.Details["secret"] != nil {
+		t.Fatalf("GetUser() exposed credentials: %v", user.Details)
+	}
+
+	serviceAccount, err := c.GetUser(data.GetUserRequest{ID: "user-1", Sanitize: true, IncludeSecret: true})
+	if err != nil {
+		t.Fatalf("GetUser() with secret error = %v", err)
+	}
+	if serviceAccount.Details["password"] != nil || serviceAccount.Details["secret"] != "client-secret" {
+		t.Fatalf("GetUser() returned invalid service account details: %v", serviceAccount.Details)
+	}
+
+	users, err := c.GetUsers(data.GetUserRequest{ID: "user-1", Sanitize: true})
+	if err != nil {
+		t.Fatalf("GetUsers() error = %v", err)
+	}
+	if users.Payload[0].Details["password"] != nil || users.Payload[0].Details["secret"] != nil {
+		t.Fatalf("GetUsers() exposed credentials: %v", users.Payload[0].Details)
+	}
+
+	stored := c.Snapshot().Users["user-1"].Details
+	if stored["password"] == nil || stored["secret"] == nil {
+		t.Fatalf("sanitization mutated cached credentials: %v", stored)
 	}
 }
 

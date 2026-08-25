@@ -367,6 +367,73 @@ class Editor {
     });
   }
 
+  excludedResources(resourceIndex: number): AnyRecord[] {
+    const excluded = this.resourceAt(resourceIndex).excluded;
+    if (!Array.isArray(excluded)) return [];
+
+    return excluded.map((resource) =>
+      resource && typeof resource === "object" && !Array.isArray(resource)
+        ? { ...(resource as AnyRecord) }
+        : ({} as AnyRecord),
+    );
+  }
+
+  excludedResourceAt(resourceIndex: number, excludedIndex: number) {
+    return this.excludedResources(resourceIndex)[excludedIndex] ?? ({} as AnyRecord);
+  }
+
+  getExcludedResourceList(resourceIndex: number, excludedIndex: number, key: string) {
+    const resource = this.excludedResourceAt(resourceIndex, excludedIndex);
+    const value = joinValues(resource[key]);
+
+    if (key === "paths" && !value.trim()) return fieldText(resource.path);
+
+    return value;
+  }
+
+  setExcludedResourceList(resourceIndex: number, excludedIndex: number, key: string, value: string) {
+    const next = this.record();
+    const resources = this.resources();
+    const resource = this.resourceAt(resourceIndex);
+    const excluded = this.excludedResources(resourceIndex);
+    const excludedResource = {
+      ...this.excludedResourceAt(resourceIndex, excludedIndex),
+      [key]: splitValues(value),
+    };
+
+    if (key === "paths") delete excludedResource.path;
+
+    excluded[excludedIndex] = excludedResource;
+    resources[resourceIndex] = { ...resource, excluded };
+    next.resources = resources;
+    this.setRecord(next);
+  }
+
+  addExcludedResource(resourceIndex: number) {
+    const next = this.record();
+    const resources = this.resources();
+    resources[resourceIndex] = {
+      ...this.resourceAt(resourceIndex),
+      excluded: [
+        ...this.excludedResources(resourceIndex),
+        { hosts: [], paths: ["/**"], methods: ["*"] },
+      ],
+    };
+    next.resources = resources;
+    this.setRecord(next);
+  }
+
+  removeExcludedResource(resourceIndex: number, excludedIndex: number) {
+    const next = this.record();
+    const resources = this.resources();
+    resources[resourceIndex] = {
+      ...this.resourceAt(resourceIndex),
+      excluded: this.excludedResources(resourceIndex).filter((_, i) => i !== excludedIndex),
+    };
+    next.resources = resources;
+    this.setRecord(next);
+  }
+
   /* --- temporary access -------------------------------------------------- */
 
   resetTemp() {

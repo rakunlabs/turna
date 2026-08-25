@@ -737,7 +737,9 @@
         value: editor.getNestedString("details", "secret"),
         set: (value) => editor.setNestedString("details", "secret", value),
         placeholder: "optional for mTLS-only clients",
-        hint: "Either a secret or an mTLS certificate binding is required.",
+        hint: editor.loadedID
+          ? "This is the stored client secret. Change it here to rotate the credential."
+          : "Either a secret or an mTLS certificate binding is required.",
       })}
       {@render line({
         label: "Default scope",
@@ -917,6 +919,7 @@
     {:else}
       <ul class="border border-rule bg-sheet">
         {#each resources as _, i (i)}
+          {@const exclusions = editor.excludedResources(i)}
           <li class="border-b border-rule last:border-b-0">
             <div class="flex items-center justify-between gap-4 border-b border-rule px-4 py-2">
               <span class="stamp stamp-ink">Resource {String(i + 1).padStart(2, "0")}</span>
@@ -963,13 +966,88 @@
                 />
               </div>
             </div>
+
+            <div class="border-t border-rule bg-raised/35 px-4 py-4">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p class="stamp stamp-ink">Excluded resources</p>
+                  <p class="mt-1 max-w-[68ch] text-[12px] leading-[1.5] text-muted">
+                    Matching exclusions veto this resource. Use <span class="serial">/**</span> and
+                    <span class="serial">*</span> to exclude every path and method for a host.
+                  </p>
+                </div>
+                <button type="button" class="act" onclick={() => editor.addExcludedResource(i)}>
+                  Add exclusion
+                </button>
+              </div>
+              {#if exclusions.length === 0}
+                <p class="mt-4 border border-dashed border-rule px-4 py-5 text-center text-[12px] text-muted">
+                  No exclusions. Every request matching the resource above is allowed by this permission.
+                </p>
+              {:else}
+                <ul class="mt-4 border border-rule bg-sheet">
+                  {#each exclusions as _, j (j)}
+                    <li class="border-b border-rule last:border-b-0">
+                      <div class="flex items-center justify-between gap-4 border-b border-rule px-3 py-2">
+                        <span class="stamp">Exclusion {String(j + 1).padStart(2, "0")}</span>
+                        <button
+                          type="button"
+                          class="act act-quiet text-seal hover:bg-seal/10 hover:text-seal"
+                          onclick={() => editor.removeExcludedResource(i, j)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div class="grid gap-5 px-3 py-4 sm:grid-cols-3">
+                        <div class="min-w-0">
+                          <label class="stamp block" for="resource-{i}-excluded-{j}-hosts">Hosts</label>
+                          <input
+                            id="resource-{i}-excluded-{j}-hosts"
+                            class="entry serial mt-1.5"
+                            placeholder="internal.example.com"
+                            autocomplete="off"
+                            value={editor.getExcludedResourceList(i, j, "hosts")}
+                            oninput={(event) =>
+                              editor.setExcludedResourceList(i, j, "hosts", event.currentTarget.value)}
+                          />
+                        </div>
+                        <div class="min-w-0">
+                          <label class="stamp block" for="resource-{i}-excluded-{j}-paths">Paths</label>
+                          <input
+                            id="resource-{i}-excluded-{j}-paths"
+                            class="entry serial mt-1.5"
+                            placeholder="/**"
+                            autocomplete="off"
+                            value={editor.getExcludedResourceList(i, j, "paths")}
+                            oninput={(event) =>
+                              editor.setExcludedResourceList(i, j, "paths", event.currentTarget.value)}
+                          />
+                        </div>
+                        <div class="min-w-0">
+                          <label class="stamp block" for="resource-{i}-excluded-{j}-methods">Methods</label>
+                          <input
+                            id="resource-{i}-excluded-{j}-methods"
+                            class="entry serial mt-1.5"
+                            placeholder="*"
+                            autocomplete="off"
+                            value={editor.getExcludedResourceList(i, j, "methods")}
+                            oninput={(event) =>
+                              editor.setExcludedResourceList(i, j, "methods", event.currentTarget.value)}
+                          />
+                        </div>
+                      </div>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
           </li>
         {/each}
       </ul>
     {/if}
   </Section>
 
-  <Section title="Carried data" note="Excluded resources and the legacy single path live in the raw document.">
+  <Section title="Carried data" note="Permission metadata that is passed along with an allowed request.">
     <div class="grid gap-6 sm:grid-cols-2">
       {@render exhibit({
         label: "Data JSON",

@@ -122,6 +122,7 @@ func parseUserQuery(r *http.Request) data.GetUserRequest {
 		AddPermissions: parseBoolDefault(q, "add_permissions", false),
 		AddData:        parseBoolDefault(q, "add_data", false),
 		AddScopeRoles:  parseBoolDefault(q, "add_scope_roles", false),
+		Sanitize:       true,
 	}
 
 	if v := q.GetValue("is_active"); v != "" {
@@ -202,7 +203,8 @@ func (m *Auth) GetUserAPI(w http.ResponseWriter, r *http.Request) {
 		AddScopeRoles:  parseBoolDefault(q, "add_scope_roles", false),
 		// never expose the stored password hash to the management UI; an
 		// absent password on update means "keep current" (see PutUser).
-		Sanitize: true,
+		Sanitize:      true,
+		IncludeSecret: isServiceAccount(r),
 	}
 
 	user, err := m.cache.GetUser(req)

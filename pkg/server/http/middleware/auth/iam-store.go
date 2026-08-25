@@ -20,6 +20,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var errNoStoreChange = errors.New("no store change")
+
 // writeTx wraps a write in a transaction with version bump, event record, and notify.
 func (s *Store) writeTx(ctx context.Context, topic, action, entityID string, fn func(*sql.Tx) error) (uint64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -29,6 +31,10 @@ func (s *Store) writeTx(ctx context.Context, topic, action, entityID string, fn 
 	defer tx.Rollback() //nolint:errcheck
 
 	if err := fn(tx); err != nil {
+		if errors.Is(err, errNoStoreChange) {
+			return 0, nil
+		}
+
 		return 0, err
 	}
 
@@ -255,16 +261,22 @@ func (s *Store) PutUser(ctx context.Context, user data.User) error {
 
 		user.CreatedAt = found.CreatedAt
 
-		// preserve the existing password when the update omits it, so editing
-		// other fields does not wipe the credential. The hash is never returned
-		// to clients (GetUserAPI sanitizes it), so an absent password means
-		// "keep current".
+		// Preserve credentials omitted from sanitized management responses, so
+		// editing another field does not wipe the password or client secret.
 		if found.Details != nil && found.Details["password"] != nil {
 			if user.Details == nil {
 				user.Details = map[string]any{}
 			}
 			if user.Details["password"] == nil {
 				user.Details["password"] = found.Details["password"]
+			}
+		}
+		if found.ServiceAccount && found.Details != nil && found.Details["secret"] != nil {
+			if user.Details == nil {
+				user.Details = map[string]any{}
+			}
+			if user.Details["secret"] == nil {
+				user.Details["secret"] = found.Details["secret"]
 			}
 		}
 
@@ -294,6 +306,9 @@ func (s *Store) PatchUser(ctx context.Context, id string, patch data.UserPatch) 
 
 			if user.Details != nil && user.Details["password"] != nil && (*patch.Details)["password"] == nil {
 				(*patch.Details)["password"] = user.Details["password"]
+			}
+			if user.ServiceAccount && user.Details != nil && user.Details["secret"] != nil && (*patch.Details)["secret"] == nil {
+				(*patch.Details)["secret"] = user.Details["secret"]
 			}
 
 			user.Details = *patch.Details
@@ -1327,6 +1342,7 @@ func (s *Store) EnsureLMaps(ctx context.Context, checks []data.LMapCheckCreate) 
 	userName := data.CtxUserName(ctx)
 
 	_, err := s.writeTx(ctx, "lmaps", "sync", "ldap", func(tx *sql.Tx) error {
+		changed := false
 		for _, check := range checks {
 			var found string
 			err := tx.QueryRowContext(ctx, `SELECT name FROM auth_lmaps WHERE name = $1`, check.Name).Scan(&found)
@@ -1370,6 +1386,11 @@ func (s *Store) EnsureLMaps(ctx context.Context, checks []data.LMapCheckCreate) 
 			if err := s.txUpsertLMap(ctx, tx, &lmap); err != nil {
 				return fmt.Errorf("failed to create lmap %s; %w", lmap.Name, err)
 			}
+			changed = true
+		}
+
+		if !changed {
+			return errNoStoreChange
 		}
 
 		return nil

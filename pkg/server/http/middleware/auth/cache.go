@@ -1442,6 +1442,9 @@ func (c *Cache) GetUsers(req data.GetUserRequest) (*data.Response[[]data.UserExt
 	for _, user := range users {
 		ext := sn.extendUser(req.AddRoles, req.AddPermissions, req.AddData, req.AddScopeRoles, user)
 		ext.IsActive = !user.Disabled
+		if req.Sanitize {
+			ext.User = sanitizedUser(user, req.IncludeSecret)
+		}
 		extended = append(extended, ext)
 	}
 
@@ -1473,20 +1476,27 @@ func (c *Cache) GetUser(req data.GetUserRequest) (*data.UserExtended, error) {
 	ext.IsActive = !user.Disabled
 
 	if req.Sanitize {
-		userCopy := *user
-		details := make(map[string]any, len(user.Details))
-		for k, v := range user.Details {
-			details[k] = v
-		}
-
-		delete(details, "password")
-		delete(details, "secret")
-
-		userCopy.Details = details
-		ext.User = &userCopy
+		ext.User = sanitizedUser(user, req.IncludeSecret)
 	}
 
 	return &ext, nil
+}
+
+func sanitizedUser(user *data.User, includeSecret bool) *data.User {
+	userCopy := *user
+	details := make(map[string]any, len(user.Details))
+	for k, v := range user.Details {
+		details[k] = v
+	}
+
+	delete(details, "password")
+	if !includeSecret {
+		delete(details, "secret")
+	}
+
+	userCopy.Details = details
+
+	return &userCopy
 }
 
 // extendUser builds UserExtended payload with roles/permissions/data/scope info.
