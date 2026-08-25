@@ -243,6 +243,15 @@ func (m *Auth) PublicPathPatterns() []string {
 	}
 }
 
+// CredentialPassthroughPathPatterns publishes auth endpoints that consume a
+// raw credential themselves. A session in front must leave these credentials
+// untouched when the auth public plane is selected through auth_skip_paths.
+func (m *Auth) CredentialPassthroughPathPatterns() []string {
+	prefix := strings.TrimSuffix(m.PrefixPath, "/")
+
+	return []string{prefix + "/oauth2/api-key"}
+}
+
 func (m *Auth) MuxSet(prefix string) *ada.Mux {
 	mux := ada.NewMux()
 	admin := m.adminOnly

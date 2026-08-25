@@ -174,11 +174,16 @@ func TestSkipPaths(t *testing.T) {
 type fakePublicPathsIssuer struct {
 	fakeIssuer
 
-	patterns []string
+	patterns            []string
+	passthroughPatterns []string
 }
 
 func (f *fakePublicPathsIssuer) PublicPathPatterns() []string {
 	return f.patterns
+}
+
+func (f *fakePublicPathsIssuer) CredentialPassthroughPathPatterns() []string {
+	return f.passthroughPatterns
 }
 
 func TestAuthSkipPaths(t *testing.T) {
@@ -189,13 +194,14 @@ func TestAuthSkipPaths(t *testing.T) {
 
 	newSession := func(authSkipPaths []string) *Session {
 		IssuerRegistry.Set("public-auth", &fakePublicPathsIssuer{
-			fakeIssuer: fakeIssuer{kid: "kid-1", key: &key.PublicKey},
-			patterns:   []string{"/auth/oauth2/**", "/.well-known/openid-configuration"},
+			fakeIssuer:          fakeIssuer{kid: "kid-1", key: &key.PublicKey},
+			patterns:            []string{"/auth/oauth2/**", "/.well-known/openid-configuration"},
+			passthroughPatterns: []string{"/auth/oauth2/api-key"},
 		})
 
 		m := &Session{
 			Provider: map[string]Provider{
-				"turna": {AuthMiddleware: "public-auth"},
+				"turna": {AuthMiddleware: "public-auth", APIKey: true},
 			},
 			Action: Action{
 				Token: &Token{LoginPath: "/login/"},
@@ -250,6 +256,28 @@ func TestAuthSkipPaths(t *testing.T) {
 		}
 	})
 
+	t.Run("api key validation receives the raw credential", func(t *testing.T) {
+		m := newSession(withSkip)
+		r := httptest.NewRequest(http.MethodPost, "/auth/oauth2/api-key", nil)
+		r.Header.Set("X-API-Key", "secret")
+		r.Header.Set("X-User", "spoofed")
+		rec := httptest.NewRecorder()
+
+		m.Do(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if got := r.Header.Get("X-API-Key"); got != "secret" {
+				t.Errorf("X-API-Key = %q, want preserved", got)
+			}
+			if got := r.Header.Get("X-User"); got != "" {
+				t.Errorf("X-User = %q, want stripped", got)
+			}
+			w.WriteHeader(http.StatusOK)
+		}), rec, r)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+	})
+
 	t.Run("discovery document is reachable", func(t *testing.T) {
 		if rec := do(newSession(withSkip), "/.well-known/openid-configuration", ""); rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", rec.Code)
@@ -273,6 +301,39 @@ func TestAuthSkipPaths(t *testing.T) {
 			t.Fatalf("status = %d, want 307", rec.Code)
 		}
 	})
+}
+
+func TestRemoteAPIKeyValidationPathPreservesRawKey(t *testing.T) {
+	m := &Session{
+		Provider: map[string]Provider{
+			"remote": {
+				APIKey: true,
+				Oauth2: &Oauth2{APIKeyURL: "https://auth.example.com/auth/oauth2/api-key"},
+			},
+		},
+		Action:        Action{Active: actionToken, Token: &Token{}},
+		AuthSkipPaths: []string{"https://auth.example.com/auth/check"},
+		store:         fakeStore{},
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "https://gateway.example.com/auth/oauth2/api-key", nil)
+	r.Header.Set("X-API-Key", "secret")
+	r.Header.Set("X-User", "spoofed")
+	rec := httptest.NewRecorder()
+
+	m.Do(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-API-Key"); got != "secret" {
+			t.Errorf("X-API-Key = %q, want preserved", got)
+		}
+		if got := r.Header.Get("X-User"); got != "" {
+			t.Errorf("X-User = %q, want stripped", got)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}), rec, r)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", rec.Code)
+	}
 }
 
 // fakePublicCheckIssuer is a fakeIssuer that also answers anonymous public

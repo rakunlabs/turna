@@ -516,6 +516,41 @@ func (m *Session) skipPath(path string) bool {
 	return false
 }
 
+// credentialPassthroughPath reports whether path belongs to an endpoint that
+// must validate the raw API key itself. It supports both remote providers and
+// in-process auth middlewares without coupling session to an auth package.
+func (m *Session) credentialPassthroughPath(path string) bool {
+	for _, provider := range m.Providers() {
+		if !provider.APIKey {
+			continue
+		}
+
+		if provider.Oauth2 != nil && provider.Oauth2.APIKeyURL != "" {
+			u, err := url.Parse(provider.Oauth2.APIKeyURL)
+			if err == nil && u.Path == path {
+				return true
+			}
+		}
+
+		if provider.AuthMiddleware == "" {
+			continue
+		}
+
+		publisher, ok := IssuerRegistry.Get(provider.AuthMiddleware).(InfCredentialPassthroughPaths)
+		if !ok {
+			continue
+		}
+
+		for _, pattern := range publisher.CredentialPassthroughPathPatterns() {
+			if matched, _ := doublestar.Match(pattern, path); matched {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // authSkipPaths collects the public path patterns of every auth middleware
 // named in auth_skip_paths, so their machine endpoints (token, callbacks,
 // discovery, consent) never get captured by an interactive login redirect.
@@ -871,9 +906,21 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 	}
 
 	if m.Action.Active == actionToken {
+		skip := m.skipPath(r.URL.Path)
+
+		// Raw-credential auth endpoints must bypass optional authentication.
+		// URL entries in auth_skip_paths publish no static paths, so an explicit
+		// auth selection also enables passthrough for a configured api_key_url.
+		if m.credentialPassthroughPath(r.URL.Path) && (skip || len(m.AuthSkipPaths) > 0) {
+			m.stripIdentityHeaders(r)
+			next.ServeHTTP(w, r)
+
+			return
+		}
+
 		// authentication is optional on explicit skip_paths patterns and on
 		// the static public plane of auth_skip_paths entries.
-		if m.skipPath(r.URL.Path) {
+		if skip {
 			m.doOptional(next, w, r)
 
 			return

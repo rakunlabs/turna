@@ -75,3 +75,12 @@ func TestPublicPathPatternsEmptyPrefix(t *testing.T) {
 		t.Error("/v1/users must not match")
 	}
 }
+
+func TestCredentialPassthroughPathPatterns(t *testing.T) {
+	m := &Auth{PrefixPath: "/auth"}
+	patterns := m.CredentialPassthroughPathPatterns()
+
+	if len(patterns) != 1 || patterns[0] != "/auth/oauth2/api-key" {
+		t.Fatalf("patterns = %v, want [/auth/oauth2/api-key]", patterns)
+	}
+}

@@ -50,6 +50,13 @@ type InfPublicPaths interface {
 	PublicPathPatterns() []string
 }
 
+// InfCredentialPassthroughPaths publishes public endpoints that must receive
+// raw credentials. Session bypasses optional authentication on these paths so
+// it does not consume credentials before the owning middleware handles them.
+type InfCredentialPassthroughPaths interface {
+	CredentialPassthroughPathPatterns() []string
+}
+
 // InfSessionProviders is implemented by issuers whose session provider list
 // is managed at runtime (the auth middleware's "session_providers" settings
 // namespace). The returned version advances whenever the issuer's
