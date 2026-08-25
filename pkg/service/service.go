@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/kballard/go-shellquote"
 	"github.com/rakunlabs/turna/internal/loader"
@@ -24,10 +25,16 @@ type Service struct {
 	Env map[string]any `cfg:"env"`
 	// EnvValues is a list of environment variables path from exported config.
 	EnvValues []string `cfg:"env_values"`
-	// Inherit environment variables, default is false.
+	// Inherit all environment variables, default is false.
+	//
+	// Even when false, a minimal baseline (PATH, HOME, TMPDIR, USER, LANG, ...)
+	// is always inherited from the parent process; use env to override them.
 	InheritEnv bool `cfg:"inherit_env"`
 	// User is the user to run command, id:group or just id.
 	User string `cfg:"user"`
+	// StopTimeout is the duration to wait after SIGTERM before force killing
+	// the process, default is 30s.
+	StopTimeout time.Duration `cfg:"stop_timeout"`
 	// Filters is a function to filter stdout.
 	Filters [][]byte `cfg:"filters"`
 	// FiltersValues is a list of filter variables path from exported config.
@@ -112,6 +119,7 @@ func (s *Service) Register() error {
 		Order:        s.Order,
 		Depends:      s.Depends,
 		User:         s.User,
+		KillTimeout:  s.StopTimeout,
 	}
 
 	if err := runner.GlobalReg.Add(c); err != nil {

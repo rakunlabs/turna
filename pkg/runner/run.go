@@ -9,14 +9,20 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/rakunlabs/turna/pkg/filter"
 )
 
 var ErrRunInit = fmt.Errorf("run init error")
 
+// DefaultKillTimeout is the default duration to wait after SIGTERM before
+// escalating to SIGKILL.
+var DefaultKillTimeout = 30 * time.Second
+
 type Command struct {
 	proc         *os.Process
+	running      bool
 	wgProg       sync.WaitGroup
 	wgRun        sync.WaitGroup
 	Name         string
@@ -31,6 +37,9 @@ type Command struct {
 	killLock     sync.Mutex
 	killStarted  bool
 	User         string
+	// KillTimeout is the duration to wait after SIGTERM before sending
+	// SIGKILL. Zero means DefaultKillTimeout.
+	KillTimeout time.Duration
 
 	dependLock sync.Mutex
 	dependGet  map[string]struct{}
@@ -159,9 +168,20 @@ func (c *Command) start(ctx context.Context) (*os.Process, error) {
 }
 
 func (c *Command) Run(ctx context.Context) error {
-	if c.proc != nil {
+	c.killLock.Lock()
+	if c.running {
+		c.killLock.Unlock()
+
 		return fmt.Errorf("process already running: %w", ErrRunInit)
 	}
+	c.running = true
+	c.killLock.Unlock()
+
+	defer func() {
+		c.killLock.Lock()
+		c.running = false
+		c.killLock.Unlock()
+	}()
 
 	if len(c.Command) == 0 {
 		return fmt.Errorf("doesn't given any command: %w", ErrRunInit)
@@ -227,7 +247,9 @@ func (c *Command) Kill() {
 	c.killLock.Unlock()
 
 	defer func() {
+		c.killLock.Lock()
 		c.killStarted = false
+		c.killLock.Unlock()
 	}()
 
 	if v != nil {
@@ -237,7 +259,31 @@ func (c *Command) Kill() {
 			slog.Error(fmt.Sprintf("failed to kill process [%s] [%d]", c.Name, v.Pid), "err", err)
 		}
 
-		c.wgRun.Wait()
+		done := make(chan struct{})
+		go func() {
+			c.wgRun.Wait()
+			close(done)
+		}()
+
+		timeout := c.KillTimeout
+		if timeout <= 0 {
+			timeout = DefaultKillTimeout
+		}
+
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+
+		select {
+		case <-done:
+		case <-timer.C:
+			slog.Warn(fmt.Sprintf("process [%s] [%d] did not exit in %s; sending kill signal", c.Name, v.Pid, timeout))
+
+			if err := killProcess(v.Pid); err != nil {
+				slog.Error(fmt.Sprintf("failed to force kill process [%s] [%d]", c.Name, v.Pid), "err", err)
+			}
+
+			<-done
+		}
 
 		return
 	}

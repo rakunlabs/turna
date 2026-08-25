@@ -8,13 +8,41 @@ import (
 	"github.com/rakunlabs/turna/pkg/render"
 )
 
+// baselineEnv is the minimal set of environment variables that are always
+// inherited from the parent process, even when inherit_env is false.
+// Keys are matched case-insensitively to also cover Windows (e.g. "Path").
+var baselineEnv = map[string]struct{}{
+	// unix
+	"PATH":    {},
+	"HOME":    {},
+	"USER":    {},
+	"LOGNAME": {},
+	"SHELL":   {},
+	"TMPDIR":  {},
+	"LANG":    {},
+	"TZ":      {},
+	// windows
+	"SYSTEMROOT":  {},
+	"SYSTEMDRIVE": {},
+	"TEMP":        {},
+	"TMP":         {},
+	"PATHEXT":     {},
+	"USERPROFILE": {},
+	"COMSPEC":     {},
+}
+
 func (s *Service) GetEnv(predefined map[string]any, environ bool, envPaths []string) ([]string, error) {
 	v := make(map[string]string)
-	if environ {
-		for _, e := range os.Environ() {
-			pair := strings.SplitN(e, "=", 2)
-			v[pair[0]] = pair[1]
+	for _, e := range os.Environ() {
+		pair := strings.SplitN(e, "=", 2)
+		if !environ {
+			// inherit only the baseline set (PATH, HOME, TMPDIR, ...)
+			if _, ok := baselineEnv[strings.ToUpper(pair[0])]; !ok {
+				continue
+			}
 		}
+
+		v[pair[0]] = pair[1]
 	}
 
 	// add values

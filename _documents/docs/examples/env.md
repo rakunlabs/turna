@@ -30,3 +30,5 @@ services:
 ```
 
 `inherit_env` copies the current process environment first, then `env` overrides or adds values.
+
+Even with `inherit_env: false` (the default), a minimal baseline such as `PATH`, `HOME`, `TMPDIR`, `USER`, `LANG` is always inherited from the parent process so commands keep working; set them explicitly in `env` to override.

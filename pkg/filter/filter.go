@@ -46,7 +46,11 @@ func (f *FileFilter) Start(ctx context.Context, wg *sync.WaitGroup) (*os.File, e
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		defer func() { f.started = false }()
+		defer func() {
+			f.lock.Lock()
+			f.started = false
+			f.lock.Unlock()
+		}()
 		defer cancel()
 
 		buff := bufio.NewReader(f.r)

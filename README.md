@@ -25,8 +25,6 @@ MacOS
 curl -fSL https://github.com/rakunlabs/turna/releases/latest/download/turna_Darwin_arm64.tar.gz | tar -xz -C ~/bin turna
 ```
 
-This is portable across macOS and Linux because it avoids the GNU-only `--overwrite` flag while keeping the install command compact.
-
 ## Documentation
 
 Full documentation is in [`_documents/docs`](_documents/docs) and is published at <https://rakunlabs.github.io/turna/>.

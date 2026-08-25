@@ -19,6 +19,7 @@ func TestGetEnv(t *testing.T) {
 		osEnv    func()
 		exported map[string]any
 		want     []string
+		notWant  []string
 		wantErr  bool
 	}{
 		{
@@ -30,6 +31,35 @@ func TestGetEnv(t *testing.T) {
 				environ: false,
 			},
 			want: []string{"test=test"},
+		},
+		{
+			name: "baseline env without inherit",
+			args: args{
+				predefined: map[string]any{
+					"test": "test",
+				},
+				environ: false,
+			},
+			osEnv: func() {
+				os.Setenv("PATH", "/usr/bin:/bin")
+				os.Setenv("HOME", "/home/test")
+				os.Setenv("SECRET_TOKEN", "hidden")
+			},
+			want:    []string{"test=test", "PATH=/usr/bin:/bin", "HOME=/home/test"},
+			notWant: []string{"SECRET_TOKEN=hidden"},
+		},
+		{
+			name: "baseline env override without inherit",
+			args: args{
+				predefined: map[string]any{
+					"PATH": "/custom",
+				},
+				environ: false,
+			},
+			osEnv: func() {
+				os.Setenv("PATH", "/usr/bin:/bin")
+			},
+			want: []string{"PATH=/custom"},
 		},
 		{
 			name: "with env",
@@ -113,6 +143,14 @@ func TestGetEnv(t *testing.T) {
 			for _, v := range tt.want {
 				if _, ok := gotMap[v]; !ok {
 					t.Errorf("GetEnv() got = %v, want %v", got, tt.want)
+					return
+				}
+			}
+
+			// check absence
+			for _, v := range tt.notWant {
+				if _, ok := gotMap[v]; ok {
+					t.Errorf("GetEnv() got = %v, notWant %v", got, tt.notWant)
 					return
 				}
 			}

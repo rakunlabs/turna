@@ -23,12 +23,17 @@ func UserParser(u string) (User, error) {
 			return User{}, err
 		}
 
-		v, err := user.Current()
-		if err != nil {
-			return User{}, err
+		// resolve the target user's primary group, not the current process's group
+		var gid uint32
+		if userInfo, lookupErr := user.Lookup(v[0]); lookupErr == nil {
+			gid, err = ParseID(userInfo.Gid)
+		} else if userInfo, lookupErr := user.LookupId(strconv.FormatUint(uint64(uid), 10)); lookupErr == nil {
+			gid, err = ParseID(userInfo.Gid)
+		} else {
+			// numeric uid without a passwd entry; fall back to gid = uid
+			gid = uid
 		}
 
-		gid, err := UToID(v.Gid, true)
 		if err != nil {
 			return User{}, err
 		}

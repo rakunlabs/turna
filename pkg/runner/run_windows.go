@@ -15,6 +15,12 @@ func terminateProcess(pid int) error {
 	return p.Kill()
 }
 
+// killProcess force kills the process; on Windows terminateProcess is already a
+// hard kill, so this is the same operation.
+func killProcess(pid int) error {
+	return terminateProcess(pid)
+}
+
 func sysProcAttr(_ string) (*syscall.SysProcAttr, error) {
 	return &syscall.SysProcAttr{}, nil
 }

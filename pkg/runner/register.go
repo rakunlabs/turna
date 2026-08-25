@@ -34,7 +34,17 @@ func (o *OrderCommand) Run(ctxParent context.Context, wg *sync.WaitGroup) error 
 	ctx, ctxCancel := context.WithCancel(ctxParent)
 	defer ctxCancel()
 
-	var errStore []error
+	var (
+		errStore []error
+		errLock  sync.Mutex
+	)
+
+	addErr := func(err error) {
+		errLock.Lock()
+		defer errLock.Unlock()
+
+		errStore = append(errStore, err)
+	}
 
 	for _, name := range o.Names {
 		o.wg.Add(1)
@@ -42,10 +52,10 @@ func (o *OrderCommand) Run(ctxParent context.Context, wg *sync.WaitGroup) error 
 			defer o.wg.Done()
 
 			// run command
-			if err := o.StoreReg.reg[name].Run(ctx); err != nil {
+			if err := o.StoreReg.Get(name).Run(ctx); err != nil {
 				slog.Error(fmt.Sprintf("failed command [%s]", name), "err", err.Error())
 
-				errStore = append(errStore, err)
+				addErr(err)
 
 				ctxCancel()
 
@@ -60,13 +70,13 @@ func (o *OrderCommand) Run(ctxParent context.Context, wg *sync.WaitGroup) error 
 				ctx, ctxCancel := context.WithCancel(ctxParent)
 				defer ctxCancel()
 
-				for _, depend := range o.StoreReg.reg[name].trigger {
+				for _, depend := range o.StoreReg.Get(name).trigger {
 					slog.Info(fmt.Sprintf("command [%s] dependecy trigger [%s]", name, depend))
 
-					if err := o.StoreReg.reg[depend].DependecyTrigger(ctx, name); err != nil {
+					if err := o.StoreReg.Get(depend).DependecyTrigger(ctx, name); err != nil {
 						slog.Error(fmt.Sprintf("failed command [%s]", name), "err", err.Error())
 
-						errStore = append(errStore, err)
+						addErr(err)
 
 						ctxCancel()
 
@@ -80,6 +90,9 @@ func (o *OrderCommand) Run(ctxParent context.Context, wg *sync.WaitGroup) error 
 	o.wg.Wait()
 
 	slog.Info(fmt.Sprintf("order [%d] done", o.Order))
+
+	errLock.Lock()
+	defer errLock.Unlock()
 
 	if len(errStore) > 0 {
 		return fmt.Errorf("command [%s] failed: %s", o.Names, errStore)
@@ -171,8 +184,15 @@ func (s *StoreReg) Get(name string) *Command {
 func (s *StoreReg) KillAll() {
 	slog.Warn("killing all process")
 
+	s.rwm.RLock()
+	commands := make([]*Command, 0, len(s.reg))
 	for key := range s.reg {
-		s.reg[key].Kill()
+		commands = append(commands, s.reg[key])
+	}
+	s.rwm.RUnlock()
+
+	for _, command := range commands {
+		command.Kill()
 	}
 
 	slog.Warn("killing all process done")

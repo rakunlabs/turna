@@ -12,6 +12,7 @@ services:
     env_values: []
     inherit_env: false
     user: ""
+    stop_timeout: 30s
     filters: []
     filters_values: []
     order: 0
@@ -28,8 +29,9 @@ services:
 | `command` | Command line. Rendered as a Turna template, then parsed like a shell command. |
 | `env` | Environment variables. Values can use templates. |
 | `env_values` | Paths in loaded data that provide extra environment variables. |
-| `inherit_env` | Copy the current process environment before applying `env`. |
-| `user` | Run as a user or uid/gid, such as `root`, `1000`, or `1000:1000`. |
+| `inherit_env` | Copy the full current process environment before applying `env`. Even when false, a minimal baseline (`PATH`, `HOME`, `TMPDIR`, `USER`, `LOGNAME`, `SHELL`, `LANG`, `TZ` and Windows equivalents) is always inherited; `env` can override any of them. |
+| `user` | Run as a user or uid/gid, such as `root`, `1000`, or `1000:1000`. Single value uses that user's primary group. |
+| `stop_timeout` | Wait duration after SIGTERM before force killing the process on shutdown. Default `30s`. |
 | `filters` | Suppress stdout/stderr lines containing these byte strings. |
 | `filters_values` | Paths in loaded data that provide additional filters. |
 | `order` | Services without dependencies run by ascending order. Same order runs in parallel. |

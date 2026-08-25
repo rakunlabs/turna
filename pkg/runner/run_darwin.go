@@ -11,6 +11,11 @@ func terminateProcess(pid int) error {
 	return syscall.Kill(-pid, syscall.SIGTERM)
 }
 
+// killProcess force kills the process group; used when terminateProcess is ignored.
+func killProcess(pid int) error {
+	return syscall.Kill(-pid, syscall.SIGKILL)
+}
+
 func sysProcAttr(user string) (*syscall.SysProcAttr, error) {
 	// Set process group ID so the cmd and all its children become a new
 	// process group. This allows Stop to SIGTERM the cmd's process group
