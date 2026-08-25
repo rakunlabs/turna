@@ -221,10 +221,36 @@ session:
 | Field | Default | Description |
 | --- | --- | --- |
 | `auth_middleware` | | In-process auth middleware instance name. The list is read from its cache; a commit in the UI applies on the next request (no polling, no HTTP). Exactly one of `auth_middleware` or `url` must be set. |
-| `url` | | `GET /v1/session-providers` endpoint of a remote auth middleware. The endpoint is admin-protected because the payload carries provider client secrets. |
+| `group` | | Pull only one named provider group of the list instead of the full merged set. In-process mode only; for `url` mode append the group to the endpoint path instead. A missing group applies as the empty set (static providers keep working). |
+| `url` | | `GET /v1/session-providers` endpoint of a remote auth middleware — or `GET /v1/session-providers/{group}` for one named group. The endpoint is admin-protected because the payload carries provider client secrets. |
 | `ttl` | `30s` | Refresh interval for `url` sources. Between refreshes the last fetched list is served; a failed refresh keeps the last known list and backs off one TTL window. |
 | `headers` | | Extra headers for `url` requests (authentication). |
 | `insecure_skip_verify` | `false` | Skip TLS verification for `url` fetches. |
+
+#### Provider groups
+
+The list can be split into named groups in the auth UI, so different session
+middleware instances pull different subsets from the same auth — e.g. an
+`internal` group for the intranet gateway and an `external` group for the
+public one. Ungrouped providers form the shared list; without a group
+selection an instance receives the shared list plus every group merged, with
+one it receives exactly that group. Provider keys are unique across all
+groups, so the merged view is conflict-free.
+
+```yaml
+# instance A: only the "internal" group
+session:
+  provider_source:
+    auth_middleware: "auth"
+    group: internal
+
+# instance B (remote): only the "external" group
+session:
+  provider_source:
+    url: https://auth.example.com/auth/v1/session-providers/external
+    headers:
+      X-API-Key: "<admin api key>"
+```
 
 The token validation keyfunc is rebuilt only when the provider set actually
 changes (new/removed providers, changed `cert_url` or `auth_middleware`);

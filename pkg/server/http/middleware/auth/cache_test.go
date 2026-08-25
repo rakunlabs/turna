@@ -237,32 +237,46 @@ func TestCacheGetUsersSearch(t *testing.T) {
 func TestCacheSearchRolesAndPermissions(t *testing.T) {
 	c := testCache()
 
-	roles, err := c.GetRoles(data.GetRoleRequest{Search: "PARENT"})
-	if err != nil {
-		t.Fatalf("GetRoles() error = %v", err)
-	}
+	t.Run("roles", func(t *testing.T) {
+		for _, tc := range []struct {
+			search string
+			want   string
+		}{
+			{search: "PARENT", want: "role-parent"},
+			{search: "ROLE-1", want: "role-1"},
+		} {
+			roles, err := c.GetRoles(data.GetRoleRequest{Search: tc.search})
+			if err != nil {
+				t.Fatalf("GetRoles() error = %v", err)
+			}
 
-	if roles.Meta.TotalItemCount != 1 || roles.Payload[0].ID != "role-parent" {
-		t.Fatalf("expected role-parent, got %v", roles.Payload)
-	}
+			if roles.Meta.TotalItemCount != 1 || roles.Payload[0].ID != tc.want {
+				t.Fatalf("search %q: expected %s, got %v", tc.search, tc.want, roles.Payload)
+			}
+		}
+	})
 
-	perms, err := c.GetPermissions(data.GetPermissionRequest{Search: "PER"})
-	if err != nil {
-		t.Fatalf("GetPermissions() error = %v", err)
-	}
+	t.Run("permissions", func(t *testing.T) {
+		for _, search := range []string{"PER", "PERM-1"} {
+			perms, err := c.GetPermissions(data.GetPermissionRequest{Search: search})
+			if err != nil {
+				t.Fatalf("GetPermissions() error = %v", err)
+			}
 
-	if perms.Meta.TotalItemCount != 1 || perms.Payload[0].ID != "perm-1" {
-		t.Fatalf("expected perm-1, got %v", perms.Payload)
-	}
+			if perms.Meta.TotalItemCount != 1 || perms.Payload[0].ID != "perm-1" {
+				t.Fatalf("search %q: expected perm-1, got %v", search, perms.Payload)
+			}
+		}
 
-	perms, err = c.GetPermissions(data.GetPermissionRequest{Search: "no-such"})
-	if err != nil {
-		t.Fatalf("GetPermissions() error = %v", err)
-	}
+		perms, err := c.GetPermissions(data.GetPermissionRequest{Search: "no-such"})
+		if err != nil {
+			t.Fatalf("GetPermissions() error = %v", err)
+		}
 
-	if perms.Meta.TotalItemCount != 0 {
-		t.Fatalf("expected no permissions, got %d", perms.Meta.TotalItemCount)
-	}
+		if perms.Meta.TotalItemCount != 0 {
+			t.Fatalf("expected no permissions, got %d", perms.Meta.TotalItemCount)
+		}
+	})
 }
 
 func TestCacheGetUsersSearchPaged(t *testing.T) {

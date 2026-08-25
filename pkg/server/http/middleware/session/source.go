@@ -30,8 +30,14 @@ type ProviderSource struct {
 	// The provider list is read directly from its cache; changes apply as
 	// soon as the auth cache reloads (no HTTP involved).
 	AuthMiddleware string `cfg:"auth_middleware"`
+	// Group selects one named provider group of the auth middleware's
+	// session provider list instead of the full merged list. In-process
+	// (auth_middleware) mode only — for URL mode append the group to the
+	// endpoint path (e.g. .../v1/session-providers/internal).
+	Group string `cfg:"group"`
 	// URL is the session-providers endpoint of a remote auth middleware
-	// (e.g. https://idp.example.com/auth/v1/session-providers). The endpoint
+	// (e.g. https://idp.example.com/auth/v1/session-providers, or
+	// .../v1/session-providers/{group} for one named group). The endpoint
 	// is admin-protected; use headers to authenticate.
 	URL string `cfg:"url"`
 	// TTL is the refresh interval for URL sources. Default 30s.
@@ -81,6 +87,10 @@ func (m *Session) InitProviderSource() error {
 
 	if (src.AuthMiddleware == "") == (src.URL == "") {
 		return fmt.Errorf("provider_source needs exactly one of auth_middleware or url")
+	}
+
+	if src.Group != "" && src.URL != "" {
+		return fmt.Errorf("provider_source group works with auth_middleware only; append the group to the url instead (%s/%s)", strings.TrimSuffix(src.URL, "/"), src.Group)
 	}
 
 	if src.URL != "" {
@@ -162,12 +172,27 @@ func (m *Session) refreshFromIssuer(src *ProviderSource) {
 		return
 	}
 
-	sp, ok := issuer.(InfSessionProviders)
-	if !ok {
-		return
-	}
+	var (
+		dynamic map[string]Provider
+		version uint64
+		found   = true
+	)
 
-	dynamic, version := sp.SessionProviders()
+	if src.Group != "" {
+		gp, ok := issuer.(InfSessionProviderGroups)
+		if !ok {
+			return
+		}
+
+		dynamic, version, found = gp.SessionProvidersGroup(src.Group)
+	} else {
+		sp, ok := issuer.(InfSessionProviders)
+		if !ok {
+			return
+		}
+
+		dynamic, version = sp.SessionProviders()
+	}
 
 	st := m.dynamic.Load()
 	if st != nil && st.version == version {
@@ -180,6 +205,13 @@ func (m *Session) refreshFromIssuer(src *ProviderSource) {
 	// double check under the lock
 	if st := m.dynamic.Load(); st != nil && st.version == version {
 		return
+	}
+
+	// a deleted (or not yet created) group applies as the empty set so its
+	// stale providers stop validating; warned once per version change.
+	if !found {
+		slog.Warn("session: provider source group not found",
+			"group", src.Group, "auth_middleware", src.AuthMiddleware)
 	}
 
 	m.applyDynamic(dynamic, version, time.Now())

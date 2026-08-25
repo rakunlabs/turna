@@ -19,6 +19,7 @@ type fakeProviderIssuer struct {
 	key any
 
 	providers atomic.Pointer[map[string]Provider]
+	groups    atomic.Pointer[map[string]map[string]Provider]
 	version   atomic.Uint64
 
 	publicPaths []string
@@ -49,8 +50,24 @@ func (f *fakeProviderIssuer) PublicPathPatterns() []string {
 	return f.publicPaths
 }
 
+func (f *fakeProviderIssuer) SessionProvidersGroup(group string) (map[string]Provider, uint64, bool) {
+	groups := f.groups.Load()
+	if groups == nil {
+		return nil, f.version.Load(), false
+	}
+
+	providers, ok := (*groups)[group]
+
+	return providers, f.version.Load(), ok
+}
+
 func (f *fakeProviderIssuer) set(providers map[string]Provider, version uint64) {
 	f.providers.Store(&providers)
+	f.version.Store(version)
+}
+
+func (f *fakeProviderIssuer) setGroups(groups map[string]map[string]Provider, version uint64) {
+	f.groups.Store(&groups)
 	f.version.Store(version)
 }
 
@@ -76,6 +93,16 @@ func TestInitProviderSourceValidation(t *testing.T) {
 	}
 	if m.ProviderSource.client == nil {
 		t.Fatal("expected client for url source")
+	}
+
+	m = &Session{ProviderSource: &ProviderSource{URL: "https://x", Group: "internal"}}
+	if err := m.InitProviderSource(); err == nil {
+		t.Fatal("expected error when group is combined with url (append the group to the url)")
+	}
+
+	m = &Session{ProviderSource: &ProviderSource{AuthMiddleware: "a", Group: "internal"}}
+	if err := m.InitProviderSource(); err != nil {
+		t.Fatalf("init with group: %v", err)
 	}
 }
 
@@ -170,6 +197,54 @@ func TestProviderSourceInProcess(t *testing.T) {
 	}
 	if got := m.Providers()["static"].Name; got != "Static" {
 		t.Fatalf("static.Name = %q, want static value back after overlay removal", got)
+	}
+}
+
+func TestProviderSourceInProcessGroup(t *testing.T) {
+	issuer := &fakeProviderIssuer{kid: "kid-g", key: "public-key"}
+	// merged list exists but must not be used in group mode
+	issuer.set(map[string]Provider{"merged": {Name: "Merged"}}, 0)
+	issuer.setGroups(map[string]map[string]Provider{
+		"internal": {"turna": {AuthMiddleware: "sp-auth-group", Oauth2: &Oauth2{ClientID: "int"}}},
+		"external": {"keycloak": {Oauth2: &Oauth2{ClientID: "ext"}}},
+	}, 1)
+
+	IssuerRegistry.Set("sp-auth-group", issuer)
+
+	m := &Session{
+		Provider:       map[string]Provider{"static": {Name: "Static"}},
+		ProviderSource: &ProviderSource{AuthMiddleware: "sp-auth-group", Group: "internal"},
+	}
+	if err := m.InitProviderSource(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	providers := m.Providers()
+	if len(providers) != 2 {
+		t.Fatalf("providers = %d, want 2 (static + group): %+v", len(providers), providers)
+	}
+	if providers["turna"].Oauth2.ClientID != "int" {
+		t.Fatalf("group provider missing: %+v", providers)
+	}
+	if _, ok := providers["keycloak"]; ok {
+		t.Fatal("other group's provider must not leak in")
+	}
+	if _, ok := providers["merged"]; ok {
+		t.Fatal("merged list must not be used in group mode")
+	}
+
+	// deleting the group applies the empty set on the next version change:
+	// its providers stop validating, static ones survive
+	issuer.setGroups(map[string]map[string]Provider{
+		"external": {"keycloak": {Oauth2: &Oauth2{ClientID: "ext"}}},
+	}, 2)
+
+	providers = m.Providers()
+	if _, ok := providers["turna"]; ok {
+		t.Fatal("deleted group's provider must stop being served")
+	}
+	if _, ok := providers["static"]; !ok {
+		t.Fatal("static provider must survive group deletion")
 	}
 }
 

@@ -2,6 +2,7 @@ package badger
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
@@ -22,7 +23,8 @@ func TestGetRoles(t *testing.T) {
 
 	ctx := data.WithContextUserName(context.Background(), "testing")
 
-	if _, err := db.CreateRole(ctx, role); err != nil {
+	roleID, err := db.CreateRole(ctx, role)
+	if err != nil {
 		t.Fatalf("failed to create role: %v", err)
 	}
 
@@ -45,6 +47,14 @@ func TestGetRoles(t *testing.T) {
 
 	if len(res.Payload) != 1 {
 		t.Fatalf("expected 1 role, got %d", len(res.Payload))
+	}
+
+	res, err = db.GetRoles(data.GetRoleRequest{Search: strings.ToLower(roleID[len(roleID)-8:])})
+	if err != nil {
+		t.Fatalf("failed to search roles by ID: %v", err)
+	}
+	if len(res.Payload) != 1 || res.Payload[0].ID != roleID {
+		t.Fatalf("expected role %s from ID search, got %v", roleID, res.Payload)
 	}
 
 	req = data.GetRoleRequest{

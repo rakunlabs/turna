@@ -44,6 +44,14 @@ func (b *Badger) GetRoles(req data.GetRoleRequest) (*data.Response[[]data.RoleEx
 				}
 			}
 
+			if req.Search != "" {
+				if badgerHoldQueryInternal != nil {
+					badgerHoldQueryInternal = badgerHoldQueryInternal.And("ID").MatchFunc(matchRecordSearch(req.Search))
+				} else {
+					badgerHoldQueryInternal = badgerhold.Where("ID").MatchFunc(matchRecordSearch(req.Search))
+				}
+			}
+
 			permissionIDs := req.PermissionIDs
 			if req.Method != "" || req.Path != "" || len(req.Permissions) > 0 {
 				// get permissions ids based on path and method

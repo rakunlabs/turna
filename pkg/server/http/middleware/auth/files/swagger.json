@@ -2881,7 +2881,7 @@
      "settings"
     ],
     "summary": "Get the UI-managed session middleware provider list",
-    "description": "Session provider map from the session_providers settings namespace with the auth version in meta.version. Remote turna instances poll this through the session middleware's provider_source.url. Admin-protected: the payload carries provider client secrets.",
+    "description": "Session provider map from the session_providers settings namespace (ungrouped providers plus every group merged) with the auth version in meta.version. Remote turna instances poll this through the session middleware's provider_source.url. Admin-protected: the payload carries provider client secrets.",
     "produces": [
      "application/json"
     ],
@@ -2894,6 +2894,47 @@
      },
      "401": {
       "description": "Unauthorized",
+      "schema": {
+       "$ref": "#/definitions/httputil.Error"
+      }
+     }
+    }
+   }
+  },
+  "/v1/session-providers/{group}": {
+   "get": {
+    "tags": [
+     "settings"
+    ],
+    "summary": "Get one named group of the session provider list",
+    "description": "Providers of one named group of the session_providers settings namespace, so different session middleware instances can pull different subsets. Same envelope and admin protection as the merged endpoint.",
+    "produces": [
+     "application/json"
+    ],
+    "parameters": [
+     {
+      "type": "string",
+      "name": "group",
+      "in": "path",
+      "required": true,
+      "description": "Group name"
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "schema": {
+       "type": "object"
+      }
+     },
+     "401": {
+      "description": "Unauthorized",
+      "schema": {
+       "$ref": "#/definitions/httputil.Error"
+      }
+     },
+     "404": {
+      "description": "Not Found",
       "schema": {
        "$ref": "#/definitions/httputil.Error"
       }

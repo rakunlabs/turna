@@ -62,7 +62,7 @@ Everything else is a settings namespace under `/auth/v1/settings/{namespace}` an
 | `authorize` | `disabled`, `flow_lifetime`, `login_url` | Local browser-based authorization code flow (`/oauth2/authorize` + consent screen). Pending consents live `10m` by default. `login_url` redirects anonymous browsers to a login page (with `?redirect_path=` back reference, the [`login`](./login) middleware convention); empty shows an error asking to log in first. |
 | `registration` | `enabled`, `client_lifetime`, `default_scope`, `max_clients` | RFC 7591 dynamic client registration (`/oauth2/register`; UI: *OAuth2 → Dynamic client registration*). Off by default because registration is anonymous. `client_lifetime` expires dynamic clients (empty keeps them forever), `max_clients` caps stored dynamic clients (default `1000`). |
 | `custom_info` | `disabled`, `sets` | Per-name userinfo claim templates served at `/oauth2/userinfo/{custom}` (and advertised by `/oauth2/openid/{custom}/.well-known/openid-configuration`). `sets.<name>.claims` maps an output claim to a Go `text/template`; templates receive <code v-pre>{{ .claims }}</code> (the base userinfo claims) and <code v-pre>{{ .user }}</code> (the full user record). A template whose key is new adds a claim, an existing key overwrites it, and a template that renders empty (e.g. `""` or trimmed with <code v-pre>{{- -}}</code>) removes the claim. Templates are validated on save. Managed in the UI under *Custom Info*. |
-| `session_providers` | `providers` | A [`session`](./session) middleware provider list managed from the UI (*Federation → Session providers*) instead of static YAML. `providers` is a map keyed by provider name using the session middleware's provider model (`name`, `auth_middleware`, `oauth2.*`, `passkey`, `password_flow`, `api_key`, `x_user`, `claim_header`, `priority`, `hide`, ...). A session middleware pulls it with `provider_source.auth_middleware` (in-process, applied on the next request after a commit) or over `GET /v1/session-providers` with `provider_source.url` (remote, TTL polled). Dynamic providers override same-named static ones. |
+| `session_providers` | `providers`, `groups` | A [`session`](./session) middleware provider list managed from the UI (*Federation → Session providers*) instead of static YAML. `providers` is a map keyed by provider name using the session middleware's provider model (`name`, `auth_middleware`, `oauth2.*`, `passkey`, `password_flow`, `api_key`, `x_user`, `claim_header`, `priority`, `hide`, ...); `groups` holds named subsets of the same shape (`groups.<name>.providers`) that session middlewares can pull selectively with `provider_source.group` or `GET /v1/session-providers/{group}`. Provider keys must be unique across the ungrouped list and every group (enforced on save). A session middleware pulls the list with `provider_source.auth_middleware` (in-process, applied on the next request after a commit) or over `GET /v1/session-providers` with `provider_source.url` (remote, TTL polled). Dynamic providers override same-named static ones. |
 
 Example:
 
@@ -103,7 +103,7 @@ With `prefix_path: /auth`:
 | `/auth/ui/device?user_code=XXXX-XXXX` | RFC 8628 device approval/deny page; `user_code` is optional and pre-fills the form when present. |
 | `/auth/ui/#mtls` | Global mTLS settings and workflow guide; certificate bindings live on service account records. |
 | `/auth/ui/#custom-info` | Custom userinfo template sets: per-name claim template editor (add/overwrite/remove claims) with a live preview against sample claims and user details. |
-| `/auth/ui/#session-providers` | Session middleware provider list (`session_providers` namespace): per-provider editor (auth middleware binding, OAuth2 endpoints, passkey/password/API key toggles, claim headers) with wiring examples for `provider_source`. |
+| `/auth/ui/#session-providers` | Session middleware provider list (`session_providers` namespace): per-provider editor (auth middleware binding, OAuth2 endpoints, passkey/password/API key toggles, claim headers, optional group assignment) with wiring examples for `provider_source`. |
 | `/auth/swagger/*` | Swagger UI for the auth API (served with the ada swagger handler; spec at `/auth/swagger/swagger.json`). |
 
 ### IAM
@@ -362,7 +362,8 @@ Session integration is token based: mTLS authenticates the token request, not th
 | `GET` | `/auth/v1/info` | Prefix, storage type, and current auth version. |
 | `GET` | `/auth/v1/capabilities` | Current request capabilities (`is_admin`, `anonymous_admin`, configured admin permission). The UI uses this to hide admin pages from normal users. |
 | `GET/PUT/DELETE` | `/auth/v1/settings`, `/auth/v1/settings/{namespace}` | Encrypted JSON settings. Writes apply immediately on the handling instance; the `jwt` namespace is validated (parseable private key + kid) before saving. |
-| `GET` | `/auth/v1/session-providers` | The UI-managed session middleware provider list (`session_providers` namespace) with the auth version in `meta.version`. Remote turna instances poll it through the session middleware's `provider_source.url`; admin-protected because provider client secrets travel in the payload. |
+| `GET` | `/auth/v1/session-providers` | The UI-managed session middleware provider list (`session_providers` namespace, ungrouped providers plus every group merged) with the auth version in `meta.version`. Remote turna instances poll it through the session middleware's `provider_source.url`; admin-protected because provider client secrets travel in the payload. |
+| `GET` | `/auth/v1/session-providers/{group}` | One named group of the same list, so different session middleware instances can pull different subsets. Same envelope and admin protection; `404` when the group is unknown. |
 | `POST` | `/auth/v1/custom-info/preview` | Render an unsaved `custom_info` set against sample claims and user details; returns the resulting claims and validates the templates (used by the UI). |
 | `POST` | `/auth/v1/jwt/rotate` | Generate and activate a fresh RSA signing key (new `kid`); outstanding tokens become invalid. |
 | `GET/PUT/DELETE` | `/auth/v1/oauth/clients`, `/auth/v1/oauth/clients/{id}` | OAuth client records. |
@@ -394,6 +395,84 @@ Passkey support uses the dependency-free engine from `github.com/rakunlabs/ada/m
 | `POST` | `/auth/oauth2/passkey` | Public login ceremony; finish responds with the standard token JSON. |
 
 Login requests carry `client_id`/`client_secret` like the password grant; `username` scopes `allowCredentials` to a known user, empty uses the discoverable (passwordless) flow. `allowCredentials` and `excludeCredentials` include the transports captured at registration (`internal`, `hybrid`, `usb`, ...) so browsers surface the matching authenticator — a synced browser-profile passkey shows up directly instead of the generic QR/security-key dialog. The management UI shows registered passkeys on the user page; admins can enroll a passkey for the selected user, which binds the authenticator present in the operator's browser to that user's account. The self-service Account page enrolls for the signed-in user.
+
+#### Registering and listing passkeys from an external UI
+
+The `/v1/passkey/*` routes are part of the X-User plane: they carry no client credentials and identify the caller by the `X-User` header injected by a fronting [`session`](./session) middleware. An external (custom) account page therefore calls them same-origin from the signed-in browser — the session cookie authenticates the request, and without a resolved `X-User` the endpoints answer `401`. Passing a `user_id` other than the caller's own requires admin capability; when the routes are additionally guarded by IAM permission checks, grant the self-service resource `{prefix}/v1/passkey/**` with methods `GET`, `POST`, `DELETE`. All endpoints answer `503 passkey not available` while the `passkey` runtime setting has `disabled: true`.
+
+**Register** is a begin/finish pair on `POST /auth/v1/passkey/register`. Begin with an empty object for the signed-in user (or `{"user_id": "..."}` as admin):
+
+```http
+POST /auth/v1/passkey/register
+Content-Type: application/json
+
+{}
+```
+
+```json
+{
+  "payload": {
+    "session_id": "01J8ZQ...",
+    "options": {
+      "challenge": "1nZFbXVK...",
+      "rp": {"id": "example.com", "name": "Turna Auth"},
+      "user": {"id": "dXNlcklk", "name": "alice", "displayName": "Alice"},
+      "pubKeyCredParams": [{"type": "public-key", "alg": -7}],
+      "timeout": 60000,
+      "excludeCredentials": [
+        {"type": "public-key", "id": "kFum-Ci0...", "transports": ["internal"]}
+      ],
+      "authenticatorSelection": {"residentKey": "preferred", "userVerification": "preferred"},
+      "attestation": "none"
+    }
+  }
+}
+```
+
+All binary fields are URL-safe base64 without padding. Decode `challenge`, `user.id` and each `excludeCredentials[].id` into buffers, run `navigator.credentials.create({publicKey})`, then base64url-encode the result and finish with the same `session_id` plus a user-facing `name` label:
+
+```http
+POST /auth/v1/passkey/register
+Content-Type: application/json
+
+{
+  "session_id": "01J8ZQ...",
+  "name": "MacBook Touch ID",
+  "credential": {
+    "id": "kFum-Ci0...",
+    "rawId": "kFum-Ci0...",
+    "type": "public-key",
+    "response": {
+      "clientDataJSON": "eyJ0eXBl...",
+      "attestationObject": "o2NmbXQ...",
+      "transports": ["internal", "hybrid"]
+    },
+    "authenticatorAttachment": "platform"
+  }
+}
+```
+
+Success returns `{"payload": {"message": "passkey registered", "id": "<base64url credential id>"}}`. The begin session is single use with a 2-minute TTL — a failed or expired finish needs a new begin. Include `"user_id"` in **both** requests when enrolling for another user as admin. Send `response.transports` (from `credential.response.getTransports()`) when available: it is stored and later replayed in `allowCredentials`, giving users the direct platform/hybrid prompt at login.
+
+**List** the stored passkeys with `GET /auth/v1/passkey/credentials` (own) or `?user_id=...` (admin):
+
+```json
+{
+  "meta": {"total_item_count": 2},
+  "payload": [
+    {
+      "id": "kFum-Ci0...",
+      "user_id": "01J8ZP...",
+      "name": "MacBook Touch ID",
+      "sign_count": 4,
+      "created_at": "2026-08-01T09:30:00Z",
+      "updated_at": "2026-08-20T14:05:00Z"
+    }
+  ]
+}
+```
+
+`id` is the base64url credential ID and doubles as the delete path parameter: `DELETE /auth/v1/passkey/credentials/{id}` (URL-encode it) removes the passkey and answers `{"payload": {"message": "passkey deleted"}}`, `404` when unknown. Users can delete their own credentials; anything else requires admin. The embedded UI's `AccountTab.svelte` and `PasskeyPanel.svelte` (`pkg/server/http/middleware/auth/_ui/src/components/`) are the reference implementations, including the base64url conversions in `_ui/src/lib/webauthn.ts`.
 
 ## Session/login integration
 

@@ -97,20 +97,42 @@ For `path.base: /login/`, default routes are:
 
 `/login/auth/info/ui` and `/login/?auth_info=true` remain compatibility aliases for the methods response. New integrations should use `/login/auth/methods`. All methods responses carry `Cache-Control: no-store` because provider and self-service capabilities can change at runtime.
 
-The canonical endpoint uses the standard payload envelope:
+The canonical endpoint uses the standard payload envelope. A response with one password provider (backed by an [`auth`](./auth) middleware with signup, password reset and passkeys enabled) and one external code provider looks like:
 
 ```json
 {
   "payload": {
-    "title": "Login",
+    "title": "Turna Login",
     "provider": {
-      "password": [],
-      "code": [],
-      "passkey": []
+      "password": [
+        {
+          "name": "Auth",
+          "url": "/login/auth/token/auth",
+          "signup_url": "/login/auth/signup/auth",
+          "signup_verify_url": "/login/auth/signup/verify/auth",
+          "password_reset_url": "/login/auth/reset/auth",
+          "password_reset_confirm_url": "/login/auth/reset/confirm/auth",
+          "password_min_length": 12
+        }
+      ],
+      "code": [
+        {
+          "name": "Keycloak",
+          "url": "/login/auth/code/keycloak"
+        }
+      ],
+      "passkey": [
+        {
+          "name": "Auth",
+          "url": "/login/auth/passkey/auth"
+        }
+      ]
     }
   }
 }
 ```
+
+Each link is one login choice: `name` is a display label (not guaranteed to be unique) and `url` is the endpoint to use for that flow — always take it from the manifest instead of hard-coding routes, so `path.*` overrides and `path.base_url` keep working. The `signup_*`, `password_reset_*` and `password_min_length` fields appear only on password providers whose auth middleware enables those features. `disable_remember_me: true` is added next to `title` when the remember-me choice must be hidden; the field is omitted when false. Provider groups without any entry may be `null`.
 
 The two compatibility aliases keep their historic unwrapped `{title, provider}` response.
 
@@ -263,9 +285,85 @@ Refresh the downloaded declaration file when upgrading Turna (the additions are 
 
 ### Raw API
 
-Every SDK operation is a plain HTTP endpoint (see [Default Routes](#default-routes)); non-browser clients can call them directly. In short: the password and passkey flows return `204` on success and set the session cookie; the passkey flow is a begin/finish pair carrying `session_id`, base64url-encoded WebAuthn `options` and `assertion`; the code-flow callback page posts `turna:login:success` to its opener and sets the short-lived, non-HttpOnly `auth_verify=true` cookie. Error responses use the `{message, error}` envelope, possibly wrapping an OAuth2 error body. The SDK source (`pkg/server/http/middleware/login/_ui/src/sdk/index.ts`) is the reference implementation.
+Every SDK operation is a plain HTTP endpoint (see [Default Routes](#default-routes)); non-browser clients and custom UIs that do not use the SDK can call them directly. The SDK source (`pkg/server/http/middleware/login/_ui/src/sdk/index.ts`) is the reference implementation.
 
-Serve the custom page and login endpoints from the same origin unless you explicitly add and audit a CORS layer. Never expose the provider `client_secret` or store returned tokens in browser storage; the middleware injects provider credentials server-side and owns the session cookie.
+Every implementation starts the same way: fetch `GET {base}/auth/methods`, render one control per link in `payload.provider.password` / `.code` / `.passkey`, and run the flow for the link the user picks against that link's `url`. Error responses of all flows use the `{message, error}` envelope, possibly wrapping an OAuth2 `{error, error_description}` body. After any successful flow the session cookie is already set; finish by navigating like the SDK's `finish()`: reload the page when `?response_type=code` is present (Turna's own authorization-code flow), otherwise follow a validated same-origin `redirect_path` query parameter.
+
+#### Password
+
+`POST` the credentials as JSON to the link's `url`:
+
+```http
+POST /login/auth/token/auth
+Content-Type: application/json
+
+{"username": "demo", "password": "secret", "remember_me": true}
+```
+
+Success is `204 No Content` with the session cookie set. On failure, collapse the credential-mismatch details (`password not match`, `user not found`, `secret not match`, or a plain `401`) into one neutral "invalid username or password" message so the page never reveals which part was wrong.
+
+#### Code
+
+Open the link's `url` in a popup (or navigate top-level), appending `?remember_me=true` when the choice is checked:
+
+```
+GET /login/auth/code/keycloak?remember_me=true
+```
+
+The middleware answers with a `307` redirect to the provider's authorization URL and later receives the callback (`?code=&state=`) on the same route. The callback stores the tokens in the session and serves a small success page that both posts the `turna:login:success` message to `window.opener` (same origin) and sets the short-lived, non-HttpOnly `auth_verify=true` cookie. A popup-based page should listen for the message **and** poll the cookie — COOP-enabled providers sever the `window.opener` handle, and the popup may even report `closed` while the sign-in is still in progress, so never reject just because the popup looks closed. When either signal fires, close the popup and finish.
+
+#### Passkey
+
+A begin/finish pair of `POST`s to the same link `url`. Begin carries no `assertion`; omitting `username` starts the discoverable (username-less) flow where the browser offers every resident passkey:
+
+```http
+POST /login/auth/passkey/auth
+Content-Type: application/json
+
+{"username": "demo", "remember_me": false}
+```
+
+```json
+{
+  "session_id": "8Zl2mJ4v...",
+  "options": {
+    "challenge": "1nZFbXVK...",
+    "timeout": 60000,
+    "rpId": "example.com",
+    "allowCredentials": [
+      {"type": "public-key", "id": "kFum-Ci0...", "transports": ["internal", "hybrid"]}
+    ],
+    "userVerification": "preferred"
+  }
+}
+```
+
+All binary fields are URL-safe base64 without padding. Decode `challenge` and each `allowCredentials[].id` into buffers, run `navigator.credentials.get({publicKey})`, then base64url-encode the assertion buffers and finish with the same `session_id`:
+
+```http
+POST /login/auth/passkey/auth
+Content-Type: application/json
+
+{
+  "session_id": "8Zl2mJ4v...",
+  "remember_me": false,
+  "assertion": {
+    "id": "kFum-Ci0...",
+    "rawId": "kFum-Ci0...",
+    "type": "public-key",
+    "response": {
+      "clientDataJSON": "eyJ0eXBl...",
+      "authenticatorData": "SZYN5Ygh...",
+      "signature": "MEUCIQD...",
+      "userHandle": "YWxpY2U"
+    }
+  }
+}
+```
+
+Success is `204 No Content` with the session cookie set; the `remember_me` value of the **finish** request controls the issued session. The begin session is one-shot — a failed finish needs a new begin.
+
+Serve the custom page and login endpoints from the same origin unless you explicitly add and audit a CORS layer. Never expose the provider `client_secret` or store returned tokens in browser storage; the middleware injects the provider's `client_id`/`client_secret`/`scope` server-side in every flow and owns the session cookie.
 
 ## Remember me
 

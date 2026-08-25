@@ -82,6 +82,13 @@ func TestSessionProviderSettingsDecode(t *testing.T) {
 				"priority": 2,
 				"oauth2": {"client_id": "ui", "scopes": ["openid"]}
 			}
+		},
+		"groups": {
+			"internal": {
+				"providers": {
+					"keycloak": {"name": "Keycloak", "oauth2": {"client_id": "kc"}}
+				}
+			}
 		}
 	}`)
 
@@ -99,5 +106,133 @@ func TestSessionProviderSettingsDecode(t *testing.T) {
 	}
 	if provider.Oauth2 == nil || provider.Oauth2.ClientID != "ui" {
 		t.Fatalf("oauth2 = %+v", provider.Oauth2)
+	}
+
+	grouped := setting.Groups["internal"].Providers["keycloak"]
+	if grouped.Name != "Keycloak" || grouped.Oauth2 == nil || grouped.Oauth2.ClientID != "kc" {
+		t.Fatalf("grouped provider = %+v", grouped)
+	}
+}
+
+func TestSessionProvidersGroup(t *testing.T) {
+	c := NewCache(nil)
+	c.snap.Store(&Snapshot{
+		Version: 5,
+		SessionProviders: map[string]session.Provider{
+			"turna":    {Name: "Turna"},
+			"keycloak": {Name: "Keycloak"},
+		},
+		SessionProviderGroups: map[string]map[string]session.Provider{
+			"internal": {"keycloak": {Name: "Keycloak"}},
+		},
+	})
+
+	m := &Auth{cache: c}
+
+	providers, version, ok := m.SessionProvidersGroup("internal")
+	if !ok || version != 5 {
+		t.Fatalf("ok = %v, version = %d", ok, version)
+	}
+	if len(providers) != 1 || providers["keycloak"].Name != "Keycloak" {
+		t.Fatalf("providers = %+v", providers)
+	}
+
+	if _, _, ok := m.SessionProvidersGroup("missing"); ok {
+		t.Fatal("unknown group must not be found")
+	}
+
+	// the middleware satisfies the session group interface
+	var _ session.InfSessionProviderGroups = m
+}
+
+func TestSessionProvidersGroupAPI(t *testing.T) {
+	c := NewCache(nil)
+	c.snap.Store(&Snapshot{
+		Version: 9,
+		SessionProviderGroups: map[string]map[string]session.Provider{
+			"internal": {"keycloak": {Name: "Keycloak", AuthMiddleware: "auth"}},
+		},
+	})
+
+	m := &Auth{cache: c}
+
+	r := httptest.NewRequest(http.MethodGet, "/v1/session-providers/internal", nil)
+	r.SetPathValue("group", "internal")
+	w := httptest.NewRecorder()
+	m.SessionProvidersGroupAPI(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+
+	var resp struct {
+		Payload map[string]session.Provider `json:"payload"`
+		Meta    struct {
+			Version uint64 `json:"version"`
+		} `json:"meta"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if resp.Meta.Version != 9 {
+		t.Fatalf("meta.version = %d, want 9", resp.Meta.Version)
+	}
+	if len(resp.Payload) != 1 || resp.Payload["keycloak"].Name != "Keycloak" {
+		t.Fatalf("payload = %+v", resp.Payload)
+	}
+
+	// unknown group answers 404
+	r = httptest.NewRequest(http.MethodGet, "/v1/session-providers/missing", nil)
+	r.SetPathValue("group", "missing")
+	w = httptest.NewRecorder()
+	m.SessionProvidersGroupAPI(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
+}
+
+func TestValidateSessionProviders(t *testing.T) {
+	valid := SessionProviderSettings{
+		Providers: map[string]session.Provider{"turna": {}},
+		Groups: map[string]SessionProviderGroup{
+			"internal": {Providers: map[string]session.Provider{"keycloak": {}}},
+			"external": {Providers: map[string]session.Provider{"github": {}}},
+		},
+	}
+	if err := validateSessionProviders(valid); err != nil {
+		t.Fatalf("valid settings rejected: %v", err)
+	}
+
+	dupWithUngrouped := SessionProviderSettings{
+		Providers: map[string]session.Provider{"turna": {}},
+		Groups: map[string]SessionProviderGroup{
+			"internal": {Providers: map[string]session.Provider{"turna": {}}},
+		},
+	}
+	if err := validateSessionProviders(dupWithUngrouped); err == nil {
+		t.Fatal("duplicate key between ungrouped and a group must be rejected")
+	}
+
+	dupAcrossGroups := SessionProviderSettings{
+		Groups: map[string]SessionProviderGroup{
+			"internal": {Providers: map[string]session.Provider{"keycloak": {}}},
+			"external": {Providers: map[string]session.Provider{"keycloak": {}}},
+		},
+	}
+	if err := validateSessionProviders(dupAcrossGroups); err == nil {
+		t.Fatal("duplicate key across groups must be rejected")
+	}
+
+	for _, name := range []string{"", " ", "a/b", "a b", "a?b", "a#b", "a%b"} {
+		bad := SessionProviderSettings{
+			Groups: map[string]SessionProviderGroup{
+				name: {Providers: map[string]session.Provider{"x": {}}},
+			},
+		}
+		if err := validateSessionProviders(bad); err == nil {
+			t.Fatalf("group name %q must be rejected", name)
+		}
 	}
 }

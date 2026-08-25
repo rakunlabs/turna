@@ -259,8 +259,11 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 
 	// session middleware provider list managed from the UI
 	// ("session_providers" namespace); remote instances poll it with
-	// provider_source.url, in-process ones read the cache directly.
+	// provider_source.url, in-process ones read the cache directly. The
+	// {group} form serves one named group so different session middleware
+	// instances can pull different subsets.
 	mux.GET(prefix+"/v1/session-providers", admin(m.SessionProvidersAPI))
+	mux.GET(prefix+"/v1/session-providers/{group}", admin(m.SessionProvidersGroupAPI))
 
 	// oauth config
 	// {id...} is a greedy wildcard: client ids may be URLs (OAuth Client ID

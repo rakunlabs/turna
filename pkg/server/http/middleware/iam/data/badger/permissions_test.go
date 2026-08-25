@@ -2,6 +2,7 @@ package badger
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
@@ -47,6 +48,14 @@ func TestBadgerGetPermissions(t *testing.T) {
 
 	if len(res.Payload) != 1 {
 		t.Fatalf("expected 1 permission, got %d", len(res.Payload))
+	}
+
+	res, err = db.GetPermissions(data.GetPermissionRequest{Search: strings.ToLower(permission.ID[len(permission.ID)-8:])})
+	if err != nil {
+		t.Fatalf("failed to search permissions by ID: %v", err)
+	}
+	if len(res.Payload) != 1 || res.Payload[0].ID != permission.ID {
+		t.Fatalf("expected permission %s from ID search, got %v", permission.ID, res.Payload)
 	}
 
 	req = data.GetPermissionRequest{

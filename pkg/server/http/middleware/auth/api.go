@@ -198,6 +198,10 @@ func (m *Auth) PutSetting(w http.ResponseWriter, r *http.Request) {
 			httputil.HandleError(w, httputil.NewError("cannot decode session_providers setting", err, http.StatusBadRequest))
 			return
 		}
+		if err := validateSessionProviders(setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("invalid session_providers setting", err, http.StatusBadRequest))
+			return
+		}
 	}
 
 	if namespace == "authorize" {

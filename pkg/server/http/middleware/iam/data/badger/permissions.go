@@ -59,6 +59,14 @@ func (b *Badger) GetPermissions(req data.GetPermissionRequest) (*data.Response[[
 				}
 			}
 
+			if req.Search != "" {
+				if badgerHoldQueryInternal != nil {
+					badgerHoldQueryInternal = badgerHoldQueryInternal.And("ID").MatchFunc(matchRecordSearch(req.Search))
+				} else {
+					badgerHoldQueryInternal = badgerhold.Where("ID").MatchFunc(matchRecordSearch(req.Search))
+				}
+			}
+
 			if len(req.Data) > 0 {
 				if badgerHoldQueryInternal != nil {
 					badgerHoldQueryInternal = badgerHoldQueryInternal.And("Data").MatchFunc(matchData(req.Data))

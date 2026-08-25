@@ -91,6 +91,28 @@ func matchAll(values ...string) badgerhold.MatchFunc {
 	}
 }
 
+func matchRecordSearch(value string) badgerhold.MatchFunc {
+	value = strings.ToLower(value)
+
+	return func(ra *badgerhold.RecordAccess) (bool, error) {
+		var fields []string
+		switch record := ra.Record().(type) {
+		case *data.Role:
+			fields = []string{record.ID, record.Name, record.Description}
+		case *data.Permission:
+			fields = []string{record.ID, record.Name, record.Description}
+		}
+
+		for _, field := range fields {
+			if strings.Contains(strings.ToLower(field), value) {
+				return true, nil
+			}
+		}
+
+		return false, nil
+	}
+}
+
 func matchAnyIDs() badgerhold.MatchFunc {
 	return func(ra *badgerhold.RecordAccess) (bool, error) {
 		record, _ := ra.Field().([]string)

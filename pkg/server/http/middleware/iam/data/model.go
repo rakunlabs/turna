@@ -355,7 +355,7 @@ type GetPermissionRequest struct {
 	Path        string `json:"path"`
 	Method      string `json:"method"`
 	Description string `json:"description"`
-	// Search is a case-insensitive substring match on name or description.
+	// Search is a case-insensitive substring match on ID, name, or description.
 	Search string `json:"search"`
 
 	Limit  int64 `json:"limit"`
@@ -377,7 +377,7 @@ type GetRoleRequest struct {
 	Method      string   `json:"method"`
 	Description string   `json:"description"`
 	Permissions []string `json:"permissions"`
-	// Search is a case-insensitive substring match on name or description.
+	// Search is a case-insensitive substring match on ID, name, or description.
 	Search string `json:"search"`
 
 	Limit  int64 `json:"limit"`

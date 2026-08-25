@@ -59,6 +59,17 @@ type InfSessionProviders interface {
 	SessionProviders() (map[string]Provider, uint64)
 }
 
+// InfSessionProviderGroups is implemented by issuers whose runtime-managed
+// session provider list supports named groups (the auth middleware's
+// "session_providers" namespace with `groups`). A session middleware
+// configured with `provider_source.group` pulls only that group's providers.
+type InfSessionProviderGroups interface {
+	// SessionProvidersGroup returns the providers of one named group and the
+	// issuer's configuration version; found is false when the group does not
+	// exist.
+	SessionProvidersGroup(group string) (providers map[string]Provider, version uint64, found bool)
+}
+
 // InfAccessChecker is implemented by in-process identity providers that can
 // answer a host/path/method authorization check. An empty alias means an
 // anonymous request and therefore checks public resources only.

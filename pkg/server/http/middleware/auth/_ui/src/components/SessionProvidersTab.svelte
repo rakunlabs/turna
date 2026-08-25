@@ -32,6 +32,8 @@
   type ProviderRow = {
     id: number;
     key: string;
+    /** Named group this provider belongs to; empty = the ungrouped list. */
+    group: string;
     name: string;
     authMiddleware: string;
     passkey: boolean;
@@ -94,10 +96,11 @@
     };
   }
 
-  function newProvider(key = ""): ProviderRow {
+  function newProvider(key = "", group = ""): ProviderRow {
     return {
       id: uid++,
       key,
+      group,
       name: "",
       authMiddleware: "",
       passkey: false,
@@ -116,44 +119,52 @@
 
   function syncFromRecord(value: unknown) {
     const rec = asRecord(value);
-    const recProviders = asRecord(rec.providers);
 
     const next: ProviderRow[] = [];
-    for (const [key, raw] of Object.entries(recProviders)) {
-      const p = asRecord(raw);
-      const oauth2Raw = asRecord(p.oauth2);
-      const row = newProvider(key);
-
-      row.name = str(p.name);
-      row.authMiddleware = str(p.auth_middleware);
-      row.passkey = Boolean(p.passkey);
-      row.passwordFlow = Boolean(p.password_flow);
-      row.apiKey = Boolean(p.api_key);
-      row.apiKeyHeader = str(p.api_key_header);
-      row.priority = typeof p.priority === "number" ? p.priority : 0;
-      row.hide = Boolean(p.hide);
-      row.emailVerifyCheck = Boolean(p.email_verify_check);
-      row.xUser = Array.isArray(p.x_user) ? p.x_user.join(", ") : "";
-      row.claimHeaders = Object.entries(asRecord(p.claim_header)).map(([header, claim]) => ({
-        id: uid++,
-        header,
-        claim: str(claim),
-      }));
-
-      const oauth2 = emptyOauth2();
-      for (const field of Object.keys(oauth2) as (keyof Oauth2Row)[]) {
-        if (field === "scopes") {
-          oauth2.scopes = Array.isArray(oauth2Raw.scopes) ? oauth2Raw.scopes.join(", ") : "";
-          continue;
-        }
-        oauth2[field] = str(oauth2Raw[field]);
+    for (const [key, raw] of Object.entries(asRecord(rec.providers))) {
+      next.push(rowFromRecord(key, "", raw));
+    }
+    for (const [groupName, groupRaw] of Object.entries(asRecord(rec.groups))) {
+      for (const [key, raw] of Object.entries(asRecord(asRecord(groupRaw).providers))) {
+        next.push(rowFromRecord(key, groupName, raw));
       }
-      row.oauth2 = oauth2;
-
-      next.push(row);
     }
 
     providers = next;
+  }
+
+  function rowFromRecord(key: string, group: string, raw: unknown): ProviderRow {
+    const p = asRecord(raw);
+    const oauth2Raw = asRecord(p.oauth2);
+    const row = newProvider(key, group);
+
+    row.name = str(p.name);
+    row.authMiddleware = str(p.auth_middleware);
+    row.passkey = Boolean(p.passkey);
+    row.passwordFlow = Boolean(p.password_flow);
+    row.apiKey = Boolean(p.api_key);
+    row.apiKeyHeader = str(p.api_key_header);
+    row.priority = typeof p.priority === "number" ? p.priority : 0;
+    row.hide = Boolean(p.hide);
+    row.emailVerifyCheck = Boolean(p.email_verify_check);
+    row.xUser = Array.isArray(p.x_user) ? p.x_user.join(", ") : "";
+    row.claimHeaders = Object.entries(asRecord(p.claim_header)).map(([header, claim]) => ({
+      id: uid++,
+      header,
+      claim: str(claim),
+    }));
+
+    const oauth2 = emptyOauth2();
+    for (const field of Object.keys(oauth2) as (keyof Oauth2Row)[]) {
+      if (field === "scopes") {
+        oauth2.scopes = Array.isArray(oauth2Raw.scopes) ? oauth2Raw.scopes.join(", ") : "";
+        continue;
+      }
+      oauth2[field] = str(oauth2Raw[field]);
+    }
+    row.oauth2 = oauth2;
+
+    return row;
   }
 
   function splitList(value: string): string[] {
@@ -165,6 +176,7 @@
 
   function buildRecord(): AnyRecord {
     const out: Record<string, unknown> = {};
+    const groups: Record<string, { providers: Record<string, unknown> }> = {};
 
     for (const row of providers) {
       const key = row.key.trim();
@@ -203,10 +215,18 @@
       }
       if (Object.keys(oauth2).length) provider.oauth2 = oauth2;
 
-      out[key] = provider;
+      const group = row.group.trim();
+      if (group) {
+        (groups[group] ??= { providers: {} }).providers[key] = provider;
+      } else {
+        out[key] = provider;
+      }
     }
 
-    return { providers: out };
+    const record: AnyRecord = { providers: out };
+    if (Object.keys(groups).length) record.groups = groups;
+
+    return record;
   }
 
   function addProvider() {
@@ -240,6 +260,25 @@
 
   const named = $derived(providers.filter((row) => row.key.trim()).length);
 
+  const groupNames = $derived(
+    [...new Set(providers.map((row) => row.group.trim()).filter(Boolean))].sort(),
+  );
+
+  // Provider keys must be unique across the ungrouped list and every group
+  // (the server rejects duplicates on commit); surface them before that.
+  const duplicateKeys = $derived.by(() => {
+    const seen = new Set<string>();
+    const dups = new Set<string>();
+    for (const row of providers) {
+      const key = row.key.trim();
+      if (!key) continue;
+      if (seen.has(key)) dups.add(key);
+      seen.add(key);
+    }
+
+    return [...dups].sort();
+  });
+
   const standing = $derived.by(() => {
     if (named === 0) {
       return {
@@ -250,15 +289,27 @@
       };
     }
 
+    if (duplicateKeys.length) {
+      return {
+        state: "held" as const,
+        label: "Duplicate keys",
+        detail: `Provider keys must be unique across the ungrouped list and every group; the commit will be rejected. Duplicated: ${duplicateKeys.join(", ")}.`,
+      };
+    }
+
+    const grouped = groupNames.length
+      ? ` ${groupNames.length} ${groupNames.length === 1 ? "group" : "groups"} (${groupNames.join(", ")}) can be pulled selectively with provider_source.group or the /session-providers/{group} endpoint.`
+      : "";
+
     return {
       state: "endorsed" as const,
       label: "Published",
-      detail: `${named} ${named === 1 ? "provider is" : "providers are"} published to every session middleware that references this instance with provider_source. Same-named static YAML providers are overridden.`,
+      detail: `${named} ${named === 1 ? "provider is" : "providers are"} published to every session middleware that references this instance with provider_source. Same-named static YAML providers are overridden.${grouped}`,
     };
   });
 
-  const inProcessExample = `provider_source:\n  auth_middleware: auth  # this middleware's instance name`;
-  const remoteExample = `provider_source:\n  url: ${typeof window !== "undefined" ? window.location.origin : ""}${session.apiBase ?? ""}/session-providers\n  ttl: 30s\n  headers:\n    X-API-Key: "<admin api key>"`;
+  const inProcessExample = `provider_source:\n  auth_middleware: auth  # this middleware's instance name\n  # group: internal      # optional: pull one named group only`;
+  const remoteExample = `provider_source:\n  url: ${typeof window !== "undefined" ? window.location.origin : ""}${session.apiBase ?? ""}/session-providers\n  # append /{group} to the url to pull one named group only\n  ttl: 30s\n  headers:\n    X-API-Key: "<admin api key>"`;
 </script>
 
 <Instrument
@@ -290,11 +341,17 @@
   <div class="max-w-[104ch]">
     <Section
       title="Providers"
-      note="The map key is the provider name the session middleware and login page use. Set auth_middleware to this instance's middleware name for in-process validation, or fill the OAuth2 endpoints for a remote identity provider. Edits are local until you commit."
+      note="The map key is the provider name the session middleware and login page use. Set auth_middleware to this instance's middleware name for in-process validation, or fill the OAuth2 endpoints for a remote identity provider. A group makes the provider part of a named subset that session middlewares can pull selectively; an empty group keeps it in the shared list. Provider keys must be unique across all groups. Edits are local until you commit."
     >
       {#snippet aside()}
         <button type="button" class="act act-quiet" onclick={addProvider}>Add provider</button>
       {/snippet}
+
+      <datalist id="sp-group-names">
+        {#each groupNames as name (name)}
+          <option value={name}></option>
+        {/each}
+      </datalist>
 
       {#if providers.length === 0}
         <div class="border border-dashed border-rule px-6 py-14 text-center">
@@ -333,6 +390,19 @@
                     placeholder="optional — shown on the login page"
                     autocomplete="off"
                     bind:value={provider.name}
+                  />
+                </div>
+
+                <div class="min-w-0 flex-1 basis-40">
+                  <label class="stamp block" for="sp-group-{provider.id}">Group</label>
+                  <input
+                    id="sp-group-{provider.id}"
+                    class="entry serial mt-1.5"
+                    placeholder="optional — e.g. internal"
+                    autocomplete="off"
+                    spellcheck="false"
+                    list="sp-group-names"
+                    bind:value={provider.group}
                   />
                 </div>
 
@@ -525,7 +595,7 @@
 
     <Section
       title="Wire a session middleware to this list"
-      note="Both modes overlay the static provider map; a provider committed here overrides a same-named YAML provider."
+      note="Both modes overlay the static provider map; a provider committed here overrides a same-named YAML provider. Without a group selection an instance receives the shared list plus every group merged; with one it receives that group only."
     >
       <div class="grid gap-8 lg:grid-cols-2">
         <div class="min-w-0">

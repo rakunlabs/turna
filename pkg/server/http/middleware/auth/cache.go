@@ -108,7 +108,19 @@ func (p ProviderConfig) Session() *session.Oauth2 {
 // provider model. A session middleware pulls this list with
 // `provider_source.auth_middleware` (in-process) or over
 // GET /v1/session-providers (remote).
+//
+// Providers holds the ungrouped (shared) entries; Groups holds named
+// subsets that a session middleware can pull selectively with
+// `provider_source.group` or GET /v1/session-providers/{group}. Provider
+// keys must be unique across the ungrouped list and every group, so the
+// merged view is conflict-free.
 type SessionProviderSettings struct {
+	Providers map[string]session.Provider     `json:"providers"`
+	Groups    map[string]SessionProviderGroup `json:"groups,omitempty"`
+}
+
+// SessionProviderGroup is one named subset of session providers.
+type SessionProviderGroup struct {
 	Providers map[string]session.Provider `json:"providers"`
 }
 
@@ -669,8 +681,12 @@ type Snapshot struct {
 	Registration  RegistrationSettings
 
 	// SessionProviders is the UI-managed session middleware provider list
-	// ("session_providers" namespace); read-only, replaced on reload.
+	// ("session_providers" namespace) with every group merged in;
+	// read-only, replaced on reload.
 	SessionProviders map[string]session.Provider
+	// SessionProviderGroups holds the named provider groups of the
+	// "session_providers" namespace; read-only, replaced on reload.
+	SessionProviderGroups map[string]map[string]session.Provider
 }
 
 // Cache keeps the snapshot up to date with polling and explicit reloads.
@@ -1098,12 +1114,33 @@ func (c *Cache) Reload(ctx context.Context) error {
 	}
 
 	snap.SessionProviders = map[string]session.Provider{}
+	snap.SessionProviderGroups = map[string]map[string]session.Provider{}
 	if sessionProvidersRaw != nil {
 		var sessionProviders SessionProviderSettings
 		if err := json.Unmarshal(sessionProvidersRaw, &sessionProviders); err != nil {
 			slog.Warn("invalid session_providers settings", slog.String("error", err.Error()))
-		} else if sessionProviders.Providers != nil {
-			snap.SessionProviders = sessionProviders.Providers
+		} else {
+			for name, provider := range sessionProviders.Providers {
+				snap.SessionProviders[name] = provider
+			}
+
+			for groupName, group := range sessionProviders.Groups {
+				groupProviders := make(map[string]session.Provider, len(group.Providers))
+				for name, provider := range group.Providers {
+					groupProviders[name] = provider
+
+					// PutSetting rejects duplicates; hand-written settings can
+					// still carry them, so keep the merge deterministic-ish and
+					// make the problem visible.
+					if _, ok := snap.SessionProviders[name]; ok {
+						slog.Warn("duplicate session provider key",
+							slog.String("provider", name), slog.String("group", groupName))
+					}
+					snap.SessionProviders[name] = provider
+				}
+
+				snap.SessionProviderGroups[groupName] = groupProviders
+			}
 		}
 	}
 
@@ -1727,7 +1764,7 @@ func (c *Cache) GetRoles(req data.GetRoleRequest) (*data.Response[[]data.RoleExt
 				continue
 			}
 
-			if req.Search != "" && !containsFold(role.Name, req.Search) && !containsFold(role.Description, req.Search) {
+			if req.Search != "" && !containsFold(role.ID, req.Search) && !containsFold(role.Name, req.Search) && !containsFold(role.Description, req.Search) {
 				continue
 			}
 
@@ -1831,7 +1868,7 @@ func (c *Cache) GetPermissions(req data.GetPermissionRequest) (*data.Response[[]
 				continue
 			}
 
-			if req.Search != "" && !containsFold(permission.Name, req.Search) && !containsFold(permission.Description, req.Search) {
+			if req.Search != "" && !containsFold(permission.ID, req.Search) && !containsFold(permission.Name, req.Search) && !containsFold(permission.Description, req.Search) {
 				continue
 			}
 
