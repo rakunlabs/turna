@@ -11,7 +11,7 @@
    * The drafting bench for one instrument. Everything it reads and writes lives
    * on the editor store — the page only says who to tell once the record lands.
    */
-  let { oncommitted }: { oncommitted: () => Promise<void> } = $props();
+  let { oncommitted, onclose }: { oncommitted: () => Promise<void>; onclose: () => void } = $props();
 
   const recordID = $derived(editor.loadedID || editor.id.trim());
 
@@ -34,7 +34,7 @@
   note={editor.spec.description}
 >
   {#snippet actions()}
-    <button type="button" class="act act-quiet" disabled={session.busy} onclick={() => editor.close()}>
+    <button type="button" class="act act-quiet" disabled={session.busy} onclick={onclose}>
       Back to register
     </button>
     <button

@@ -48,6 +48,13 @@
     collapsed = { ...collapsed, [label]: !collapsed[label] };
   }
 
+  function select(event: MouseEvent, tab: Tab) {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+
+    event.preventDefault();
+    onselect(tab);
+  }
+
   // A search always shows its results, whatever the operator folded away.
   function isOpen(label: string) {
     return Boolean(query) || !collapsed[label];
@@ -103,14 +110,14 @@
             {#each group.items as item (item.id)}
               {@const current = active === item.id}
               <li>
-                <button
-                  type="button"
+                <a
+                  href={item.id === "overview" ? "./" : `./#${item.id}`}
                   class="flex w-full items-center gap-2.5 px-2 py-[7px] text-left text-[13px] leading-[1.35] transition-colors
                     {current
                       ? 'bg-raised font-semibold text-ink'
                       : 'text-muted hover:bg-raised hover:text-ink'}"
                   aria-current={current ? "page" : undefined}
-                  onclick={() => onselect(item.id)}
+                  onclick={(event) => select(event, item.id)}
                 >
                   <span
                     class="inline-block h-[6px] w-[6px] shrink-0 {current
@@ -119,7 +126,7 @@
                     aria-hidden="true"
                   ></span>
                   <span class="min-w-0 truncate">{item.label}</span>
-                </button>
+                </a>
               </li>
             {/each}
           </ul>

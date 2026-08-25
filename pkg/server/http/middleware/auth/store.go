@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/worldline-go/types"
 )
@@ -15,6 +17,9 @@ var ErrNotFound = errors.New("not found")
 type Store struct {
 	db     *sql.DB
 	cipher *Cipher
+
+	apiKeyLastUsedMu sync.Mutex
+	apiKeyLastUsed   map[string]time.Time
 }
 
 type SettingMeta struct {
@@ -31,7 +36,7 @@ type Setting struct {
 }
 
 func NewStore(db *sql.DB, cipher *Cipher) *Store {
-	return &Store{db: db, cipher: cipher}
+	return &Store{db: db, cipher: cipher, apiKeyLastUsed: make(map[string]time.Time)}
 }
 
 func (s *Store) Version(ctx context.Context) (uint64, error) {

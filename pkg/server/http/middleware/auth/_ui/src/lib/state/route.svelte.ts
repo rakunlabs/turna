@@ -16,6 +16,7 @@ const CORE_ONLY: Tab[] = ["overview", "docs", "encryption"];
 
 class Route {
   tab = $state<Tab>("overview");
+  recordID = $state("");
   deviceUserCode = $state("");
 
   isSelfService(tab: Tab) {
@@ -36,8 +37,21 @@ class Route {
 
   /** Read the landing tab from the URL before any request is made. */
   readLocation() {
-    const hash = window.location.hash.replace(/^#/, "") as Tab;
-    if (hash && nav.some((item) => item.id === hash)) this.tab = hash;
+    const [rawTab = "", rawRecordID = ""] = window.location.hash.replace(/^#/, "").split("/", 2);
+    const tab = rawTab as Tab;
+    if (!rawTab) {
+      this.tab = "overview";
+      this.recordID = "";
+    } else if (nav.some((item) => item.id === tab)) {
+      this.tab = tab;
+      try {
+        this.recordID = this.isResource(tab) ? decodeURIComponent(rawRecordID) : "";
+      } catch {
+        this.recordID = "";
+      }
+    } else {
+      this.recordID = "";
+    }
 
     const params = new URLSearchParams(window.location.search);
     this.deviceUserCode = params.get("user_code") ?? "";
@@ -56,6 +70,7 @@ class Route {
     if (!this.allows(tab)) return;
 
     this.tab = tab;
+    this.recordID = "";
     onEnter?.(tab);
 
     if (this.needsRegistry(tab)) void registry.ensureLoaded();

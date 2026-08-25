@@ -22,6 +22,8 @@ const APIKeyPrefix = "tak_"
 
 const apiKeyPrincipalPrefix = "api-key:"
 
+const apiKeyLastUsedInterval = 5 * time.Minute
+
 // APIKeyMeta is the listing shape for stored api keys; the key itself is
 // only returned once at creation time.
 type APIKeyMeta struct {
@@ -63,6 +65,22 @@ func hashAPIKey(key string) string {
 	sum := sha256.Sum256([]byte(key))
 
 	return hex.EncodeToString(sum[:])
+}
+
+func (s *Store) shouldRefreshAPIKeyLastUsed(id string, now time.Time) bool {
+	s.apiKeyLastUsedMu.Lock()
+	defer s.apiKeyLastUsedMu.Unlock()
+
+	if last, ok := s.apiKeyLastUsed[id]; ok && now.Sub(last) < apiKeyLastUsedInterval {
+		return false
+	}
+
+	if s.apiKeyLastUsed == nil {
+		s.apiKeyLastUsed = make(map[string]time.Time)
+	}
+	s.apiKeyLastUsed[id] = now
+
+	return true
 }
 
 func apiKeyPrincipalSubject(id string) string {
@@ -195,7 +213,8 @@ func (s *Store) CreateAPIKey(ctx context.Context, meta APIKeyMeta, keyHash strin
 }
 
 // GetAPIKeyPrincipal resolves an api key to its own principal metadata.
-// Expired keys are rejected; last_used_at is updated on success.
+// Expired keys are rejected; last_used_at is refreshed at most every five
+// minutes so frequently used keys do not create a database write per request.
 func (s *Store) GetAPIKeyPrincipal(ctx context.Context, key string) (*APIKeyMeta, error) {
 	keyHash := hashAPIKey(key)
 
@@ -226,7 +245,12 @@ func (s *Store) GetAPIKeyPrincipal(ctx context.Context, key string) (*APIKeyMeta
 		return nil, fmt.Errorf("api key not found; %w", data.ErrNotFound)
 	}
 
-	_, _ = s.db.ExecContext(ctx, `UPDATE auth_api_keys SET last_used_at = now() WHERE id = $1`, meta.ID)
+	if s.shouldRefreshAPIKeyLastUsed(meta.ID, time.Now()) {
+		_, _ = s.db.ExecContext(ctx, `UPDATE auth_api_keys
+			SET last_used_at = now()
+			WHERE id = $1
+				AND (last_used_at IS NULL OR last_used_at < now() - interval '5 minutes')`, meta.ID)
+	}
 
 	return meta, nil
 }

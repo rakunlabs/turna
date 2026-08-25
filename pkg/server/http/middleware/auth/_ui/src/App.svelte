@@ -90,6 +90,7 @@
       try {
         await session.loadCore();
         if (route.needsRegistry(route.tab)) await registry.loadAll();
+        if (route.recordID && route.isResource(route.tab)) await editor.load(route.tab, route.recordID);
       } catch (err) {
         docket.reject(messageOf(err));
       }
@@ -118,8 +119,13 @@
     void boot();
 
     const onHash = () => {
-      const hash = window.location.hash.replace(/^#/, "") as Tab;
-      if (hash !== route.tab) selectTab(hash || "overview");
+      route.readLocation();
+      route.enforce();
+      if (route.recordID && route.isResource(route.tab)) {
+        void editor.load(route.tab, route.recordID);
+      } else {
+        selectTab(route.tab);
+      }
     };
 
     window.addEventListener("hashchange", onHash);
@@ -225,7 +231,7 @@
           <AuthFlowGuide />
         {:else if route.isResource(route.tab)}
           {#if editor.open}
-            <RecordEditor oncommitted={reloadAfterWrite} />
+            <RecordEditor oncommitted={reloadAfterWrite} onclose={() => route.select(route.tab)} />
           {:else}
             <ResourcePage kind={route.tab} oncommitted={reloadAfterWrite}>
               {#snippet extra()}

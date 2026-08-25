@@ -73,6 +73,13 @@
     appliedFilter = term;
   }
 
+  function openRecord(event: MouseEvent, id: string) {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+
+    event.preventDefault();
+    void editor.load(kind, id);
+  }
+
   function revoke(id: string) {
     void editor.remove(kind, id, oncommitted);
     pendingRevoke = "";
@@ -207,7 +214,17 @@
               class="grid gap-x-4 gap-y-1.5 px-4 py-3 transition-colors hover:bg-raised md:grid-cols-[minmax(0,1fr)_7rem_9rem_9.5rem] md:items-center"
             >
               <div class="min-w-0">
-                <p class="serial truncate text-[13.5px] font-medium text-ink">{row.id}</p>
+                {#if kind === "roles" || kind === "permissions"}
+                  <a
+                    href={`./#${kind}/${encodeURIComponent(row.id)}`}
+                    class="serial block truncate text-[13.5px] font-medium text-ink underline decoration-rule underline-offset-2 hover:decoration-ink"
+                    onclick={(event) => openRecord(event, row.id)}
+                  >
+                    {row.id}
+                  </a>
+                {:else}
+                  <p class="serial truncate text-[13.5px] font-medium text-ink">{row.id}</p>
+                {/if}
                 {#if row.sub}
                   <p class="mt-0.5 truncate text-[12px] text-muted">{row.sub}</p>
                 {/if}
