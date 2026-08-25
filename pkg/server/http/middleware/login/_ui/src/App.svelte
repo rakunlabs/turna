@@ -1,14 +1,21 @@
 <script lang="ts">
-  import axios from "axios";
   import { formToObject } from "./helper/form";
-  import { login } from "./helper/login";
-  import { getRedirectPath, isResponseTypeCode } from "./helper/query";
   import { onMount } from "svelte";
-  import Cookies from "js-cookie";
-  import type { AuthInfo, Provider } from "./helper/info";
-  import { isWebAuthnSupported, startAuthentication } from "./helper/webauthn";
-  import type { ServerRequestOptions } from "./helper/webauthn";
+  import {
+    createLogin,
+    LoginError,
+    isWebAuthnSupported,
+    flowFromURL,
+    type LoginMethods,
+    type LoginLink,
+  } from "./sdk";
   import PasswordInput from "./components/PasswordInput.svelte";
+
+  // The embedded UI is the reference consumer of the login SDK; external
+  // login pages load the same module from `{base}/auth/sdk.js`.
+  const loginClient = createLogin({
+    base: import.meta.env.DEV ? "/login/" : new URL("./", window.location.href),
+  });
 
   let error = "";
   let notice = "";
@@ -72,12 +79,12 @@
     "block w-full text-center px-4 py-1.5 bg-white border border-gray-300 rounded-md font-semibold text-black hover:bg-gray-50 active:bg-blue-50 focus:outline-none focus:border-blue-500 focus:ring focus:ring-blue-200 disabled:bg-gray-400 transition dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800 dark:active:bg-gray-800 dark:focus:ring-blue-800 dark:disabled:bg-gray-700";
   const linkClass = "text-sm text-blue-600 hover:underline cursor-pointer bg-transparent border-0 p-0 dark:text-blue-400";
 
-  let authInfo: AuthInfo = {
+  let authInfo: LoginMethods = {
     title: "Login",
     provider: {
       password: [],
       code: [],
-    } as Provider,
+    },
   };
 
 
@@ -88,60 +95,15 @@
   $: canReset = !!passwordLink?.password_reset_url;
   $: passwordMinLength = passwordLink?.password_min_length || 8;
 
-  // credential-mismatch descriptions are collapsed into a single neutral
-  // message so the UI never reveals whether the user or the password was wrong.
-  const credentialErrors = ["password not match", "user not found", "secret not match"];
-
-  // axiosError reads the standard {message, error} envelope used across the
-  // auth/login backend, unwrapping any embedded oauth2 error body, and maps
-  // credential failures to a friendly message.
-  const axiosError = (reason: unknown) => {
-    if (axios.isAxiosError(reason)) {
-      const data: any = reason?.response?.data;
-      let detail: string | undefined;
-      if (data && typeof data === "object") {
-        detail = data.message ?? data.error_description ?? data.error;
-      } else if (typeof data === "string") {
-        detail = data;
-      }
-
-      if (typeof detail === "string" && detail.trim().startsWith("{")) {
-        try {
-          const inner = JSON.parse(detail);
-          detail = inner.error_description ?? inner.message ?? inner.error ?? detail;
-        } catch {
-          // keep detail as-is
-        }
-      }
-
-      if (typeof detail === "string" && detail) {
-        if (credentialErrors.includes(detail.toLowerCase())) {
-          return "Invalid username or password";
-        }
-
-        return detail;
-      }
-
-      if (reason?.response?.status === 401) {
-        return "Invalid username or password";
-      }
-
-      return reason.message;
-    }
-
-    return String(reason);
-  };
+  // The SDK normalizes backend {message, error} envelopes, embedded OAuth2
+  // error bodies and credential mismatches into LoginError.
+  const errorMessage = (reason: unknown) =>
+    reason instanceof LoginError ? reason.message : String(reason);
 
   const switchView = (next: View) => {
     view = next;
     error = "";
     notice = "";
-  };
-
-  // page URL used as the magic-link target in mails; the flow query brings
-  // the user back to the right form with the code prefilled.
-  const pageURL = (flow: string) => {
-    return `${window.location.origin}${window.location.pathname}?flow=${flow}`;
   };
 
   const signup = async (
@@ -156,18 +118,16 @@
     error = "";
     const data = formToObject(e.currentTarget);
     try {
-      const res = await axios.post(passwordLink.signup_url, {
+      const result = await loginClient.signup(passwordLink, {
         name: data.name,
         email: data.email,
         password: data.password,
-        redirect_uri: pageURL("verify"),
       });
 
-      const payload = res.data?.payload ?? {};
-      notice = payload.message ?? "Account request accepted";
-      view = payload.verification_required ? "verify" : "signin";
+      notice = result.message;
+      view = result.verificationRequired ? "verify" : "signin";
     } catch (reason: unknown) {
-      error = axiosError(reason);
+      error = errorMessage(reason);
     } finally {
       working = false;
     }
@@ -185,14 +145,10 @@
     error = "";
     const data = formToObject(e.currentTarget);
     try {
-      const res = await axios.post(passwordLink.signup_verify_url, {
-        code: data.code,
-      });
-
-      notice = res.data?.payload?.message ?? "Email verified";
+      notice = await loginClient.signupVerify(passwordLink, data.code);
       view = "signin";
     } catch (reason: unknown) {
-      error = axiosError(reason);
+      error = errorMessage(reason);
     } finally {
       working = false;
     }
@@ -210,15 +166,10 @@
     error = "";
     const data = formToObject(e.currentTarget);
     try {
-      const res = await axios.post(passwordLink.password_reset_url, {
-        email: data.email,
-        redirect_uri: pageURL("reset"),
-      });
-
-      notice = res.data?.payload?.message ?? "Check your email";
+      notice = await loginClient.resetRequest(passwordLink, { email: data.email });
       view = "reset-confirm";
     } catch (reason: unknown) {
-      error = axiosError(reason);
+      error = errorMessage(reason);
     } finally {
       working = false;
     }
@@ -236,15 +187,10 @@
     error = "";
     const data = formToObject(e.currentTarget);
     try {
-      const res = await axios.post(passwordLink.password_reset_confirm_url, {
-        code: data.code,
-        password: data.password,
-      });
-
-      notice = res.data?.payload?.message ?? "Password updated";
+      notice = await loginClient.resetConfirm(passwordLink, data.code, data.password);
       view = "signin";
     } catch (reason: unknown) {
-      error = axiosError(reason);
+      error = errorMessage(reason);
     } finally {
       working = false;
     }
@@ -262,33 +208,29 @@
     working = true;
     const data = formToObject(e.currentTarget);
     try {
-      const url = authInfo.provider.password.find(
-        (v) => v.name == providerSelected,
-      )?.url;
-      if (url == undefined) {
-        throw new Error("Provider not found");
+      const link = authInfo.provider.password?.find((v) => v.name == providerSelected);
+      if (!link) {
+        throw new LoginError("Provider not found");
       }
 
-      await login(url, { ...data, remember_me: rememberMe });
+      await loginClient.password(link, {
+        username: data.username,
+        password: data.password,
+        rememberMe,
+        extra: data,
+      });
 
-      // redirect to home
-      if (!isResponseTypeCode()) {
-        window.location.assign(getRedirectPath());
-
-        return;
-      }
-
-      window.location.replace(window.location.href);
+      loginClient.finish();
 
       return;
     } catch (reason: unknown) {
-      error = axiosError(reason);
+      error = errorMessage(reason);
     } finally {
       working = false;
     }
   };
 
-  const passkeySignin = async (url: string) => {
+  const passkeySignin = async (link: LoginLink) => {
     if (working) {
       return;
     }
@@ -300,37 +242,16 @@
       const usernameInput = document.getElementById("username") as HTMLInputElement | null;
       const username = usernameInput?.value ?? "";
 
-      const begin = await axios.post<{
-        session_id: string;
-        options: ServerRequestOptions;
-      }>(url, { ...(username ? { username } : {}), remember_me: rememberMe });
-
-      const assertion = await startAuthentication(begin.data.options);
-      if (!assertion) {
-        throw new Error("Passkey ceremony was cancelled");
-      }
-
-      await axios.post(url, {
-        session_id: begin.data.session_id,
-        assertion,
-        remember_me: rememberMe,
+      await loginClient.passkey(link, {
+        username: username || undefined,
+        rememberMe,
       });
 
-      if (!isResponseTypeCode()) {
-        window.location.assign(getRedirectPath());
-
-        return;
-      }
-
-      window.location.replace(window.location.href);
+      loginClient.finish();
 
       return;
     } catch (reason: unknown) {
-      if (reason instanceof Error && reason.name === "NotAllowedError") {
-        error = "Passkey was cancelled or timed out";
-      } else {
-        error = axiosError(reason);
-      }
+      error = errorMessage(reason);
     } finally {
       working = false;
     }
@@ -338,82 +259,30 @@
 
   const info = async () => {
     try {
-      const methodsURL = import.meta.env.DEV ? "/login/auth/methods" : "./auth/methods";
-      const { data } = await axios.get<{ payload: AuthInfo }>(
-        methodsURL,
-      );
-      if (data.payload.provider.password?.length > 0) {
-        providerSelected = data.payload.provider.password[0].name;
+      const methods = await loginClient.methods();
+      if (methods.provider.password?.length) {
+        providerSelected = methods.provider.password[0].name;
       }
 
-      authInfo = data.payload;
+      authInfo = methods;
     } catch (reason: unknown) {
-      let errorLog = "";
-      if (axios.isAxiosError(reason)) {
-        errorLog = reason?.response?.data?.error ?? reason.message;
-      } else {
-        errorLog = reason as any;
-      }
-
-      console.error(errorLog);
+      console.error(errorMessage(reason));
     }
   };
 
-  const checkWindow = (url: string) => {
-    const target = new URL(url, window.location.origin);
-    if (rememberMe) target.searchParams.set("remember_me", "true");
-
-    const win = window.open(target.toString());
-    if (!win) {
-      error = "The sign-in window was blocked. Allow pop-ups and try again.";
-      return;
-    }
-
-    let timer: ReturnType<typeof setInterval> | undefined;
-    let closedChecks = 0;
-
-    const cleanup = () => {
-      if (timer) clearInterval(timer);
-      window.removeEventListener("message", onMessage);
-    };
-
-    const finish = () => {
-      if (Cookies.get("auth_verify") !== "true") return false;
-
-      cleanup();
-      win.close();
-
-      if (!isResponseTypeCode()) {
-        window.location.assign(getRedirectPath());
-      } else {
-        window.location.replace(window.location.href);
-      }
-
-      return true;
-    };
-
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin || event.data !== "turna:login:success") return;
-      finish();
-    };
-
-    window.addEventListener("message", onMessage);
-
-    timer = setInterval(() => {
-      // The cookie is authoritative. Do not wait for a browser to permit the
-      // callback tab to close before completing the parent login page.
-      if (finish()) return;
-
-      if (win.closed) {
-        closedChecks += 1;
-        // COOP-enabled providers sever the popup handle and report
-        // closed=true while the window is still open, so this is only a
-        // hint: keep polling the cookie and let a late login complete.
-        if (closedChecks === 10) {
+  const codeSignin = (link: LoginLink) => {
+    error = "";
+    loginClient
+      .code(link, {
+        rememberMe,
+        onPopupClosed: () => {
           error = "The sign-in window may have closed before authentication completed.";
-        }
-      }
-    }, 500);
+        },
+      })
+      .then(() => loginClient.finish())
+      .catch((reason: unknown) => {
+        error = errorMessage(reason);
+      });
   };
 
   onMount(async () => {
@@ -434,15 +303,13 @@
     }
 
     // magic links from signup/reset mails come back with flow + code
-    const params = new URLSearchParams(window.location.search);
-    const flow = params.get("flow");
-    const flowCode = params.get("code") ?? "";
-    if (flow === "verify") {
+    const flowState = flowFromURL();
+    if (flowState?.flow === "verify") {
       view = "verify";
-      verifyCode = flowCode;
-    } else if (flow === "reset") {
+      verifyCode = flowState.code;
+    } else if (flowState?.flow === "reset") {
       view = "reset-confirm";
-      resetCode = flowCode;
+      resetCode = flowState.code;
     }
 
     mounted = true;
@@ -624,7 +491,7 @@
           <button
             title={provider.url}
             on:click={async () => {
-              await passkeySignin(provider.url);
+              await passkeySignin(provider);
             }}
             disabled={working}
             class={`${secondaryClass} mt-1`}
@@ -654,8 +521,8 @@
         {#each authInfo.provider.code as provider}
           <button
             title={provider.url}
-            on:click={async () => {
-              checkWindow(provider.url);
+            on:click={() => {
+              codeSignin(provider);
             }}
             class={`${secondaryClass} mt-1 capitalize`}
           >

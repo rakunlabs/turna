@@ -58,6 +58,24 @@ server:
 | `store` | Temporary code/state store. Empty means memory; `active: redis` uses Redis. |
 | `redirect_white_list` | Allowed redirect URI prefixes when minting internal codes. Empty allows all. |
 
+### Custom paths and nested bases
+
+`path.base` may live anywhere, including nested under another middleware's prefix (e.g. `path.base: /auth/login/` next to an [`auth`](./auth) middleware at `/auth`). All reserved routes, the embedded UI and the SDK derive from the base relatively, so no further configuration is needed — but register the router for both the slashless and wildcard forms, otherwise the exact `/auth/login` request falls through to the broader `/auth/*` router instead of reaching the login page:
+
+```yaml
+routers:
+  login:
+    path:
+      - /auth/login
+      - /auth/login/*
+    middlewares: [login]
+  auth:
+    path: /auth/*
+    middlewares: [session, auth]
+```
+
+Route overrides (`path.code`, `path.token`, `path.passkey`, ...) are advertised through the methods manifest, so SDK-based and custom UIs pick them up automatically. An overridden `path.methods` is injected into the served `sdk.js` itself, keeping `login.methods()` working without client-side configuration.
+
 ## Default Routes
 
 For `path.base: /login/`, default routes are:
@@ -74,6 +92,8 @@ For `path.base: /login/`, default routes are:
 | `POST` | `/login/auth/reset/confirm/{provider}` | Set a new password with a reset code. |
 | `GET` | `/login/auth/info/ui` | Provider list for the UI. |
 | `GET` | `/login/auth/status` | Login status endpoint. |
+| `GET` | `/login/auth/sdk.js` | Login SDK ES module for custom login pages. Served with `Cache-Control: no-cache`, also when `ui.external_folder` is enabled. |
+| `GET` | `/login/auth/sdk.d.ts` | Bundled TypeScript declarations for the SDK, for download into custom login UI projects. |
 
 `/login/auth/info/ui` and `/login/?auth_info=true` remain compatibility aliases for the methods response. New integrations should use `/login/auth/methods`. All methods responses carry `Cache-Control: no-store` because provider and self-service capabilities can change at runtime.
 
@@ -127,220 +147,123 @@ server:
 
 The `login` middleware handles its reserved `/login/auth/*` routes first and forwards other `GET` requests to `custom_login_ui`. Keep custom assets outside the `auth` subpath.
 
-### Discover the available methods
+### Login SDK
 
-Do not hard-code provider names or endpoint URLs. Fetch the method manifest when the page loads:
+The middleware serves its complete flow logic as a framework-agnostic, zero-dependency ES module at the reserved `GET {base}/auth/sdk.js` route — also when `ui.external_folder` is enabled. The embedded login page is built on the same module, so a custom page gets identical behavior without reimplementing anything: method discovery, password login, the full WebAuthn passkey ceremony, the OAuth2 popup flow with its COOP fallback, signup, email verification, password reset and the safe post-login redirect.
 
-```ts
-type LoginLink = {
-  name: string
-  url: string
-  signup_url?: string
-  signup_verify_url?: string
-  password_reset_url?: string
-  password_reset_confirm_url?: string
-  password_min_length?: number
-}
+```html
+<script type="module">
+  import { createLogin } from "/login/auth/sdk.js";
 
-type LoginMethods = {
-  title: string
-  disable_remember_me?: boolean
-  provider: {
-    password: LoginLink[] | null
-    code: LoginLink[] | null
-    passkey: LoginLink[] | null
-  }
-}
+  const login = createLogin(); // base path derived from the module URL
+  const methods = await login.methods();
 
-const response = await fetch('/login/auth/methods', {
-  credentials: 'same-origin',
-})
-if (!response.ok) throw new Error('Cannot load login methods')
+  // Render your own markup from the manifest, then wire the flows.
+  // Each link object is a login choice; `name` is a display label and is
+  // not guaranteed to be unique.
+  const provider = methods.provider.password?.[0];
 
-const { payload: methods }: { payload: LoginMethods } = await response.json()
-const passwordMethods = methods.provider.password ?? []
-const codeMethods = methods.provider.code ?? []
-const passkeyMethods = methods.provider.passkey ?? []
+  document.querySelector("#form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await login.password(provider, {
+        username: event.target.username.value,
+        password: event.target.password.value,
+        rememberMe: event.target.remember.checked,
+      });
+      login.finish();
+    } catch (err) {
+      show(err.message); // LoginError with a normalized, user-safe message
+    }
+  });
+</script>
 ```
 
-Each item is a login choice. Render `name` as its label and send the flow to its `url`. Use the link object itself as the selected value; `name` is a display label and is not guaranteed to be unique. The optional signup and reset URLs only appear when that provider supports those features.
+| Member | Description |
+| --- | --- |
+| `createLogin({base?})` | Create a client. The base path is derived from the SDK module URL; pass `base` (e.g. `"/login/"`) when bundling the SDK source yourself. |
+| `methods()` | Fetch the login method manifest (`GET {base}/auth/methods`, payload unwrapped). Do not hard-code provider names or URLs. |
+| `password(link, {username, password, rememberMe?, extra?})` | Password flow. Resolves when the session cookie is set. |
+| `passkey(link, {username?, rememberMe?})` | Two-request WebAuthn ceremony, including all base64url conversions. Omitting `username` starts the discoverable, username-less flow: the browser lists resident passkeys and the user picks an account. |
+| `code(link, {rememberMe?, target?, features?, signal?, onPopupClosed?})` | OAuth2 popup flow. Resolves on success via the `turna:login:success` message or the `auth_verify` cookie fallback (for COOP providers); rejects when the popup is blocked or `signal` aborts. `onPopupClosed` is a one-shot hint for showing a "window closed?" message while the flow keeps waiting. |
+| `signup(link, {email, password, name?, redirectUri?})` | Self-registration; returns `{message, verificationRequired}`. |
+| `signupVerify(link, code)` / `resetRequest(link, {email})` / `resetConfirm(link, code, password)` | Email verification and forgot-password flows. |
+| `finish()` | Safe post-login navigation: reloads inside Turna's own authorization-code flow, otherwise follows the validated `redirect_path` query parameter. |
+| `isWebAuthnSupported()`, `flowFromURL()`, `getRedirectPath()`, `isResponseTypeCode()`, `LoginError` | Helpers: hide passkey buttons on unsupported browsers, prefill verify/reset forms from mail magic links (`?flow=...&code=...`), and branch on normalized errors (`status`, `credentials`). |
 
-The following helper handles the standard `{message, error}` error response and the OAuth-shaped errors that a proxied provider may return:
+Honor `methods.disable_remember_me`: hide the remember-me choice when it is true (the server forces `remember_me` off anyway).
 
-```ts
-async function postJSON(url: string, body: unknown) {
-  const response = await fetch(url, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+The SDK is versioned with the Turna binary, so it always matches the server endpoints — prefer loading it from the served URL over vendoring the source. It is served with `Cache-Control: no-cache`, so an upgraded Turna delivers the matching SDK on the next page load. The exported surface is a stable contract; a breaking change would be published under a new file name.
 
-  if (!response.ok) {
-    const problem = await response.json().catch(() => ({}))
-    throw new Error(
-      problem.message ?? problem.error_description ?? problem.error ?? 'Sign-in failed',
-    )
-  }
+### Development workflow
 
-  return response.status === 204 ? undefined : response.json()
-}
-```
+The SDK and the session cookie are same-origin. During development, run your UI dev server with a proxy to the Turna instance instead of calling it cross-origin:
 
-### Password flow
-
-POST the credentials to the selected password link. A successful request returns `204`; the login middleware stores the provider tokens and sets the configured session cookie.
-
-```ts
-async function signInWithPassword(
-  provider: LoginLink,
-  username: string,
-  password: string,
-  rememberMe: boolean,
-) {
-  await postJSON(provider.url, {
-    username,
-    password,
-    remember_me: rememberMe,
-  })
-
-  finishLogin()
-}
-```
-
-### Authorization code flow
-
-Open the selected code link in a popup. Add `remember_me=true` before opening it; the middleware binds the choice to the OAuth state and uses it when the callback exchanges the code.
-
-```ts
-function signInWithCode(provider: LoginLink, rememberMe: boolean) {
-  const target = new URL(provider.url, window.location.origin)
-  if (rememberMe) target.searchParams.set('remember_me', 'true')
-
-  const popup = window.open(target, 'turna-login', 'width=520,height=720')
-  if (!popup) throw new Error('The sign-in popup was blocked')
-
-  let timer = 0
-  const cleanup = () => {
-    window.removeEventListener('message', onMessage)
-    window.clearInterval(timer)
-  }
-  const complete = () => {
-    cleanup()
-    popup.close()
-    finishLogin()
-  }
-  const onMessage = (event: MessageEvent) => {
-    if (
-      event.origin === window.location.origin &&
-      event.data === 'turna:login:success'
-    ) complete()
-  }
-
-  window.addEventListener('message', onMessage)
-  timer = window.setInterval(() => {
-    // The short-lived, non-HttpOnly marker is the fallback when an upstream
-    // provider's COOP policy disconnects window.opener.
-    const succeeded = document.cookie
-      .split('; ')
-      .some((cookie) => cookie === 'auth_verify=true')
-    if (succeeded) complete()
-  }, 500)
-}
-```
-
-The callback page sends `turna:login:success` and also sets the short-lived `auth_verify=true` marker. Check the message origin exactly as shown. Polling the marker makes the flow work with providers whose Cross-Origin-Opener-Policy severs `window.opener`.
-
-### Passkey flow
-
-Passkey login is a two-request WebAuthn ceremony. The first request returns a `session_id` and browser credential options. Convert the base64url fields to byte arrays, call `navigator.credentials.get`, then return the serialized assertion in the second request:
-
-```ts
-function fromBase64URL(value: string): Uint8Array {
-  const base64 = value.replace(/-/g, '+').replace(/_/g, '/')
-  const padded = base64.padEnd(base64.length + ((4 - base64.length % 4) % 4), '=')
-  return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0))
-}
-
-function toBase64URL(value: ArrayBuffer | null): string | undefined {
-  if (!value) return undefined
-  const bytes = new Uint8Array(value)
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-async function signInWithPasskey(
-  provider: LoginLink,
-  username: string,
-  rememberMe: boolean,
-) {
-  if (!window.PublicKeyCredential) throw new Error('Passkeys are not supported')
-
-  const begin = await postJSON(provider.url, {
-    ...(username ? { username } : {}),
-    remember_me: rememberMe,
-  })
-  const options = begin.options
-
-  const credential = await navigator.credentials.get({
-    publicKey: {
-      ...options,
-      challenge: fromBase64URL(options.challenge),
-      allowCredentials: (options.allowCredentials ?? []).map((item: any) => ({
-        ...item,
-        id: fromBase64URL(item.id),
-      })),
+```js
+// vite.config.js of the custom login page project
+export default {
+  server: {
+    proxy: {
+      "/login": "http://localhost:8080", // turna
     },
-  }) as PublicKeyCredential | null
-  if (!credential) throw new Error('Passkey sign-in was cancelled')
-
-  const assertion = credential.response as AuthenticatorAssertionResponse
-  await postJSON(provider.url, {
-    session_id: begin.session_id,
-    remember_me: rememberMe,
-    assertion: {
-      id: credential.id,
-      rawId: toBase64URL(credential.rawId),
-      type: credential.type,
-      response: {
-        clientDataJSON: toBase64URL(assertion.clientDataJSON),
-        authenticatorData: toBase64URL(assertion.authenticatorData),
-        signature: toBase64URL(assertion.signature),
-        userHandle: toBase64URL(assertion.userHandle),
-      },
-    },
-  })
-
-  finishLogin()
+  },
 }
 ```
 
-An empty `username` starts a discoverable, username-less passkey flow. Passkeys require a secure browser context (HTTPS, with the usual localhost exception). Send the same `remember_me` value on both passkey requests; the finish request controls the issued session.
-
-### Finish the login
-
-After password or passkey returns `204`, or the code popup reports success, navigate to the requested application path. When the login page is being used as part of Turna's own authorization-code flow, reload it instead so the middleware can return the pending code.
+Load the SDK through the browser, not through the bundler, so the same URL works in development (via the proxy) and in production:
 
 ```ts
-function finishLogin() {
-  const query = new URLSearchParams(window.location.search)
-  if (query.get('response_type') === 'code') {
-    window.location.reload()
-    return
-  }
+// inside a bundled app: keep the import at runtime
+const { createLogin } = await import(/* @vite-ignore */ "/login/auth/sdk.js");
+```
 
-  const requested = query.get('redirect_path') ?? '/'
-  const target = new URL(requested, window.location.origin)
-  const targetPath = target.pathname.replace(/\/+$/, '') || '/'
-  const loginPath = window.location.pathname.replace(/\/+$/, '') || '/'
-  const safeTarget = target.origin === window.location.origin &&
-    !requested.startsWith('//') && targetPath !== loginPath
-    ? `${target.pathname}${target.search}${target.hash}`
-    : '/'
-  window.location.assign(safeTarget)
+or use a plain `<script type="module">` import as in the example above.
+
+### TypeScript and linting
+
+The compiler and linters cannot resolve a URL import by themselves. The middleware serves the SDK's bundled, self-contained type declarations at `GET {base}/auth/sdk.d.ts`; download them into the project and map the URL specifier onto them:
+
+```sh
+curl -o src/types/turna-login-sdk.d.ts http://localhost:8080/login/auth/sdk.d.ts
+```
+
+```jsonc
+// tsconfig.json
+{
+  "compilerOptions": {
+    "paths": {
+      "/login/auth/sdk.js": ["./src/types/turna-login-sdk.d.ts"]
+    }
+  }
 }
 ```
+
+With the mapping in place a normal static import type-checks, and `eslint-import-resolver-typescript` resolves it for `import/no-unresolved`:
+
+```ts
+import { createLogin, LoginError, type LoginMethods } from "/login/auth/sdk.js";
+```
+
+Keep the import out of the production bundle so the browser loads the served SDK at runtime — for a static import, mark the specifier external:
+
+```js
+// vite.config.js
+export default {
+  build: {
+    rollupOptions: {
+      external: ["/login/auth/sdk.js"],
+    },
+  },
+}
+```
+
+In development Vite leaves root-absolute imports to the browser, so the request flows through the `/login` dev proxy. The dynamic `import(/* @vite-ignore */ ...)` form needs no external config; type it with the same declarations: `const sdk: typeof import("/login/auth/sdk.js") = await import(/* @vite-ignore */ "/login/auth/sdk.js")`.
+
+Refresh the downloaded declaration file when upgrading Turna (the additions are backward compatible within `sdk.js`).
+
+### Raw API
+
+Every SDK operation is a plain HTTP endpoint (see [Default Routes](#default-routes)); non-browser clients can call them directly. In short: the password and passkey flows return `204` on success and set the session cookie; the passkey flow is a begin/finish pair carrying `session_id`, base64url-encoded WebAuthn `options` and `assertion`; the code-flow callback page posts `turna:login:success` to its opener and sets the short-lived, non-HttpOnly `auth_verify=true` cookie. Error responses use the `{message, error}` envelope, possibly wrapping an OAuth2 error body. The SDK source (`pkg/server/http/middleware/login/_ui/src/sdk/index.ts`) is the reference implementation.
 
 Serve the custom page and login endpoints from the same origin unless you explicitly add and audit a CORS layer. Never expose the provider `client_secret` or store returned tokens in browser storage; the middleware injects provider credentials server-side and owns the session cookie.
 

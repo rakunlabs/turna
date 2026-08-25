@@ -65,7 +65,7 @@ server:
 | `auth_prefix_path` | Prefix of the auth middleware, only used to derive the issuer when `authorization_servers` is empty. Default `/auth`. |
 | `scopes_supported` | Scopes advertised in the metadata document. |
 | `required_scopes` | Scopes that must all be present in the token; missing ones answer `403 insufficient_scope`. |
-| `check_audience` | Require the token `aud` to contain the resource identifier. Default `true` when `resource` is set. |
+| `check_audience` | Require the token `aud` to contain the resource identifier. Default `true`; when `resource` is empty the audience is checked against the request-derived `{scheme}://{host}`. |
 | `check_revocation` | Consult the issuer's revocation denylist per request (one database lookup). Default `true`. |
 | `user_header` | Header receiving the authenticated user alias. Default `X-User`. |
 | `scope_header` | Optional header receiving the granted scopes. |

@@ -39,9 +39,11 @@ type Login struct {
 	client    *ok.Client `cfg:"-"`
 	pathFixed PathFixed  `cfg:"-"`
 
-	session       *session.Session  `cfg:"-"`
-	store         *store.StoreCache `cfg:"-"`
-	statusContent string            `cfg:"-"`
+	session         *session.Session  `cfg:"-"`
+	store           *store.StoreCache `cfg:"-"`
+	statusContent   string            `cfg:"-"`
+	sdkContent      []byte            `cfg:"-"`
+	sdkTypesContent []byte            `cfg:"-"`
 }
 
 type Path struct {
@@ -68,6 +70,8 @@ type PathFixed struct {
 	SignupVerify string
 	Reset        string
 	ResetConfirm string
+	SDK          string
+	SDKTypes     string
 }
 
 type Request struct {
@@ -164,6 +168,15 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 	m.pathFixed.Reset = path.Join(m.Path.Base, "auth/reset")
 	m.pathFixed.ResetConfirm = path.Join(m.Path.Base, "auth/reset/confirm")
 
+	// login SDK module and type declarations for custom login pages;
+	// SetSDK needs the fixed paths to inject the methods route override.
+	m.pathFixed.SDK = path.Join(m.Path.Base, "auth/sdk.js")
+	m.pathFixed.SDKTypes = path.Join(m.Path.Base, "auth/sdk.d.ts")
+
+	if err := m.SetSDK(); err != nil {
+		return nil, err
+	}
+
 	// state cookie settings
 	if m.StateCookie.CookieName == "" {
 		m.StateCookie.CookieName = "auth_state"
@@ -223,6 +236,18 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 			case http.MethodGet:
 				if urlPath == m.pathFixed.Methods || urlPath == m.pathFixed.Methods+"/" {
 					m.Methods(w, r)
+
+					return
+				}
+
+				if urlPath == m.pathFixed.SDK {
+					m.SDKHandler(w, r)
+
+					return
+				}
+
+				if urlPath == m.pathFixed.SDKTypes {
+					m.SDKTypesHandler(w, r)
 
 					return
 				}

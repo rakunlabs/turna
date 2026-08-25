@@ -54,11 +54,17 @@ export default defineConfig({
   title: 'turna',
   description: 'turna documentation',
   base: '/turna/',
+  lastUpdated: true,
   themeConfig: {
+    search: {
+      provider: 'local',
+    },
+    outline: 'deep',
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Docs', link: '/introduction/getting-started' },
       { text: 'Reference', link: '/reference/config' },
+      { text: 'Examples', link: '/examples/' },
     ],
 
     sidebar: [
@@ -142,14 +148,39 @@ export default defineConfig({
         text: 'Examples',
         collapsed: true,
         items: [
-          { text: 'Basic Auth', link: '/examples/basic_auth' },
-          { text: 'Env', link: '/examples/env' },
-          { text: 'Folder', link: '/examples/folder' },
-          { text: 'Login', link: '/examples/login' },
-          { text: 'OAuth2', link: '/examples/oauth2' },
-          { text: 'Preprocess', link: '/examples/preprocess' },
-          { text: 'TLS', link: '/examples/tls' },
-          { text: 'View', link: '/examples/view' },
+          { text: 'Overview', link: '/examples/' },
+          {
+            text: 'Serving & Routing',
+            items: [
+              { text: 'Reverse Proxy', link: '/examples/reverse_proxy' },
+              { text: 'File Server', link: '/examples/folder' },
+              { text: 'TLS', link: '/examples/tls' },
+              { text: 'View', link: '/examples/view' },
+            ],
+          },
+          {
+            text: 'Authentication',
+            items: [
+              { text: 'Auth', link: '/examples/auth' },
+              { text: 'Basic Auth', link: '/examples/basic_auth' },
+              { text: 'Login', link: '/examples/login' },
+              { text: 'OAuth2 With IAM', link: '/examples/oauth2' },
+            ],
+          },
+          {
+            text: 'Config & Processes',
+            items: [
+              { text: 'Environment Values', link: '/examples/env' },
+              { text: 'Preprocess', link: '/examples/preprocess' },
+            ],
+          },
+          {
+            text: 'TCP & UDP',
+            items: [
+              { text: 'SOCKS5 Proxy', link: '/examples/socks5' },
+              { text: 'DNS Server', link: '/examples/dns' },
+            ],
+          },
         ],
       },
     ],
