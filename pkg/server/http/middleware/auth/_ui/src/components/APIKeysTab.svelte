@@ -144,6 +144,7 @@
   }
 
   function ownerLabelFromID(id: string) {
+    if (!id) return "System key — no owner";
     return ownerLabel(ownerByID.get(id));
   }
 
@@ -180,7 +181,6 @@
 
     owners = [...(userOwners.payload ?? []), ...(serviceOwners.payload ?? [])];
     keys = decorateKeys(keyList.payload ?? []);
-    if (!selectedOwnerID && owners[0]) selectedOwnerID = owners[0].id;
   }
 
   async function load() {
@@ -192,11 +192,6 @@
   }
 
   async function createKey() {
-    if (!selectedOwnerID) {
-      docket.reject("Choose an owner first — a key always acts as a user or service account.");
-      return;
-    }
-
     const ok = await session.run(async () => {
       const res = await session.request<{ id: string; key: string; expires_at?: string }>(
         "api-key-principals",
@@ -316,7 +311,7 @@
 
 <Instrument
   title="API keys"
-  note="Static machine credentials owned by a user or service account. A key is checked against the database on every request, so revoking or disabling one stops access immediately."
+  note="Static machine credentials — standalone system keys with their own access, or keys owned by a user or service account. A key is checked against the database on every request, so revoking or disabling one stops access immediately."
   wide
 >
   {#snippet actions()}
@@ -338,7 +333,7 @@
       <button
         type="button"
         class="act act-primary"
-        disabled={session.busy || !selectedOwnerID || apiKeysDisabled}
+        disabled={session.busy || apiKeysDisabled}
         onclick={() => void createKey()}
       >
         {session.busy ? "Issuing…" : "Issue key"}
@@ -528,13 +523,13 @@
 
     <Section
       title="Owner"
-      note="The key acts as this principal. Anything it does is attributed to them."
+      note="A system key stands on its own and carries exactly the roles and permissions you list below. Choosing an owner instead ties the key to that user or service account: the owner's access becomes the ceiling, and disabling the owner stops the key."
       first
     >
       <div class="max-w-md">
-        <label class="stamp block" for="key-owner">User or service account</label>
+        <label class="stamp block" for="key-owner">Owner</label>
         <select id="key-owner" class="entry mt-1.5" bind:value={selectedOwnerID}>
-          <option value="">Select an owner</option>
+          <option value="">System key — no owner</option>
           {#each owners as owner (owner.id)}
             <option value={owner.id}>{ownerLabel(owner)}</option>
           {/each}
@@ -614,7 +609,9 @@
 
     <Section
       title="Access"
-      note="Leave both empty and the key inherits whatever its owner has at the time of each request. Fill either one and the key carries only what you list here."
+      note={selectedOwnerID
+        ? "Leave both empty and the key inherits whatever its owner has at the time of each request. Fill either one and the key carries only what you list here — each entry must be something the owner carries."
+        : "A system key has no owner to inherit from, so it carries exactly what you list here. At least one role or permission is required."}
     >
       <div class="grid gap-6 sm:grid-cols-2">
         <div class="min-w-0">
@@ -680,7 +677,9 @@
             bind:value={editKey.draft_permission_ids}
           />
           <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
-            Empty on both means the key inherits its owner's access.
+            {editKey.user_id
+              ? "Empty on both means the key inherits its owner's access."
+              : "A system key carries exactly these — it must keep at least one role or permission."}
           </p>
         </div>
 

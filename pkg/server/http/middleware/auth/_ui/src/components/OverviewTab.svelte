@@ -8,9 +8,17 @@
   import { session } from "../lib/state/session.svelte";
   import { registry } from "../lib/state/registry.svelte";
   import { settings } from "../lib/state/settings.svelte";
-  import type { Tab } from "../lib/navigation";
+  import { hrefOf, plainClick, type Tab } from "../lib/navigation";
 
   let { onselect }: { onselect: (tab: Tab) => void } = $props();
+
+  /** Plain click stays in the SPA; modified clicks let the anchor open a new tab. */
+  function select(event: MouseEvent, tab: Tab) {
+    if (!plainClick(event)) return;
+
+    event.preventDefault();
+    onselect(tab);
+  }
 
   let clientCount = $state<number | null>(null);
   let surveyed = $state(false);
@@ -170,17 +178,17 @@
       <ul class="-mt-1">
         {#each holdings as item (item.label)}
           <li>
-            <button
-              type="button"
-              class="group flex w-full items-baseline gap-3 py-2.5 text-left transition-colors hover:text-carbon"
-              onclick={() => onselect(item.tab)}
+            <a
+              href={hrefOf(item.tab)}
+              class="group flex w-full items-baseline gap-3 py-2.5 text-left no-underline transition-colors hover:text-carbon"
+              onclick={(event) => select(event, item.tab)}
             >
               <span class="shrink-0 text-[13.5px] text-ink group-hover:text-carbon">{item.label}</span>
               <span class="mb-[3px] min-w-6 flex-1 border-b border-dotted border-rule"></span>
               <span class="serial shrink-0 text-[15px] font-semibold text-ink group-hover:text-carbon">
                 {item.value}
               </span>
-            </button>
+            </a>
           </li>
         {/each}
       </ul>
@@ -222,9 +230,13 @@
               </span>
 
               {#if !step.done}
-                <button type="button" class="act shrink-0" onclick={() => onselect(step.tab)}>
+                <a
+                  href={hrefOf(step.tab)}
+                  class="act shrink-0 no-underline"
+                  onclick={(event) => select(event, step.tab)}
+                >
                   Set up
-                </button>
+                </a>
               {/if}
             </li>
           {/each}
@@ -237,8 +249,12 @@
         <button type="button" class="act" disabled={session.busy} onclick={() => registry.syncLdap()}>
           Run LDAP sync
         </button>
-        <button type="button" class="act" onclick={() => onselect("check")}>Check an identity</button>
-        <button type="button" class="act" onclick={() => onselect("flows")}>Review enabled flows</button>
+        <a href={hrefOf("check")} class="act no-underline" onclick={(event) => select(event, "check")}>
+          Check an identity
+        </a>
+        <a href={hrefOf("flows")} class="act no-underline" onclick={(event) => select(event, "flows")}>
+          Review enabled flows
+        </a>
       </div>
     </Section>
 

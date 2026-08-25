@@ -7,9 +7,11 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
 
-// apiKeyUser builds the API key principal as a virtual service-account user;
-// roles and permissions come from the key itself, not from its owner.
-func (m *Auth) apiKeyUser(meta *APIKeyMeta) *data.UserExtended {
+// apiKeyUser builds the API key principal as a virtual service-account user.
+// A key with an explicit role or permission list carries exactly that list; a
+// key with neither acts as its owner and inherits the owner's access live, so
+// granting or revoking on the owner applies to the key on the next request.
+func (m *Auth) apiKeyUser(meta *APIKeyMeta, owner *data.UserExtended) *data.UserExtended {
 	details := make(map[string]any, len(meta.Details)+4)
 	for k, v := range meta.Details {
 		details[k] = v
@@ -18,7 +20,9 @@ func (m *Auth) apiKeyUser(meta *APIKeyMeta) *data.UserExtended {
 	subject := apiKeyPrincipalSubject(meta.ID)
 	details["uid"] = subject
 	details["api_key_id"] = meta.ID
-	details["owner_user_id"] = meta.UserID
+	if meta.UserID != "" {
+		details["owner_user_id"] = meta.UserID
+	}
 	if _, ok := details["name"]; !ok {
 		if meta.Name != "" {
 			details["name"] = meta.Name
@@ -35,6 +39,14 @@ func (m *Auth) apiKeyUser(meta *APIKeyMeta) *data.UserExtended {
 		Details:        details,
 		Disabled:       meta.Disabled,
 		ServiceAccount: true,
+	}
+
+	if len(meta.RoleIDs) == 0 && len(meta.PermissionIDs) == 0 && owner != nil && owner.User != nil {
+		user.RoleIDs = owner.RoleIDs
+		user.SyncRoleIDs = owner.SyncRoleIDs
+		user.TmpRoleIDs = owner.TmpRoleIDs
+		user.PermissionIDs = owner.PermissionIDs
+		user.TmpPermissionIDs = owner.TmpPermissionIDs
 	}
 
 	ext := m.cache.Snapshot().extendUser(true, true, false, true, user)
@@ -56,12 +68,16 @@ func (m *Auth) apiKeyClaimsForKey(ctx context.Context, key string) (map[string]a
 		return nil, err
 	}
 
-	owner, err := m.cache.GetUser(data.GetUserRequest{ID: meta.UserID})
-	if err != nil || owner.Disabled {
-		return nil, fmt.Errorf("api key owner not found; %w", data.ErrNotFound)
+	// system keys have no owner; owned keys die with a missing/disabled owner
+	var owner *data.UserExtended
+	if meta.UserID != "" {
+		owner, err = m.cache.GetUser(data.GetUserRequest{ID: meta.UserID})
+		if err != nil || owner.Disabled {
+			return nil, fmt.Errorf("api key owner not found; %w", data.ErrNotFound)
+		}
 	}
 
-	user := m.apiKeyUser(meta)
+	user := m.apiKeyUser(meta, owner)
 	subject := apiKeyPrincipalSubject(meta.ID)
 
 	claims := map[string]any{
@@ -71,7 +87,9 @@ func (m *Auth) apiKeyClaimsForKey(ctx context.Context, key string) (map[string]a
 		"typ":                "APIKey",
 		"principal_type":     "api_key",
 		"api_key_id":         meta.ID,
-		"owner_user_id":      meta.UserID,
+	}
+	if meta.UserID != "" {
+		claims["owner_user_id"] = meta.UserID
 	}
 
 	roles := idNameClaimValues(user.Roles)

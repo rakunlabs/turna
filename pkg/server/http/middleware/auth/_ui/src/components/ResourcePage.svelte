@@ -4,6 +4,7 @@
   import Instrument from "./ui/Instrument.svelte";
   import Seal from "./ui/Seal.svelte";
   import BreakSeal from "./ui/BreakSeal.svelte";
+  import { plainClick } from "../lib/navigation";
   import { kindSpecs, type ResourceKind } from "../lib/api";
   import { formatStamp } from "../lib/records";
   import { PAGE_SIZE, registry } from "../lib/state/registry.svelte";
@@ -74,10 +75,14 @@
   }
 
   function openRecord(event: MouseEvent, id: string) {
-    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    if (!plainClick(event)) return;
 
     event.preventDefault();
     void editor.load(kind, id);
+  }
+
+  function recordHref(id: string) {
+    return `./#${kind}/${encodeURIComponent(id)}`;
   }
 
   function revoke(id: string) {
@@ -214,17 +219,13 @@
               class="grid gap-x-4 gap-y-1.5 px-4 py-3 transition-colors hover:bg-raised md:grid-cols-[minmax(0,1fr)_7rem_9rem_9.5rem] md:items-center"
             >
               <div class="min-w-0">
-                {#if kind === "roles" || kind === "permissions"}
-                  <a
-                    href={`./#${kind}/${encodeURIComponent(row.id)}`}
-                    class="serial block truncate text-[13.5px] font-medium text-ink underline decoration-rule underline-offset-2 hover:decoration-ink"
-                    onclick={(event) => openRecord(event, row.id)}
-                  >
-                    {row.id}
-                  </a>
-                {:else}
-                  <p class="serial truncate text-[13.5px] font-medium text-ink">{row.id}</p>
-                {/if}
+                <a
+                  href={recordHref(row.id)}
+                  class="serial block truncate text-[13.5px] font-medium text-ink underline decoration-rule underline-offset-2 hover:decoration-ink"
+                  onclick={(event) => openRecord(event, row.id)}
+                >
+                  {row.id}
+                </a>
                 {#if row.sub}
                   <p class="mt-0.5 truncate text-[12px] text-muted">{row.sub}</p>
                 {/if}
@@ -239,9 +240,13 @@
               </p>
 
               <div class="flex gap-2 md:justify-end">
-                <button type="button" class="act" onclick={() => void editor.load(kind, row.id)}>
+                <a
+                  href={recordHref(row.id)}
+                  class="act no-underline"
+                  onclick={(event) => openRecord(event, row.id)}
+                >
                   Amend
-                </button>
+                </a>
                 <button
                   type="button"
                   class="act act-quiet text-seal hover:bg-seal/10 hover:text-seal"

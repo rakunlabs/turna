@@ -132,3 +132,19 @@ export function isResourceTab(tab: Tab): tab is ResourceKind {
 export function labelOf(tab: Tab) {
   return nav.find((item) => item.id === tab)?.label ?? tab;
 }
+
+/**
+ * Hash href of a tab. Navigation renders real anchors so the browser owns
+ * modified clicks — Ctrl/Cmd click and middle click open a new tab.
+ */
+export function hrefOf(tab: Tab) {
+  return tab === "overview" ? "./" : `./#${tab}`;
+}
+
+/**
+ * True for an unmodified left click — the only case the SPA should intercept.
+ * Everything else (Ctrl/Cmd, Shift, Alt, middle click) stays with the browser.
+ */
+export function plainClick(event: MouseEvent) {
+  return event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
+}

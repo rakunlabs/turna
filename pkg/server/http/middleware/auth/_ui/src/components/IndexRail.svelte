@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { NavGroup, Tab } from "../lib/navigation";
+  import { hrefOf, plainClick, type NavGroup, type Tab } from "../lib/navigation";
 
   /**
    * The index of the dossier. The seven groups the operator already knows are
@@ -49,7 +49,7 @@
   }
 
   function select(event: MouseEvent, tab: Tab) {
-    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    if (!plainClick(event)) return;
 
     event.preventDefault();
     onselect(tab);
@@ -111,7 +111,7 @@
               {@const current = active === item.id}
               <li>
                 <a
-                  href={item.id === "overview" ? "./" : `./#${item.id}`}
+                  href={hrefOf(item.id)}
                   class="flex w-full items-center gap-2.5 px-2 py-[7px] text-left text-[13px] leading-[1.35] transition-colors
                     {current
                       ? 'bg-raised font-semibold text-ink'

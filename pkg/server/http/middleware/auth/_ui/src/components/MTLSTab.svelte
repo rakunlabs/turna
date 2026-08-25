@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Tab } from "../lib/navigation";
+  import { hrefOf, plainClick, type Tab } from "../lib/navigation";
 
   import Instrument from "./ui/Instrument.svelte";
   import Section from "./ui/Section.svelte";
@@ -111,9 +111,17 @@
       </li>
     </ul>
 
-    <button type="button" class="act mt-5" onclick={() => onselect("service-accounts")}>
+    <a
+      href={hrefOf("service-accounts")}
+      class="act mt-5 inline-block no-underline"
+      onclick={(event) => {
+        if (!plainClick(event)) return;
+        event.preventDefault();
+        onselect("service-accounts");
+      }}
+    >
       Open service accounts
-    </button>
+    </a>
   </Section>
 
   <Section title="Token request">

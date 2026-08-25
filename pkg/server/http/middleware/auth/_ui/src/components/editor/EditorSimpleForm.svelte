@@ -2,6 +2,7 @@
   import Section from "../ui/Section.svelte";
   import TemporaryAccessPanel from "./TemporaryAccessPanel.svelte";
   import PasskeyPanel from "./PasskeyPanel.svelte";
+  import { splitValues } from "../../lib/records";
   import { editor } from "../../lib/state/editor.svelte";
 
   /**
@@ -19,6 +20,11 @@
     min?: string;
     mono?: boolean;
     wide?: boolean;
+    /**
+     * Register the listed IDs point into. Each ID renders as a link under the
+     * field: plain click opens that record here, Ctrl/Cmd click in a new tab.
+     */
+    linksTo?: "roles" | "permissions";
   };
 
   type Exhibit = {
@@ -102,6 +108,22 @@
       value={f.value}
       oninput={(event) => f.set(event.currentTarget.value)}
     />
+    {#if f.linksTo}
+      {@const linkKind = f.linksTo}
+      {@const ids = splitValues(f.value)}
+      {#if ids.length > 0}
+        <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+          {#each ids as id (id)}
+            <a
+              href={`./#${linkKind}/${encodeURIComponent(id)}`}
+              class="serial text-[12px] text-muted underline decoration-rule underline-offset-2 hover:text-ink hover:decoration-ink"
+            >
+              {id}
+            </a>
+          {/each}
+        </div>
+      {/if}
+    {/if}
     {#if f.hint}
       <p class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">{f.hint}</p>
     {/if}
@@ -684,6 +706,7 @@
         set: (value) => editor.setList("role_ids", value),
         placeholder: "admin, operator",
         mono: true,
+        linksTo: "roles",
       })}
       {@render line({
         label: "Sync role IDs",
@@ -692,6 +715,7 @@
         placeholder: "ldap-admin",
         mono: true,
         hint: "Written by LDAP sync; edits here are overwritten on the next sync.",
+        linksTo: "roles",
       })}
       {@render line({
         label: "Permission IDs",
@@ -699,6 +723,7 @@
         set: (value) => editor.setList("permission_ids", value),
         placeholder: "read-api",
         mono: true,
+        linksTo: "permissions",
       })}
       {@render toggle({
         label: "Active",
@@ -811,6 +836,7 @@
         set: (value) => editor.setList("role_ids", value),
         placeholder: "service-role",
         mono: true,
+        linksTo: "roles",
       })}
       {@render line({
         label: "Sync role IDs",
@@ -819,6 +845,7 @@
         placeholder: "ldap-service-role",
         mono: true,
         hint: "Written by LDAP sync; edits here are overwritten on the next sync.",
+        linksTo: "roles",
       })}
       {@render line({
         label: "Permission IDs",
@@ -826,6 +853,7 @@
         set: (value) => editor.setList("permission_ids", value),
         placeholder: "service-read",
         mono: true,
+        linksTo: "permissions",
       })}
       {@render toggle({
         label: "Active",
@@ -856,6 +884,7 @@
         set: (value) => editor.setList("permission_ids", value),
         placeholder: "read-api, write-api",
         mono: true,
+        linksTo: "permissions",
       })}
       {@render line({
         label: "Included role IDs",
@@ -864,6 +893,7 @@
         placeholder: "base-role",
         mono: true,
         hint: "Everything those roles carry is carried by this one.",
+        linksTo: "roles",
       })}
       {@render exhibit({
         label: "Data JSON",
@@ -1085,6 +1115,7 @@
         set: (value) => editor.setList("role_ids", value),
         placeholder: "admin, operator",
         mono: true,
+        linksTo: "roles",
       })}
     </div>
   </Section>

@@ -849,12 +849,16 @@ func (m *Auth) checkAccess(ctx context.Context, req data.CheckRequest) (*data.Ch
 		return nil, err
 	}
 
-	owner, err := m.cache.GetUser(data.GetUserRequest{ID: meta.UserID})
-	if err != nil || owner.Disabled {
-		return resp, nil
+	// system keys have no owner; owned keys die with a missing/disabled owner
+	var owner *data.UserExtended
+	if meta.UserID != "" {
+		owner, err = m.cache.GetUser(data.GetUserRequest{ID: meta.UserID})
+		if err != nil || owner.Disabled {
+			return resp, nil
+		}
 	}
 
-	user := m.apiKeyUser(meta)
+	user := m.apiKeyUser(meta, owner)
 
 	return m.cache.Snapshot().checkUser(user.User, req), nil
 }

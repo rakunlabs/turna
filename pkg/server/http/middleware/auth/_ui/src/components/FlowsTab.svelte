@@ -5,7 +5,7 @@
   import { registry } from "../lib/state/registry.svelte";
   import { route } from "../lib/state/route.svelte";
   import { getSettingBool } from "../lib/state/settings.svelte";
-  import { labelOf, type Tab } from "../lib/navigation";
+  import { hrefOf, labelOf, plainClick, type Tab } from "../lib/navigation";
 
   /**
    * A standing report, not a control panel. Every line reads live settings and
@@ -153,9 +153,17 @@
 
         <span class="flex shrink-0 items-center gap-4 md:justify-end">
           <span class="stamp {flow.on ? 'text-endorsed' : 'text-muted'}">{flow.on ? "On" : "Off"}</span>
-          <button type="button" class="act" onclick={() => route.select(flow.tab)}>
+          <a
+            href={hrefOf(flow.tab)}
+            class="act no-underline"
+            onclick={(event) => {
+              if (!plainClick(event)) return;
+              event.preventDefault();
+              route.select(flow.tab);
+            }}
+          >
             Open {labelOf(flow.tab)}
-          </button>
+          </a>
         </span>
       </li>
     {/each}
