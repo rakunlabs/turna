@@ -60,18 +60,19 @@ type Path struct {
 }
 
 type PathFixed struct {
-	Code         string
-	Methods      string
-	InfoUI       string
-	Token        string
-	Passkey      string
-	Status       string
-	Signup       string
-	SignupVerify string
-	Reset        string
-	ResetConfirm string
-	SDK          string
-	SDKTypes     string
+	Code           string
+	Methods        string
+	MethodsDefault string
+	InfoUI         string
+	Token          string
+	Passkey        string
+	Status         string
+	Signup         string
+	SignupVerify   string
+	Reset          string
+	ResetConfirm   string
+	SDK            string
+	SDKTypes       string
 }
 
 type Request struct {
@@ -149,6 +150,10 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 	} else {
 		m.pathFixed.Methods = path.Join(m.Path.Base, "auth/methods")
 	}
+
+	// the default methods route keeps answering when path.methods is
+	// overridden: the embedded UI bundle always calls the default path.
+	m.pathFixed.MethodsDefault = path.Join(m.Path.Base, "auth/methods")
 
 	if m.Path.InfoUI != "" {
 		m.pathFixed.InfoUI = m.Path.InfoUI
@@ -234,7 +239,8 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 
 			switch method {
 			case http.MethodGet:
-				if urlPath == m.pathFixed.Methods || urlPath == m.pathFixed.Methods+"/" {
+				if urlPath == m.pathFixed.Methods || urlPath == m.pathFixed.Methods+"/" ||
+					urlPath == m.pathFixed.MethodsDefault || urlPath == m.pathFixed.MethodsDefault+"/" {
 					m.Methods(w, r)
 
 					return

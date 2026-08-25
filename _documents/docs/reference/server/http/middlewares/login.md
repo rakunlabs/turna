@@ -74,7 +74,7 @@ routers:
     middlewares: [session, auth]
 ```
 
-Route overrides (`path.code`, `path.token`, `path.passkey`, ...) are advertised through the methods manifest, so SDK-based and custom UIs pick them up automatically. An overridden `path.methods` is injected into the served `sdk.js` itself, keeping `login.methods()` working without client-side configuration.
+Route overrides (`path.code`, `path.token`, `path.passkey`, ...) are advertised through the methods manifest, so SDK-based and custom UIs pick them up automatically. An overridden `path.methods` is injected into the served `sdk.js` itself, keeping `login.methods()` working without client-side configuration; the default `{base}/auth/methods` route keeps answering alongside the override, so the embedded login page (which bundles the SDK at build time and always calls the default path) is unaffected.
 
 ## Default Routes
 
