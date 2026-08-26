@@ -51,6 +51,7 @@
 
   let uid = 0;
   let providers = $state<ProviderRow[]>([]);
+  let openGroups = $state<Record<string, boolean>>({});
 
   /**
    * The editable model is local: typing must not write through to the
@@ -264,6 +265,23 @@
     [...new Set(providers.map((row) => row.group.trim()).filter(Boolean))].sort(),
   );
 
+  const providerGroups = $derived.by(() => {
+    const grouped = new Map<string, ProviderRow[]>();
+
+    for (const provider of providers) {
+      const group = provider.group.trim();
+      grouped.set(group, [...(grouped.get(group) ?? []), provider]);
+    }
+
+    return [...grouped.entries()]
+      .sort(([a], [b]) => {
+        if (!a) return -1;
+        if (!b) return 1;
+        return a.localeCompare(b);
+      })
+      .map(([name, rows]) => ({ name, providers: rows }));
+  });
+
   // Provider keys must be unique across the ungrouped list and every group
   // (the server rejects duplicates on commit); surface them before that.
   const duplicateKeys = $derived.by(() => {
@@ -341,7 +359,7 @@
   <div class="max-w-[104ch]">
     <Section
       title="Providers"
-      note="The map key is the provider name the session middleware and login page use. Set auth_middleware to this instance's middleware name for in-process validation, or fill the OAuth2 endpoints for a remote identity provider. A group makes the provider part of a named subset that session middlewares can pull selectively; an empty group keeps it in the shared list. Provider keys must be unique across all groups. Edits are local until you commit."
+      note="The map key is the provider name the session middleware and login page use. Set auth_middleware to this instance's middleware name for in-process validation, or fill the OAuth2 endpoints for a remote identity provider. Named groups can be pulled selectively; providers without a group appear under Default and remain in the shared list. Provider keys must be unique across all groups. Edits are local until you commit."
     >
       {#snippet aside()}
         <button type="button" class="act act-quiet" onclick={addProvider}>Add provider</button>
@@ -366,9 +384,42 @@
           </button>
         </div>
       {:else}
-        <div class="grid gap-8">
-          {#each providers as provider (provider.id)}
-            <div class="border border-rule bg-sheet">
+        <div class="grid gap-5">
+          {#each providerGroups as providerGroup (providerGroup.name)}
+            <details
+              class="group border-t border-rule"
+              open={openGroups[providerGroup.name] ?? false}
+              ontoggle={(event) =>
+                (openGroups[providerGroup.name] = event.currentTarget.open)}
+            >
+              <summary
+                class="flex list-none items-center gap-3 px-1 py-3 text-ink transition-colors hover:bg-raised [&::-webkit-details-marker]:hidden"
+              >
+                <svg
+                  class="h-3.5 w-3.5 shrink-0 transition-transform duration-150 group-open:rotate-90"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  aria-hidden="true"
+                >
+                  <path d="m4 2 4 4-4 4"></path>
+                </svg>
+                <span class="serial text-[13px] font-semibold">
+                  {providerGroup.name || "Default"}
+                </span>
+                <span class="stamp">
+                  {providerGroup.name ? "Named group" : "Ungrouped providers"}
+                </span>
+                <span class="serial ml-auto text-[12px] text-muted">
+                  {providerGroup.providers.length}
+                  {providerGroup.providers.length === 1 ? "provider" : "providers"}
+                </span>
+              </summary>
+
+              <div class="grid gap-8 border-l-2 border-rule py-2 pl-3 sm:pl-5">
+                {#each providerGroup.providers as provider (provider.id)}
+                  <div class="border border-rule bg-sheet">
               <div class="flex flex-wrap items-end gap-x-6 gap-y-3 border-b border-rule px-4 py-3">
                 <div class="min-w-0 flex-1 basis-52">
                   <label class="stamp block" for="sp-key-{provider.id}">Provider name · map key</label>
@@ -398,11 +449,12 @@
                   <input
                     id="sp-group-{provider.id}"
                     class="entry serial mt-1.5"
-                    placeholder="optional — e.g. internal"
+                    placeholder="Default"
                     autocomplete="off"
                     spellcheck="false"
                     list="sp-group-names"
-                    bind:value={provider.group}
+                    value={provider.group}
+                    onchange={(event) => (provider.group = event.currentTarget.value)}
                   />
                 </div>
 
@@ -587,7 +639,10 @@
                   </div>
                 {/if}
               </div>
-            </div>
+                  </div>
+                {/each}
+              </div>
+            </details>
           {/each}
         </div>
       {/if}
