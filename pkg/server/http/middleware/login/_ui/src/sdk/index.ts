@@ -79,7 +79,12 @@ export type PasskeyOptions = RememberOption & {
 export type CodeOptions = RememberOption & {
   /** window.open target, defaults to "_blank". */
   target?: string;
-  /** window.open features string, e.g. "width=520,height=720". */
+  /**
+   * window.open features string, e.g. "width=520,height=720". Defaults to
+   * a centered popup window: browsers refuse to focus background tabs, so
+   * only a real popup window reliably hands focus back to this page when
+   * the sign-in finishes. Pass an empty string to open a tab instead.
+   */
   features?: string;
   /** Abort waiting for the popup result. */
   signal?: AbortSignal;
@@ -258,6 +263,26 @@ const readCookie = (name: string): string | undefined => {
 /** Best-effort cleanup of a consumed marker cookie; it expires on its own. */
 const dropCookie = (name: string): void => {
   document.cookie = `${name}=; Max-Age=0; path=/; SameSite=Lax`;
+};
+
+/**
+ * A real popup window centered on the opener. A plain "_blank" open creates
+ * a tab, and closed tabs do not reliably re-activate their opener (Firefox
+ * drops the owner link once focus moved through other tabs, and scripted
+ * focus() on a background tab is ignored by every browser). Closing the
+ * last popup *window* always reveals the opener's window.
+ */
+const defaultPopupFeatures = (): string => {
+  const width = 520;
+  const height = 720;
+  const outerWidth = window.outerWidth || screen.width;
+  const outerHeight = window.outerHeight || screen.height;
+  const baseX = window.screenX ?? 0;
+  const baseY = window.screenY ?? 0;
+  const left = Math.max(0, Math.round(baseX + (outerWidth - width) / 2));
+  const top = Math.max(0, Math.round(baseY + (outerHeight - height) / 2));
+
+  return `popup=yes,width=${width},height=${height},left=${left},top=${top}`;
 };
 
 /**
@@ -477,7 +502,11 @@ export class TurnaLogin {
     target.searchParams.set(popupFlowParam, "1");
     target.searchParams.set(flowIDParam, flowID);
 
-    const win = window.open(target.toString(), options?.target ?? "_blank", options?.features);
+    const win = window.open(
+      target.toString(),
+      options?.target ?? "_blank",
+      options?.features ?? defaultPopupFeatures(),
+    );
     if (!win) {
       return Promise.reject(
         new LoginError("The sign-in window was blocked. Allow pop-ups and try again."),

@@ -48,7 +48,12 @@ export type PasskeyOptions = RememberOption & {
 export type CodeOptions = RememberOption & {
 	/** window.open target, defaults to "_blank". */
 	target?: string;
-	/** window.open features string, e.g. "width=520,height=720". */
+	/**
+	 * window.open features string, e.g. "width=520,height=720". Defaults to
+	 * a centered popup window: browsers refuse to focus background tabs, so
+	 * only a real popup window reliably hands focus back to this page when
+	 * the sign-in finishes. Pass an empty string to open a tab instead.
+	 */
 	features?: string;
 	/** Abort waiting for the popup result. */
 	signal?: AbortSignal;
