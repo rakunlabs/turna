@@ -151,6 +151,20 @@ func (m *Auth) clientIDKnown(clientID string) bool {
 	return isClientMetadataURL(clientID)
 }
 
+// rolesClaimPath resolves the dot path the scope-derived roles are written to
+// for a client: the per-client override when set, otherwise the global token
+// setting (which defaults to the flat "roles" claim). Both the token endpoint
+// and the userinfo endpoint go through here so a client never has to look for
+// its roles in two different places.
+func rolesClaimPath(sn *Snapshot, clientID string) string {
+	path := sn.Token.GetRolesClaim()
+	if client, ok := sn.OAuthClients[clientID]; ok && client.RolesClaim != "" {
+		path = client.RolesClaim
+	}
+
+	return path
+}
+
 // tokenAudience builds the aud claim: the fixed local audience plus any
 // RFC 8707 resource indicators granted with the token.
 func tokenAudience(resources []string) any {
@@ -345,12 +359,11 @@ func (m *Auth) writeTokenWithOptions(w http.ResponseWriter, r *http.Request, use
 		rolesList = append(rolesList, role)
 	}
 
-	if len(rolesList) > 0 {
-		rolesClaim := tokenCfg.GetRolesClaim()
-		if client, ok := sn.OAuthClients[clientID]; ok && client.RolesClaim != "" {
-			rolesClaim = client.RolesClaim
-		}
+	// rolesClaim is resolved once and reused for the id_token below so an
+	// OIDC client reads the roles from the same dot path in both tokens.
+	rolesClaim := rolesClaimPath(sn, clientID)
 
+	if len(rolesList) > 0 {
 		setClaimByPath(claimsAccess, rolesClaim, rolesList)
 	}
 
@@ -435,6 +448,15 @@ func (m *Auth) writeTokenWithOptions(w http.ResponseWriter, r *http.Request, use
 		}
 		if options.Nonce != "" {
 			claimsID["nonce"] = options.Nonce
+		}
+
+		// Roles belong in the id_token too: OIDC clients (and libraries that
+		// only ever look at the id_token, which is the common default) would
+		// otherwise see an authenticated user with no authorization data and
+		// silently fall back to "no roles". rolesList is already scope-derived,
+		// so this leaks nothing the access token would not have carried.
+		if len(rolesList) > 0 {
+			setClaimByPath(claimsID, rolesClaim, rolesList)
 		}
 
 		idToken, err = signer.JWT.Generate(claimsID, accessExpires)
@@ -1213,11 +1235,22 @@ func (m *Auth) APIUserInfo(w http.ResponseWriter, r *http.Request) {
 		claimsRet["given_name"] = v
 	}
 
+	// Mirror the roles the presented access token carries. Reading them back
+	// off the token (instead of recomputing from the user) keeps userinfo
+	// bound to the scopes that were actually granted at issue time, and keeps
+	// a revoked/narrowed scope from silently widening through this endpoint.
+	sn := m.cache.Snapshot()
+	azp, _ := claims["azp"].(string)
+	rolesClaim := rolesClaimPath(sn, azp)
+
+	if rolesList := claimValues(claims, rolesClaim); len(rolesList) > 0 {
+		setClaimByPath(claimsRet, rolesClaim, rolesList)
+	}
+
 	// apply custom userinfo templates selected by the {custom} path segment.
 	if customName := r.PathValue("custom"); customName != "" {
-		snap := m.cache.Snapshot()
-		if !snap.CustomInfo.Disabled {
-			if set, ok := snap.CustomInfo.Sets[customName]; ok {
+		if !sn.CustomInfo.Disabled {
+			if set, ok := sn.CustomInfo.Sets[customName]; ok {
 				// render against a copy of the base claims so iteration order
 				// never affects the result; templates may add or overwrite claims.
 				base := make(map[string]any, len(claimsRet))

@@ -24,7 +24,8 @@ type AccessClient struct {
 	Scope         []string `json:"scope"`
 	WhitelistURLs []string `json:"whitelist_urls"`
 	// RolesClaim overrides the global token roles_claim dot path for tokens
-	// issued to this client. Empty falls back to TokenSettings.GetRolesClaim().
+	// issued to this client (access token, id_token and userinfo alike).
+	// Empty falls back to TokenSettings.GetRolesClaim().
 	RolesClaim string `json:"roles_claim"`
 
 	// ClientName is a human readable name shown on the consent page.
@@ -579,9 +580,10 @@ type TokenSettings struct {
 	RefreshLifetime         string `json:"refresh_lifetime"`
 	RefreshAbsoluteLifetime string `json:"refresh_absolute_lifetime"`
 	// RolesClaim is the dot path where the scope-derived roles are written
-	// in the access token. Empty defaults to "roles" (flat top-level array).
-	// Use "realm_access.roles" for Keycloak-style nesting, or any dot path
-	// such as "resource_access.app.roles". A per-client override in
+	// in the access token, the id_token and the userinfo response. Empty
+	// defaults to "roles" (flat top-level array). Use "realm_access.roles"
+	// for Keycloak-style nesting, or any dot path such as
+	// "resource_access.app.roles". A per-client override in
 	// AccessClient.RolesClaim takes precedence when set.
 	RolesClaim string `json:"roles_claim"`
 
