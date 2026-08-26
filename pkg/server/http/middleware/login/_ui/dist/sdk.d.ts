@@ -138,9 +138,14 @@ export declare class TurnaLogin {
 	 * is blocked or `signal` aborts.
 	 *
 	 * A `turna:login:success` message from the exact popup triggers an
-	 * `auth_verify` cookie check. Polling the same cookie keeps the flow
-	 * working when an upstream provider's COOP policy severs the
+	 * `auth_verify_<flow>` cookie check. Polling the same cookie keeps the
+	 * flow working when an upstream provider's COOP policy severs the
 	 * `window.opener` handle.
+	 *
+	 * The cookie is scoped to a per-call flow id: the popup may itself be a
+	 * login page that opens further popups, and a shared marker would let
+	 * such an inner sign-in resolve this call early, closing the popup while
+	 * it is still redirecting.
 	 */
 	code(link: LoginLink, options?: CodeOptions): Promise<void>;
 	/** Self-registration through the provider's `signup_url`. */
@@ -154,8 +159,9 @@ export declare class TurnaLogin {
 	/**
 	 * Complete a successful sign-in: reload the page when it is part of
 	 * Turna's own authorization-code flow (so the middleware can return the
-	 * pending code), relay an SDK-opened nested popup to its same-origin
-	 * opener, or navigate to the safe `redirect_path` target.
+	 * pending code), follow a safe `redirect_path`, or — for a login page
+	 * opened as a popup with nothing left to follow — relay completion to
+	 * its same-origin opener and close.
 	 */
 	finish(): void;
 }

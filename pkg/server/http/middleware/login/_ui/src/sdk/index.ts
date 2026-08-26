@@ -156,6 +156,11 @@ const credentialErrors = ["password not match", "user not found", "secret not ma
 const credentialMessage = "Invalid username or password";
 const loginSuccessMessage = "turna:login:success";
 const popupFlowParam = "turna_popup";
+// Correlation id for one popup sign-in. The server echoes it back as a
+// cookie-name suffix so nested login windows never observe each other's
+// completion. Keep in sync with the login middleware.
+const flowIDParam = "turna_flow";
+const successCookie = "auth_verify";
 
 /** Read the standard {message, error} envelope, unwrapping any embedded
  * OAuth2 error body, and map credential failures to a friendly message. */
@@ -250,6 +255,26 @@ const readCookie = (name: string): string | undefined => {
   return undefined;
 };
 
+/** Best-effort cleanup of a consumed marker cookie; it expires on its own. */
+const dropCookie = (name: string): void => {
+  document.cookie = `${name}=; Max-Age=0; path=/; SameSite=Lax`;
+};
+
+/**
+ * Per-popup id, restricted to the character set the middleware accepts as a
+ * cookie-name suffix ([A-Za-z0-9_-]).
+ */
+const newFlowID = (): string => {
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  }
+
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+};
+
 /** Current page URL with a `flow` marker, used as mail magic-link target. */
 const pageURL = (flow: string): string =>
   `${window.location.origin}${window.location.pathname}?flow=${flow}`;
@@ -263,9 +288,9 @@ const pageURL = (flow: string): string =>
 export const isResponseTypeCode = (): boolean =>
   new URLSearchParams(window.location.search).get("response_type") === "code";
 
-/** Safe same-origin redirect target from the `redirect_path` query
- * parameter; falls back to "/" and never redirects back to the login page. */
-export const getRedirectPath = (): string => {
+/** Validated `redirect_path`, or undefined when there is nothing safe to
+ * follow. Rejects cross-origin targets and the login page itself. */
+const safeRedirectPath = (): string | undefined => {
   const redirectPath = new URLSearchParams(window.location.search).get("redirect_path");
 
   if (redirectPath?.startsWith("/") && !redirectPath.startsWith("//")) {
@@ -281,8 +306,12 @@ export const getRedirectPath = (): string => {
     }
   }
 
-  return "/";
+  return undefined;
 };
+
+/** Safe same-origin redirect target from the `redirect_path` query
+ * parameter; falls back to "/" and never redirects back to the login page. */
+export const getRedirectPath = (): string => safeRedirectPath() ?? "/";
 
 /** Magic-link state (`?flow=verify|reset&code=...`) from the current URL. */
 export const flowFromURL = (): FlowState => {
@@ -293,9 +322,9 @@ export const flowFromURL = (): FlowState => {
   return { flow, code: params.get("code") ?? "" };
 };
 
-// A login page opened by this SDK may itself open a provider popup. Relay the
-// verified completion one level at a time so each receiver can check its own
-// direct child window and the shared auth_verify cookie.
+// Relay for a login page that was opened as a popup and has no redirect_path
+// of its own to follow: hand completion to the same-origin opener one level
+// at a time and step out of the way.
 const notifyPopupOpener = (): boolean => {
   if (new URLSearchParams(window.location.search).get(popupFlowParam) !== "1") return false;
 
@@ -430,14 +459,23 @@ export class TurnaLogin {
    * is blocked or `signal` aborts.
    *
    * A `turna:login:success` message from the exact popup triggers an
-   * `auth_verify` cookie check. Polling the same cookie keeps the flow
-   * working when an upstream provider's COOP policy severs the
+   * `auth_verify_<flow>` cookie check. Polling the same cookie keeps the
+   * flow working when an upstream provider's COOP policy severs the
    * `window.opener` handle.
+   *
+   * The cookie is scoped to a per-call flow id: the popup may itself be a
+   * login page that opens further popups, and a shared marker would let
+   * such an inner sign-in resolve this call early, closing the popup while
+   * it is still redirecting.
    */
   code(link: LoginLink, options?: CodeOptions): Promise<void> {
+    const flowID = newFlowID();
+    const flowCookie = `${successCookie}_${flowID}`;
+
     const target = new URL(link.url, window.location.origin);
     if (options?.rememberMe) target.searchParams.set("remember_me", "true");
     target.searchParams.set(popupFlowParam, "1");
+    target.searchParams.set(flowIDParam, flowID);
 
     const win = window.open(target.toString(), options?.target ?? "_blank", options?.features);
     if (!win) {
@@ -456,10 +494,18 @@ export class TurnaLogin {
       };
 
       const finish = (): boolean => {
-        if (readCookie("auth_verify") !== "true") return false;
+        if (readCookie(flowCookie) !== "true") return false;
 
         cleanup();
+        dropCookie(flowCookie);
         win.close();
+        // the popup focuses its opener before closing, but a completion
+        // seen only through the cookie poll has nothing to hand focus back
+        try {
+          window.focus();
+        } catch {
+          // focus is a hint, never fail the sign-in over it
+        }
         resolve();
 
         return true;
@@ -479,6 +525,7 @@ export class TurnaLogin {
 
       const onAbort = () => {
         cleanup();
+        dropCookie(flowCookie);
         win.close();
         reject(new LoginError("Sign-in was aborted"));
       };
@@ -578,8 +625,9 @@ export class TurnaLogin {
   /**
    * Complete a successful sign-in: reload the page when it is part of
    * Turna's own authorization-code flow (so the middleware can return the
-   * pending code), relay an SDK-opened nested popup to its same-origin
-   * opener, or navigate to the safe `redirect_path` target.
+   * pending code), follow a safe `redirect_path`, or — for a login page
+   * opened as a popup with nothing left to follow — relay completion to
+   * its same-origin opener and close.
    */
   finish(): void {
     if (isResponseTypeCode()) {
@@ -587,9 +635,19 @@ export class TurnaLogin {
       return;
     }
 
+    // A pending redirect_path always wins: an intermediate login page in a
+    // nested flow is opened as a popup *and* carries the authorize URL it
+    // has to walk back through. Relaying and closing here would strand the
+    // outer window waiting for a callback that never arrives.
+    const redirectPath = safeRedirectPath();
+    if (redirectPath) {
+      window.location.assign(redirectPath);
+      return;
+    }
+
     if (notifyPopupOpener()) return;
 
-    window.location.assign(getRedirectPath());
+    window.location.assign("/");
   }
 }
 

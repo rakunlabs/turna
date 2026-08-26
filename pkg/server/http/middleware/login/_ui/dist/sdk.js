@@ -1,115 +1,123 @@
-var S = Object.defineProperty;
-var A = (r, t, e) => t in r ? S(r, t, { enumerable: !0, configurable: !0, writable: !0, value: e }) : r[t] = e;
-var u = (r, t, e) => A(r, typeof t != "symbol" ? t + "" : t, e);
-function d(r) {
-  const t = r instanceof Uint8Array ? r : new Uint8Array(r);
-  let e = "";
-  for (let a = 0; a < t.length; a++) e += String.fromCharCode(t[a]);
-  return btoa(e).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+var $ = Object.defineProperty;
+var T = (r, e, t) => e in r ? $(r, e, { enumerable: !0, configurable: !0, writable: !0, value: t }) : r[e] = t;
+var l = (r, e, t) => T(r, typeof e != "symbol" ? e + "" : e, t);
+function u(r) {
+  const e = r instanceof Uint8Array ? r : new Uint8Array(r);
+  let t = "";
+  for (let a = 0; a < e.length; a++) t += String.fromCharCode(e[a]);
+  return btoa(t).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
-function y(r) {
-  const t = r.replace(/-/g, "+").replace(/_/g, "/").padEnd(r.length + (4 - r.length % 4) % 4, "="), e = atob(t), a = new ArrayBuffer(e.length), n = new Uint8Array(a);
-  for (let o = 0; o < e.length; o++) n[o] = e.charCodeAt(o);
+function _(r) {
+  const e = r.replace(/-/g, "+").replace(/_/g, "/").padEnd(r.length + (4 - r.length % 4) % 4, "="), t = atob(e), a = new ArrayBuffer(t.length), n = new Uint8Array(a);
+  for (let o = 0; o < t.length; o++) n[o] = t.charCodeAt(o);
   return n;
 }
-function L() {
+function R() {
   return typeof window < "u" && typeof window.PublicKeyCredential < "u";
 }
-async function E(r) {
-  if (!L()) throw new Error("webauthn not supported");
-  const t = {
-    challenge: y(r.challenge),
+async function M(r) {
+  if (!R()) throw new Error("webauthn not supported");
+  const e = {
+    challenge: _(r.challenge),
     timeout: r.timeout,
     rpId: r.rpId,
     allowCredentials: (r.allowCredentials ?? []).map((n) => ({
       type: n.type,
-      id: y(n.id),
+      id: _(n.id),
       transports: n.transports
     })),
     userVerification: r.userVerification
-  }, e = await navigator.credentials.get({ publicKey: t });
-  if (!e) return null;
-  const a = e.response;
+  }, t = await navigator.credentials.get({ publicKey: e });
+  if (!t) return null;
+  const a = t.response;
   return {
-    id: e.id,
-    rawId: d(e.rawId),
+    id: t.id,
+    rawId: u(t.rawId),
     type: "public-key",
     response: {
-      clientDataJSON: d(a.clientDataJSON),
-      authenticatorData: d(a.authenticatorData),
-      signature: d(a.signature),
-      userHandle: a.userHandle ? d(a.userHandle) : void 0
+      clientDataJSON: u(a.clientDataJSON),
+      authenticatorData: u(a.authenticatorData),
+      signature: u(a.signature),
+      userHandle: a.userHandle ? u(a.userHandle) : void 0
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    authenticatorAttachment: e.authenticatorAttachment
+    authenticatorAttachment: t.authenticatorAttachment
   };
 }
 class s extends Error {
-  constructor(e, a) {
-    super(e);
+  constructor(t, a) {
+    super(t);
     /** HTTP status when the failure came from a response. */
-    u(this, "status");
+    l(this, "status");
     /** True for wrong username/password/secret style failures. */
-    u(this, "credentials");
+    l(this, "credentials");
     this.name = "LoginError", this.status = a?.status, this.credentials = a?.credentials ?? !1;
   }
 }
-const C = ["password not match", "user not found", "secret not match"], _ = "Invalid username or password", P = "turna:login:success", R = "turna_popup", T = async (r) => {
-  let t;
-  try {
-    const e = await r.json();
-    e && typeof e == "object" ? t = e.message ?? e.error_description ?? e.error : typeof e == "string" && (t = e);
-  } catch {
-  }
-  if (typeof t == "string" && t.trim().startsWith("{"))
-    try {
-      const e = JSON.parse(t);
-      t = e.error_description ?? e.message ?? e.error ?? t;
-    } catch {
-    }
-  return typeof t == "string" && t ? C.includes(t.toLowerCase()) ? new s(_, { status: r.status, credentials: !0 }) : new s(t, { status: r.status }) : r.status === 401 ? new s(_, { status: 401, credentials: !0 }) : new s(`Request failed with status ${r.status}`, {
-    status: r.status
-  });
-}, c = (r) => r instanceof s ? r : r instanceof Error ? r.name === "NotAllowedError" ? new s("Passkey was cancelled or timed out") : new s(r.message) : new s(String(r)), U = async (r, t) => {
+const k = ["password not match", "user not found", "secret not match"], b = "Invalid username or password", U = "turna:login:success", v = "turna_popup", I = "turna_flow", O = "auth_verify", D = async (r) => {
   let e;
   try {
-    e = await fetch(r, { credentials: "same-origin", ...t });
+    const t = await r.json();
+    t && typeof t == "object" ? e = t.message ?? t.error_description ?? t.error : typeof t == "string" && (e = t);
+  } catch {
+  }
+  if (typeof e == "string" && e.trim().startsWith("{"))
+    try {
+      const t = JSON.parse(e);
+      e = t.error_description ?? t.message ?? t.error ?? e;
+    } catch {
+    }
+  return typeof e == "string" && e ? k.includes(e.toLowerCase()) ? new s(b, { status: r.status, credentials: !0 }) : new s(e, { status: r.status }) : r.status === 401 ? new s(b, { status: 401, credentials: !0 }) : new s(`Request failed with status ${r.status}`, {
+    status: r.status
+  });
+}, c = (r) => r instanceof s ? r : r instanceof Error ? r.name === "NotAllowedError" ? new s("Passkey was cancelled or timed out") : new s(r.message) : new s(String(r)), S = async (r, e) => {
+  let t;
+  try {
+    t = await fetch(r, { credentials: "same-origin", ...e });
   } catch (a) {
     throw c(a);
   }
-  if (!e.ok)
-    throw await T(e);
-  return e;
-}, i = async (r, t) => {
-  const e = await U(r, {
+  if (!t.ok)
+    throw await D(t);
+  return t;
+}, i = async (r, e) => {
+  const t = await S(r, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(t)
+    body: JSON.stringify(e)
   });
-  if (e.status !== 204)
-    return e.json().catch(() => {
+  if (t.status !== 204)
+    return t.json().catch(() => {
     });
-}, $ = (r) => {
-  for (const t of document.cookie.split("; ")) {
-    const e = t.indexOf("=");
-    if (e > 0 && t.slice(0, e) === r)
-      return decodeURIComponent(t.slice(e + 1));
+}, N = (r) => {
+  for (const e of document.cookie.split("; ")) {
+    const t = e.indexOf("=");
+    if (t > 0 && e.slice(0, t) === r)
+      return decodeURIComponent(e.slice(t + 1));
   }
-}, b = (r) => `${window.location.origin}${window.location.pathname}?flow=${r}`, O = () => new URLSearchParams(window.location.search).get("response_type") === "code", M = () => {
+}, P = (r) => {
+  document.cookie = `${r}=; Max-Age=0; path=/; SameSite=Lax`;
+}, j = () => {
+  const r = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues)
+    globalThis.crypto.getRandomValues(r);
+  else
+    for (let e = 0; e < r.length; e += 1) r[e] = Math.floor(Math.random() * 256);
+  return Array.from(r, (e) => e.toString(16).padStart(2, "0")).join("");
+}, L = (r) => `${window.location.origin}${window.location.pathname}?flow=${r}`, q = () => new URLSearchParams(window.location.search).get("response_type") === "code", A = () => {
   const r = new URLSearchParams(window.location.search).get("redirect_path");
   if (r?.startsWith("/") && !r.startsWith("//"))
     try {
-      const t = new URL(r, window.location.origin), e = t.pathname.replace(/\/+$/, "") || "/", a = window.location.pathname.replace(/\/+$/, "") || "/";
-      if (t.origin === window.location.origin && e !== a)
-        return `${t.pathname}${t.search}${t.hash}`;
+      const e = new URL(r, window.location.origin), t = e.pathname.replace(/\/+$/, "") || "/", a = window.location.pathname.replace(/\/+$/, "") || "/";
+      if (e.origin === window.location.origin && t !== a)
+        return `${e.pathname}${e.search}${e.hash}`;
     } catch {
     }
-  return "/";
-}, q = () => {
-  const r = new URLSearchParams(window.location.search), t = r.get("flow");
-  return t !== "verify" && t !== "reset" ? null : { flow: t, code: r.get("code") ?? "" };
-}, I = () => {
-  if (new URLSearchParams(window.location.search).get(R) !== "1") return !1;
+}, J = () => A() ?? "/", V = () => {
+  const r = new URLSearchParams(window.location.search), e = r.get("flow");
+  return e !== "verify" && e !== "reset" ? null : { flow: e, code: r.get("code") ?? "" };
+}, x = () => {
+  if (new URLSearchParams(window.location.search).get(v) !== "1") return !1;
   const r = window.opener;
   if (!r || r.closed) return !1;
   try {
@@ -117,42 +125,42 @@ const C = ["password not match", "user not found", "secret not match"], _ = "Inv
   } catch {
     return !1;
   }
-  return r.postMessage(P, window.location.origin), r.focus(), window.close(), !0;
+  return r.postMessage(U, window.location.origin), r.focus(), window.close(), !0;
 };
-class N {
-  constructor(t) {
-    u(this, "base");
-    if (t?.base) {
-      const a = new URL(t.base, window.location.origin);
+class W {
+  constructor(e) {
+    l(this, "base");
+    if (e?.base) {
+      const a = new URL(e.base, window.location.origin);
       a.pathname.endsWith("/") || (a.pathname += "/"), this.base = a;
       return;
     }
-    const e = import.meta.url;
-    this.base = new URL("../", e);
+    const t = import.meta.url;
+    this.base = new URL("../", t);
   }
-  authURL(t) {
-    return new URL(`auth/${t}`, this.base);
+  authURL(e) {
+    return new URL(`auth/${e}`, this.base);
   }
   methodsURL() {
-    const t = "__TURNA_METHODS_PATH__";
-    return t.startsWith("__TURNA_") ? this.authURL("methods") : new URL(t, window.location.origin);
+    const e = "__TURNA_METHODS_PATH__";
+    return e.startsWith("__TURNA_") ? this.authURL("methods") : new URL(e, window.location.origin);
   }
   /**
    * Fetch the login method manifest. Render one control per link; `name`
    * is a display label and is not guaranteed to be unique.
    */
   async methods() {
-    const e = await (await U(this.methodsURL())).json();
-    return e?.payload ?? e;
+    const t = await (await S(this.methodsURL())).json();
+    return t?.payload ?? t;
   }
   /** Password sign-in. Resolves when the session cookie is set. */
-  async password(t, e) {
+  async password(e, t) {
     try {
-      await i(t.url, {
-        ...e.extra,
-        username: e.username,
-        password: e.password,
-        remember_me: e.rememberMe ?? !1
+      await i(e.url, {
+        ...t.extra,
+        username: t.username,
+        password: t.password,
+        remember_me: t.rememberMe ?? !1
       });
     } catch (a) {
       throw c(a);
@@ -164,21 +172,21 @@ class N {
    * offer every resident passkey for this site — no account name typed.
    * Resolves when the session cookie is set.
    */
-  async passkey(t, e) {
-    if (!L())
+  async passkey(e, t) {
+    if (!R())
       throw new s("Passkeys are not supported in this browser");
-    const a = e?.rememberMe ?? !1;
+    const a = t?.rememberMe ?? !1;
     try {
       const n = await i(
-        t.url,
+        e.url,
         {
-          ...e?.username ? { username: e.username } : {},
+          ...t?.username ? { username: t.username } : {},
           remember_me: a
         }
-      ), o = await E(n.options);
+      ), o = await M(n.options);
       if (!o)
         throw new s("Passkey ceremony was cancelled");
-      await i(t.url, {
+      await i(e.url, {
         session_id: n.session_id,
         assertion: o,
         remember_me: a
@@ -193,42 +201,55 @@ class N {
    * is blocked or `signal` aborts.
    *
    * A `turna:login:success` message from the exact popup triggers an
-   * `auth_verify` cookie check. Polling the same cookie keeps the flow
-   * working when an upstream provider's COOP policy severs the
+   * `auth_verify_<flow>` cookie check. Polling the same cookie keeps the
+   * flow working when an upstream provider's COOP policy severs the
    * `window.opener` handle.
+   *
+   * The cookie is scoped to a per-call flow id: the popup may itself be a
+   * login page that opens further popups, and a shared marker would let
+   * such an inner sign-in resolve this call early, closing the popup while
+   * it is still redirecting.
    */
-  code(t, e) {
-    const a = new URL(t.url, window.location.origin);
-    e?.rememberMe && a.searchParams.set("remember_me", "true"), a.searchParams.set(R, "1");
-    const n = window.open(a.toString(), e?.target ?? "_blank", e?.features);
-    return n ? new Promise((o, v) => {
+  code(e, t) {
+    const a = j(), n = `${O}_${a}`, o = new URL(e.url, window.location.origin);
+    t?.rememberMe && o.searchParams.set("remember_me", "true"), o.searchParams.set(v, "1"), o.searchParams.set(I, a);
+    const d = window.open(o.toString(), t?.target ?? "_blank", t?.features);
+    return d ? new Promise((C, E) => {
       let w;
-      const h = () => {
-        w && clearInterval(w), window.removeEventListener("message", p), e?.signal?.removeEventListener("abort", m);
-      }, f = () => $("auth_verify") !== "true" ? !1 : (h(), n.close(), o(), !0), p = (l) => {
-        l.origin !== window.location.origin || l.source !== n || l.data !== P || f();
-      }, m = () => {
-        h(), n.close(), v(new s("Sign-in was aborted"));
+      const f = () => {
+        w && clearInterval(w), window.removeEventListener("message", m), t?.signal?.removeEventListener("abort", g);
+      }, p = () => {
+        if (N(n) !== "true") return !1;
+        f(), P(n), d.close();
+        try {
+          window.focus();
+        } catch {
+        }
+        return C(), !0;
+      }, m = (h) => {
+        h.origin !== window.location.origin || h.source !== d || h.data !== U || p();
+      }, g = () => {
+        f(), P(n), d.close(), E(new s("Sign-in was aborted"));
       };
-      window.addEventListener("message", p), e?.signal?.addEventListener("abort", m);
-      let g = 0;
+      window.addEventListener("message", m), t?.signal?.addEventListener("abort", g);
+      let y = 0;
       w = setInterval(() => {
-        f() || n.closed && (g += 1, g === 10 && e?.onPopupClosed?.());
+        p() || d.closed && (y += 1, y === 10 && t?.onPopupClosed?.());
       }, 500);
     }) : Promise.reject(
       new s("The sign-in window was blocked. Allow pop-ups and try again.")
     );
   }
   /** Self-registration through the provider's `signup_url`. */
-  async signup(t, e) {
-    if (!t.signup_url)
+  async signup(e, t) {
+    if (!e.signup_url)
       throw new s("Provider does not support signup");
     try {
-      const n = (await i(t.signup_url, {
-        name: e.name,
-        email: e.email,
-        password: e.password,
-        redirect_uri: e.redirectUri ?? b("verify")
+      const n = (await i(e.signup_url, {
+        name: t.name,
+        email: t.email,
+        password: t.password,
+        redirect_uri: t.redirectUri ?? L("verify")
       }))?.payload ?? {};
       return {
         message: n.message ?? "Account request accepted",
@@ -239,34 +260,34 @@ class N {
     }
   }
   /** Confirm an emailed signup verification code. */
-  async signupVerify(t, e) {
-    if (!t.signup_verify_url)
+  async signupVerify(e, t) {
+    if (!e.signup_verify_url)
       throw new s("Provider does not support signup verification");
     try {
-      return (await i(t.signup_verify_url, { code: e }))?.payload?.message ?? "Email verified";
+      return (await i(e.signup_verify_url, { code: t }))?.payload?.message ?? "Email verified";
     } catch (a) {
       throw c(a);
     }
   }
   /** Request a forgot-password mail through `password_reset_url`. */
-  async resetRequest(t, e) {
-    if (!t.password_reset_url)
+  async resetRequest(e, t) {
+    if (!e.password_reset_url)
       throw new s("Provider does not support password reset");
     try {
-      return (await i(t.password_reset_url, {
-        email: e.email,
-        redirect_uri: e.redirectUri ?? b("reset")
+      return (await i(e.password_reset_url, {
+        email: t.email,
+        redirect_uri: t.redirectUri ?? L("reset")
       }))?.payload?.message ?? "Check your email";
     } catch (a) {
       throw c(a);
     }
   }
   /** Set a new password with an emailed reset code. */
-  async resetConfirm(t, e, a) {
-    if (!t.password_reset_confirm_url)
+  async resetConfirm(e, t, a) {
+    if (!e.password_reset_confirm_url)
       throw new s("Provider does not support password reset");
     try {
-      return (await i(t.password_reset_confirm_url, { code: e, password: a }))?.payload?.message ?? "Password updated";
+      return (await i(e.password_reset_confirm_url, { code: t, password: a }))?.payload?.message ?? "Password updated";
     } catch (n) {
       throw c(n);
     }
@@ -274,24 +295,30 @@ class N {
   /**
    * Complete a successful sign-in: reload the page when it is part of
    * Turna's own authorization-code flow (so the middleware can return the
-   * pending code), relay an SDK-opened nested popup to its same-origin
-   * opener, or navigate to the safe `redirect_path` target.
+   * pending code), follow a safe `redirect_path`, or — for a login page
+   * opened as a popup with nothing left to follow — relay completion to
+   * its same-origin opener and close.
    */
   finish() {
-    if (O()) {
+    if (q()) {
       window.location.replace(window.location.href);
       return;
     }
-    I() || window.location.assign(M());
+    const e = A();
+    if (e) {
+      window.location.assign(e);
+      return;
+    }
+    x() || window.location.assign("/");
   }
 }
-const j = (r) => new N(r);
+const B = (r) => new W(r);
 export {
   s as LoginError,
-  N as TurnaLogin,
-  j as createLogin,
-  q as flowFromURL,
-  M as getRedirectPath,
-  O as isResponseTypeCode,
-  L as isWebAuthnSupported
+  W as TurnaLogin,
+  B as createLogin,
+  V as flowFromURL,
+  J as getRedirectPath,
+  q as isResponseTypeCode,
+  R as isWebAuthnSupported
 };

@@ -26,8 +26,8 @@ const codeFlowSuccessPage = `<!doctype html>
 <script>
 (() => {
   // With COOP-enabled providers the opener reference may be severed; the
-  // parent login page also polls the auth_verify cookie, so the message is
-  // only a fast path.
+  // parent login page also polls its own flow-scoped auth_verify cookie, so
+  // the message is only a fast path.
   if (window.opener && !window.opener.closed) {
     window.opener.postMessage("turna:login:success", window.location.origin);
     window.opener.focus();
@@ -47,7 +47,10 @@ func writeCodeFlowSuccess(w http.ResponseWriter) {
 }
 
 func (m *Login) CodeFlowInit(w http.ResponseWriter, r *http.Request, providerName string) {
-	m.RemoveSuccess(w)
+	// The popup that started this flow polls a cookie named after its own
+	// flow id, so only that window is woken up when the callback lands.
+	flow := sanitizeFlowID(r.URL.Query().Get(flowQueryParam))
+	m.RemoveSuccess(w, flow)
 
 	state, err := auth.NewState()
 	if err != nil {
@@ -57,7 +60,9 @@ func (m *Login) CodeFlowInit(w http.ResponseWriter, r *http.Request, providerNam
 	}
 
 	rememberMe, _ := strconv.ParseBool(r.URL.Query().Get("remember_me"))
-	m.SetState(w, state, m.rememberMe(rememberMe))
+	// the flow id has to survive the round trip to the provider, and the
+	// provider only echoes back state, so park it in the state cookie
+	m.SetState(w, state, StateInfo{RememberMe: m.rememberMe(rememberMe), Flow: flow})
 
 	sessionM := session.GlobalRegistry.Get(m.SessionMiddleware)
 	if sessionM == nil {
@@ -116,7 +121,7 @@ func (m *Login) CodeFlow(w http.ResponseWriter, r *http.Request) {
 
 	state := query.Get("state")
 	// check state
-	rememberMe, err := m.CheckState(w, r, state)
+	stateInfo, err := m.CheckState(w, r, state)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "state is not valid")
 
@@ -124,7 +129,7 @@ func (m *Login) CodeFlow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// get token from provider
-	data, statusCode, err := m.CodeToken(r, code, providerName, oauth2, m.rememberMe(rememberMe))
+	data, statusCode, err := m.CodeToken(r, code, providerName, oauth2, m.rememberMe(stateInfo.RememberMe))
 	if err != nil {
 		respondUpstreamError(w, statusCode, err)
 
@@ -138,7 +143,7 @@ func (m *Login) CodeFlow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// pop-up close window
-	m.SetSuccess(w, "true")
+	m.SetSuccess(w, stateInfo.Flow, "true")
 	writeCodeFlowSuccess(w)
 }
 

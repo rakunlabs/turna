@@ -298,7 +298,7 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 					return
 				}
 
-				m.RemoveSuccess(w)
+				m.RemoveSuccess(w, "")
 
 				if m.UI.ExternalFolder {
 					next.ServeHTTP(w, r)

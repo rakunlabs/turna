@@ -213,10 +213,10 @@ The middleware serves its complete flow logic as a framework-agnostic, zero-depe
 | `methods()` | Fetch the login method manifest (`GET {base}/auth/methods`, payload unwrapped). Do not hard-code provider names or URLs. |
 | `password(link, {username, password, rememberMe?, extra?})` | Password flow. Resolves when the session cookie is set. |
 | `passkey(link, {username?, rememberMe?})` | Two-request WebAuthn ceremony, including all base64url conversions. Omitting `username` starts the discoverable, username-less flow: the browser lists resident passkeys and the user picks an account. |
-| `code(link, {rememberMe?, target?, features?, signal?, onPopupClosed?})` | OAuth2 popup flow. A message from the exact popup triggers the authoritative `auth_verify` cookie check; polling the same cookie remains the COOP fallback. Rejects when the popup is blocked or `signal` aborts. `onPopupClosed` is a one-shot hint for showing a "window closed?" message while the flow keeps waiting. |
+| `code(link, {rememberMe?, target?, features?, signal?, onPopupClosed?})` | OAuth2 popup flow. Each call mints a flow id, sends it as `turna_flow`, and waits for the matching `auth_verify_<flow>` cookie, so a nested sign-in inside the popup can never complete this call. A message from the exact popup triggers the authoritative cookie check; polling the same cookie remains the COOP fallback. Rejects when the popup is blocked or `signal` aborts. `onPopupClosed` is a one-shot hint for showing a "window closed?" message while the flow keeps waiting. |
 | `signup(link, {email, password, name?, redirectUri?})` | Self-registration; returns `{message, verificationRequired}`. |
 | `signupVerify(link, code)` / `resetRequest(link, {email})` / `resetConfirm(link, code, password)` | Email verification and forgot-password flows. |
-| `finish()` | Safe post-login navigation: reloads inside Turna's own authorization-code flow, relays verified completion to a same-origin opener when the page was SDK-opened as a popup, otherwise follows the validated `redirect_path` query parameter. |
+| `finish()` | Safe post-login navigation: reloads inside Turna's own authorization-code flow, otherwise follows the validated `redirect_path` query parameter, and only with nothing left to follow relays verified completion to a same-origin opener and closes. A pending `redirect_path` always wins: an intermediate login page in a nested flow is a popup that still has an authorize URL to walk back through. |
 | `isWebAuthnSupported()`, `flowFromURL()`, `getRedirectPath()`, `isResponseTypeCode()`, `LoginError` | Helpers: hide passkey buttons on unsupported browsers, prefill verify/reset forms from mail magic links (`?flow=...&code=...`), and branch on normalized errors (`status`, `credentials`). |
 
 Honor `methods.disable_remember_me`: hide the remember-me choice when it is true (the server forces `remember_me` off anyway).
@@ -310,13 +310,20 @@ Success is `204 No Content` with the session cookie set. On failure, collapse th
 
 #### Code
 
-Open the link's `url` in a popup (or navigate top-level), appending `?remember_me=true` when the choice is checked:
+Open the link's `url` in a popup (or navigate top-level), appending `?remember_me=true` when the choice is checked and `?turna_flow=<id>` to identify this popup:
 
 ```
-GET /login/auth/code/keycloak?remember_me=true
+GET /login/auth/code/keycloak?remember_me=true&turna_flow=6f1c...
 ```
 
-The middleware answers with a `307` redirect to the provider's authorization URL and later receives the callback (`?code=&state=`) on the same route. The callback stores the tokens in the session and serves a small success page that both posts the `turna:login:success` message to `window.opener` (same origin) and sets the short-lived, non-HttpOnly `auth_verify=true` cookie. The message is only a trigger: accept it from the exact popup and verify the cookie before completing. Keep polling the cookie as a fallback because COOP-enabled providers can sever the `window.opener` handle and may even make the popup report `closed` while sign-in is still in progress. SDK-opened nested login windows relay verified completion to their own same-origin opener, allowing a provider popup to close back through an intermediate login tab. Never reject solely because the popup looks closed.
+The middleware answers with a `307` redirect to the provider's authorization URL and later receives the callback (`?code=&state=`) on the same route. The callback stores the tokens in the session and serves a small success page that posts the `turna:login:success` message to `window.opener` (same origin). The message is only a trigger: accept it from the exact popup and verify the cookie before completing. Keep polling the cookie as a fallback because COOP-enabled providers can sever the `window.opener` handle and may even make the popup report `closed` while sign-in is still in progress. Never reject solely because the popup looks closed.
+
+Both cookies backing this flow are scoped to a single sign-in attempt, because a popup may itself be a login page that opens further popups:
+
+- The `auth_state` CSRF cookie is stored under a state-derived name. A shared name let a nested flow overwrite the outer state and delete it on consumption, so the outer callback failed with `state is not valid` and left the popup stranded on an error page.
+- The short-lived, non-HttpOnly completion marker is `auth_verify_<turna_flow>=true`, mirroring the `turna_flow` value the popup was opened with (`[A-Za-z0-9_-]`, up to 64 characters; anything else falls back to the shared `auth_verify` name). A shared marker let the innermost sign-in satisfy every waiting opener at once: the outermost login page resolved early, closed the intermediate window mid-redirect and navigated away without ever getting a session.
+
+Wait only for your own `auth_verify_<flow>` cookie, and let each level complete its own callback. Focus returns naturally: the success page focuses its opener before closing.
 
 #### Passkey
 
