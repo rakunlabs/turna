@@ -237,8 +237,30 @@ selection an instance receives the shared list plus every group merged. With
 one, only that group enters the effective provider and token-validation set;
 an in-process session also retains the other groups as a read-only catalog so
 the login middleware can produce filtered method manifests without exposing
-provider secrets. Provider keys are unique across all groups, so the merged
-view is conflict-free.
+provider secrets. Full provider definitions have globally unique keys, so the
+merged view is conflict-free. A provider from the ungrouped canonical list can
+also be inherited into multiple groups without copying its credentials. Each
+inheritance may keep, force on, or force off its `hide` value for that group's
+login methods manifest:
+
+```json
+{
+  "providers": {
+    "turna": {
+      "auth_middleware": "auth",
+      "oauth2": {"client_id": "ui", "scopes": ["openid"]}
+    }
+  },
+  "groups": {
+    "internal": {"inherit": {"turna": {"hide": false}}},
+    "external": {"inherit": {"turna": {"hide": true}}}
+  }
+}
+```
+
+An omitted inherited `hide` uses the canonical value. This override is
+presentation-only: both groups still resolve the same provider key, endpoints,
+client credentials and token verifier.
 
 ```yaml
 # instance A: only the "internal" group

@@ -123,6 +123,15 @@ type SessionProviderSettings struct {
 // SessionProviderGroup is one named subset of session providers.
 type SessionProviderGroup struct {
 	Providers map[string]session.Provider `json:"providers"`
+	// Inherit references providers from the ungrouped canonical list and may
+	// override presentation-only fields without copying credentials/endpoints.
+	Inherit map[string]SessionProviderOverride `json:"inherit,omitempty"`
+}
+
+type SessionProviderOverride struct {
+	// Hide is a pointer so false can explicitly make a provider visible when
+	// the canonical provider is hidden. Nil inherits the canonical value.
+	Hide *bool `json:"hide,omitempty"`
 }
 
 // LDAPSettings is the decoded LDAP config stored in auth_ldap_configs.
@@ -1135,10 +1144,8 @@ func (c *Cache) Reload(ctx context.Context) error {
 			}
 
 			for groupName, group := range sessionProviders.Groups {
-				groupProviders := make(map[string]session.Provider, len(group.Providers))
+				groupProviders := resolveSessionProviderGroup(sessionProviders.Providers, group)
 				for name, provider := range group.Providers {
-					groupProviders[name] = provider
-
 					// PutSetting rejects duplicates; hand-written settings can
 					// still carry them, so keep the merge deterministic-ish and
 					// make the problem visible.

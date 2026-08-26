@@ -49,8 +49,19 @@
     advancedOpen: boolean;
   };
 
+  type VisibilityOverride = "inherit" | "show" | "hide";
+  type InheritedProviderRow = {
+    id: number;
+    key: string;
+    group: string;
+    visibility: VisibilityOverride;
+  };
+
   let uid = 0;
   let providers = $state<ProviderRow[]>([]);
+  let inheritedProviders = $state<InheritedProviderRow[]>([]);
+  let inheritGroup = $state("");
+  let inheritProvider = $state("");
   let openGroups = $state<Record<string, boolean>>({});
 
   /**
@@ -122,16 +133,29 @@
     const rec = asRecord(value);
 
     const next: ProviderRow[] = [];
+    const nextInherited: InheritedProviderRow[] = [];
     for (const [key, raw] of Object.entries(asRecord(rec.providers))) {
       next.push(rowFromRecord(key, "", raw));
     }
     for (const [groupName, groupRaw] of Object.entries(asRecord(rec.groups))) {
-      for (const [key, raw] of Object.entries(asRecord(asRecord(groupRaw).providers))) {
+      const group = asRecord(groupRaw);
+      for (const [key, raw] of Object.entries(asRecord(group.providers))) {
         next.push(rowFromRecord(key, groupName, raw));
+      }
+      for (const [key, raw] of Object.entries(asRecord(group.inherit))) {
+        const override = asRecord(raw);
+        nextInherited.push({
+          id: uid++,
+          key,
+          group: groupName,
+          visibility:
+            typeof override.hide === "boolean" ? (override.hide ? "hide" : "show") : "inherit",
+        });
       }
     }
 
     providers = next;
+    inheritedProviders = nextInherited;
   }
 
   function rowFromRecord(key: string, group: string, raw: unknown): ProviderRow {
@@ -177,7 +201,14 @@
 
   function buildRecord(): AnyRecord {
     const out: Record<string, unknown> = {};
-    const groups: Record<string, { providers: Record<string, unknown> }> = {};
+    const groups: Record<
+      string,
+      { providers: Record<string, unknown>; inherit: Record<string, unknown> }
+    > = {};
+
+    function groupRecord(name: string) {
+      return (groups[name] ??= { providers: {}, inherit: {} });
+    }
 
     for (const row of providers) {
       const key = row.key.trim();
@@ -218,10 +249,25 @@
 
       const group = row.group.trim();
       if (group) {
-        (groups[group] ??= { providers: {} }).providers[key] = provider;
+        groupRecord(group).providers[key] = provider;
       } else {
         out[key] = provider;
       }
+    }
+
+    for (const row of inheritedProviders) {
+      const group = row.group.trim();
+      const key = row.key.trim();
+      if (!group || !key) continue;
+
+      const override: Record<string, unknown> = {};
+      if (row.visibility !== "inherit") override.hide = row.visibility === "hide";
+      groupRecord(group).inherit[key] = override;
+    }
+
+    for (const group of Object.values(groups)) {
+      if (!Object.keys(group.providers).length) delete (group as { providers?: unknown }).providers;
+      if (!Object.keys(group.inherit).length) delete (group as { inherit?: unknown }).inherit;
     }
 
     const record: AnyRecord = { providers: out };
@@ -236,6 +282,29 @@
 
   function removeProvider(id: number) {
     providers = providers.filter((row) => row.id !== id);
+  }
+
+  function addInheritedProvider() {
+    const group = inheritGroup.trim();
+    const key = inheritProvider.trim();
+    if (
+      !group ||
+      !key ||
+      !canonicalProviders.some((row) => row.key.trim() === key) ||
+      inheritedProviders.some((row) => row.group.trim() === group && row.key === key)
+    ) {
+      return;
+    }
+
+    inheritedProviders = [
+      ...inheritedProviders,
+      { id: uid++, key, group, visibility: "inherit" },
+    ];
+    openGroups[group] = true;
+  }
+
+  function removeInheritedProvider(id: number) {
+    inheritedProviders = inheritedProviders.filter((row) => row.id !== id);
   }
 
   function addClaimHeader(providerID: number) {
@@ -260,9 +329,19 @@
   }
 
   const named = $derived(providers.filter((row) => row.key.trim()).length);
+  const canonicalProviders = $derived(
+    providers
+      .filter((row) => !row.group.trim() && row.key.trim())
+      .sort((a, b) => a.key.localeCompare(b.key)),
+  );
 
   const groupNames = $derived(
-    [...new Set(providers.map((row) => row.group.trim()).filter(Boolean))].sort(),
+    [
+      ...new Set([
+        ...providers.map((row) => row.group.trim()).filter(Boolean),
+        ...inheritedProviders.map((row) => row.group.trim()).filter(Boolean),
+      ]),
+    ].sort(),
   );
 
   const providerGroups = $derived.by(() => {
@@ -282,8 +361,43 @@
       .map(([name, rows]) => ({ name, providers: rows }));
   });
 
-  // Provider keys must be unique across the ungrouped list and every group
-  // (the server rejects duplicates on commit); surface them before that.
+  const inheritedProviderGroups = $derived.by(() => {
+    const grouped = new Map<string, InheritedProviderRow[]>();
+    for (const provider of inheritedProviders) {
+      const group = provider.group.trim();
+      grouped.set(group, [...(grouped.get(group) ?? []), provider]);
+    }
+
+    return [...grouped.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, rows]) => ({ name, providers: rows }));
+  });
+
+  const inheritedProblems = $derived.by(() => {
+    const canonical = new Set(canonicalProviders.map((row) => row.key.trim()));
+    const seen = new Set<string>();
+    const problems = new Set<string>();
+    for (const row of inheritedProviders) {
+      const key = row.key.trim();
+      const group = row.group.trim();
+      const identity = `${group}\u0000${key}`;
+      if (!group || !canonical.has(key)) problems.add(`${group || "(no group)"}/${key || "(no provider)"}`);
+      if (seen.has(identity)) problems.add(`${group}/${key}`);
+      seen.add(identity);
+    }
+    return [...problems].sort();
+  });
+
+  const canAddInherited = $derived(
+    Boolean(inheritGroup.trim() && inheritProvider) &&
+      canonicalProviders.some((row) => row.key.trim() === inheritProvider) &&
+      !inheritedProviders.some(
+        (row) => row.group.trim() === inheritGroup.trim() && row.key === inheritProvider,
+      ),
+  );
+
+  // Full provider definitions remain globally unique. Inherited references
+  // are tracked separately and may intentionally repeat across groups.
   const duplicateKeys = $derived.by(() => {
     const seen = new Set<string>();
     const dups = new Set<string>();
@@ -311,7 +425,15 @@
       return {
         state: "held" as const,
         label: "Duplicate keys",
-        detail: `Provider keys must be unique across the ungrouped list and every group; the commit will be rejected. Duplicated: ${duplicateKeys.join(", ")}.`,
+        detail: `Full provider definitions must have unique keys; use inheritance to reuse a Default provider across groups. Duplicated: ${duplicateKeys.join(", ")}.`,
+      };
+    }
+
+    if (inheritedProblems.length) {
+      return {
+        state: "held" as const,
+        label: "Invalid inheritance",
+        detail: `Inherited providers must reference a provider from Default and be unique inside their group. Check: ${inheritedProblems.join(", ")}.`,
       };
     }
 
@@ -322,7 +444,7 @@
     return {
       state: "endorsed" as const,
       label: "Published",
-      detail: `${named} ${named === 1 ? "provider is" : "providers are"} published to every session middleware that references this instance with provider_source. Same-named static YAML providers are overridden.${grouped}`,
+      detail: `${named} ${named === 1 ? "provider is" : "providers are"} published with ${inheritedProviders.length} inherited group ${inheritedProviders.length === 1 ? "entry" : "entries"}. Same-named static YAML providers are overridden.${grouped}`,
     };
   });
 
@@ -359,7 +481,7 @@
   <div class="max-w-[104ch]">
     <Section
       title="Providers"
-      note="The map key is the provider name the session middleware and login page use. Set auth_middleware to this instance's middleware name for in-process validation, or fill the OAuth2 endpoints for a remote identity provider. Named groups can be pulled selectively; providers without a group appear under Default and remain in the shared list. Provider keys must be unique across all groups. Edits are local until you commit."
+      note="The map key is the provider name the session middleware and login page use. Set auth_middleware to this instance's middleware name for in-process validation, or fill the OAuth2 endpoints for a remote identity provider. Named groups can be pulled selectively; providers without a group appear under Default and can be inherited into several groups. Full provider definitions must have unique keys. Edits are local until you commit."
     >
       {#snippet aside()}
         <button type="button" class="act act-quiet" onclick={addProvider}>Add provider</button>
@@ -649,8 +771,103 @@
     </Section>
 
     <Section
+      title="Inherited group providers"
+      note="Add a provider from Default to any named group without copying its credentials or endpoints. The group may only override whether that provider appears on its login methods page."
+    >
+      <div class="grid gap-4 border border-rule bg-sheet p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+        <div class="min-w-0">
+          <label class="stamp block" for="sp-inherit-group">Target group</label>
+          <input
+            id="sp-inherit-group"
+            class="entry serial mt-1.5"
+            placeholder="internal"
+            autocomplete="off"
+            spellcheck="false"
+            list="sp-group-names"
+            bind:value={inheritGroup}
+          />
+        </div>
+        <div class="min-w-0">
+          <label class="stamp block" for="sp-inherit-provider">Provider from Default</label>
+          <select
+            id="sp-inherit-provider"
+            class="entry serial mt-1.5"
+            disabled={canonicalProviders.length === 0}
+            bind:value={inheritProvider}
+          >
+            <option value="">Select provider</option>
+            {#each canonicalProviders as provider (provider.id)}
+              <option value={provider.key}>{provider.key}{provider.name ? ` · ${provider.name}` : ""}</option>
+            {/each}
+          </select>
+        </div>
+        <button
+          type="button"
+          class="act act-primary"
+          disabled={!canAddInherited}
+          onclick={addInheritedProvider}
+        >
+          Add to group
+        </button>
+      </div>
+
+      {#if canonicalProviders.length === 0}
+        <p class="mt-3 text-[12.5px] leading-[1.55] text-muted">
+          Create a provider under <span class="serial">Default</span> first. Providers defined only
+          inside a named group cannot be inherited.
+        </p>
+      {/if}
+
+      {#if inheritedProviderGroups.length > 0}
+        <div class="mt-6 grid gap-5">
+          {#each inheritedProviderGroups as providerGroup (providerGroup.name)}
+            <div class="border-t border-rule">
+              <div class="flex items-baseline justify-between gap-4 px-1 py-3">
+                <span class="serial text-[13px] font-semibold">{providerGroup.name}</span>
+                <span class="stamp">Inherited view</span>
+              </div>
+              <div class="divide-y divide-rule border border-rule bg-sheet">
+                {#each providerGroup.providers as provider (provider.id)}
+                  <div class="grid gap-4 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,0.8fr)_auto] sm:items-end">
+                    <div class="min-w-0">
+                      <span class="stamp block">Canonical provider</span>
+                      <span class="serial mt-1.5 block break-all text-[13px] text-ink">
+                        {provider.key}
+                      </span>
+                    </div>
+                    <div class="min-w-0">
+                      <label class="stamp block" for="sp-inherit-visibility-{provider.id}">
+                        Login visibility
+                      </label>
+                      <select
+                        id="sp-inherit-visibility-{provider.id}"
+                        class="entry mt-1.5"
+                        bind:value={provider.visibility}
+                      >
+                        <option value="inherit">Use Default setting</option>
+                        <option value="show">Always show</option>
+                        <option value="hide">Always hide</option>
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      class="act act-quiet text-seal hover:bg-seal/10 hover:text-seal"
+                      onclick={() => removeInheritedProvider(provider.id)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </Section>
+
+    <Section
       title="Wire a session middleware to this list"
-      note="Both modes overlay the static provider map; a provider committed here overrides a same-named YAML provider. Without a group selection an instance receives the shared list plus every group merged; with one it receives that group only."
+      note="Both modes overlay the static provider map; a provider committed here overrides a same-named YAML provider. Without a group selection an instance receives the shared list plus every group merged; with one it receives that group's own and inherited providers."
     >
       <div class="grid gap-8 lg:grid-cols-2">
         <div class="min-w-0">

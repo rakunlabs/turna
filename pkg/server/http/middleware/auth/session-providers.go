@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -9,6 +11,28 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
+
+// UnmarshalJSON keeps group overrides deliberately presentation-only. Without
+// strict decoding, misspelled or credential-like fields would be persisted but
+// silently ignored by the runtime resolver.
+func (o *SessionProviderOverride) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || data[0] != '{' {
+		return fmt.Errorf("provider override must be an object")
+	}
+
+	type override SessionProviderOverride
+	var parsed override
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&parsed); err != nil {
+		return err
+	}
+
+	*o = SessionProviderOverride(parsed)
+
+	return nil
+}
 
 // SessionProviders implements session.InfSessionProviders: it returns the
 // UI-managed session provider list ("session_providers" settings namespace,
@@ -77,10 +101,28 @@ func (m *Auth) SessionProvidersGroupAPI(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+func resolveSessionProviderGroup(base map[string]session.Provider, group SessionProviderGroup) map[string]session.Provider {
+	providers := make(map[string]session.Provider, len(group.Providers)+len(group.Inherit))
+	for name, override := range group.Inherit {
+		provider, ok := base[name]
+		if !ok {
+			continue
+		}
+		if override.Hide != nil {
+			provider.Hide = *override.Hide
+		}
+		providers[name] = provider
+	}
+	for name, provider := range group.Providers {
+		providers[name] = provider
+	}
+
+	return providers
+}
+
 // validateSessionProviders enforces the invariants of the session_providers
-// namespace on save: usable group names (they travel as a path segment) and
-// globally unique provider keys, so the merged view and the login page never
-// see two definitions of the same provider.
+// namespace on save: usable group names, globally unique full definitions and
+// inherited references that resolve to the canonical ungrouped list.
 func validateSessionProviders(setting SessionProviderSettings) error {
 	seen := make(map[string]string, len(setting.Providers))
 	for name := range setting.Providers {
@@ -113,6 +155,21 @@ func validateSessionProviders(setting SessionProviderSettings) error {
 			}
 
 			seen[name] = fmt.Sprintf("group %q", groupName)
+		}
+
+		group := setting.Groups[groupName]
+		inheritNames := make([]string, 0, len(group.Inherit))
+		for name := range group.Inherit {
+			inheritNames = append(inheritNames, name)
+		}
+		sort.Strings(inheritNames)
+		for _, name := range inheritNames {
+			if _, ok := setting.Providers[name]; !ok {
+				return fmt.Errorf("group %q inherits unknown provider key %q", groupName, name)
+			}
+			if _, ok := group.Providers[name]; ok {
+				return fmt.Errorf("provider key %q is both defined and inherited in group %q", name, groupName)
+			}
 		}
 	}
 

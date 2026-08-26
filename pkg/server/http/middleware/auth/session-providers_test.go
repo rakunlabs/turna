@@ -85,6 +85,9 @@ func TestSessionProviderSettingsDecode(t *testing.T) {
 		},
 		"groups": {
 			"internal": {
+				"inherit": {
+					"turna": {"hide": true}
+				},
 				"providers": {
 					"keycloak": {"name": "Keycloak", "oauth2": {"client_id": "kc"}}
 				}
@@ -111,6 +114,45 @@ func TestSessionProviderSettingsDecode(t *testing.T) {
 	grouped := setting.Groups["internal"].Providers["keycloak"]
 	if grouped.Name != "Keycloak" || grouped.Oauth2 == nil || grouped.Oauth2.ClientID != "kc" {
 		t.Fatalf("grouped provider = %+v", grouped)
+	}
+	inherited := setting.Groups["internal"].Inherit["turna"]
+	if inherited.Hide == nil || !*inherited.Hide {
+		t.Fatalf("inherited override = %+v", inherited)
+	}
+
+	for _, invalid := range []string{
+		`{"providers":{"turna":{}},"groups":{"internal":{"inherit":{"turna":null}}}}`,
+		`{"providers":{"turna":{}},"groups":{"internal":{"inherit":{"turna":{"name":"other"}}}}}`,
+	} {
+		if err := json.Unmarshal([]byte(invalid), &setting); err == nil {
+			t.Fatalf("invalid inherited override accepted: %s", invalid)
+		}
+	}
+}
+
+func TestResolveSessionProviderGroup(t *testing.T) {
+	hide := true
+	show := false
+	base := map[string]session.Provider{
+		"turna":  {Name: "Turna", AuthMiddleware: "auth", Oauth2: &session.Oauth2{ClientID: "ui"}},
+		"hidden": {Name: "Hidden", Hide: true},
+	}
+	resolved := resolveSessionProviderGroup(base, SessionProviderGroup{
+		Inherit: map[string]SessionProviderOverride{
+			"turna":  {Hide: &hide},
+			"hidden": {Hide: &show},
+		},
+	})
+
+	provider := resolved["turna"]
+	if !provider.Hide || provider.Name != "Turna" || provider.AuthMiddleware != "auth" || provider.Oauth2.ClientID != "ui" {
+		t.Fatalf("resolved provider = %+v", provider)
+	}
+	if base["turna"].Hide {
+		t.Fatal("presentation override mutated the canonical provider")
+	}
+	if resolved["hidden"].Hide || !base["hidden"].Hide {
+		t.Fatal("explicit show override did not preserve the hidden canonical provider")
 	}
 }
 
@@ -200,11 +242,18 @@ func TestSessionProvidersGroupAPI(t *testing.T) {
 }
 
 func TestValidateSessionProviders(t *testing.T) {
+	hide := true
 	valid := SessionProviderSettings{
 		Providers: map[string]session.Provider{"turna": {}},
 		Groups: map[string]SessionProviderGroup{
-			"internal": {Providers: map[string]session.Provider{"keycloak": {}}},
-			"external": {Providers: map[string]session.Provider{"github": {}}},
+			"internal": {
+				Providers: map[string]session.Provider{"keycloak": {}},
+				Inherit:   map[string]SessionProviderOverride{"turna": {}},
+			},
+			"external": {
+				Providers: map[string]session.Provider{"github": {}},
+				Inherit:   map[string]SessionProviderOverride{"turna": {Hide: &hide}},
+			},
 		},
 	}
 	if err := validateSessionProviders(valid); err != nil {
@@ -229,6 +278,28 @@ func TestValidateSessionProviders(t *testing.T) {
 	}
 	if err := validateSessionProviders(dupAcrossGroups); err == nil {
 		t.Fatal("duplicate key across groups must be rejected")
+	}
+
+	unknownInherited := SessionProviderSettings{
+		Groups: map[string]SessionProviderGroup{
+			"internal": {Inherit: map[string]SessionProviderOverride{"missing": {}}},
+		},
+	}
+	if err := validateSessionProviders(unknownInherited); err == nil {
+		t.Fatal("unknown inherited provider must be rejected")
+	}
+
+	definedAndInherited := SessionProviderSettings{
+		Providers: map[string]session.Provider{"turna": {}},
+		Groups: map[string]SessionProviderGroup{
+			"internal": {
+				Providers: map[string]session.Provider{"turna": {}},
+				Inherit:   map[string]SessionProviderOverride{"turna": {}},
+			},
+		},
+	}
+	if err := validateSessionProviders(definedAndInherited); err == nil {
+		t.Fatal("a group must not define and inherit the same provider")
 	}
 
 	for _, name := range []string{"", " ", "a/b", "a b", "a?b", "a#b", "a%b"} {
