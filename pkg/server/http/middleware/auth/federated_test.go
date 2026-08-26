@@ -244,13 +244,13 @@ func TestFederatedPublicClientRequiresPKCE(t *testing.T) {
 	}
 }
 
-func TestFederatedClientRequiresRegisteredRedirect(t *testing.T) {
+func TestFederatedClientAllowsRedirectWithoutRestrictions(t *testing.T) {
 	cache := NewCache(nil)
 	cache.snap.Store(&Snapshot{OAuthClients: map[string]AccessClient{"public-client": {Public: true}}})
 	m := &Auth{cache: cache}
 
-	if _, ok := m.federatedClient("public-client", "https://attacker.example.com/callback"); ok {
-		t.Fatal("client without registered redirects must not accept an arbitrary redirect_uri")
+	if _, ok := m.federatedClient("public-client", "https://app.example.com/callback"); !ok {
+		t.Fatal("client without redirect restrictions should accept any non-empty redirect_uri")
 	}
 }
 

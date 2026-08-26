@@ -51,7 +51,8 @@ type AccessClient struct {
 }
 
 // redirectURIAllowedForClient checks a redirect target against the client's
-// registration: exact RedirectURIs first, prefix WhitelistURLs otherwise.
+// registration: exact RedirectURIs first, prefix WhitelistURLs otherwise. If
+// neither is configured, any non-empty redirect target is allowed.
 func (c AccessClient) redirectURIAllowedForClient(redirectURI string) bool {
 	if redirectURI == "" {
 		return false

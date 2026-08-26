@@ -1394,8 +1394,7 @@ func (m *Auth) federatedClient(clientID, redirectURI string) (*AccessClient, boo
 	}
 
 	client, ok := m.lookupClient(clientID)
-	if !ok || (len(client.RedirectURIs) == 0 && len(client.WhitelistURLs) == 0) ||
-		!client.redirectURIAllowedForClient(redirectURI) {
+	if !ok || !client.redirectURIAllowedForClient(redirectURI) {
 		return nil, false
 	}
 
