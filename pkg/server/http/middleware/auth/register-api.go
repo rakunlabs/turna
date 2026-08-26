@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -58,15 +57,6 @@ type ClientRegistrationResponse struct {
 	Scope                   string   `json:"scope,omitempty"`
 	RegistrationAccessToken string   `json:"registration_access_token,omitempty"`
 	RegistrationClientURI   string   `json:"registration_client_uri,omitempty"`
-}
-
-func randomHex(n int) (string, error) {
-	raw := make([]byte, n)
-	if _, err := rand.Read(raw); err != nil {
-		return "", err
-	}
-
-	return hex.EncodeToString(raw), nil
 }
 
 func sha256Hex(v string) string {

@@ -11,6 +11,8 @@
     setSettingBool,
     getSettingString,
     setSettingString,
+    getSettingList,
+    setSettingList,
     saveSetting,
   } from "../lib/state/settings.svelte";
 
@@ -18,13 +20,19 @@
 
   const enabled = $derived(getSettingBool("mtls", ["enabled"]));
   const certHeader = $derived(getSettingString("mtls", ["cert_header"]));
+  const certVerifyHeader = $derived(getSettingString("mtls", ["cert_verify_header"]));
+  const certVerifyValue = $derived(getSettingString("mtls", ["cert_verify_value"]) || "SUCCESS");
+  const trustedProxyCIDRs = $derived(getSettingList("mtls", ["trusted_proxy_cidrs"]));
 
   /**
    * A header is only a claim about a certificate: whoever can reach this
    * instance directly can set it. Naming that standing on the page is the whole
    * point of this control, so it is derived rather than left to the reader.
    */
-  const trustingHeader = $derived(enabled && certHeader.trim() !== "");
+  const headerConfigured = $derived(enabled && certHeader.trim() !== "");
+  const proxyReady = $derived(
+    headerConfigured && certVerifyHeader.trim() !== "" && trustedProxyCIDRs.trim() !== "",
+  );
 </script>
 
 <Instrument
@@ -45,8 +53,8 @@
   {#snippet custody()}
     <span class="stamp">Namespace <span class="serial stamp-raw">mtls</span></span>
     <Seal
-      state={enabled ? "endorsed" : "void"}
-      label={enabled ? "Certificates accepted" : "Not accepted"}
+      state={enabled ? (headerConfigured && !proxyReady ? "held" : "endorsed") : "void"}
+      label={enabled ? (headerConfigured && !proxyReady ? "Proxy trust incomplete" : "Certificates accepted") : "Not accepted"}
     />
   {/snippet}
 
@@ -62,7 +70,7 @@
         }
       />
 
-      <div class="max-w-[52ch]">
+      <div class="max-w-[62ch]">
         <label class="stamp block" for="mtls-cert-header">Trusted certificate header</label>
         <input
           id="mtls-cert-header"
@@ -75,20 +83,78 @@
           oninput={(e) => setSettingString("mtls", ["cert_header"], e.currentTarget.value)}
         />
         <p id="mtls-cert-header-hint" class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
-          Empty means the certificate is taken from the TLS handshake itself, which cannot be forged.
-          Set this only when a TLS-terminating proxy is the single way in.
+          Empty selects native TLS. Turna then accepts only a chain verified by
+          <span class="serial">server.http.tls.client_ca_files</span>. Set a header only when a
+          TLS-terminating proxy is the single way in.
         </p>
       </div>
+
+      {#if headerConfigured}
+        <div class="grid gap-6 sm:grid-cols-2">
+          <div class="min-w-0">
+            <label class="stamp block" for="mtls-verify-header">Verification result header</label>
+            <input
+              id="mtls-verify-header"
+              class="entry serial mt-1.5"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="ssl-client-verify"
+              value={certVerifyHeader}
+              oninput={(e) => setSettingString("mtls", ["cert_verify_header"], e.currentTarget.value)}
+            />
+            <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+              The proxy must overwrite this with its client-certificate verification result.
+            </p>
+          </div>
+
+          <div class="min-w-0">
+            <label class="stamp block" for="mtls-verify-value">Successful result value</label>
+            <input
+              id="mtls-verify-value"
+              class="entry serial mt-1.5"
+              autocomplete="off"
+              spellcheck="false"
+              value={certVerifyValue}
+              oninput={(e) => setSettingString("mtls", ["cert_verify_value"], e.currentTarget.value)}
+            />
+            <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+              Defaults to <span class="serial">SUCCESS</span>, matching nginx
+              <span class="serial">$ssl_client_verify</span>.
+            </p>
+          </div>
+
+          <div class="min-w-0 sm:col-span-2">
+            <label class="stamp block" for="mtls-trusted-proxies">Trusted proxy CIDRs</label>
+            <textarea
+              id="mtls-trusted-proxies"
+              class="exhibit mt-1.5 min-h-24"
+              spellcheck="false"
+              placeholder={`192.0.2.10\n2001:db8:10::5`}
+              value={trustedProxyCIDRs}
+              oninput={(e) => setSettingList("mtls", ["trusted_proxy_cidrs"], e.currentTarget.value)}
+            ></textarea>
+            <p class="mt-1.5 max-w-[70ch] text-[12px] leading-[1.5] text-muted">
+              One immediate peer IP or narrowly dedicated CIDR per line. Forwarded address headers are deliberately ignored.
+            </p>
+          </div>
+        </div>
+      {/if}
     </div>
 
-    {#if trustingHeader}
+    {#if headerConfigured}
       <p class="hatch mt-6 max-w-[70ch] border border-seal/40 px-4 py-3 text-[13px] leading-[1.55] text-ink">
-        <span class="stamp text-seal">Bypass risk</span>
+        <span class="stamp text-seal">Proxy trust boundary</span>
         <span class="mt-1.5 block">
-          This instance now believes <span class="serial">{certHeader}</span> on every request. If
-          anything can reach it without passing through the proxy that sets that header, that caller
-          can name any certificate it likes and authenticate as any service account. The proxy must
-          strip and rewrite the header on the way in, and this route must not be reachable around it.
+          {#if proxyReady}
+            Turna accepts <span class="serial">{certHeader}</span> only from the immediate peers above
+            and only when <span class="serial">{certVerifyHeader}</span> equals
+            <span class="serial">{certVerifyValue}</span>. The proxy must strip both incoming headers,
+            verify the client chain and private-key proof, then write both values itself. Restrict the
+            same peers with firewall or network policy.
+          {:else}
+            Header mode is incomplete and token requests will be rejected. Record a verification
+            result header and at least one trusted immediate peer before committing this mode.
+          {/if}
         </span>
       </p>
     {/if}

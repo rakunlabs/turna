@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,15 @@ import (
 )
 
 const encryptedPrefix = "enc:v1:"
+
+func randomHex(n int) (string, error) {
+	raw := make([]byte, n)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(raw), nil
+}
 
 // aeadBox wraps the active AEAD so it can be swapped atomically during an
 // encryption-key rotation without racing concurrent encrypt/decrypt calls.

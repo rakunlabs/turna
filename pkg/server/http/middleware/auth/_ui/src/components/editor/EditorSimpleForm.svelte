@@ -55,7 +55,7 @@
   }
 
   const namespace = $derived(editor.kind === "settings" ? editor.loadedID || editor.id : "");
-  const codeStore = $derived(editor.getPathString(["code_store", "active"]).trim() || "memory");
+  const codeStore = $derived(editor.getPathString(["code_store", "active"]).trim() || "database");
   const redisTLS = $derived(editor.getPathBool(["code_store", "redis", "tls", "enabled"]));
   const localUser = $derived(editor.getBool("local", true));
   const resources = $derived(editor.resources());
@@ -230,12 +230,13 @@
             value={codeStore}
             onchange={(event) => editor.setPathValue(["code_store", "active"], event.currentTarget.value)}
           >
+            <option value="database">database</option>
             <option value="memory">memory</option>
             <option value="redis">redis</option>
           </select>
           <p class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
-            Redis is what multi-instance authorization-code, provider-state, device and email flows
-            need; memory only works when a single instance serves every step.
+            Database is shared through PostgreSQL by default. Redis is also shared; memory only works
+            when a single instance serves every step.
           </p>
         </div>
       </div>

@@ -131,7 +131,7 @@ func (m *Auth) MePasswordAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// apply immediately on this instance; others converge via polling
+	// Apply immediately here; peers use notifications with polling as fallback.
 	if err := m.cache.Reload(r.Context()); err != nil {
 		httputil.HandleError(w, httputil.NewError("password updated but reload failed", err, http.StatusInternalServerError))
 		return

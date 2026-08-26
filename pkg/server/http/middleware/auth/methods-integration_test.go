@@ -52,7 +52,7 @@ func TestAuthMethodsIntegration(t *testing.T) {
 		t.Fatalf("put device setting: %v", err)
 	}
 	// mtls via trusted header
-	if _, err := m.store.PutSetting(ctx, "mtls", json.RawMessage(`{"enabled":true,"cert_header":"ssl-client-cert"}`), "it"); err != nil {
+	if _, err := m.store.PutSetting(ctx, "mtls", json.RawMessage(`{"enabled":true,"cert_header":"ssl-client-cert","cert_verify_header":"ssl-client-verify","trusted_proxy_cidrs":["127.0.0.0/8"]}`), "it"); err != nil {
 		t.Fatalf("put mtls setting: %v", err)
 	}
 	// email login enabled (delivery is not exercised here)
@@ -164,7 +164,7 @@ func TestAuthMethodsIntegration(t *testing.T) {
 		} `json:"payload"`
 	}
 	if code := postJSON(t, "/auth/v1/service-accounts",
-		`{"alias":["it-m-client"],"details":{"secret":"it-m-secret","scope":"openid"},"is_active":true}`,
+		`{"alias":["it-m-client"],"details":{"secret":"it-m-secret","scope":"openid","whitelist_urls":"https://app.example.com/cb"},"is_active":true}`,
 		nil, &createdClient); code != http.StatusOK {
 		t.Fatalf("create client status=%d", code)
 	}
@@ -924,6 +924,8 @@ func TestAuthMethodsIntegration(t *testing.T) {
 				Alias:               "it-m-user",
 				CodeChallenge:       challenge,
 				CodeChallengeMethod: "S256",
+				ClientID:            "it-m-client",
+				RedirectURI:         "https://app.example.com/cb",
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -938,20 +940,28 @@ func TestAuthMethodsIntegration(t *testing.T) {
 		makeCode(t, "it-pkce-1")
 		status, _, fail := tokenCall(t, url.Values{
 			"grant_type": {"authorization_code"}, "client_id": {"it-m-client"}, "client_secret": {"it-m-secret"},
-			"code": {"it-pkce-1"}, "code_verifier": {"wrong-verifier"},
+			"code": {"it-pkce-1"}, "code_verifier": {"wrong-verifier"}, "redirect_uri": {"https://app.example.com/cb"},
 		}, nil)
 		if status != http.StatusUnauthorized || fail.Error != "invalid_grant" {
 			t.Fatalf("wrong verifier status=%d error=%s", status, fail.Error)
 		}
 
-		// correct verifier passes, even without a client secret (public client)
+		// correct verifier passes with the original client and redirect binding
 		makeCode(t, "it-pkce-2")
 		status, tokenRes, fail := tokenCall(t, url.Values{
 			"grant_type": {"authorization_code"}, "client_id": {"it-m-client"}, "client_secret": {"it-m-secret"},
-			"code": {"it-pkce-2"}, "code_verifier": {verifier},
+			"code": {"it-pkce-2"}, "code_verifier": {verifier}, "redirect_uri": {"https://app.example.com/cb"},
 		}, nil)
 		if status != http.StatusOK || tokenRes.AccessToken == "" {
 			t.Fatalf("pkce exchange status=%d error=%s", status, fail.Error)
+		}
+
+		status, _, fail = tokenCall(t, url.Values{
+			"grant_type": {"authorization_code"}, "client_id": {"it-m-client"}, "client_secret": {"it-m-secret"},
+			"code": {"it-pkce-2"}, "code_verifier": {verifier}, "redirect_uri": {"https://app.example.com/cb"},
+		}, nil)
+		if status != http.StatusUnauthorized || fail.Error != "invalid_grant" {
+			t.Fatalf("authorization code reuse status=%d error=%s", status, fail.Error)
 		}
 	})
 
@@ -1065,7 +1075,7 @@ func TestAuthMethodsIntegration(t *testing.T) {
 			return http.ErrUseLastResponse
 		}}
 
-		res, err = noRedirect.Get(server.URL + "/auth/saml/it-idp/login?redirect_uri=https://app.example.com/cb&state=xyz")
+		res, err = noRedirect.Get(server.URL + "/auth/saml/it-idp/login?client_id=it-m-client&redirect_uri=https://app.example.com/cb&state=xyz")
 		if err != nil {
 			t.Fatalf("saml login: %v", err)
 		}
@@ -1140,7 +1150,7 @@ func TestAuthMethodsIntegration(t *testing.T) {
 		status, tokenRes, fail := tokenCall(t, url.Values{
 			"grant_type": {"client_credentials"},
 			"client_id":  {"it-m-mtls"},
-		}, map[string]string{"ssl-client-cert": url.QueryEscape(string(certPEM))})
+		}, map[string]string{"ssl-client-cert": url.QueryEscape(string(certPEM)), "ssl-client-verify": "SUCCESS"})
 		if status != http.StatusOK || tokenRes.AccessToken == "" {
 			t.Fatalf("mtls grant status=%d error=%s", status, fail.Error)
 		}

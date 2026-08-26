@@ -2579,7 +2579,7 @@
      "oauth2"
     ],
     "summary": "Token endpoint",
-    "description": "Grant types: password, client_credentials, refresh_token, authorization_code. Client credentials via Basic auth or form fields.",
+    "description": "Grant types: password, client_credentials, refresh_token, authorization_code. Client credentials via Basic auth or form fields. Authorization-code exchanges require the redirect_uri from the authorization request; public clients also require code_verifier.",
     "consumes": [
      "application/x-www-form-urlencoded"
     ],
@@ -2626,6 +2626,11 @@
      {
       "type": "string",
       "name": "redirect_uri",
+      "in": "formData"
+     },
+     {
+      "type": "string",
+      "name": "code_verifier",
       "in": "formData"
      },
      {
@@ -2802,8 +2807,15 @@
      },
      {
       "type": "string",
+      "name": "client_id",
+      "in": "query",
+      "required": true
+     },
+     {
+      "type": "string",
       "name": "redirect_uri",
-      "in": "query"
+      "in": "query",
+      "required": true
      },
      {
       "type": "string",
@@ -2814,6 +2826,20 @@
       "type": "string",
       "name": "scope",
       "in": "query"
+     },
+     {
+      "type": "string",
+      "name": "code_challenge",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "name": "code_challenge_method",
+      "in": "query",
+      "enum": [
+       "plain",
+       "S256"
+      ]
      }
     ],
     "responses": {

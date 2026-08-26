@@ -156,33 +156,55 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 		return fmt.Errorf("ldap connection problem: %w", err)
 	}
 
-	groups, err := runtime.Groups(conn)
-	if err != nil {
-		return fmt.Errorf("failed getting groups: %w", err)
-	}
-
 	users := make(map[string][]string)
+	ldapUsers := make(map[string]ldap.LdapUser)
+	var lmapGroups []data.LMapCheckCreate
+
 	if uid != "" {
+		usersGet, err := runtime.Users(conn, []string{uid})
+		if err != nil {
+			return fmt.Errorf("failed getting user: %w", err)
+		}
+		if len(usersGet) == 0 {
+			return errors.New("ldap user not found")
+		}
+
+		ldapUsers[uid] = usersGet[0]
 		users[uid] = nil
-	}
 
-	lmapGroups := make([]data.LMapCheckCreate, 0, len(groups))
-	for _, group := range groups {
-		lmapGroups = append(lmapGroups, data.LMapCheckCreate{
-			Name:        group.Name,
-			Description: group.Description,
-		})
+		groups, err := runtime.GroupsForUser(conn, usersGet[0].DN)
+		if err != nil {
+			return fmt.Errorf("failed getting user groups: %w", err)
+		}
 
-		for _, member := range group.Members {
-			if member == "" {
-				continue
+		lmapGroups = make([]data.LMapCheckCreate, 0, len(groups))
+		for _, group := range groups {
+			lmapGroups = append(lmapGroups, data.LMapCheckCreate{
+				Name:        group.Name,
+				Description: group.Description,
+			})
+			users[uid] = append(users[uid], group.Name)
+		}
+	} else {
+		groups, err := runtime.Groups(conn)
+		if err != nil {
+			return fmt.Errorf("failed getting groups: %w", err)
+		}
+
+		lmapGroups = make([]data.LMapCheckCreate, 0, len(groups))
+		for _, group := range groups {
+			lmapGroups = append(lmapGroups, data.LMapCheckCreate{
+				Name:        group.Name,
+				Description: group.Description,
+			})
+
+			for _, member := range group.Members {
+				if member == "" {
+					continue
+				}
+
+				users[member] = append(users[member], group.Name)
 			}
-
-			if uid != "" && member != uid {
-				continue
-			}
-
-			users[member] = append(users[member], group.Name)
 		}
 	}
 
@@ -195,6 +217,18 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 	}
 
 	sn := m.cache.Snapshot()
+	ldapUser := func(member string) (ldap.LdapUser, bool) {
+		if user, ok := ldapUsers[member]; ok {
+			return user, true
+		}
+
+		usersGet, err := runtime.Users(conn, []string{member})
+		if err != nil || len(usersGet) == 0 {
+			return ldap.LdapUser{}, false
+		}
+
+		return usersGet[0], true
+	}
 
 	roleIDsFor := func(groupNames []string) []string {
 		roleIDs := make([]string, 0, len(groupNames))
@@ -222,12 +256,10 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 				continue
 			}
 
-			usersLdap, err := runtime.Users(conn, []string{member})
-			if err != nil || len(usersLdap) == 0 {
+			u, ok := ldapUser(member)
+			if !ok {
 				continue
 			}
-
-			u := usersLdap[0]
 
 			userPut := *userDB
 			if userPut.Details == nil {
@@ -250,12 +282,10 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 		}
 
 		// user not found, fetch and create
-		usersLdap, err := runtime.Users(conn, []string{member})
-		if err != nil || len(usersLdap) == 0 {
+		u, ok := ldapUser(member)
+		if !ok {
 			continue
 		}
-
-		u := usersLdap[0]
 
 		if _, err := m.store.CreateUser(ctx, data.User{
 			SyncRoleIDs: roleIDs,

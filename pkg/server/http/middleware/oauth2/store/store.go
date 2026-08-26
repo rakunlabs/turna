@@ -2,12 +2,14 @@ package store
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"time"
 
-	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/cache"
 	"github.com/rakunlabs/cache/store/memory"
 	storeredis "github.com/rakunlabs/cache/store/redis"
+	oauth2auth "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
 	redis "github.com/redis/go-redis/v9"
 	"github.com/worldline-go/conn/connredis"
 )
@@ -28,6 +30,12 @@ type StoreCache struct {
 	State cache.Cacher[string, string]
 
 	redisClient redis.UniversalClient
+	codeTakeM   sync.Mutex
+	stateTakeM  sync.Mutex
+}
+
+type atomicTaker interface {
+	Take(ctx context.Context, key string) (string, bool, error)
 }
 
 func (m *Store) Init(ctx context.Context) (*StoreCache, error) {
@@ -81,9 +89,51 @@ func (m *StoreCache) Close() error {
 	return nil
 }
 
+func (m *StoreCache) TakeCode(ctx context.Context, key string) (string, bool, error) {
+	return m.take(ctx, m.Code, &m.codeTakeM, key)
+}
+
+func (m *StoreCache) TakeState(ctx context.Context, key string) (string, bool, error) {
+	return m.take(ctx, m.State, &m.stateTakeM, key)
+}
+
+func (m *StoreCache) take(ctx context.Context, store cache.Cacher[string, string], lock *sync.Mutex, key string) (string, bool, error) {
+	if m.redisClient != nil {
+		value, err := m.redisClient.GetDel(ctx, key).Result()
+		if errors.Is(err, redis.Nil) {
+			return "", false, nil
+		}
+		if err != nil {
+			return "", false, err
+		}
+
+		return value, true, nil
+	}
+
+	if taker, ok := store.(atomicTaker); ok {
+		return taker.Take(ctx, key)
+	}
+
+	lock.Lock()
+	defer lock.Unlock()
+
+	value, ok, err := store.Get(ctx, key)
+	if err != nil || !ok {
+		return "", ok, err
+	}
+	if err := store.Delete(ctx, key); err != nil {
+		return "", false, err
+	}
+
+	return value, true, nil
+}
+
 func (m *StoreCache) CodeGen(ctx context.Context, alias string, scope []string) (string, error) {
 	// create code flow response
-	codeID := ulid.Make().String()
+	codeID, err := oauth2auth.NewState()
+	if err != nil {
+		return "", err
+	}
 
 	codeValue, err := Encode(Code{
 		Alias: alias,

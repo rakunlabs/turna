@@ -2,16 +2,19 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
+	"time"
 
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	oauth2store "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
 	"github.com/worldline-go/conn/connredis"
 )
 
 // CodeStoreSettings configures the temporary OAuth2 code/state cache.
 type CodeStoreSettings struct {
-	// Active is "memory" or "redis". Empty keeps the in-process memory store.
+	// Active is "database", "memory" or "redis". Empty defaults to database.
 	Active string                 `json:"active"`
 	Redis  CodeStoreRedisSettings `json:"redis"`
 }
@@ -33,11 +36,20 @@ type CodeStoreRedisTLSSettings struct {
 
 func (c CodeStoreSettings) normalized() CodeStoreSettings {
 	c.Active = strings.ToLower(strings.TrimSpace(c.Active))
-	if c.Active == "" || c.Active != "redis" {
-		c.Active = "memory"
+	if c.Active == "" {
+		c.Active = "database"
 	}
 
 	return c
+}
+
+func validateCodeStoreSettings(c CodeStoreSettings) error {
+	switch c.normalized().Active {
+	case "database", "memory", "redis":
+		return nil
+	default:
+		return errors.New("code_store.active must be database, memory or redis")
+	}
 }
 
 func (c CodeStoreSettings) store() oauth2store.Store {
@@ -63,8 +75,51 @@ func (c CodeStoreSettings) store() oauth2store.Store {
 	return store
 }
 
+type databaseCodeCache struct {
+	store *Store
+	kind  string
+	ttl   time.Duration
+}
+
+func (c *databaseCodeCache) Get(ctx context.Context, key string) (string, bool, error) {
+	var value string
+	if err := c.store.GetFlowCode(ctx, c.kind, key, &value); err != nil {
+		if errors.Is(err, data.ErrNotFound) {
+			return "", false, nil
+		}
+
+		return "", false, err
+	}
+
+	return value, true, nil
+}
+
+func (c *databaseCodeCache) Set(ctx context.Context, key, value string) error {
+	return c.store.PutFlowCode(ctx, c.kind, key, value, c.ttl)
+}
+
+func (c *databaseCodeCache) Delete(ctx context.Context, key string) error {
+	return c.store.DeleteFlowCode(ctx, c.kind, key)
+}
+
+func (c *databaseCodeCache) Take(ctx context.Context, key string) (string, bool, error) {
+	var value string
+	if err := c.store.TakeFlowCode(ctx, c.kind, key, &value); err != nil {
+		if errors.Is(err, data.ErrNotFound) {
+			return "", false, nil
+		}
+
+		return "", false, err
+	}
+
+	return value, true, nil
+}
+
 func (m *Auth) codeStoreRuntime(ctx context.Context) (*oauth2store.StoreCache, error) {
 	cfg := m.cache.Snapshot().Cache.CodeStore.normalized()
+	if err := validateCodeStoreSettings(cfg); err != nil {
+		return nil, err
+	}
 
 	m.codeStoreM.Lock()
 	defer m.codeStoreM.Unlock()
@@ -73,10 +128,23 @@ func (m *Auth) codeStoreRuntime(ctx context.Context) (*oauth2store.StoreCache, e
 		return m.codeStore, nil
 	}
 
-	storeConfig := cfg.store()
-	storeCache, err := storeConfig.Init(ctx)
-	if err != nil {
-		return nil, err
+	var storeCache *oauth2store.StoreCache
+	if cfg.Active == "database" {
+		if m.store == nil {
+			return nil, errors.New("database code store is unavailable")
+		}
+
+		storeCache = &oauth2store.StoreCache{
+			Code:  &databaseCodeCache{store: m.store, kind: flowKindOAuthCode, ttl: oauth2store.DefaultCodeTimeout},
+			State: &databaseCodeCache{store: m.store, kind: flowKindOAuthState, ttl: oauth2store.DefaultStateTimeout},
+		}
+	} else {
+		storeConfig := cfg.store()
+		var err error
+		storeCache, err = storeConfig.Init(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	oldStore := m.codeStore

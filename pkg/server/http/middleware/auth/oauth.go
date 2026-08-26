@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -193,37 +194,23 @@ func (m *Auth) ensureJWT(ctx context.Context) error {
 	return err
 }
 
-// GetAccessClient resolves the OAuth client; configured clients first, IAM service accounts as fallback.
+func clientSecretMatches(expected, provided string) bool {
+	return expected != "" && provided != "" &&
+		subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) == 1
+}
+
+// GetAccessClient resolves and authenticates a confidential OAuth client.
 func (m *Auth) GetAccessClient(clientID, clientSecret string) (*AccessClient, error) {
-	sn := m.cache.Snapshot()
-
-	client, ok := sn.OAuthClients[clientID]
+	client, ok := m.lookupClient(clientID)
 	if !ok {
-		// fallback to service account
-		user, err := m.cache.GetUser(data.GetUserRequest{
-			Alias:          clientID,
-			ServiceAccount: &data.True,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("client %s not found", clientID)
-		}
-
-		secret, _ := user.Details["secret"].(string)
-		scope, _ := user.Details["scope"].(string)
-		whitelistURLs, _ := user.Details["whitelist_urls"].(string)
-
-		client = AccessClient{
-			ClientSecret:  secret,
-			Scope:         splitFields(scope),
-			WhitelistURLs: splitFields(whitelistURLs),
-		}
+		return nil, fmt.Errorf("client %s not found", clientID)
 	}
 
-	if client.ClientSecret != clientSecret {
+	if client.Public || !clientSecretMatches(client.ClientSecret, clientSecret) {
 		return nil, fmt.Errorf("client secret mismatch")
 	}
 
-	return &client, nil
+	return client, nil
 }
 
 // claimsFromProviderToken extracts the identity claims from an upstream

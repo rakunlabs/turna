@@ -189,9 +189,9 @@ func (c CheckSettings) Config() data.CheckConfig {
 
 // CacheSettings is the decoded "cache" setting namespace.
 type CacheSettings struct {
-	// PollInterval for version polling between instances. Default 5s.
+	// PollInterval for fallback version polling between instances. Default 5s.
 	PollInterval string `json:"poll_interval"`
-	// CodeStore configures the temporary OAuth2 code/state cache. Default memory.
+	// CodeStore configures the temporary OAuth2 code/state cache. Default database.
 	CodeStore CodeStoreSettings `json:"code_store"`
 
 	pollInterval time.Duration
@@ -550,8 +550,17 @@ type MTLSSettings struct {
 	Enabled bool `json:"enabled"`
 	// CertHeader is a trusted header carrying the client certificate set
 	// by a TLS-terminating proxy (e.g. "ssl-client-cert" from nginx with
-	// $ssl_client_escaped_cert). Only set this behind a trusted proxy.
+	// $ssl_client_escaped_cert).
 	CertHeader string `json:"cert_header"`
+	// CertVerifyHeader carries the proxy's certificate verification result
+	// (e.g. "ssl-client-verify" from nginx with $ssl_client_verify).
+	CertVerifyHeader string `json:"cert_verify_header"`
+	// CertVerifyValue is the exact successful verification value. It defaults
+	// to "SUCCESS" when CertVerifyHeader is configured.
+	CertVerifyValue string `json:"cert_verify_value"`
+	// TrustedProxyCIDRs are immediate peer addresses allowed to assert the
+	// certificate and verification headers. X-Forwarded-For is never used.
+	TrustedProxyCIDRs []string `json:"trusted_proxy_cidrs"`
 }
 
 // TokenSettings is the decoded "token" setting namespace.
@@ -1159,35 +1168,61 @@ func (c *Cache) Reload(ctx context.Context) error {
 	return nil
 }
 
-// Watch polls the auth version and reloads the snapshot when it changes.
+// Watch reloads on PostgreSQL notifications and polls as a durable fallback.
 // The poll interval comes from the "cache" setting namespace and is applied live.
-func (c *Cache) Watch(ctx context.Context) {
+func (c *Cache) Watch(ctx context.Context, dsn string) {
+	changes := make(chan struct{}, 1)
+	go c.listenChanges(ctx, dsn, changes)
+
 	interval := c.Snapshot().Cache.GetPollInterval()
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	var debounceTimer *time.Timer
+	var debounce <-chan time.Time
+	defer func() {
+		if debounceTimer != nil {
+			debounceTimer.Stop()
+		}
+	}()
+
+	refresh := func() {
+		version, err := c.store.Version(ctx)
+		if err != nil {
+			slog.Error("auth cache version check failed", slog.String("error", err.Error()))
+
+			return
+		}
+
+		if version != c.Snapshot().Version {
+			if err := c.Reload(ctx); err != nil {
+				slog.Error("auth cache reload failed", slog.String("error", err.Error()))
+			}
+		}
+
+		if newInterval := c.Snapshot().Cache.GetPollInterval(); newInterval != interval {
+			interval = newInterval
+			ticker.Reset(interval)
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-changes:
+			if debounceTimer == nil {
+				debounceTimer = time.NewTimer(authNotificationDebounce)
+			} else {
+				debounceTimer.Reset(authNotificationDebounce)
+			}
+			debounce = debounceTimer.C
+		case <-debounce:
+			debounce = nil
+			refresh()
 		case <-ticker.C:
-			version, err := c.store.Version(ctx)
-			if err != nil {
-				slog.Error("auth cache version check failed", slog.String("error", err.Error()))
-				continue
-			}
-
-			if version != c.Snapshot().Version {
-				if err := c.Reload(ctx); err != nil {
-					slog.Error("auth cache reload failed", slog.String("error", err.Error()))
-				}
-			}
-
-			if newInterval := c.Snapshot().Cache.GetPollInterval(); newInterval != interval {
-				interval = newInterval
-				ticker.Reset(interval)
-			}
+			refresh()
 		}
 	}
 }

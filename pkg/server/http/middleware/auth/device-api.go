@@ -2,7 +2,6 @@ package auth
 
 import (
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -71,41 +70,23 @@ func normalizeUserCode(code string) string {
 	return code
 }
 
-// resolveClient validates the client; public clients (no stored secret) are
-// allowed when secret is empty, otherwise the secret must match.
+// resolveClient validates a confidential client secret or an explicitly
+// public OAuth client. Service accounts are never implicitly public.
 func (m *Auth) resolveClient(clientID, clientSecret string) (*AccessClient, error) {
-	sn := m.cache.Snapshot()
-
-	client, ok := sn.OAuthClients[clientID]
+	client, ok := m.lookupClient(clientID)
 	if !ok {
-		user, err := m.cache.GetUser(data.GetUserRequest{
-			Alias:          clientID,
-			ServiceAccount: &data.True,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("client %s not found", clientID)
-		}
-
-		secret, _ := user.Details["secret"].(string)
-		scope, _ := user.Details["scope"].(string)
-		whitelistURLs, _ := user.Details["whitelist_urls"].(string)
-
-		client = AccessClient{
-			ClientSecret:  secret,
-			Scope:         splitFields(scope),
-			WhitelistURLs: splitFields(whitelistURLs),
-		}
+		return nil, fmt.Errorf("client %s not found", clientID)
 	}
 
-	if client.ClientSecret == "" && clientSecret == "" {
-		return &client, nil
+	if client.Public && client.ClientSecret == "" && clientSecret == "" {
+		return client, nil
 	}
 
-	if subtle.ConstantTimeCompare([]byte(client.ClientSecret), []byte(clientSecret)) != 1 {
+	if client.Public || !clientSecretMatches(client.ClientSecret, clientSecret) {
 		return nil, fmt.Errorf("client secret mismatch")
 	}
 
-	return &client, nil
+	return client, nil
 }
 
 // APIDeviceAuthorization implements the RFC 8628 device authorization endpoint.

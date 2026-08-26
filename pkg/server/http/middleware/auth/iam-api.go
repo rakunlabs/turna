@@ -94,7 +94,7 @@ func handleIAMError(w http.ResponseWriter, err error, msg string) {
 
 func (m *Auth) reload(r *http.Request) {
 	if err := m.cache.Reload(r.Context()); err != nil {
-		// reload failure is recoverable through version polling
+		// Reload failure is recoverable through notifications or fallback polling.
 		slog.Error("auth cache reload failed", slog.String("error", err.Error()))
 	}
 }
@@ -250,6 +250,16 @@ func (m *Auth) PutUserAPI(w http.ResponseWriter, r *http.Request) {
 	user.ServiceAccount = isServiceAccount(r)
 	if req.IsActive != nil {
 		user.Disabled = !*req.IsActive
+	} else {
+		current, err := m.cache.GetUser(data.GetUserRequest{
+			ID:             user.ID,
+			ServiceAccount: isServiceAccountPtr(r),
+		})
+		if err != nil {
+			handleIAMError(w, err, "cannot update user")
+			return
+		}
+		user.Disabled = current.Disabled
 	}
 
 	if err := m.store.PutUser(userCtx(r), user); err != nil {

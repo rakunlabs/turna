@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -13,10 +14,10 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	oauth2auth "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
 	oauth2store "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -169,6 +170,18 @@ func (m *Auth) writeTokenExt(w http.ResponseWriter, r *http.Request, user *data.
 }
 
 func (m *Auth) writeTokenWithOptions(w http.ResponseWriter, r *http.Request, user *data.UserExtended, clientID string, scope, defScope []string, options tokenIssueOptions) {
+	// Every grant converges here. A disabled user or service account must not
+	// receive a new access, refresh or ID token through any authentication path.
+	if user == nil || user.Disabled {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_grant",
+			ErrorDescription: "principal is disabled",
+			code:             http.StatusUnauthorized,
+		})
+
+		return
+	}
+
 	ctx := r.Context()
 	signer, err := m.jwtRuntime(ctx)
 	if err != nil {
@@ -187,7 +200,16 @@ func (m *Auth) writeTokenWithOptions(w http.ResponseWriter, r *http.Request, use
 	now := time.Now()
 
 	if options.SID == "" {
-		options.SID = ulid.Make().String()
+		options.SID, err = randomHex(32)
+		if err != nil {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "server_error",
+				ErrorDescription: err.Error(),
+				code:             http.StatusInternalServerError,
+			})
+
+			return
+		}
 	}
 	if options.AuthTime == 0 {
 		options.AuthTime = now.Unix()
@@ -210,11 +232,21 @@ func (m *Auth) writeTokenWithOptions(w http.ResponseWriter, r *http.Request, use
 	}
 
 	accessExpires := min(now.Add(tokenCfg.GetTokenLifetime()).Unix(), options.SessionExpires)
+	accessJTI, err := randomHex(32)
+	if err != nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "server_error",
+			ErrorDescription: err.Error(),
+			code:             http.StatusInternalServerError,
+		})
+
+		return
+	}
 
 	claimsAccess := map[string]any{
 		"iss":                issuer,
 		"aud":                tokenAudience(options.Resources),
-		"jti":                ulid.Make().String(),
+		"jti":                accessJTI,
 		"sub":                user.ID,
 		"azp":                clientID,
 		"sid":                options.SID,
@@ -295,11 +327,22 @@ func (m *Auth) writeTokenWithOptions(w http.ResponseWriter, r *http.Request, use
 	refreshToken := options.RefreshToken
 	refreshExpires := options.RefreshExpires
 	if refreshToken == "" || options.RememberMe {
+		refreshJTI, err := randomHex(32)
+		if err != nil {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "server_error",
+				ErrorDescription: err.Error(),
+				code:             http.StatusInternalServerError,
+			})
+
+			return
+		}
+
 		refreshExpires = min(now.Add(tokenCfg.GetRefreshLifetime()).Unix(), options.SessionExpires)
 		claimsRefresh := map[string]any{
 			"iss":         issuer,
 			"aud":         tokenAudience(options.Resources),
-			"jti":         ulid.Make().String(),
+			"jti":         refreshJTI,
 			"sub":         user.ID,
 			"azp":         clientID,
 			"typ":         "Refresh",
@@ -459,7 +502,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if secret, _ := user.Details["secret"].(string); secret == "" || secret != clientSecret {
+		if secret, _ := user.Details["secret"].(string); !clientSecretMatches(secret, clientSecret) {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
 				ErrorDescription: "secret not match",
@@ -513,45 +556,30 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			AddScopeRoles: true,
 		}
 
-		var user *data.UserExtended
-		if passwordCfg.LdapRegisterDisabled {
-			// only already-known users; no on-demand LDAP sync
-			user, err = m.cache.GetUser(userReq)
-		} else {
-			user, err = m.GetOrCreateUser(r.Context(), userReq)
-		}
+		user, err := m.cache.GetUser(userReq)
 		if err != nil {
-			httputil.HandleError(w, AccessTokenErrorResponse{
-				Error:            "invalid_grant",
-				ErrorDescription: "user not found",
-				code:             http.StatusBadRequest,
-			})
-
-			return
-		}
-
-		if user.Local {
-			if passwordCfg.LocalDisabled {
+			if !errors.Is(err, data.ErrNotFound) {
 				httputil.HandleError(w, AccessTokenErrorResponse{
-					Error:            "invalid_grant",
-					ErrorDescription: "local password login is disabled",
-					code:             http.StatusUnauthorized,
+					Error:            "server_error",
+					ErrorDescription: err.Error(),
+					code:             http.StatusInternalServerError,
 				})
 
 				return
 			}
-
-			password, _ := user.Details["password"].(string)
-			if password == "" || compareBcryptBase64(password, accessTokenRequest.Password) != nil {
+			if passwordCfg.LdapRegisterDisabled || !m.ldapEnabled() {
 				httputil.HandleError(w, AccessTokenErrorResponse{
 					Error:            "invalid_grant",
-					ErrorDescription: "password not match",
+					ErrorDescription: "user not found",
 					code:             http.StatusBadRequest,
 				})
 
 				return
 			}
-		} else {
+			user = nil
+		}
+
+		if user == nil || !user.Local {
 			if passwordCfg.LdapDisabled {
 				httputil.HandleError(w, AccessTokenErrorResponse{
 					Error:            "invalid_grant",
@@ -572,8 +600,53 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 
 				return
 			}
-
 			if !ok {
+				httputil.HandleError(w, AccessTokenErrorResponse{
+					Error:            "invalid_grant",
+					ErrorDescription: "password not match",
+					code:             http.StatusBadRequest,
+				})
+
+				return
+			}
+
+			if user == nil {
+				if err := m.LdapSync(r.Context(), false, accessTokenRequest.Username); err != nil {
+					httputil.HandleError(w, AccessTokenErrorResponse{
+						Error:            "server_error",
+						ErrorDescription: err.Error(),
+						code:             http.StatusInternalServerError,
+					})
+
+					return
+				}
+
+				user, err = m.cache.GetUser(userReq)
+				if err != nil {
+					httputil.HandleError(w, AccessTokenErrorResponse{
+						Error:            "invalid_grant",
+						ErrorDescription: "user not found",
+						code:             http.StatusBadRequest,
+					})
+
+					return
+				}
+			}
+		}
+
+		if user.Local {
+			if passwordCfg.LocalDisabled {
+				httputil.HandleError(w, AccessTokenErrorResponse{
+					Error:            "invalid_grant",
+					ErrorDescription: "local password login is disabled",
+					code:             http.StatusUnauthorized,
+				})
+
+				return
+			}
+
+			password, _ := user.Details["password"].(string)
+			if password == "" || compareBcryptBase64(password, accessTokenRequest.Password) != nil {
 				httputil.HandleError(w, AccessTokenErrorResponse{
 					Error:            "invalid_grant",
 					ErrorDescription: "password not match",
@@ -820,7 +893,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		codeRaw, ok, err := codeStore.Code.Get(r.Context(), "code_"+accessTokenRequest.Code)
+		codeRaw, ok, err := codeStore.TakeCode(r.Context(), "code_"+accessTokenRequest.Code)
 		if err != nil || !ok {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
@@ -842,11 +915,9 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		_ = codeStore.Code.Delete(r.Context(), "code_"+accessTokenRequest.Code)
-
-		// codes issued by the local authorize endpoint are bound to the
-		// requesting client and redirect target (RFC 6749 §4.1.3)
-		if codeValue.ClientID != "" && codeValue.ClientID != clientID {
+		// Every authorization code is bound to the requesting client and
+		// redirect target (RFC 6749 §4.1.3). Missing bindings are invalid too.
+		if codeValue.ClientID == "" || codeValue.ClientID != clientID {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
 				ErrorDescription: "code was issued to another client",
@@ -856,10 +927,19 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if codeValue.RedirectURI != "" && codeValue.RedirectURI != accessTokenRequest.RedirectURI {
+		if codeValue.RedirectURI == "" || codeValue.RedirectURI != accessTokenRequest.RedirectURI {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
 				ErrorDescription: "redirect_uri not match",
+				code:             http.StatusUnauthorized,
+			})
+
+			return
+		}
+		if accessClient.ClientSecret == "" && codeValue.CodeChallenge == "" {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_grant",
+				ErrorDescription: "public clients require PKCE",
 				code:             http.StatusUnauthorized,
 			})
 
@@ -1306,49 +1386,20 @@ func (m *Auth) issuerURL(r *http.Request) string {
 	return fmt.Sprintf("%s://%s%s/oauth2", scheme, host, m.PrefixPath)
 }
 
-// redirectURIAllowed checks a redirect target against client whitelists.
-// With a client_id the client's whitelist applies (empty list allows all).
-// Without a client_id the URI must match some whitelist when at least one
-// client defines one; fully whitelist-free setups stay open for
-// backwards compatibility.
-func (m *Auth) redirectURIAllowed(clientID, redirectURI string) bool {
-	if redirectURI == "" {
-		return false
+// federatedClient resolves the client that owns a federated login and checks
+// its redirect target. Federated authorization codes must never be ownerless.
+func (m *Auth) federatedClient(clientID, redirectURI string) (*AccessClient, bool) {
+	if clientID == "" || redirectURI == "" {
+		return nil, false
 	}
 
-	sn := m.cache.Snapshot()
-
-	if clientID != "" {
-		if client, ok := sn.OAuthClients[clientID]; ok {
-			return client.redirectURIAllowedForClient(redirectURI)
-		}
-
-		// service account fallback client
-		if user, err := m.cache.GetUser(data.GetUserRequest{
-			Alias:          clientID,
-			ServiceAccount: &data.True,
-		}); err == nil {
-			whitelistURLs, _ := user.Details["whitelist_urls"].(string)
-
-			return redirectAllowed(redirectURI, splitFields(whitelistURLs))
-		}
-
-		return false
+	client, ok := m.lookupClient(clientID)
+	if !ok || (len(client.RedirectURIs) == 0 && len(client.WhitelistURLs) == 0) ||
+		!client.redirectURIAllowedForClient(redirectURI) {
+		return nil, false
 	}
 
-	anyWhitelist := false
-	for _, client := range sn.OAuthClients {
-		if len(client.WhitelistURLs) == 0 {
-			continue
-		}
-
-		anyWhitelist = true
-		if redirectAllowed(redirectURI, client.WhitelistURLs) {
-			return true
-		}
-	}
-
-	return !anyWhitelist
+	return client, true
 }
 
 // pkceParams reads and validates RFC 7636 parameters from the query.
@@ -1399,6 +1450,18 @@ func (m *Auth) APIAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	query := r.URL.Query()
+	clientID := query.Get("client_id")
+	if clientID == "" {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_request",
+			ErrorDescription: "client_id is required",
+			code:             http.StatusBadRequest,
+		})
+
+		return
+	}
+
 	providerName := r.PathValue("provider")
 	providerCfg, ok := m.cache.Snapshot().OAuthProviders[providerName]
 	if !ok {
@@ -1411,7 +1474,9 @@ func (m *Auth) APIAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !m.redirectURIAllowed(r.URL.Query().Get("client_id"), r.URL.Query().Get("redirect_uri")) {
+	redirectURI := query.Get("redirect_uri")
+	client, ok := m.federatedClient(clientID, redirectURI)
+	if !ok {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_request",
 			ErrorDescription: "redirect_uri not allowed",
@@ -1431,8 +1496,17 @@ func (m *Auth) APIAuth(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	if client.ClientSecret == "" && codeChallenge == "" {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_request",
+			ErrorDescription: "public clients require PKCE (code_challenge)",
+			code:             http.StatusBadRequest,
+		})
 
-	resources := r.URL.Query()["resource"]
+		return
+	}
+
+	resources := query["resource"]
 	for _, resource := range resources {
 		if err := validateResource(resource); err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
@@ -1444,19 +1518,48 @@ func (m *Auth) APIAuth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if !resourcesAllowed(resources, client.Resources) {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_target",
+			ErrorDescription: "requested resource not allowed for this client",
+			code:             http.StatusBadRequest,
+		})
 
-	state := ulid.Make().String()
+		return
+	}
+
+	state, err := randomHex(32)
+	if err != nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "server_error",
+			ErrorDescription: err.Error(),
+			code:             http.StatusInternalServerError,
+		})
+
+		return
+	}
+	browserBinding, err := randomHex(32)
+	if err != nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "server_error",
+			ErrorDescription: err.Error(),
+			code:             http.StatusInternalServerError,
+		})
+
+		return
+	}
 
 	stateValue, err := oauth2store.Encode(oauth2store.State{
-		RedirectURI:         r.URL.Query().Get("redirect_uri"),
+		RedirectURI:         redirectURI,
 		State:               state,
-		OrgState:            r.URL.Query().Get("state"),
-		Scope:               strings.Fields(r.URL.Query().Get("scope")),
-		Nonce:               r.URL.Query().Get("nonce"),
+		OrgState:            query.Get("state"),
+		Scope:               strings.Fields(query.Get("scope")),
+		Nonce:               query.Get("nonce"),
 		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
-		ClientID:            r.URL.Query().Get("client_id"),
+		ClientID:            clientID,
 		Resources:           resources,
+		BrowserBindingHash:  oauth2auth.StateBindingHash(browserBinding),
 	})
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
@@ -1470,16 +1573,6 @@ func (m *Auth) APIAuth(w http.ResponseWriter, r *http.Request) {
 
 	codeStore, err := m.codeStoreRuntime(r.Context())
 	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	if err := codeStore.State.Set(r.Context(), state, stateValue); err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "server_error",
 			ErrorDescription: err.Error(),
@@ -1510,6 +1603,23 @@ func (m *Auth) APIAuth(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	if err := codeStore.State.Set(r.Context(), state, stateValue); err != nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "server_error",
+			ErrorDescription: err.Error(),
+			code:             http.StatusInternalServerError,
+		})
+
+		return
+	}
+	oauth2auth.SetStateBindingCookie(
+		w,
+		state,
+		browserBinding,
+		m.PrefixPath+"/oauth2/code/",
+		oauth2auth.RequestIsHTTPS(r),
+		oauth2store.DefaultStateTimeout,
+	)
 
 	httputil.Redirect(w, http.StatusTemporaryRedirect, authCodeURL)
 }
@@ -1551,7 +1661,7 @@ func (m *Auth) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stateRaw, ok, err := codeStore.State.Get(r.Context(), state)
+	stateRaw, ok, err := codeStore.TakeState(r.Context(), state)
 	if err != nil || !ok {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_request",
@@ -1561,12 +1671,46 @@ func (m *Auth) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	oauth2auth.ClearStateBindingCookie(
+		w,
+		state,
+		m.PrefixPath+"/oauth2/code/",
+		oauth2auth.RequestIsHTTPS(r),
+	)
 
 	stateValue, err := oauth2store.Decode[oauth2store.State](stateRaw)
 	if err != nil || stateValue.State != state {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_request",
 			ErrorDescription: "state not match",
+			code:             http.StatusBadRequest,
+		})
+
+		return
+	}
+	if !oauth2auth.ValidStateBinding(r, state, stateValue.BrowserBindingHash) {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_request",
+			ErrorDescription: "state browser binding invalid",
+			code:             http.StatusBadRequest,
+		})
+
+		return
+	}
+	stateClient, ok := m.federatedClient(stateValue.ClientID, stateValue.RedirectURI)
+	if !ok || (stateClient.ClientSecret == "" && stateValue.CodeChallenge == "") {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_request",
+			ErrorDescription: "state client binding invalid",
+			code:             http.StatusBadRequest,
+		})
+
+		return
+	}
+	if !resourcesAllowed(stateValue.Resources, stateClient.Resources) {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_target",
+			ErrorDescription: "state resource not allowed for this client",
 			code:             http.StatusBadRequest,
 		})
 
@@ -1637,7 +1781,16 @@ func (m *Auth) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	codeID := ulid.Make().String()
+	codeID, err := randomHex(32)
+	if err != nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "server_error",
+			ErrorDescription: err.Error(),
+			code:             http.StatusInternalServerError,
+		})
+
+		return
+	}
 
 	codeValue, err := oauth2store.Encode(oauth2store.Code{
 		Alias:               alias,
@@ -1645,10 +1798,9 @@ func (m *Auth) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 		Nonce:               stateValue.Nonce,
 		CodeChallenge:       stateValue.CodeChallenge,
 		CodeChallengeMethod: stateValue.CodeChallengeMethod,
-		// bind the code to the requesting client when it identified itself;
-		// RedirectURI stays empty here to keep older redeemers working.
-		ClientID:  stateValue.ClientID,
-		Resources: stateValue.Resources,
+		ClientID:            stateValue.ClientID,
+		RedirectURI:         stateValue.RedirectURI,
+		Resources:           stateValue.Resources,
 	})
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{

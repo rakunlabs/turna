@@ -69,6 +69,7 @@ const samlMetadataTTL = time.Hour
 // samlRelay is the payload stored in auth_flow_codes for a SAML login.
 type samlRelay struct {
 	Provider    string   `json:"provider"`
+	ClientID    string   `json:"client_id"`
 	RedirectURI string   `json:"redirect_uri"`
 	OrgState    string   `json:"org_state"`
 	Scope       []string `json:"scope"`

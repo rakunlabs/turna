@@ -51,6 +51,7 @@ type Group struct {
 }
 
 type LdapUser struct {
+	DN         string   `json:"dn,omitempty"`
 	UID        string   `json:"uid"`
 	Email      string   `json:"email"`
 	Name       string   `json:"name"`
@@ -73,6 +74,7 @@ type LdapMap struct {
 func ldapUserFilter(uids []string) string {
 	filters := make([]string, 0, len(uids)*2)
 	for _, uid := range uids {
+		uid = ldap.EscapeFilter(uid)
 		filters = append(filters, fmt.Sprintf("(uid=%s)", uid), fmt.Sprintf("(mail=%s)", uid))
 	}
 
@@ -118,6 +120,31 @@ func (l *Ldap) Groups(conn *ldap.Conn) ([]LdapGroup, error) {
 	groups := make([]LdapGroup, 0)
 
 	for _, groupCfg := range l.Group {
+		groupsGet, err := l.groups(conn, groupCfg)
+		if err != nil {
+			return nil, err
+		}
+
+		groups = append(groups, groupsGet...)
+	}
+
+	return groups, nil
+}
+
+func ldapGroupMemberFilter(filter, userDN string) string {
+	if strings.TrimSpace(filter) == "" {
+		filter = "(objectClass=*)"
+	}
+
+	return fmt.Sprintf("(&%s(uniqueMember=%s))", filter, ldap.EscapeFilter(userDN))
+}
+
+// GroupsForUser returns only configured groups containing the user's DN.
+func (l *Ldap) GroupsForUser(conn *ldap.Conn, userDN string) ([]LdapGroup, error) {
+	groups := make([]LdapGroup, 0)
+	for _, groupCfg := range l.Group {
+		groupCfg.Filter = ldapGroupMemberFilter(groupCfg.Filter, userDN)
+
 		groupsGet, err := l.groups(conn, groupCfg)
 		if err != nil {
 			return nil, err
@@ -198,6 +225,7 @@ func (l *Ldap) Users(conn *ldap.Conn, uids []string) ([]LdapUser, error) {
 	ldapUsers := make([]LdapUser, 0, len(result.Entries))
 	for _, entry := range result.Entries {
 		user := LdapUser{
+			DN:         entry.DN,
 			UID:        entry.GetAttributeValue("uid"),
 			Email:      entry.GetAttributeValue("mail"),
 			Name:       entry.GetAttributeValue("gecos"),

@@ -1,12 +1,20 @@
 package http
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/rakunlabs/turna/pkg/server/cert"
 )
@@ -87,6 +95,135 @@ func TestBuildTLSConfigSNI(t *testing.T) {
 		if dns := leafDNS(t, c); !slices.Contains(dns, tt.wantDNS) {
 			t.Errorf("serverName %q: expected cert with DNS %q, got %v", tt.serverName, tt.wantDNS, dns)
 		}
+	}
+}
+
+func TestBuildTLSConfigClientCAs(t *testing.T) {
+	clientCA := writeCertFiles(t, "client-ca.example.com")
+	h := &HTTP{TLS: TLS{ClientCAFiles: []string{clientCA.CertFile}}}
+
+	cfg, err := h.buildTLSConfig()
+	if err != nil {
+		t.Fatalf("buildTLSConfig: %v", err)
+	}
+	if cfg.ClientAuth != tls.VerifyClientCertIfGiven {
+		t.Fatalf("ClientAuth = %v, want VerifyClientCertIfGiven", cfg.ClientAuth)
+	}
+	if cfg.ClientCAs == nil {
+		t.Fatal("ClientCAs is nil")
+	}
+	if len(cfg.ClientCAs.Subjects()) != 1 {
+		t.Fatalf("ClientCAs subjects = %d", len(cfg.ClientCAs.Subjects()))
+	}
+}
+
+func testClientPKI(t *testing.T) (string, func(time.Time, time.Time) tls.Certificate) {
+	t.Helper()
+
+	caKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caTemplate := x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "test-client-ca"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+	}
+	caDER, err := x509.CreateCertificate(rand.Reader, &caTemplate, &caTemplate, &caKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER})
+	caFile := filepath.Join(t.TempDir(), "client-ca.pem")
+	if err := os.WriteFile(caFile, caPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	issue := func(notBefore, notAfter time.Time) tls.Certificate {
+		key, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			t.Fatal(err)
+		}
+		template := x509.Certificate{
+			SerialNumber: big.NewInt(2),
+			Subject:      pkix.Name{CommonName: "test-client"},
+			NotBefore:    notBefore,
+			NotAfter:     notAfter,
+			KeyUsage:     x509.KeyUsageDigitalSignature,
+			ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		}
+		leafDER, err := x509.CreateCertificate(rand.Reader, &template, &caTemplate, &key.PublicKey, caKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		leafPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafDER})
+		keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+		certificate, err := tls.X509KeyPair(append(leafPEM, caPEM...), keyPEM)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return certificate
+	}
+
+	return caFile, issue
+}
+
+func TestTLSClientCertificateHandshake(t *testing.T) {
+	trustedCA, issueTrusted := testClientPKI(t)
+	_, issueUnknown := testClientPKI(t)
+	h := &HTTP{TLS: TLS{
+		Store:         map[string][]Certificate{"default": {writeCertFiles(t, "localhost")}},
+		ClientCAFiles: []string{trustedCA},
+	}}
+	cfg, err := h.buildTLSConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	server.TLS = cfg
+	server.StartTLS()
+	defer server.Close()
+
+	request := func(certificate *tls.Certificate) error {
+		transport := server.Client().Transport.(*http.Transport).Clone()
+		transport.TLSClientConfig = transport.TLSClientConfig.Clone()
+		if certificate != nil {
+			transport.TLSClientConfig.Certificates = []tls.Certificate{*certificate}
+		}
+		client := &http.Client{Transport: transport}
+		res, err := client.Get(server.URL)
+		if err != nil {
+			return err
+		}
+		res.Body.Close()
+
+		return nil
+	}
+
+	now := time.Now()
+	trusted := issueTrusted(now.Add(-time.Hour), now.Add(time.Hour))
+	unknown := issueUnknown(now.Add(-time.Hour), now.Add(time.Hour))
+	expired := issueTrusted(now.Add(-2*time.Hour), now.Add(-time.Hour))
+
+	if err := request(nil); err != nil {
+		t.Fatalf("optional client certificate rejected certificate-less request: %v", err)
+	}
+	if err := request(&trusted); err != nil {
+		t.Fatalf("trusted client certificate rejected: %v", err)
+	}
+	if err := request(&unknown); err == nil {
+		t.Fatal("unknown client CA was accepted")
+	}
+	if err := request(&expired); err == nil {
+		t.Fatal("expired client certificate was accepted")
 	}
 }
 

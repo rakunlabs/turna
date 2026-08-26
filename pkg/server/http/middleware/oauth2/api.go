@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/ada"
 	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
@@ -198,6 +197,17 @@ func (m *Oauth2) APIAuth(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	providerName := r.PathValue("provider")
+	provider := m.Providers[providerName]
+	if provider == nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_request",
+			ErrorDescription: fmt.Sprintf("provider %q not found", providerName),
+			code:             http.StatusNotFound,
+		})
+
+		return
+	}
 
 	state, err := auth.NewState()
 	if err != nil {
@@ -209,14 +219,7 @@ func (m *Oauth2) APIAuth(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-
-	stateValue, err := store.Encode(store.State{
-		RedirectURI: r.URL.Query().Get("redirect_uri"),
-		State:       state,
-		OrgState:    r.URL.Query().Get("state"),
-		Scope:       strings.Fields(r.URL.Query().Get("scope")),
-		Nonce:       r.URL.Query().Get("nonce"),
-	})
+	browserBinding, err := auth.NewState()
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "server_error",
@@ -227,16 +230,19 @@ func (m *Oauth2) APIAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m.storeCache.State.Set(r.Context(), state, stateValue)
-
-	providerName := r.PathValue("provider")
-
-	provider := m.Providers[providerName]
-	if provider == nil {
+	stateValue, err := store.Encode(store.State{
+		RedirectURI:        r.URL.Query().Get("redirect_uri"),
+		State:              state,
+		OrgState:           r.URL.Query().Get("state"),
+		Scope:              strings.Fields(r.URL.Query().Get("scope")),
+		Nonce:              r.URL.Query().Get("nonce"),
+		BrowserBindingHash: auth.StateBindingHash(browserBinding),
+	})
+	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_request",
-			ErrorDescription: fmt.Sprintf("provider %q not found", providerName),
-			code:             http.StatusNotFound,
+			Error:            "server_error",
+			ErrorDescription: err.Error(),
+			code:             http.StatusInternalServerError,
 		})
 
 		return
@@ -249,7 +255,26 @@ func (m *Oauth2) APIAuth(w http.ResponseWriter, r *http.Request) {
 			ErrorDescription: err.Error(),
 			code:             http.StatusInternalServerError,
 		})
+
+		return
 	}
+	if err := m.storeCache.State.Set(r.Context(), state, stateValue); err != nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "server_error",
+			ErrorDescription: err.Error(),
+			code:             http.StatusInternalServerError,
+		})
+
+		return
+	}
+	auth.SetStateBindingCookie(
+		w,
+		state,
+		browserBinding,
+		m.PrefixPath+"/code/",
+		auth.RequestIsHTTPS(r),
+		store.DefaultStateTimeout,
+	)
 
 	httputil.Redirect(w, http.StatusTemporaryRedirect, authCodeURL)
 }
@@ -291,7 +316,7 @@ func (m *Oauth2) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stateRaw, ok, err := m.storeCache.State.Get(r.Context(), state)
+	stateRaw, ok, err := m.storeCache.TakeState(r.Context(), state)
 	if err != nil || !ok {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_request",
@@ -301,6 +326,12 @@ func (m *Oauth2) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	auth.ClearStateBindingCookie(
+		w,
+		state,
+		m.PrefixPath+"/code/",
+		auth.RequestIsHTTPS(r),
+	)
 
 	stateValue, err := store.Decode[store.State](stateRaw)
 	if err != nil {
@@ -317,6 +348,15 @@ func (m *Oauth2) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_request",
 			ErrorDescription: "state not match",
+			code:             http.StatusBadRequest,
+		})
+
+		return
+	}
+	if !auth.ValidStateBinding(r, state, stateValue.BrowserBindingHash) {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_request",
+			ErrorDescription: "state browser binding invalid",
 			code:             http.StatusBadRequest,
 		})
 
@@ -405,7 +445,16 @@ func (m *Oauth2) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// create code flow response
-	codeID := ulid.Make().String()
+	codeID, err := auth.NewState()
+	if err != nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "server_error",
+			ErrorDescription: err.Error(),
+			code:             http.StatusInternalServerError,
+		})
+
+		return
+	}
 
 	codeValue, err := store.Encode(store.Code{
 		Alias: alias,
@@ -586,7 +635,7 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// get alias from code
-		codeRaw, ok, err := m.storeCache.Code.Get(r.Context(), "code_"+accessTokenRequest.Code)
+		codeRaw, ok, err := m.storeCache.TakeCode(r.Context(), "code_"+accessTokenRequest.Code)
 		if err != nil || !ok {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
@@ -607,8 +656,6 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 
 			return
 		}
-
-		_ = m.storeCache.Code.Delete(r.Context(), "code_"+accessTokenRequest.Code)
 
 		user, err := m.iam.GetOrCreateUser(data.GetUserRequest{
 			Alias:         codeValue.Alias,
@@ -640,21 +687,24 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 			userName = strings.ToLower(userName)
 		}
 
-		user, err := m.iam.GetOrCreateUser(data.GetUserRequest{
+		userRequest := data.GetUserRequest{
 			Alias: userName,
-		})
+		}
+		user, err := m.iam.DB().GetUser(userRequest)
 		if err != nil {
-			httputil.HandleError(w, AccessTokenErrorResponse{
-				Error:            "invalid_grant",
-				ErrorDescription: err.Error(),
-				code:             http.StatusBadRequest,
-			})
+			if !errors.Is(err, data.ErrNotFound) {
+				httputil.HandleError(w, AccessTokenErrorResponse{
+					Error:            "server_error",
+					ErrorDescription: err.Error(),
+					code:             http.StatusInternalServerError,
+				})
 
-			return
+				return
+			}
+			user = nil
 		}
 
-		if !user.Local {
-			// check LDAP for external user
+		if user == nil || !user.Local {
 			ok, err := m.iam.LdapCheckPassword(userName, accessTokenRequest.Password)
 			if err != nil {
 				if errors.Is(err, ldap.ErrExceedPasswordRetryLimit) {
@@ -675,7 +725,6 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 
 				return
 			}
-
 			if !ok {
 				httputil.HandleError(w, AccessTokenErrorResponse{
 					Error:            "invalid_grant",
@@ -685,7 +734,22 @@ func (m *Oauth2) APIToken(w http.ResponseWriter, r *http.Request) {
 
 				return
 			}
-		} else {
+
+			if user == nil {
+				user, err = m.iam.GetOrCreateUser(userRequest)
+				if err != nil {
+					httputil.HandleError(w, AccessTokenErrorResponse{
+						Error:            "invalid_grant",
+						ErrorDescription: err.Error(),
+						code:             http.StatusBadRequest,
+					})
+
+					return
+				}
+			}
+		}
+
+		if user.Local {
 			// check local user
 			password, ok := user.Details["password"].(string)
 			if !ok {

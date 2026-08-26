@@ -1,6 +1,33 @@
 package auth
 
-import "testing"
+import (
+	"encoding/hex"
+	"testing"
+)
+
+func TestRandomHex(t *testing.T) {
+	t.Parallel()
+
+	first, err := randomHex(32)
+	if err != nil {
+		t.Fatalf("randomHex() error = %v", err)
+	}
+	second, err := randomHex(32)
+	if err != nil {
+		t.Fatalf("randomHex() error = %v", err)
+	}
+
+	decoded, err := hex.DecodeString(first)
+	if err != nil {
+		t.Fatalf("randomHex() produced invalid hex: %v", err)
+	}
+	if len(decoded) != 32 {
+		t.Fatalf("randomHex() decoded length = %d, want 32", len(decoded))
+	}
+	if first == second {
+		t.Fatal("randomHex() returned duplicate values")
+	}
+}
 
 func TestCipherRoundTrip(t *testing.T) {
 	c, err := NewCipher("test-key")

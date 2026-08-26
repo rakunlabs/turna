@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	oauth2store "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
 )
@@ -33,20 +32,21 @@ func (m *Auth) SAMLMetadata(w http.ResponseWriter, r *http.Request) {
 // redirected back to redirect_uri with a local authorization code.
 func (m *Auth) SAMLLogin(w http.ResponseWriter, r *http.Request) {
 	providerName := r.PathValue("provider")
-
-	sp, _, err := m.samlServiceProvider(r, providerName)
-	if err != nil {
-		httputil.HandleError(w, httputil.NewError("saml provider not available", err, http.StatusNotFound))
+	query := r.URL.Query()
+	clientID := query.Get("client_id")
+	if clientID == "" {
+		httputil.HandleError(w, httputil.NewError("client_id is required", nil, http.StatusBadRequest))
 		return
 	}
 
-	redirectURI := r.URL.Query().Get("redirect_uri")
+	redirectURI := query.Get("redirect_uri")
 	if redirectURI == "" {
 		httputil.HandleError(w, httputil.NewError("redirect_uri is required", nil, http.StatusBadRequest))
 		return
 	}
 
-	if !m.redirectURIAllowed(r.URL.Query().Get("client_id"), redirectURI) {
+	client, ok := m.federatedClient(clientID, redirectURI)
+	if !ok {
 		httputil.HandleError(w, httputil.NewError("redirect_uri not allowed", nil, http.StatusBadRequest))
 		return
 	}
@@ -54,6 +54,16 @@ func (m *Auth) SAMLLogin(w http.ResponseWriter, r *http.Request) {
 	codeChallenge, codeChallengeMethod, err := pkceParams(r)
 	if err != nil {
 		httputil.HandleError(w, httputil.NewError("invalid pkce parameters", err, http.StatusBadRequest))
+		return
+	}
+	if client.ClientSecret == "" && codeChallenge == "" {
+		httputil.HandleError(w, httputil.NewError("public clients require PKCE (code_challenge)", nil, http.StatusBadRequest))
+		return
+	}
+
+	sp, _, err := m.samlServiceProvider(r, providerName)
+	if err != nil {
+		httputil.HandleError(w, httputil.NewError("saml provider not available", err, http.StatusNotFound))
 		return
 	}
 
@@ -67,13 +77,19 @@ func (m *Auth) SAMLLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	relayID := ulid.Make().String()
+	relayID, err := randomHex(32)
+	if err != nil {
+		httputil.HandleError(w, httputil.NewError("cannot create relay state", err, http.StatusInternalServerError))
+
+		return
+	}
 
 	relay := samlRelay{
 		Provider:            providerName,
+		ClientID:            clientID,
 		RedirectURI:         redirectURI,
-		OrgState:            r.URL.Query().Get("state"),
-		Scope:               splitFields(r.URL.Query().Get("scope")),
+		OrgState:            query.Get("state"),
+		Scope:               splitFields(query.Get("scope")),
 		RequestID:           authReq.ID,
 		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
@@ -115,15 +131,18 @@ func (m *Auth) SAMLACS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	relay := samlRelay{}
-	if err := m.store.GetFlowCode(r.Context(), flowKindSAMLRelay, relayID, &relay); err != nil {
+	if err := m.store.TakeFlowCode(r.Context(), flowKindSAMLRelay, relayID, &relay); err != nil {
 		httputil.HandleError(w, httputil.NewError("relay state not found or expired", nil, http.StatusBadRequest))
 		return
 	}
 
-	_ = m.store.DeleteFlowCode(r.Context(), flowKindSAMLRelay, relayID)
-
 	if relay.Provider != providerName {
 		httputil.HandleError(w, httputil.NewError("relay state provider mismatch", nil, http.StatusBadRequest))
+		return
+	}
+	relayClient, ok := m.federatedClient(relay.ClientID, relay.RedirectURI)
+	if !ok || (relayClient.ClientSecret == "" && relay.CodeChallenge == "") {
+		httputil.HandleError(w, httputil.NewError("relay state client binding invalid", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -151,13 +170,20 @@ func (m *Auth) SAMLACS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	codeID := ulid.Make().String()
+	codeID, err := randomHex(32)
+	if err != nil {
+		httputil.HandleError(w, httputil.NewError("cannot create authorization code", err, http.StatusInternalServerError))
+
+		return
+	}
 
 	codeValue, err := oauth2store.Encode(oauth2store.Code{
 		Alias:               alias,
 		Scope:               relay.Scope,
 		CodeChallenge:       relay.CodeChallenge,
 		CodeChallengeMethod: relay.CodeChallengeMethod,
+		ClientID:            relay.ClientID,
+		RedirectURI:         relay.RedirectURI,
 	})
 	if err != nil {
 		httputil.HandleError(w, httputil.NewError("cannot encode code", err, http.StatusInternalServerError))

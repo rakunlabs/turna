@@ -17,6 +17,8 @@ const (
 	flowKindDeviceUser     = "device_user"     // id: user_code, payload: {"device_code": ...}
 	flowKindEmail          = "email"           // id: sha256(code), payload: emailFlow
 	flowKindSAMLRelay      = "saml_relay"      // id: relay state, payload: samlRelay
+	flowKindOAuthCode      = "oauth_code"      // id: authorization code cache key
+	flowKindOAuthState     = "oauth_state"     // id: provider/passkey state cache key
 	flowKindSignup         = "signup"          // id: sha256(code), payload: signupFlow
 	flowKindPasswordReset  = "password_reset"  // id: sha256(code), payload: resetFlow
 	flowKindAuthorize      = "authorize"       // id: flow id, payload: authorizeFlow
@@ -36,6 +38,29 @@ func (s *Store) CreateFlowCode(ctx context.Context, kind, id string, payload any
 		kind+":"+id, kind, string(raw), int64(ttl.Seconds()))
 	if err != nil {
 		return fmt.Errorf("insert flow code: %w", err)
+	}
+
+	return nil
+}
+
+// PutFlowCode stores or replaces a short-lived payload. It backs cache-like
+// flows whose random keys may be written again by callers.
+func (s *Store) PutFlowCode(ctx context.Context, kind, id string, payload any, ttl time.Duration) error {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.ExecContext(ctx, `INSERT INTO auth_flow_codes (id, kind, payload, expires_at)
+		VALUES ($1, $2, $3::jsonb, now() + $4 * interval '1 second')
+		ON CONFLICT (id) DO UPDATE SET
+			kind = EXCLUDED.kind,
+			payload = EXCLUDED.payload,
+			expires_at = EXCLUDED.expires_at,
+			created_at = now()`,
+		kind+":"+id, kind, string(raw), int64(ttl.Seconds()))
+	if err != nil {
+		return fmt.Errorf("put flow code: %w", err)
 	}
 
 	return nil
@@ -71,6 +96,28 @@ func (s *Store) GetFlowCode(ctx context.Context, kind, id string, payload any) e
 
 	err := s.db.QueryRowContext(ctx,
 		`SELECT payload FROM auth_flow_codes WHERE id = $1 AND kind = $2 AND expires_at > now()`,
+		kind+":"+id, kind,
+	).Scan(&raw)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("flow code not found; %w", data.ErrNotFound)
+		}
+
+		return err
+	}
+
+	return json.Unmarshal(raw, payload)
+}
+
+// TakeFlowCode atomically removes and returns an unexpired flow. Concurrent
+// callers and other replicas can therefore consume a one-time value only once.
+func (s *Store) TakeFlowCode(ctx context.Context, kind, id string, payload any) error {
+	var raw []byte
+
+	err := s.db.QueryRowContext(ctx,
+		`DELETE FROM auth_flow_codes
+		WHERE id = $1 AND kind = $2 AND expires_at > now()
+		RETURNING payload`,
 		kind+":"+id, kind,
 	).Scan(&raw)
 	if err != nil {

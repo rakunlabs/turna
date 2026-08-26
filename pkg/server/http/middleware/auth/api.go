@@ -122,6 +122,18 @@ func (m *Auth) PutSetting(w http.ResponseWriter, r *http.Request) {
 
 	namespace := r.PathValue("namespace")
 
+	if namespace == "cache" {
+		var setting CacheSettings
+		if err := json.Unmarshal(req.Value, &setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("cannot decode cache setting", err, http.StatusBadRequest))
+			return
+		}
+		if err := validateCodeStoreSettings(setting.CodeStore); err != nil {
+			httputil.HandleError(w, httputil.NewError("invalid cache setting", err, http.StatusBadRequest))
+			return
+		}
+	}
+
 	if namespace == "token" {
 		var setting TokenSettings
 		if err := json.Unmarshal(req.Value, &setting); err != nil {
@@ -180,6 +192,18 @@ func (m *Auth) PutSetting(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if namespace == "mtls" {
+		var setting MTLSSettings
+		if err := json.Unmarshal(req.Value, &setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("cannot decode mtls setting", err, http.StatusBadRequest))
+			return
+		}
+		if err := validateMTLSSettings(setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("invalid mtls setting", err, http.StatusBadRequest))
+			return
+		}
+	}
+
 	if namespace == "custom_info" {
 		var setting CustomInfoSettings
 		if err := json.Unmarshal(req.Value, &setting); err != nil {
@@ -234,7 +258,7 @@ func (m *Auth) PutSetting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// apply immediately on this instance; others converge via polling
+	// Apply immediately here; peers use notifications with polling as fallback.
 	if err := m.cache.Reload(r.Context()); err != nil {
 		httputil.HandleError(w, httputil.NewError("setting saved but reload failed", err, http.StatusInternalServerError))
 		return
@@ -287,7 +311,7 @@ func (m *Auth) DeleteSetting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// apply immediately on this instance; others converge via polling
+	// Apply immediately here; peers use notifications with polling as fallback.
 	if err := m.cache.Reload(r.Context()); err != nil {
 		httputil.HandleError(w, httputil.NewError("setting deleted but reload failed", err, http.StatusInternalServerError))
 		return

@@ -114,6 +114,8 @@ server:
   http:
     tls:
       min_version: "1.3"
+      client_ca_files:
+        - ./client-ca.pem
       store:
         default:
           - cert_file: ./cert.pem
@@ -137,10 +139,13 @@ server:
 | Field | Default | Description |
 | --- | --- | --- |
 | `min_version` | `1.3` | Minimum accepted TLS version: `1.2` or `1.3`. |
+| `client_ca_files` | | PEM CA bundles used to request and verify optional client certificates. Presented certificates that do not chain to these roots fail the TLS handshake. |
 | `store.<host>` | | Certificate(s) served for the SNI host name `<host>`. |
 | `store.default` | | Fallback certificate used when no SNI host matches or the client sends no SNI. |
 | `self_signed` | | Customizes the generated certificate (see below). |
 | `acme` | | Automatic certificate provisioning from an ACME CA such as Let's Encrypt (see below). |
+
+When `client_ca_files` is non-empty, the listener uses Go's `VerifyClientCertIfGiven` mode. A certificate is not mandatory for every route on the shared listener, but any presented certificate is verified and exposed to handlers through `r.TLS.VerifiedChains`. The client CA pool is global to the HTTP TLS configuration and is cloned onto every TLS entrypoint, so all of them request client certificates and reject an untrusted certificate if one is presented. This is the native trust path used by the auth middleware's mTLS client-credentials flow.
 
 ### SNI (multiple certificates)
 

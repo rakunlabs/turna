@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	oauth2store "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
@@ -40,7 +39,7 @@ func (m *Auth) lookupClient(clientID string) (*AccessClient, bool) {
 		Alias:          clientID,
 		ServiceAccount: &data.True,
 	})
-	if err != nil {
+	if err != nil || user.Disabled {
 		return nil, false
 	}
 
@@ -214,7 +213,13 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	flowID := ulid.Make().String()
+	flowID, err := randomHex(32)
+	if err != nil {
+		m.authorizeErrorRedirect(w, r, redirectURI, state, "server_error", err.Error())
+
+		return
+	}
+
 	flow := authorizeFlow{
 		ClientID:            clientID,
 		ClientName:          client.ClientName,
@@ -417,7 +422,11 @@ func (m *Auth) ConsentDecisionAPI(w http.ResponseWriter, r *http.Request) {
 // finishAuthorize consumes the flow and either issues an authorization code
 // bound to the client/redirect/PKCE/resource or reports the denial.
 func (m *Auth) finishAuthorize(w http.ResponseWriter, r *http.Request, flowID string, flow *authorizeFlow, userAlias string, approved bool) {
-	_ = m.store.DeleteFlowCode(r.Context(), flowKindAuthorize, flowID)
+	if err := m.store.TakeFlowCode(r.Context(), flowKindAuthorize, flowID, flow); err != nil {
+		m.renderConsent(w, http.StatusNotFound, consentPageData{Error: "Authorization request not found or expired. Start over from the application."})
+
+		return
+	}
 
 	if !approved {
 		m.authorizeErrorRedirect(w, r, flow.RedirectURI, flow.State, "access_denied", "the user denied the request")
@@ -439,7 +448,12 @@ func (m *Auth) finishAuthorize(w http.ResponseWriter, r *http.Request, flowID st
 		return
 	}
 
-	codeID := ulid.Make().String()
+	codeID, err := randomHex(32)
+	if err != nil {
+		m.authorizeErrorRedirect(w, r, flow.RedirectURI, flow.State, "server_error", err.Error())
+
+		return
+	}
 
 	codeValue, err := oauth2store.Encode(oauth2store.Code{
 		Alias:               userAlias,

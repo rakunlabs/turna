@@ -185,16 +185,18 @@ func overlayStoredClient(fetched, stored *AccessClient) *AccessClient {
 // fetch fails, a stored record (carrying its own redirect_uris or
 // whitelist_urls) keeps the client usable as a full fallback.
 func (m *Auth) metadataClient(ctx context.Context, clientID string) (*AccessClient, error) {
-	stored, hasStored := m.lookupClient(clientID)
+	storedValue, hasStored := m.cache.Snapshot().OAuthClients[clientID]
+	stored := &storedValue
 
 	fetched, err := fetchClientMetadata(ctx, clientID)
 	if err != nil {
 		if hasStored {
-			// metadata clients never authenticate with a secret; a
-			// secretless fallback record stays a public (PKCE) client
-			if stored.ClientSecret == "" {
-				stored.Public = true
+			// Metadata clients never authenticate with a shared secret. Do not
+			// silently downgrade a stored confidential record when fetch fails.
+			if stored.ClientSecret != "" {
+				return nil, fmt.Errorf("stored metadata client fallback must not contain a client secret")
 			}
+			stored.Public = true
 
 			return stored, nil
 		}

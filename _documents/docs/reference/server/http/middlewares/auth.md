@@ -4,7 +4,7 @@
 
 The middleware behaves like a standalone app with its own UI: every runtime setting (OAuth2 redirect behavior, permission check rules, cache polling, token lifetimes, OAuth clients/providers, LDAP) lives in PostgreSQL and is managed through the API or UI. The static configuration only covers how to reach that database: encryption key, database connection, and migration settings.
 
-Reads are served from an in-memory read model; writes go to PostgreSQL inside a transaction that bumps a version, records an event, and emits `pg_notify('auth_changed', version)`. Other instances pick up changes through version polling.
+Reads are served from an in-memory read model; writes go to PostgreSQL inside a transaction that bumps a version, records an event, and emits `pg_notify('auth_changed', version)`. Every instance keeps a dedicated `LISTEN auth_changed` connection and normally reloads immediately; version polling remains the durable fallback for disconnects or missed notifications.
 
 ```yaml
 server:
@@ -24,8 +24,8 @@ server:
 | Field | Description |
 | --- | --- |
 | `prefix_path` | Base path for Auth API and UI. Defaults to `/auth`. |
-| `database.dsn` | PostgreSQL connection string. Required. |
-| `database.max_open_conns` | `database/sql` max open connection limit. Defaults to `5`; negative for unlimited. |
+| `database.dsn` | PostgreSQL connection string. Required. Each process also opens one dedicated connection for `LISTEN auth_changed`; when using PgBouncer this DSN must provide session semantics (session pooling or direct PostgreSQL) for immediate notifications. |
+| `database.max_open_conns` | `database/sql` max open connection limit. Defaults to `5`; negative for unlimited. The dedicated notification connection is separate from this pool. |
 | `database.max_idle_conns` | `database/sql` max idle connection limit. Defaults to `3`; negative for none. |
 | `database.conn_max_lifetime` | Connection max lifetime. Defaults to `15m`; negative for unlimited. |
 | `database.conn_max_idle_time` | Optional connection max idle time. |
@@ -46,18 +46,18 @@ Everything else is a settings namespace under `/auth/v1/settings/{namespace}` an
 | `admin` | `permission`, `allow_missing_x_user` | Management API/UI authorization. Empty `permission` keeps bootstrap-open behavior. When set, `X-User` must have that permission ID/name. `allow_missing_x_user` defaults to `true` for break-glass access when the session chain is removed and no `X-User` is present. Do not expose this route publicly when break-glass is enabled. |
 | `oauth2` | `base_url`, `schema`, `insecure_skip_verify` | Code-flow redirect behavior for upstream providers and the canonical token issuer. `schema` defaults to `https`. Set `base_url` when one auth instance serves session/login flows through multiple hosts, so a token issued through one host can be refreshed through another without an issuer mismatch. |
 | `check` | `default_hosts`, `no_host_check` | Host rules for permission evaluation. |
-| `cache` | `poll_interval`, `code_store` | Version poll interval for the in-memory read model and OAuth2 temporary code/state store. `code_store.active` is `memory` or `redis`. |
+| `cache` | `poll_interval`, `code_store` | Fallback version poll interval for the in-memory read model and OAuth2 temporary code/state store. PostgreSQL notifications normally propagate changes immediately; the poll catches changes missed during listener disconnects. `code_store.active` is `database` (default), `memory`, or `redis`. Database and Redis are shared across replicas; memory is single-instance only. |
 | `token` | `token_lifetime`, `refresh_lifetime`, `refresh_absolute_lifetime` | Access lifetime, refresh idle window and remembered-session ceiling (defaults `15m` / `24h` / `720h`). |
 | `jwt` | `kid`, `private_key` | RS256 signing key (PEM, PKCS#8 or PKCS#1); auto-generated on first start. Editable through the API/UI and applied without restart — the public JWKS key is derived from the private key. Changing or rotating the key invalidates outstanding tokens. |
 | `passkey` | `disabled`, `rp_id`, `rp_display_name`, `origins`, `user_verification` | WebAuthn (passkey) relying party settings. Empty `rp_id` defaults to the registrable domain (eTLD+1) of the request host — e.g. `auth.example.com` becomes `example.com`, so one passkey works across all subdomains; IPs and single-label hosts (`localhost`) are used as-is. Empty `origins` derives from the forwarded scheme + host. |
-| `password` | `disabled`, `local_disabled`, `ldap_disabled`, `ldap_register_disabled` | Password grant sources. Defaults keep the implicit behavior: local users check bcrypt, non-local users bind against LDAP, unknown aliases are auto-created from LDAP on first login. |
+| `password` | `disabled`, `local_disabled`, `ldap_disabled`, `ldap_register_disabled` | Password grant sources. Defaults keep the implicit behavior: local users check bcrypt, non-local users bind against LDAP, and unknown aliases are created only after a successful LDAP bind. |
 | `api_key` | `disabled`, `self_service`, `max_lifetime` | Static API key creation and validation. `self_service` (default off) lets any authenticated X-User issue and manage their own keys through `/v1/api-keys` — a "Personal access keys" panel appears on the account page. `max_lifetime` caps the expiry of new keys (duration string); empty means keys may live forever. |
 | `device` | `disabled`, `code_lifetime`, `interval`, `verification_uri` | RFC 8628 device flow. Defaults: codes live `10m`, minimum poll interval `5` seconds, verification URI `<prefix>/ui/device`. |
 | `token_exchange` | `disabled` | RFC 8693 token exchange grant. |
 | `totp` | `disabled`, `issuer`, `skew` | TOTP second factor. `issuer` is shown in authenticator apps (default `Turna Auth`), `skew` is the allowed period drift (default `1` = ±30s). Confirming TOTP also issues 8 single-use recovery codes. |
 | `email` | `disabled`, `magic_link`, `from`, `subject`, `body_template`, `magic_link_subject`, `magic_link_body_template`, `code_lifetime`, `smtp.{host,port,username,password,no_auth,starttls,tls,insecure_skip_verify}` | Passwordless email login with two independent mails: the one-time code (`disabled`, `subject`, `body_template`) and the magic link (`magic_link` default true, `magic_link_subject`, `magic_link_body_template`). All templates are Go `text/template` strings; empty uses built-in defaults. Set `smtp.no_auth=true` for trusted relays that need no authentication. Codes live `15m` by default. The relay is also used by `signup`. Login is effectively off until `smtp.host` is set. |
 | `signup` | `enabled`, `email_verification`, `password_reset`, `default_role_ids`, `code_lifetime`, `verify_subject`, `verify_body_template`, `reset_subject`, `reset_body_template` | Self-registration and forgot-password flows (UI: *Signup*). Off by default. `email_verification` defaults to `true`; verification/reset mails use the `email` SMTP relay. Codes live `1h` by default. Templates are Go `text/template` strings validated on save. |
-| `mtls` | `enabled`, `cert_header` | Certificate based client authentication (RFC 8705 style). `cert_header` names a trusted proxy header carrying the client certificate (e.g. nginx `$ssl_client_escaped_cert`); only set it behind a trusted proxy. Off by default. |
+| `mtls` | `enabled`, `cert_header`, `cert_verify_header`, `cert_verify_value`, `trusted_proxy_cidrs` | Certificate based client authentication (RFC 8705 style). Native mode requires listener `client_ca_files`. Proxy mode requires certificate and verification-result headers plus an immediate-peer allowlist. Off by default. |
 | `saml` | `certificate`, `private_key` | SAML SP signing key pair; auto-generated (self-signed, 10 years) on first SAML use. |
 | `authorize` | `disabled`, `flow_lifetime`, `login_url` | Local browser-based authorization code flow (`/oauth2/authorize` + consent screen). Pending consents live `10m` by default. `login_url` redirects anonymous browsers to a login page (with `?redirect_path=` back reference, the [`login`](./login) middleware convention); empty shows an error asking to log in first. |
 | `registration` | `enabled`, `client_lifetime`, `default_scope`, `max_clients` | RFC 7591 dynamic client registration (`/oauth2/register`; UI: *OAuth2 → Dynamic client registration*). Off by default because registration is anonymous. `client_lifetime` expires dynamic clients (empty keeps them forever), `max_clients` caps stored dynamic clients (default `1000`). |
@@ -83,7 +83,7 @@ Migrations are embedded and run through `github.com/rakunlabs/muz` with a Postgr
 - `auth_roles`, `auth_permissions`, `auth_lmaps` — IAM model.
 - `auth_api_keys` — api keys (sha256 hashes; the key itself is never stored).
 - `auth_totp_secrets` — encrypted TOTP shared secrets.
-- `auth_flow_codes` — short-lived flow state shared between instances (device codes, email login codes, SAML relay states, pending consents, revoked token ids).
+- `auth_flow_codes` — short-lived flow state shared between instances (OAuth codes/state, passkey challenges, device and email codes, SAML relay states, pending consents, revoked token ids).
 
 ## Routes
 
@@ -202,18 +202,19 @@ Attach more roles to an LDAP group by editing its group map. The management UI s
 
 Token notes:
 
-- `client_credentials` authenticates service accounts via the `secret` detail. With the `mtls` setting enabled and no secret provided, a client certificate (TLS handshake or trusted proxy header) is matched against the service account's `cert_fingerprint` (sha256 of the DER cert) or `cert_subject` detail.
+- `client_credentials` authenticates service accounts via the `secret` detail. With the `mtls` setting enabled and no secret provided, a client certificate verified during the native TLS handshake or by an explicitly trusted TLS-terminating proxy is matched against the service account's `cert_fingerprint` (sha256 of the DER cert) or `cert_subject` detail.
 - `password` checks local users with bcrypt, or LDAP when the user is not `local`. Unknown LDAP users are created on first successful sync.
-- The `password` settings namespace makes those sources explicit and switchable: `disabled` rejects the grant entirely, `local_disabled`/`ldap_disabled` block one source, `ldap_register_disabled` stops auto-creating unknown users from LDAP. Managed in the UI under *OAuth2 → Password Login*.
+- The `password` settings namespace makes those sources explicit and switchable: `disabled` rejects the grant entirely, `local_disabled`/`ldap_disabled` block one source, `ldap_register_disabled` stops auto-creating unknown users from LDAP. An unknown alias must pass its LDAP bind before any directory sync; first-login sync queries only that user's group memberships rather than loading the complete group tree. Managed in the UI under *OAuth2 → Password Login*.
 - Users with a confirmed TOTP secret must send a `totp` form field on the password grant; a missing code answers `401` with `error=mfa_required`. A single-use recovery code is accepted in place of the TOTP code.
-- OAuth clients come from `/auth/v1/oauth/clients`; service accounts work as a client fallback.
+- OAuth clients come from `/auth/v1/oauth/clients`; service accounts work as a confidential-client fallback. Empty secrets are accepted only for OAuth client records explicitly marked `public` (including dynamic `token_endpoint_auth_method=none` clients), and only on flows that support public clients. A service account without a secret must authenticate `client_credentials` with mTLS.
 - Token lifetimes come from the `token` settings namespace (default access `15m`, refresh idle `24h`, remembered-session maximum `720h` / 30 days).
 - Initial grants accept the `remember_me` extension parameter. Without it, the original refresh token remains reusable until its fixed `refresh_lifetime` expiry. With it, refreshes mint a new refresh token with a sliding `refresh_lifetime` window, capped by the family's immutable `refresh_absolute_lifetime` boundary. Refresh requests cannot change this choice; the signed token claim is authoritative.
 - Access, ID and refresh tokens carry a shared `sid`, `auth_time` and `session_exp`. This keeps parallel browser refreshes in one revocable family and gives every family a fixed absolute boundary.
+- Once the disabled state reaches an instance's cache, token issuance rejects that user or service account as either the token subject or OAuth client, including password, authorization-code, refresh, device, email, passkey, token-exchange, client-secret and mTLS paths. Existing self-contained access tokens may remain cryptographically valid until expiry for external JWT-only consumers; in-process cache checks reject the disabled principal as soon as they observe the update.
 - An `id_token` is issued whenever the granted scope contains `openid`; the `nonce` from the authorization request is embedded for code-flow logins.
-- **PKCE (RFC 7636):** `/auth/oauth2/auth/{provider}` and `/auth/saml/{provider}/login` accept `code_challenge` (+ `code_challenge_method`, `S256` or `plain`); the `authorization_code` grant then requires a matching `code_verifier`. With a valid verifier public clients (no stored secret) may exchange codes without a client secret.
-- **Redirect whitelist:** authorization and SAML login requests validate `redirect_uri` against the client's `whitelist_urls` (prefix match). Pass `client_id` to pin a specific client; without one the URI must match some client's whitelist when at least one is configured. Whitelist-free setups stay open for backwards compatibility. Clients with registered `redirect_uris` (dynamic registration or manual config) use exact matching instead.
-- **Code binding:** authorization codes issued by the local `/oauth2/authorize` endpoint are bound to the requesting `client_id` and `redirect_uri`; the token endpoint rejects redemption by another client or with a different redirect target. Federated codes bind the `client_id` when the authorization request carried one.
+- **PKCE (RFC 7636):** `/auth/oauth2/auth/{provider}` and `/auth/saml/{provider}/login` accept `code_challenge` (+ `code_challenge_method`, `S256` or `plain`); the `authorization_code` grant then requires a matching `code_verifier`. Public clients (no stored secret) must use PKCE.
+- **Redirect whitelist:** federated OAuth and SAML login requests require `client_id`, require that client to register at least one redirect target, and validate `redirect_uri` against its `whitelist_urls` (prefix match). Clients with registered `redirect_uris` (dynamic registration or manual config) use exact matching instead.
+- **Code binding:** every authorization code is bound to the requesting `client_id` and `redirect_uri`; the token endpoint rejects missing bindings, redemption by another client, and a missing or different redirect target.
 - **Resource indicators (RFC 8707):** `resource` parameters on `/oauth2/authorize`, `/oauth2/auth/{provider}` and the token endpoint land in the access token `aud` claim (next to `turna-auth`), so resource servers can require their own identifier. A client record may pin allowed resources with `resources` (prefix match; empty allows any).
 
 - **Client ID Metadata Documents:** a `client_id` that is an HTTPS URL with a path (e.g. Claude Code's `https://claude.ai/oauth/claude-code-client-metadata`) needs no registration — the document is fetched live (public addresses only, no redirects, 5 KB cap, JSON) and describes a public PKCE client with exact-match `redirect_uris`. To pin policy for such a client, save a client record **under the URL as its id** (the client API accepts slashes in ids): its `resources`, `scope`, `skip_consent` and `roles_claim` overlay the live document, while identity and redirect targets stay authoritative in the fetched metadata. If the metadata host is unreachable, a stored record acts as a full fallback (then its own `redirect_uris`/`whitelist_urls` apply).
@@ -339,19 +340,46 @@ SAML IdPs (ADFS, Azure AD, Okta, Shibboleth, ...) are stored like other encrypte
 | --- | --- | --- |
 | `GET/PUT/DELETE` | `/auth/v1/saml/providers`, `/auth/v1/saml/providers/{id}` | SAML provider records. |
 | `GET` | `/auth/saml/{provider}/metadata` | SP metadata XML to register at the IdP. |
-| `GET` | `/auth/saml/{provider}/login` | Start a login; `redirect_uri` required, `state`/`scope` optional. |
+| `GET` | `/auth/saml/{provider}/login` | Start a login; `client_id` and `redirect_uri` required, `state`/`scope` optional. Public clients must also send PKCE parameters. |
 | `POST` | `/auth/saml/{provider}/acs` | Assertion consumer service (IdP POST binding callback). |
 
-Provider config keys: `metadata_url` or inline `metadata_xml`, optional `entity_id`, `alias_attribute` (default: email-like attributes, then the subject NameID) and `sign_requests` (RSA-SHA256 with the auto-generated SP key from the `saml` settings namespace). After the assertion is validated the user is redirected to `redirect_uri?code=...&state=...` and the client exchanges the code with the standard `authorization_code` grant — same shape as the upstream OAuth2 provider flow.
+Provider config keys: `metadata_url` or inline `metadata_xml`, optional `entity_id`, `alias_attribute` (default: email-like attributes, then the subject NameID) and `sign_requests` (RSA-SHA256 with the auto-generated SP key from the `saml` settings namespace). After the assertion is validated the user is redirected to `redirect_uri?code=...&state=...` and the same client exchanges the code with the standard `authorization_code` grant, including the identical `redirect_uri` — same shape as the upstream OAuth2 provider flow.
 
 ### mTLS client credentials
 
 mTLS uses service accounts as clients:
 
-1. Enable the `mtls` setting namespace (`enabled: true`). If TLS terminates at a proxy, set `cert_header` to the trusted header carrying the URL-escaped PEM/base64 DER certificate.
+1. Enable the `mtls` setting namespace (`enabled: true`) and choose one trust mode below.
 2. Create or edit a service account. Its first alias is the OAuth2 `client_id`.
 3. Fill `details.cert_fingerprint` (sha256 DER hex, recommended) or `details.cert_subject` on that service account. The UI can calculate the fingerprint from a pasted PEM certificate.
 4. Request `/auth/oauth2/token` with `grant_type=client_credentials` and `client_id=<alias>` while presenting the certificate. A client secret is not required for mTLS-only clients.
+
+**Native TLS mode:** configure one or more client CA bundles on the Turna listener and leave `mtls.cert_header` empty:
+
+```yaml
+server:
+  http:
+    tls:
+      client_ca_files:
+        - ./client-ca.pem
+    # routers on this entrypoint still use tls: {}
+```
+
+The listener uses `VerifyClientCertIfGiven`: ordinary HTTPS requests need no client certificate, but any certificate a client presents must chain to one of these CAs. The auth middleware accepts only `r.TLS.VerifiedChains`; an unverified `PeerCertificates` entry is never treated as identity. Certificate validity and client-auth EKU are enforced.
+
+**TLS-terminating proxy mode:** the immediate proxy must verify the client chain and private-key proof, strip incoming identity headers, and write both the certificate and verification result itself. Configure all parts of the trust boundary:
+
+```json
+{
+  "enabled": true,
+  "cert_header": "ssl-client-cert",
+  "cert_verify_header": "ssl-client-verify",
+  "cert_verify_value": "SUCCESS",
+  "trusted_proxy_cidrs": ["192.0.2.10", "2001:db8:10::5"]
+}
+```
+
+For nginx, the corresponding values are normally `$ssl_client_escaped_cert` and `$ssl_client_verify`. Turna checks the connection's direct `RemoteAddr` against `trusted_proxy_cidrs`; it never trusts `X-Forwarded-For` for this decision. Prefer exact proxy addresses or a narrowly dedicated subnet, and enforce the same boundary with firewall/network policy because every trusted peer can assert certificate identity. A certificate header without an allowed peer and successful verification header is rejected. Existing configurations that set only `cert_header` must add these trust fields before header mode works again.
 
 Session integration is token based: mTLS authenticates the token request, not the session middleware directly. Use the issued access token as a bearer token on routes protected by `session`.
 
@@ -385,7 +413,7 @@ Config example:
 
 ### Passkeys (WebAuthn)
 
-Passkey support uses the dependency-free engine from `github.com/rakunlabs/ada/middleware/auth/strategy/passkey`. Credentials are stored in `auth_passkey_credentials`; in-flight challenges use the OAuth2 code store (`cache.code_store`), so multi-instance deployments should switch it to Redis.
+Passkey support uses the dependency-free engine from `github.com/rakunlabs/ada/middleware/auth/strategy/passkey`. Credentials are stored in `auth_passkey_credentials`; in-flight challenges use the OAuth2 code store (`cache.code_store`). The default database store and Redis work across instances; memory does not.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
@@ -560,4 +588,4 @@ Remote notes:
 
 - `iam` and `oauth2` middlewares are deprecated but still available for Badger-backed deployments.
 - API payload shapes match the old IAM API (`data.Response`, `UserExtended`, etc.), so existing clients largely work after switching base paths to `/auth/v1`.
-- Not ported: Badger binary backup/restore endpoints (`/v1/backup`, `/v1/restore`) and the Badger write-api/Redis sync model; PostgreSQL with version polling replaces them.
+- Not ported: Badger binary backup/restore endpoints (`/v1/backup`, `/v1/restore`) and the Badger write-api/Redis sync model; PostgreSQL notifications with version polling fallback replace them.

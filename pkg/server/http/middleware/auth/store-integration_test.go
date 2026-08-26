@@ -4,7 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,6 +47,40 @@ func TestStoreIntegration(t *testing.T) {
 
 	store := NewStore(db, cipher)
 	cache := NewCache(store)
+
+	if err := store.PutFlowCode(ctx, flowKindOAuthCode, "atomic-take-test", "value", time.Minute); err != nil {
+		t.Fatalf("put atomic flow: %v", err)
+	}
+	var takeCount atomic.Int32
+	var takeWG sync.WaitGroup
+	takeErrors := make(chan error, 16)
+	for range 16 {
+		takeWG.Add(1)
+		go func() {
+			defer takeWG.Done()
+
+			var value string
+			if err := store.TakeFlowCode(ctx, flowKindOAuthCode, "atomic-take-test", &value); err != nil {
+				if !errors.Is(err, data.ErrNotFound) {
+					takeErrors <- err
+				}
+				return
+			}
+			if value != "value" {
+				takeErrors <- fmt.Errorf("unexpected atomic flow value %q", value)
+				return
+			}
+			takeCount.Add(1)
+		}()
+	}
+	takeWG.Wait()
+	close(takeErrors)
+	for err := range takeErrors {
+		t.Errorf("take atomic flow: %v", err)
+	}
+	if got := takeCount.Load(); got != 1 {
+		t.Fatalf("atomic flow take count = %d, want 1", got)
+	}
 
 	created, err := store.CreateFlowCodeOnce(ctx, flowKindRevoked, "rotation-test", revokedToken{Type: "Refresh"}, time.Minute)
 	if err != nil || !created {

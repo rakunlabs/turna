@@ -15,16 +15,16 @@
   } from "../lib/state/settings.svelte";
 
   const pollInterval = $derived(getSettingString("cache", ["poll_interval"]));
-  const codeStore = $derived(getSettingString("cache", ["code_store", "active"]) || "memory");
+  const codeStore = $derived(getSettingString("cache", ["code_store", "active"]) || "database");
   const redisTLS = $derived(getSettingBool("cache", ["code_store", "redis", "tls", "enabled"]));
   const addresses = $derived(getSettingList("cache", ["code_store", "redis", "address"]));
 
-  const shared = $derived(codeStore === "redis");
+  const shared = $derived(codeStore !== "memory");
 </script>
 
 <Instrument
   title="Cache"
-  note="Two pieces of shared state: how often an instance notices that the configuration changed, and where the short-lived OAuth codes live while a flow is in progress."
+  note="Two pieces of shared state: how instances recover changes missed by PostgreSQL notifications, and where short-lived OAuth codes live while a flow is in progress."
 >
   {#snippet actions()}
     <button
@@ -45,9 +45,9 @@
     />
   {/snippet}
 
-  <Section title="Configuration polling" first>
+  <Section title="Change propagation" first>
     <div class="max-w-[52ch]">
-      <label class="stamp block" for="cache-poll-interval">Poll interval</label>
+      <label class="stamp block" for="cache-poll-interval">Fallback poll interval</label>
       <input
         id="cache-poll-interval"
         class="entry serial mt-1.5"
@@ -58,16 +58,16 @@
         oninput={(e) => setSettingString("cache", ["poll_interval"], e.currentTarget.value)}
       />
       <p id="cache-poll-interval-hint" class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
-        A Go duration. Every instance asks PostgreSQL this often whether the auth version advanced,
-        and reloads its settings when it did. This is the longest a change can take to reach another
-        instance — the one you committed on applies immediately.
+        Instances normally reload immediately through PostgreSQL LISTEN/NOTIFY. This Go duration
+        controls the fallback version check that recovers notifications missed during a disconnect.
+        The instance you committed on still applies the change synchronously.
       </p>
     </div>
   </Section>
 
   <Section
     title="OAuth code store"
-    note="Authorization codes, provider state, device codes and email codes are held here for the minutes a flow takes. They are not a cache of records — losing them fails whichever logins were mid-flight."
+    note="Authorization codes, provider callback state and passkey challenges are held here briefly while a flow is in progress. They are not a cache of records — losing them fails whichever logins were mid-flight."
   >
     <div class="max-w-[52ch]">
       <label class="stamp block" for="cache-code-store">Store</label>
@@ -78,17 +78,18 @@
         value={codeStore}
         onchange={(e) => setSettingString("cache", ["code_store", "active"], e.currentTarget.value)}
       >
+        <option value="database">database</option>
         <option value="memory">memory</option>
         <option value="redis">redis</option>
       </select>
       <p id="cache-code-store-hint" class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
-        Memory is correct for exactly one instance. With more than one replica, a browser that starts
-        a flow on one instance and returns to another finds no code there, so Redis is required.
+        Database is the shared default and uses PostgreSQL. Redis is an optional shared backend.
+        Memory is safe only when exactly one instance serves every step of every flow.
       </p>
     </div>
   </Section>
 
-  {#if shared}
+  {#if codeStore === "redis"}
     <Section title="Redis connection">
       <div class="grid gap-6">
         <div class="max-w-[62ch]">

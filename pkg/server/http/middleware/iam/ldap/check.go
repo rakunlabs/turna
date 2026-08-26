@@ -10,6 +10,10 @@ import (
 
 var ErrExceedPasswordRetryLimit = errors.New("exceed password retry limit")
 
+func ldapUserDN(username, userBaseDN string) string {
+	return fmt.Sprintf("uid=%s,%s", ldap.EscapeDN(username), userBaseDN)
+}
+
 func (l *Ldap) CheckPassword(username, password string) (bool, error) {
 	l.mUser.Lock()
 	defer l.mUser.Unlock()
@@ -26,7 +30,7 @@ func (l *Ldap) CheckPassword(username, password string) (bool, error) {
 	}
 
 	if _, err := l.connUser.SimpleBind(&ldap.SimpleBindRequest{
-		Username: fmt.Sprintf("uid=%s,%s", username, l.UserBaseDN),
+		Username: ldapUserDN(username, l.UserBaseDN),
 		Password: password,
 	}); err != nil {
 		switch {

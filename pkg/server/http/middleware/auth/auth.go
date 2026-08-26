@@ -180,8 +180,8 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 		return nil, fmt.Errorf("init auth jwt: %w", err)
 	}
 
-	// oauth2 code/state store; defaults to memory and can be moved to Redis
-	// through the runtime "cache" setting namespace.
+	// OAuth2 code/state store; defaults to the shared PostgreSQL flow table and
+	// can be moved to memory or Redis through the runtime "cache" namespace.
 	if _, err := m.codeStoreRuntime(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("init auth code store: %w", err)
@@ -204,7 +204,7 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 
 	into.ShutdownAdd(db.Close, "auth db")
 
-	go m.cache.Watch(ctx)
+	go m.cache.Watch(ctx, m.Database.DSN)
 	go m.watchLDAP(ctx)
 	go m.watchFlowCleanup(ctx)
 

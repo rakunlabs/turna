@@ -151,7 +151,7 @@ export const settingTemplates = {
   cache: {
     poll_interval: "5s",
     code_store: {
-      active: "memory",
+      active: "database",
       redis: {
         address: ["127.0.0.1:6379"],
         username: "",
@@ -220,6 +220,9 @@ export const settingTemplates = {
   mtls: {
     enabled: false,
     cert_header: "",
+    cert_verify_header: "",
+    cert_verify_value: "SUCCESS",
+    trusted_proxy_cidrs: [],
   },
   custom_info: {
     disabled: false,

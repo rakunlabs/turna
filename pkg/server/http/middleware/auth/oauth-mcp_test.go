@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
 
 func TestValidateResource(t *testing.T) {
@@ -157,6 +159,39 @@ func TestAuthorizationRequestClientDoesNotRequireSecret(t *testing.T) {
 	}
 	if client.ClientSecret != "secret" {
 		t.Fatalf("client = %+v", client)
+	}
+}
+
+func TestMetadataClientRejectsConfidentialFallback(t *testing.T) {
+	clientID := "https://127.0.0.1/client.json"
+	cache := NewCache(nil)
+	cache.snap.Store(&Snapshot{OAuthClients: map[string]AccessClient{
+		clientID: {ClientSecret: "must-not-be-downgraded"},
+	}})
+	m := &Auth{cache: cache}
+
+	if _, err := m.metadataClient(t.Context(), clientID); err == nil {
+		t.Fatal("metadataClient accepted a confidential stored fallback without authentication")
+	}
+
+	cache.snap.Store(&Snapshot{OAuthClients: map[string]AccessClient{clientID: {}}})
+	client, err := m.metadataClient(t.Context(), clientID)
+	if err != nil || !client.Public {
+		t.Fatalf("secretless metadata fallback = %+v, error = %v", client, err)
+	}
+
+	service := &data.User{
+		ID:             "url-service",
+		Alias:          []string{clientID},
+		ServiceAccount: true,
+		Details:        map[string]any{},
+	}
+	cache.snap.Store(&Snapshot{
+		Users: map[string]*data.User{service.ID: service},
+		Alias: map[string]string{clientID: service.ID},
+	})
+	if _, err := m.metadataClient(t.Context(), clientID); err == nil {
+		t.Fatal("metadataClient promoted a secretless service account to a public client")
 	}
 }
 

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/ada/middleware/auth/strategy/passkey"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
@@ -106,7 +105,11 @@ func (m *Auth) passkeySessionSave(ctx context.Context, key string, session *pass
 		return "", err
 	}
 
-	sessionID := ulid.Make().String()
+	sessionID, err := randomHex(32)
+	if err != nil {
+		return "", err
+	}
+
 	if err := codeStore.State.Set(ctx, key+sessionID, string(raw)); err != nil {
 		return "", err
 	}
@@ -124,12 +127,10 @@ func (m *Auth) passkeySessionTake(ctx context.Context, key, sessionID string) (*
 		return nil, err
 	}
 
-	raw, ok, err := codeStore.State.Get(ctx, key+sessionID)
+	raw, ok, err := codeStore.TakeState(ctx, key+sessionID)
 	if err != nil || !ok {
 		return nil, errors.New("passkey session not found or expired")
 	}
-
-	_ = codeStore.State.Delete(ctx, key+sessionID)
 
 	var session passkey.SessionData
 	if err := json.Unmarshal([]byte(raw), &session); err != nil {

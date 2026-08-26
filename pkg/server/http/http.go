@@ -3,10 +3,12 @@ package http
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +33,10 @@ type TLS struct {
 	// MinVersion is the minimum accepted TLS version: "1.2" or "1.3".
 	// Defaults to "1.3".
 	MinVersion string `cfg:"min_version"`
+	// ClientCAFiles contains PEM CA bundles used to verify optional client
+	// certificates. When set, the listener requests a client certificate and
+	// rejects any presented certificate that does not chain to these roots.
+	ClientCAFiles []string `cfg:"client_ca_files"`
 	// SelfSigned customizes the auto-generated certificate used when no
 	// certificate is configured in Store.
 	SelfSigned SelfSigned `cfg:"self_signed"`
@@ -168,6 +174,24 @@ func (h *HTTP) buildTLSConfig() (*tls.Config, error) {
 
 			return &fallback, nil
 		},
+	}
+
+	if len(h.TLS.ClientCAFiles) > 0 {
+		clientCAs := x509.NewCertPool()
+		for _, file := range h.TLS.ClientCAFiles {
+			caPEM, err := os.ReadFile(file)
+			if err != nil {
+				return nil, fmt.Errorf("cannot read client CA file %q: %w", file, err)
+			}
+			if !clientCAs.AppendCertsFromPEM(caPEM) {
+				return nil, fmt.Errorf("client CA file %q contains no certificates", file)
+			}
+		}
+
+		// mTLS is optional at the shared listener: routes that require it check
+		// VerifiedChains, while ordinary HTTPS routes continue to work.
+		cfg.ClientAuth = tls.VerifyClientCertIfGiven
+		cfg.ClientCAs = clientCAs
 	}
 
 	if acmeManager != nil {

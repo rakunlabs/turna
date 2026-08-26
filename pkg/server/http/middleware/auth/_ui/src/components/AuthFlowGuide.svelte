@@ -99,7 +99,8 @@
   -d 'grant_type=authorization_code' \\
   -d 'client_id=${clientID || "web-app"}' \\
   -d 'client_secret=change-me' \\
-  -d 'code=<code-from-redirect>'`);
+  -d 'code=<code-from-redirect>' \\
+  -d 'redirect_uri=<same-redirect-uri-from-authorization-request>'`);
 
   const apiSnippet = $derived(`server:
   http:
@@ -386,7 +387,7 @@
     </p>
     <p class="mt-3 max-w-[70ch] text-[13px] leading-[1.65] text-muted">
       Backup and restore are deliberately absent: they were tied to the old Badger store. This build
-      uses PostgreSQL migrations and version polling instead.
+      uses PostgreSQL migrations, change notifications, and fallback version polling instead.
     </p>
     <ul class="mt-5">
       {#each iamEndpoints as endpoint (endpoint.value)}
