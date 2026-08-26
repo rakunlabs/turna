@@ -30,6 +30,7 @@ const codeFlowSuccessPage = `<!doctype html>
   // only a fast path.
   if (window.opener && !window.opener.closed) {
     window.opener.postMessage("turna:login:success", window.location.origin);
+    window.opener.focus();
   }
   // Browsers may refuse to close this window (e.g. after a COOP
   // browsing-context swap). Never navigate it anywhere as a fallback; the

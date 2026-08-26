@@ -207,10 +207,10 @@ The middleware serves its complete flow logic as a framework-agnostic, zero-depe
 | `methods()` | Fetch the login method manifest (`GET {base}/auth/methods`, payload unwrapped). Do not hard-code provider names or URLs. |
 | `password(link, {username, password, rememberMe?, extra?})` | Password flow. Resolves when the session cookie is set. |
 | `passkey(link, {username?, rememberMe?})` | Two-request WebAuthn ceremony, including all base64url conversions. Omitting `username` starts the discoverable, username-less flow: the browser lists resident passkeys and the user picks an account. |
-| `code(link, {rememberMe?, target?, features?, signal?, onPopupClosed?})` | OAuth2 popup flow. Resolves on success via the `turna:login:success` message or the `auth_verify` cookie fallback (for COOP providers); rejects when the popup is blocked or `signal` aborts. `onPopupClosed` is a one-shot hint for showing a "window closed?" message while the flow keeps waiting. |
+| `code(link, {rememberMe?, target?, features?, signal?, onPopupClosed?})` | OAuth2 popup flow. A message from the exact popup triggers the authoritative `auth_verify` cookie check; polling the same cookie remains the COOP fallback. Rejects when the popup is blocked or `signal` aborts. `onPopupClosed` is a one-shot hint for showing a "window closed?" message while the flow keeps waiting. |
 | `signup(link, {email, password, name?, redirectUri?})` | Self-registration; returns `{message, verificationRequired}`. |
 | `signupVerify(link, code)` / `resetRequest(link, {email})` / `resetConfirm(link, code, password)` | Email verification and forgot-password flows. |
-| `finish()` | Safe post-login navigation: reloads inside Turna's own authorization-code flow, otherwise follows the validated `redirect_path` query parameter. |
+| `finish()` | Safe post-login navigation: reloads inside Turna's own authorization-code flow, relays verified completion to a same-origin opener when the page was SDK-opened as a popup, otherwise follows the validated `redirect_path` query parameter. |
 | `isWebAuthnSupported()`, `flowFromURL()`, `getRedirectPath()`, `isResponseTypeCode()`, `LoginError` | Helpers: hide passkey buttons on unsupported browsers, prefill verify/reset forms from mail magic links (`?flow=...&code=...`), and branch on normalized errors (`status`, `credentials`). |
 
 Honor `methods.disable_remember_me`: hide the remember-me choice when it is true (the server forces `remember_me` off anyway).
@@ -310,7 +310,7 @@ Open the link's `url` in a popup (or navigate top-level), appending `?remember_m
 GET /login/auth/code/keycloak?remember_me=true
 ```
 
-The middleware answers with a `307` redirect to the provider's authorization URL and later receives the callback (`?code=&state=`) on the same route. The callback stores the tokens in the session and serves a small success page that both posts the `turna:login:success` message to `window.opener` (same origin) and sets the short-lived, non-HttpOnly `auth_verify=true` cookie. A popup-based page should listen for the message **and** poll the cookie — COOP-enabled providers sever the `window.opener` handle, and the popup may even report `closed` while the sign-in is still in progress, so never reject just because the popup looks closed. When either signal fires, close the popup and finish.
+The middleware answers with a `307` redirect to the provider's authorization URL and later receives the callback (`?code=&state=`) on the same route. The callback stores the tokens in the session and serves a small success page that both posts the `turna:login:success` message to `window.opener` (same origin) and sets the short-lived, non-HttpOnly `auth_verify=true` cookie. The message is only a trigger: accept it from the exact popup and verify the cookie before completing. Keep polling the cookie as a fallback because COOP-enabled providers can sever the `window.opener` handle and may even make the popup report `closed` while sign-in is still in progress. SDK-opened nested login windows relay verified completion to their own same-origin opener, allowing a provider popup to close back through an intermediate login tab. Never reject solely because the popup looks closed.
 
 #### Passkey
 

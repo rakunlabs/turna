@@ -154,6 +154,8 @@ export type CreateLoginOptions = {
 // login page never reveals whether the user or the password was wrong.
 const credentialErrors = ["password not match", "user not found", "secret not match"];
 const credentialMessage = "Invalid username or password";
+const loginSuccessMessage = "turna:login:success";
+const popupFlowParam = "turna_popup";
 
 /** Read the standard {message, error} envelope, unwrapping any embedded
  * OAuth2 error body, and map credential failures to a friendly message. */
@@ -291,6 +293,28 @@ export const flowFromURL = (): FlowState => {
   return { flow, code: params.get("code") ?? "" };
 };
 
+// A login page opened by this SDK may itself open a provider popup. Relay the
+// verified completion one level at a time so each receiver can check its own
+// direct child window and the shared auth_verify cookie.
+const notifyPopupOpener = (): boolean => {
+  if (new URLSearchParams(window.location.search).get(popupFlowParam) !== "1") return false;
+
+  const opener = window.opener;
+  if (!opener || opener.closed) return false;
+
+  try {
+    if (opener.location.origin !== window.location.origin) return false;
+  } catch {
+    return false;
+  }
+
+  opener.postMessage(loginSuccessMessage, window.location.origin);
+  opener.focus();
+  window.close();
+
+  return true;
+};
+
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
@@ -405,14 +429,15 @@ export class TurnaLogin {
    * when the callback marks the login as complete, rejects when the popup
    * is blocked or `signal` aborts.
    *
-   * Completion is detected both by the `turna:login:success` window
-   * message and by polling the short-lived `auth_verify` cookie; the
-   * cookie fallback keeps the flow working when an upstream provider's
-   * COOP policy severs the `window.opener` handle.
+   * A `turna:login:success` message from the exact popup triggers an
+   * `auth_verify` cookie check. Polling the same cookie keeps the flow
+   * working when an upstream provider's COOP policy severs the
+   * `window.opener` handle.
    */
   code(link: LoginLink, options?: CodeOptions): Promise<void> {
     const target = new URL(link.url, window.location.origin);
     if (options?.rememberMe) target.searchParams.set("remember_me", "true");
+    target.searchParams.set(popupFlowParam, "1");
 
     const win = window.open(target.toString(), options?.target ?? "_blank", options?.features);
     if (!win) {
@@ -441,7 +466,11 @@ export class TurnaLogin {
       };
 
       const onMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin || event.data !== "turna:login:success") {
+        if (
+          event.origin !== window.location.origin ||
+          event.source !== win ||
+          event.data !== loginSuccessMessage
+        ) {
           return;
         }
 
@@ -549,13 +578,16 @@ export class TurnaLogin {
   /**
    * Complete a successful sign-in: reload the page when it is part of
    * Turna's own authorization-code flow (so the middleware can return the
-   * pending code), otherwise navigate to the safe `redirect_path` target.
+   * pending code), relay an SDK-opened nested popup to its same-origin
+   * opener, or navigate to the safe `redirect_path` target.
    */
   finish(): void {
     if (isResponseTypeCode()) {
       window.location.replace(window.location.href);
       return;
     }
+
+    if (notifyPopupOpener()) return;
 
     window.location.assign(getRedirectPath());
   }

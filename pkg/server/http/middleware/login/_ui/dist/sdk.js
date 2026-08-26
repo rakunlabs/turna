@@ -1,6 +1,6 @@
-var U = Object.defineProperty;
-var P = (r, t, e) => t in r ? U(r, t, { enumerable: !0, configurable: !0, writable: !0, value: e }) : r[t] = e;
-var u = (r, t, e) => P(r, typeof t != "symbol" ? t + "" : t, e);
+var S = Object.defineProperty;
+var A = (r, t, e) => t in r ? S(r, t, { enumerable: !0, configurable: !0, writable: !0, value: e }) : r[t] = e;
+var u = (r, t, e) => A(r, typeof t != "symbol" ? t + "" : t, e);
 function d(r) {
   const t = r instanceof Uint8Array ? r : new Uint8Array(r);
   let e = "";
@@ -15,7 +15,7 @@ function y(r) {
 function L() {
   return typeof window < "u" && typeof window.PublicKeyCredential < "u";
 }
-async function A(r) {
+async function E(r) {
   if (!L()) throw new Error("webauthn not supported");
   const t = {
     challenge: y(r.challenge),
@@ -54,7 +54,7 @@ class s extends Error {
     this.name = "LoginError", this.status = a?.status, this.credentials = a?.credentials ?? !1;
   }
 }
-const E = ["password not match", "user not found", "secret not match"], _ = "Invalid username or password", C = async (r) => {
+const C = ["password not match", "user not found", "secret not match"], _ = "Invalid username or password", P = "turna:login:success", R = "turna_popup", T = async (r) => {
   let t;
   try {
     const e = await r.json();
@@ -67,10 +67,10 @@ const E = ["password not match", "user not found", "secret not match"], _ = "Inv
       t = e.error_description ?? e.message ?? e.error ?? t;
     } catch {
     }
-  return typeof t == "string" && t ? E.includes(t.toLowerCase()) ? new s(_, { status: r.status, credentials: !0 }) : new s(t, { status: r.status }) : r.status === 401 ? new s(_, { status: 401, credentials: !0 }) : new s(`Request failed with status ${r.status}`, {
+  return typeof t == "string" && t ? C.includes(t.toLowerCase()) ? new s(_, { status: r.status, credentials: !0 }) : new s(t, { status: r.status }) : r.status === 401 ? new s(_, { status: 401, credentials: !0 }) : new s(`Request failed with status ${r.status}`, {
     status: r.status
   });
-}, c = (r) => r instanceof s ? r : r instanceof Error ? r.name === "NotAllowedError" ? new s("Passkey was cancelled or timed out") : new s(r.message) : new s(String(r)), v = async (r, t) => {
+}, c = (r) => r instanceof s ? r : r instanceof Error ? r.name === "NotAllowedError" ? new s("Passkey was cancelled or timed out") : new s(r.message) : new s(String(r)), U = async (r, t) => {
   let e;
   try {
     e = await fetch(r, { credentials: "same-origin", ...t });
@@ -78,10 +78,10 @@ const E = ["password not match", "user not found", "secret not match"], _ = "Inv
     throw c(a);
   }
   if (!e.ok)
-    throw await C(e);
+    throw await T(e);
   return e;
 }, i = async (r, t) => {
-  const e = await v(r, {
+  const e = await U(r, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(t)
@@ -89,13 +89,13 @@ const E = ["password not match", "user not found", "secret not match"], _ = "Inv
   if (e.status !== 204)
     return e.json().catch(() => {
     });
-}, S = (r) => {
+}, $ = (r) => {
   for (const t of document.cookie.split("; ")) {
     const e = t.indexOf("=");
     if (e > 0 && t.slice(0, e) === r)
       return decodeURIComponent(t.slice(e + 1));
   }
-}, b = (r) => `${window.location.origin}${window.location.pathname}?flow=${r}`, T = () => new URLSearchParams(window.location.search).get("response_type") === "code", $ = () => {
+}, b = (r) => `${window.location.origin}${window.location.pathname}?flow=${r}`, O = () => new URLSearchParams(window.location.search).get("response_type") === "code", M = () => {
   const r = new URLSearchParams(window.location.search).get("redirect_path");
   if (r?.startsWith("/") && !r.startsWith("//"))
     try {
@@ -105,11 +105,21 @@ const E = ["password not match", "user not found", "secret not match"], _ = "Inv
     } catch {
     }
   return "/";
-}, N = () => {
+}, q = () => {
   const r = new URLSearchParams(window.location.search), t = r.get("flow");
   return t !== "verify" && t !== "reset" ? null : { flow: t, code: r.get("code") ?? "" };
+}, I = () => {
+  if (new URLSearchParams(window.location.search).get(R) !== "1") return !1;
+  const r = window.opener;
+  if (!r || r.closed) return !1;
+  try {
+    if (r.location.origin !== window.location.origin) return !1;
+  } catch {
+    return !1;
+  }
+  return r.postMessage(P, window.location.origin), r.focus(), window.close(), !0;
 };
-class O {
+class N {
   constructor(t) {
     u(this, "base");
     if (t?.base) {
@@ -132,7 +142,7 @@ class O {
    * is a display label and is not guaranteed to be unique.
    */
   async methods() {
-    const e = await (await v(this.methodsURL())).json();
+    const e = await (await U(this.methodsURL())).json();
     return e?.payload ?? e;
   }
   /** Password sign-in. Resolves when the session cookie is set. */
@@ -165,7 +175,7 @@ class O {
           ...e?.username ? { username: e.username } : {},
           remember_me: a
         }
-      ), o = await A(n.options);
+      ), o = await E(n.options);
       if (!o)
         throw new s("Passkey ceremony was cancelled");
       await i(t.url, {
@@ -182,28 +192,28 @@ class O {
    * when the callback marks the login as complete, rejects when the popup
    * is blocked or `signal` aborts.
    *
-   * Completion is detected both by the `turna:login:success` window
-   * message and by polling the short-lived `auth_verify` cookie; the
-   * cookie fallback keeps the flow working when an upstream provider's
-   * COOP policy severs the `window.opener` handle.
+   * A `turna:login:success` message from the exact popup triggers an
+   * `auth_verify` cookie check. Polling the same cookie keeps the flow
+   * working when an upstream provider's COOP policy severs the
+   * `window.opener` handle.
    */
   code(t, e) {
     const a = new URL(t.url, window.location.origin);
-    e?.rememberMe && a.searchParams.set("remember_me", "true");
+    e?.rememberMe && a.searchParams.set("remember_me", "true"), a.searchParams.set(R, "1");
     const n = window.open(a.toString(), e?.target ?? "_blank", e?.features);
-    return n ? new Promise((o, R) => {
+    return n ? new Promise((o, v) => {
       let w;
-      const l = () => {
-        w && clearInterval(w), window.removeEventListener("message", f), e?.signal?.removeEventListener("abort", m);
-      }, h = () => S("auth_verify") !== "true" ? !1 : (l(), n.close(), o(), !0), f = (g) => {
-        g.origin !== window.location.origin || g.data !== "turna:login:success" || h();
+      const h = () => {
+        w && clearInterval(w), window.removeEventListener("message", p), e?.signal?.removeEventListener("abort", m);
+      }, f = () => $("auth_verify") !== "true" ? !1 : (h(), n.close(), o(), !0), p = (l) => {
+        l.origin !== window.location.origin || l.source !== n || l.data !== P || f();
       }, m = () => {
-        l(), n.close(), R(new s("Sign-in was aborted"));
+        h(), n.close(), v(new s("Sign-in was aborted"));
       };
-      window.addEventListener("message", f), e?.signal?.addEventListener("abort", m);
-      let p = 0;
+      window.addEventListener("message", p), e?.signal?.addEventListener("abort", m);
+      let g = 0;
       w = setInterval(() => {
-        h() || n.closed && (p += 1, p === 10 && e?.onPopupClosed?.());
+        f() || n.closed && (g += 1, g === 10 && e?.onPopupClosed?.());
       }, 500);
     }) : Promise.reject(
       new s("The sign-in window was blocked. Allow pop-ups and try again.")
@@ -264,23 +274,24 @@ class O {
   /**
    * Complete a successful sign-in: reload the page when it is part of
    * Turna's own authorization-code flow (so the middleware can return the
-   * pending code), otherwise navigate to the safe `redirect_path` target.
+   * pending code), relay an SDK-opened nested popup to its same-origin
+   * opener, or navigate to the safe `redirect_path` target.
    */
   finish() {
-    if (T()) {
+    if (O()) {
       window.location.replace(window.location.href);
       return;
     }
-    window.location.assign($());
+    I() || window.location.assign(M());
   }
 }
-const k = (r) => new O(r);
+const j = (r) => new N(r);
 export {
   s as LoginError,
-  O as TurnaLogin,
-  k as createLogin,
-  N as flowFromURL,
-  $ as getRedirectPath,
-  T as isResponseTypeCode,
+  N as TurnaLogin,
+  j as createLogin,
+  q as flowFromURL,
+  M as getRedirectPath,
+  O as isResponseTypeCode,
   L as isWebAuthnSupported
 };

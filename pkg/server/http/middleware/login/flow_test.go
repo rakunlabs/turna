@@ -63,6 +63,7 @@ func TestWriteCodeFlowSuccess(t *testing.T) {
 	for _, want := range []string{
 		"Sign-in complete",
 		`postMessage("turna:login:success"`,
+		"window.opener.focus()",
 		"window.close()",
 	} {
 		if !strings.Contains(body, want) {
