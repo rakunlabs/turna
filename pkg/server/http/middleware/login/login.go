@@ -84,6 +84,28 @@ type UI struct {
 	uiHandler      http.Handler `cfg:"-"`
 }
 
+// methodsGroup matches both the configured methods route and its canonical
+// alias. An empty group denotes the ordinary unfiltered methods endpoint.
+func (m *Login) methodsGroup(urlPath string) (string, bool) {
+	urlPath = strings.TrimSuffix(urlPath, "/")
+	for _, methodsPath := range []string{m.pathFixed.Methods, m.pathFixed.MethodsDefault} {
+		methodsPath = strings.TrimSuffix(methodsPath, "/")
+		if urlPath == methodsPath {
+			return "", true
+		}
+
+		prefix := methodsPath + "/"
+		if strings.HasPrefix(urlPath, prefix) {
+			group := strings.TrimPrefix(urlPath, prefix)
+			if group != "" && !strings.Contains(group, "/") {
+				return group, true
+			}
+		}
+	}
+
+	return "", false
+}
+
 func (m *Login) Init() error {
 	m.session = session.GlobalRegistry.Get(m.SessionMiddleware)
 	if m.session == nil {
@@ -239,9 +261,12 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 
 			switch method {
 			case http.MethodGet:
-				if urlPath == m.pathFixed.Methods || urlPath == m.pathFixed.Methods+"/" ||
-					urlPath == m.pathFixed.MethodsDefault || urlPath == m.pathFixed.MethodsDefault+"/" {
-					m.Methods(w, r)
+				if group, ok := m.methodsGroup(urlPath); ok {
+					if group == "" {
+						m.Methods(w, r)
+					} else {
+						m.MethodsGroup(w, group)
+					}
 
 					return
 				}

@@ -77,6 +77,14 @@ type InfSessionProviderGroups interface {
 	SessionProvidersGroup(group string) (providers map[string]Provider, version uint64, found bool)
 }
 
+// InfSessionProviderCatalog is implemented by issuers that can return the
+// merged provider list and every named group from one consistent snapshot.
+// Session uses the configured provider_source.group for validation while
+// retaining the other groups for presentation consumers such as login.
+type InfSessionProviderCatalog interface {
+	SessionProviderCatalog() (providers map[string]Provider, groups map[string]map[string]Provider, version uint64)
+}
+
 // InfAccessChecker is implemented by in-process identity providers that can
 // answer a host/path/method authorization check. An empty alias means an
 // anonymous request and therefore checks public resources only.

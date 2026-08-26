@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
 
 type Info struct {
@@ -67,6 +68,10 @@ func (m *Login) rememberMe(requested bool) bool {
 }
 
 func (m *Login) informationUIResponse() InfoUIResponse {
+	return m.informationUIResponseForProviders(m.session.Providers())
+}
+
+func (m *Login) informationUIResponseForProviders(providers map[string]session.Provider) InfoUIResponse {
 	info := m.Info.value()
 
 	response := InfoUIResponse{
@@ -74,7 +79,7 @@ func (m *Login) informationUIResponse() InfoUIResponse {
 		DisableRememberMe: info.DisableRememberMe,
 	}
 
-	for providerName, provider := range m.session.Providers() {
+	for providerName, provider := range providers {
 		if provider.Hide {
 			continue
 		}
@@ -150,6 +155,21 @@ func (m *Login) informationUIResponse() InfoUIResponse {
 func (m *Login) Methods(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	httputil.JSON(w, http.StatusOK, MethodsResponse{Payload: m.informationUIResponse()})
+}
+
+// MethodsGroup returns a presentation-only manifest for one auth-managed
+// provider group. The session's configured provider_source.group remains the
+// validation set; this endpoint never exposes the provider configuration.
+func (m *Login) MethodsGroup(w http.ResponseWriter, group string) {
+	w.Header().Set("Cache-Control", "no-store")
+	providers, ok := m.session.ProviderGroup(group)
+	if !ok {
+		writeError(w, http.StatusNotFound, "session provider group not found")
+
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, MethodsResponse{Payload: m.informationUIResponseForProviders(providers)})
 }
 
 // InformationUI keeps the historic unwrapped response shape for the

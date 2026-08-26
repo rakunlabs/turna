@@ -65,6 +65,9 @@ type providerState struct {
 	// providers is the static map overlaid with the dynamic source
 	// (dynamic wins on name conflict).
 	providers map[string]Provider
+	// providerGroups is the complete source-side group catalog. It is kept
+	// separate from providers: only providers participates in validation.
+	providerGroups map[string]map[string]Provider
 	// keyFunc validates tokens for the merged provider set. Nil when the
 	// initial dynamic build failed; callers fall back to the static keyfunc.
 	keyFunc InfKeyFuncParser
@@ -131,6 +134,25 @@ func (m *Session) GetProvider(name string) (Provider, bool) {
 	return p, ok
 }
 
+// ProviderGroup returns one source-side provider group for presentation. The
+// configured provider_source.group still exclusively controls the effective
+// Providers set used by login flows and token validation.
+func (m *Session) ProviderGroup(name string) (map[string]Provider, bool) {
+	if m.ProviderSource == nil || name == "" {
+		return nil, false
+	}
+
+	m.providerRefresh()
+	st := m.dynamic.Load()
+	if st == nil {
+		return nil, false
+	}
+
+	providers, ok := st.providerGroups[name]
+
+	return providers, ok
+}
+
 // KeyFuncParser returns the token validation keyfunc for the effective
 // provider set; the static keyfunc when no dynamic state exists yet.
 func (m *Session) KeyFuncParser() InfKeyFuncParser {
@@ -173,12 +195,22 @@ func (m *Session) refreshFromIssuer(src *ProviderSource) {
 	}
 
 	var (
-		dynamic map[string]Provider
-		version uint64
-		found   = true
+		dynamic        map[string]Provider
+		providerGroups map[string]map[string]Provider
+		version        uint64
+		found          = true
 	)
 
-	if src.Group != "" {
+	if catalog, ok := issuer.(InfSessionProviderCatalog); ok {
+		allProviders, groups, catalogVersion := catalog.SessionProviderCatalog()
+		providerGroups = groups
+		version = catalogVersion
+		if src.Group == "" {
+			dynamic = allProviders
+		} else {
+			dynamic, found = groups[src.Group]
+		}
+	} else if src.Group != "" {
 		gp, ok := issuer.(InfSessionProviderGroups)
 		if !ok {
 			return
@@ -214,7 +246,7 @@ func (m *Session) refreshFromIssuer(src *ProviderSource) {
 			"group", src.Group, "auth_middleware", src.AuthMiddleware)
 	}
 
-	m.applyDynamic(dynamic, version, time.Now())
+	m.applyDynamic(dynamic, providerGroups, version, time.Now())
 }
 
 func (m *Session) refreshFromURL(src *ProviderSource) {
@@ -256,13 +288,13 @@ func (m *Session) refreshFromURL(src *ProviderSource) {
 		return
 	}
 
-	m.applyDynamic(dynamic, version, now)
+	m.applyDynamic(dynamic, nil, version, now)
 }
 
 // applyDynamic merges the dynamic providers over the static map and swaps in
 // a new state. The keyfunc is rebuilt only when the keyfunc-relevant part of
 // the set changed. Callers must hold dynamicM.
-func (m *Session) applyDynamic(dynamic map[string]Provider, version uint64, now time.Time) {
+func (m *Session) applyDynamic(dynamic map[string]Provider, providerGroups map[string]map[string]Provider, version uint64, now time.Time) {
 	old := m.dynamic.Load()
 
 	merged := make(map[string]Provider, len(m.Provider)+len(dynamic))
@@ -274,10 +306,11 @@ func (m *Session) applyDynamic(dynamic map[string]Provider, version uint64, now 
 	}
 
 	st := &providerState{
-		providers: merged,
-		signature: keyFuncSignature(merged),
-		version:   version,
-		fetchedAt: now,
+		providers:      merged,
+		providerGroups: providerGroups,
+		signature:      keyFuncSignature(merged),
+		version:        version,
+		fetchedAt:      now,
 	}
 
 	if old != nil && old.signature == st.signature {

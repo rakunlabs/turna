@@ -61,6 +61,22 @@ func (f *fakeProviderIssuer) SessionProvidersGroup(group string) (map[string]Pro
 	return providers, f.version.Load(), ok
 }
 
+func (f *fakeProviderIssuer) SessionProviderCatalog() (map[string]Provider, map[string]map[string]Provider, uint64) {
+	var providerValues map[string]Provider
+	providers := f.providers.Load()
+	if providers != nil {
+		providerValues = *providers
+	}
+
+	var groupValues map[string]map[string]Provider
+	groups := f.groups.Load()
+	if groups != nil {
+		groupValues = *groups
+	}
+
+	return providerValues, groupValues, f.version.Load()
+}
+
 func (f *fakeProviderIssuer) set(providers map[string]Provider, version uint64) {
 	f.providers.Store(&providers)
 	f.version.Store(version)
@@ -232,6 +248,13 @@ func TestProviderSourceInProcessGroup(t *testing.T) {
 	if _, ok := providers["merged"]; ok {
 		t.Fatal("merged list must not be used in group mode")
 	}
+	external, ok := m.ProviderGroup("external")
+	if !ok || external["keycloak"].Oauth2.ClientID != "ext" {
+		t.Fatalf("presentation group unavailable: %+v, ok=%v", external, ok)
+	}
+	if _, ok := m.GetProvider("keycloak"); ok {
+		t.Fatal("presentation-only group must not enter the validation set")
+	}
 
 	// deleting the group applies the empty set on the next version change:
 	// its providers stop validating, static ones survive
@@ -245,6 +268,9 @@ func TestProviderSourceInProcessGroup(t *testing.T) {
 	}
 	if _, ok := providers["static"]; !ok {
 		t.Fatal("static provider must survive group deletion")
+	}
+	if _, ok := m.ProviderGroup("internal"); ok {
+		t.Fatal("deleted group must leave the presentation catalog")
 	}
 }
 

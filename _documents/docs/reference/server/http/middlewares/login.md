@@ -82,6 +82,8 @@ routers:
 
 Route overrides (`path.code`, `path.token`, `path.passkey`, ...) are advertised through the methods manifest, so SDK-based and custom UIs pick them up automatically. An overridden `path.methods` is injected into the served `sdk.js` itself, keeping `login.methods()` working without client-side configuration; the default `{base}/auth/methods` route keeps answering alongside the override, so the embedded login page (which bundles the SDK at build time and always calls the default path) is unaffected.
 
+When the attached session uses an in-process `provider_source.auth_middleware`, `GET {base}/auth/methods/{group}` returns the same sanitized manifest for one Auth-managed session-provider group. Auth changes apply on the next request. The endpoint only controls presentation: `provider_source.group` remains the session's effective flow and token-validation set, so a manifest from another group may be displayed but its providers are not accepted by that session. Unknown groups return `404`; provider configuration and client secrets are never included.
+
 ## Default Routes
 
 For `path.base: /login/`, default routes are:
@@ -89,6 +91,7 @@ For `path.base: /login/`, default routes are:
 | Method | Route | Purpose |
 | --- | --- | --- |
 | `GET` | `/login/auth/methods` | Available password, OAuth and passkey methods plus login-page metadata. Canonical endpoint used by the embedded UI. |
+| `GET` | `/login/auth/methods/{group}` | Methods from one Auth-managed provider group; available for in-process provider sources. |
 | `GET` | `/login/auth/code/{provider}` | Start or finish OAuth2 authorization code flow. |
 | `POST` | `/login/auth/token/{provider}` | Password flow token login. |
 | `POST` | `/login/auth/passkey/{provider}` | WebAuthn (passkey) begin/finish ceremony; works with providers backed by an in-process [`auth`](./auth) middleware (`auth_middleware` + `passkey: true`). |

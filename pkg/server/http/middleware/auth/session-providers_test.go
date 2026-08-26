@@ -143,6 +143,12 @@ func TestSessionProvidersGroup(t *testing.T) {
 
 	// the middleware satisfies the session group interface
 	var _ session.InfSessionProviderGroups = m
+	var _ session.InfSessionProviderCatalog = m
+
+	all, groups, version := m.SessionProviderCatalog()
+	if version != 5 || len(all) != 2 || len(groups["internal"]) != 1 {
+		t.Fatalf("catalog = all:%+v groups:%+v version:%d", all, groups, version)
+	}
 }
 
 func TestSessionProvidersGroupAPI(t *testing.T) {

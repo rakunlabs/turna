@@ -33,6 +33,16 @@ func (m *Auth) SessionProvidersGroup(group string) (map[string]session.Provider,
 	return providers, snap.Version, ok
 }
 
+// SessionProviderCatalog implements session.InfSessionProviderCatalog. Both
+// maps come from the same immutable auth snapshot, allowing a session to keep
+// all groups available for login presentation while validating with only its
+// configured provider_source.group.
+func (m *Auth) SessionProviderCatalog() (map[string]session.Provider, map[string]map[string]session.Provider, uint64) {
+	snap := m.cache.Snapshot()
+
+	return snap.SessionProviders, snap.SessionProviderGroups, snap.Version
+}
+
 // SessionProvidersAPI answers GET /v1/session-providers with the UI-managed
 // session provider list (ungrouped plus all groups merged) and the auth
 // version in meta. Remote turna instances poll it through

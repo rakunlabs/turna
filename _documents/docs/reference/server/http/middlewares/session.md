@@ -221,7 +221,7 @@ session:
 | Field | Default | Description |
 | --- | --- | --- |
 | `auth_middleware` | | In-process auth middleware instance name. The list is read from its cache; a commit in the UI applies on the next request (no polling, no HTTP). Exactly one of `auth_middleware` or `url` must be set. |
-| `group` | | Pull only one named provider group of the list instead of the full merged set. In-process mode only; for `url` mode append the group to the endpoint path instead. A missing group applies as the empty set (static providers keep working). |
+| `group` | | Use only one named provider group as the effective provider and token-validation set. In-process mode retains the complete group catalog for presentation endpoints such as login `methods/{group}`, but providers outside the selected group are not accepted by session. For `url` mode append the group to the endpoint path instead. A missing group applies as the empty set (static providers keep working). |
 | `url` | | `GET /v1/session-providers` endpoint of a remote auth middleware — or `GET /v1/session-providers/{group}` for one named group. The endpoint is admin-protected because the payload carries provider client secrets. |
 | `ttl` | `30s` | Refresh interval for `url` sources. Between refreshes the last fetched list is served; a failed refresh keeps the last known list and backs off one TTL window. |
 | `headers` | | Extra headers for `url` requests (authentication). |
@@ -233,9 +233,12 @@ The list can be split into named groups in the auth UI, so different session
 middleware instances pull different subsets from the same auth — e.g. an
 `internal` group for the intranet gateway and an `external` group for the
 public one. Ungrouped providers form the shared list; without a group
-selection an instance receives the shared list plus every group merged, with
-one it receives exactly that group. Provider keys are unique across all
-groups, so the merged view is conflict-free.
+selection an instance receives the shared list plus every group merged. With
+one, only that group enters the effective provider and token-validation set;
+an in-process session also retains the other groups as a read-only catalog so
+the login middleware can produce filtered method manifests without exposing
+provider secrets. Provider keys are unique across all groups, so the merged
+view is conflict-free.
 
 ```yaml
 # instance A: only the "internal" group
