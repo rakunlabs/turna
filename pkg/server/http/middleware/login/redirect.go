@@ -9,8 +9,34 @@ import (
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/claims"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
+
+// pkceParams reads an optional RFC 7636 challenge from an authorization
+// request; an empty method defaults to "plain".
+func pkceParams(query url.Values) (string, string, error) {
+	challenge := query.Get("code_challenge")
+	method := query.Get("code_challenge_method")
+
+	if challenge == "" {
+		if method != "" {
+			return "", "", fmt.Errorf("code_challenge_method without code_challenge")
+		}
+
+		return "", "", nil
+	}
+
+	switch method {
+	case "":
+		method = "plain"
+	case "plain", "S256":
+	default:
+		return "", "", fmt.Errorf("code_challenge_method %q not supported", method)
+	}
+
+	return challenge, method, nil
+}
 
 type Redirect struct {
 	// BaseURL is the base URL to use for the redirect.
@@ -150,7 +176,27 @@ func (m *Login) AuthCodeReturn(w http.ResponseWriter, r *http.Request, customCla
 		return
 	}
 
-	code, err := m.store.CodeGen(r.Context(), alias, strings.Split(scope, " "))
+	// PKCE (RFC 7636) is passed through so the token endpoint can verify it
+	// instead of silently dropping a challenge the caller asked for.
+	codeChallenge, codeChallengeMethod, err := pkceParams(query)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+
+		return
+	}
+
+	// Bind the code to the requesting client and redirect target; the auth
+	// middleware token endpoint rejects codes without these bindings
+	// (RFC 6749 §4.1.3).
+	code, err := m.store.CodeGen(r.Context(), store.Code{
+		Alias:               alias,
+		Scope:               strings.Fields(scope),
+		Nonce:               query.Get("nonce"),
+		ClientID:            query.Get("client_id"),
+		RedirectURI:         redirectURI,
+		CodeChallenge:       codeChallenge,
+		CodeChallengeMethod: codeChallengeMethod,
+	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate code")
 

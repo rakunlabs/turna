@@ -236,6 +236,7 @@ func (m *Oauth2) APIAuth(w http.ResponseWriter, r *http.Request) {
 		OrgState:           r.URL.Query().Get("state"),
 		Scope:              strings.Fields(r.URL.Query().Get("scope")),
 		Nonce:              r.URL.Query().Get("nonce"),
+		ClientID:           r.URL.Query().Get("client_id"),
 		BrowserBindingHash: auth.StateBindingHash(browserBinding),
 	})
 	if err != nil {
@@ -456,10 +457,14 @@ func (m *Oauth2) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// carry the client/redirect bindings of the authorization request so the
+	// code can be verified at exchange time (RFC 6749 §4.1.3)
 	codeValue, err := store.Encode(store.Code{
-		Alias: alias,
-		Scope: stateValue.Scope,
-		Nonce: stateValue.Nonce,
+		Alias:       alias,
+		Scope:       stateValue.Scope,
+		Nonce:       stateValue.Nonce,
+		ClientID:    stateValue.ClientID,
+		RedirectURI: stateValue.RedirectURI,
 	})
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sync"
 
 	"github.com/oklog/ulid/v2"
@@ -195,8 +196,24 @@ func (m *Auth) ensureJWT(ctx context.Context) error {
 }
 
 func clientSecretMatches(expected, provided string) bool {
-	return expected != "" && provided != "" &&
-		subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) == 1
+	if expected == "" || provided == "" {
+		return false
+	}
+
+	if subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) == 1 {
+		return true
+	}
+
+	// RFC 6749 §2.3.1 requires credentials in the Basic authorization header
+	// to be form-urlencoded, so a secret holding "+", "/" or "=" arrives
+	// percent-encoded. The verbatim value is compared first, keeping clients
+	// that skip the encoding working.
+	decoded, err := url.QueryUnescape(provided)
+	if err != nil || decoded == provided {
+		return false
+	}
+
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(decoded)) == 1
 }
 
 // GetAccessClient resolves and authenticates a confidential OAuth client.

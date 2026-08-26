@@ -58,6 +58,12 @@ server:
 | `store` | Temporary code/state store. Empty means memory; `active: redis` uses Redis. |
 | `redirect_white_list` | Allowed redirect URI prefixes when minting internal codes. Empty allows all. |
 
+### Internal authorization codes
+
+A logged-in `GET {base}?response_type=code&client_id=...&redirect_uri=...` mints an internal authorization code in `store` and redirects back with `?code=&state=`. The code is bound to the request's `client_id` and `redirect_uri` and carries `nonce` plus any `code_challenge`/`code_challenge_method` (RFC 7636); the [`auth`](./auth) middleware token endpoint verifies those bindings and rejects unbound codes with `code was issued to another client`. Send the same `client_id` and `redirect_uri` at the exchange.
+
+This matters when one login page is used as the provider of another (nested login windows): the outer login must forward `client_id` and redeem with the same value, and both sides must share the same code store as the auth middleware for the code to be found at all. `redirect_white_list` should be set whenever codes are minted this way — an empty list accepts every redirect target.
+
 ### Custom paths and nested bases
 
 `path.base` may live anywhere, including nested under another middleware's prefix (e.g. `path.base: /auth/login/` next to an [`auth`](./auth) middleware at `/auth`). All reserved routes, the embedded UI and the SDK derive from the base relatively, so no further configuration is needed — but register the router for both the slashless and wildcard forms, otherwise the exact `/auth/login` request falls through to the broader `/auth/*` router instead of reaching the login page:

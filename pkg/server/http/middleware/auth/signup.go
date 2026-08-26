@@ -123,7 +123,7 @@ func (m *Auth) signupClient(w http.ResponseWriter, r *http.Request, req SignupRe
 	clientID := req.ClientID
 	if clientID == "" {
 		if basicID, basicSecret, ok := r.BasicAuth(); ok {
-			clientID, req.ClientSecret = basicID, basicSecret
+			clientID, req.ClientSecret = m.basicClientCredentials(basicID, basicSecret)
 		}
 	}
 

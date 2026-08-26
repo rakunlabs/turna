@@ -113,7 +113,7 @@ func (m *Auth) APIDeviceAuthorization(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clientID, clientSecret := clientCredentials(r, req)
+	clientID, clientSecret := m.clientCredentials(r, req)
 	if clientID == "" {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_client",

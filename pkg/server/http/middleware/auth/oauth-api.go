@@ -102,12 +102,53 @@ func compareBcryptBase64(hash, password string) error {
 	return bcrypt.CompareHashAndPassword(hashBytes, []byte(password))
 }
 
-func clientCredentials(r *http.Request, req AccessTokenRequest) (string, string) {
+// clientCredentials reads the client credentials of a token-style request:
+// the Basic authorization header takes precedence over the request body.
+func (m *Auth) clientCredentials(r *http.Request, req AccessTokenRequest) (string, string) {
 	if clientID, clientSecret, ok := r.BasicAuth(); ok {
-		return clientID, clientSecret
+		return m.basicClientCredentials(clientID, clientSecret)
 	}
 
 	return req.ClientID, req.ClientSecret
+}
+
+// basicClientCredentials normalizes the values of a Basic authorization
+// header. RFC 6749 §2.3.1 requires them to be form-urlencoded, which is what
+// Go's own oauth2 client and this project's own client do, but plenty of
+// clients send them verbatim. The decoded client id is therefore only used
+// when the verbatim one names no client, and the secret is only decoded
+// alongside it; clientSecretMatches applies the same fallback on its own for
+// the far more common case of a plain id with an encoded secret.
+func (m *Auth) basicClientCredentials(clientID, clientSecret string) (string, string) {
+	decodedID, err := url.QueryUnescape(clientID)
+	if err != nil || decodedID == clientID {
+		return clientID, clientSecret
+	}
+
+	if m.clientIDKnown(clientID) || !m.clientIDKnown(decodedID) {
+		return clientID, clientSecret
+	}
+
+	decodedSecret, err := url.QueryUnescape(clientSecret)
+	if err != nil {
+		return decodedID, clientSecret
+	}
+
+	return decodedID, decodedSecret
+}
+
+// clientIDKnown reports whether a client id resolves to a client without
+// authenticating it.
+func (m *Auth) clientIDKnown(clientID string) bool {
+	if clientID == "" {
+		return false
+	}
+
+	if _, ok := m.lookupClient(clientID); ok {
+		return true
+	}
+
+	return isClientMetadataURL(clientID)
 }
 
 // tokenAudience builds the aud claim: the fixed local audience plus any
@@ -436,7 +477,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clientID, clientSecret := clientCredentials(r, accessTokenRequest)
+	clientID, clientSecret := m.clientCredentials(r, accessTokenRequest)
 	if clientID == "" {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_client",

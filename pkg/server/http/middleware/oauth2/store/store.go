@@ -128,17 +128,18 @@ func (m *StoreCache) take(ctx context.Context, store cache.Cacher[string, string
 	return value, true, nil
 }
 
-func (m *StoreCache) CodeGen(ctx context.Context, alias string, scope []string) (string, error) {
+// CodeGen stores an authorization code and returns its identifier. The caller
+// is expected to fill the client/redirect bindings of code so the token
+// endpoint can verify them (RFC 6749 §4.1.3); an unbound code is rejected by
+// the auth middleware.
+func (m *StoreCache) CodeGen(ctx context.Context, code Code) (string, error) {
 	// create code flow response
 	codeID, err := oauth2auth.NewState()
 	if err != nil {
 		return "", err
 	}
 
-	codeValue, err := Encode(Code{
-		Alias: alias,
-		Scope: scope,
-	})
+	codeValue, err := Encode(code)
 	if err != nil {
 		return "", err
 	}

@@ -181,7 +181,7 @@ func (m *Auth) APIRevoke(w http.ResponseWriter, r *http.Request) {
 
 	clientID, clientSecret := req.ClientID, req.ClientSecret
 	if id, secret, ok := r.BasicAuth(); ok {
-		clientID, clientSecret = id, secret
+		clientID, clientSecret = m.basicClientCredentials(id, secret)
 	}
 
 	if clientID == "" {
@@ -244,7 +244,7 @@ func (m *Auth) APIIntrospect(w http.ResponseWriter, r *http.Request) {
 
 	clientID, clientSecret := req.ClientID, req.ClientSecret
 	if id, secret, ok := r.BasicAuth(); ok {
-		clientID, clientSecret = id, secret
+		clientID, clientSecret = m.basicClientCredentials(id, secret)
 	}
 
 	if clientID == "" {

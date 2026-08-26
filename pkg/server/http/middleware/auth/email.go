@@ -360,7 +360,7 @@ func (m *Auth) APIEmailCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clientID, clientSecret := clientCredentials(r, req)
+	clientID, clientSecret := m.clientCredentials(r, req)
 	var emailClient *AccessClient
 	if clientID != "" {
 		emailClient, _ = m.resolveClient(clientID, clientSecret)
