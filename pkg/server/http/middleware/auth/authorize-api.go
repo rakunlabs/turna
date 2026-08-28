@@ -260,6 +260,7 @@ button { flex: 1; padding: .6rem 1rem; border-radius: 6px; border: 1px solid tra
 .deny { background: transparent; border-color: #9ca3af; color: inherit; }
 .muted { color: #6b7280; font-size: .85rem; }
 .error { color: #dc2626; }
+.remember { display: flex; align-items: center; gap: .5rem; margin-top: 1rem; font-size: .9rem; }
 </style>
 </head>
 <body>
@@ -286,6 +287,9 @@ button { flex: 1; padding: .6rem 1rem; border-radius: 6px; border: 1px solid tra
 {{- end}}
 <form method="post" action="{{.Action}}">
 <input type="hidden" name="flow" value="{{.Flow}}">
+{{- if .RememberMe}}
+<label class="remember"><input type="checkbox" name="remember_me" value="true"> Remember me — keep <strong>{{.ClientName}}</strong> signed in longer</label>
+{{- end}}
 <div class="actions">
 <button class="deny" type="submit" name="action" value="deny">Deny</button>
 <button class="approve" type="submit" name="action" value="approve">Allow</button>
@@ -305,6 +309,8 @@ type consentPageData struct {
 	Flow       string
 	Action     string
 	Error      string
+	// RememberMe shows the remember-me checkbox on the consent form.
+	RememberMe bool
 }
 
 func (m *Auth) renderConsent(w http.ResponseWriter, code int, data consentPageData) {
@@ -369,7 +375,7 @@ func (m *Auth) ConsentAPI(w http.ResponseWriter, r *http.Request) {
 
 	// trusted first-party clients skip the consent screen
 	if client != nil && client.SkipConsent {
-		m.finishAuthorize(w, r, flowID, &flow, userAlias, true)
+		m.finishAuthorize(w, r, flowID, &flow, userAlias, true, false)
 
 		return
 	}
@@ -388,6 +394,7 @@ func (m *Auth) ConsentAPI(w http.ResponseWriter, r *http.Request) {
 		Resources:  flow.Resources,
 		Flow:       flowID,
 		Action:     m.PrefixPath + "/oauth2/consent",
+		RememberMe: !m.cache.Snapshot().Authorize.DisableRememberMe,
 	})
 }
 
@@ -416,12 +423,16 @@ func (m *Auth) ConsentDecisionAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m.finishAuthorize(w, r, flowID, &flow, userAlias, r.PostFormValue("action") == "approve")
+	rememberMe := r.PostFormValue("remember_me") == "true" && !m.cache.Snapshot().Authorize.DisableRememberMe
+
+	m.finishAuthorize(w, r, flowID, &flow, userAlias, r.PostFormValue("action") == "approve", rememberMe)
 }
 
 // finishAuthorize consumes the flow and either issues an authorization code
-// bound to the client/redirect/PKCE/resource or reports the denial.
-func (m *Auth) finishAuthorize(w http.ResponseWriter, r *http.Request, flowID string, flow *authorizeFlow, userAlias string, approved bool) {
+// bound to the client/redirect/PKCE/resource or reports the denial. The
+// rememberMe choice from the consent form is carried into the code so the
+// token endpoint mints a remembered (sliding-window) session.
+func (m *Auth) finishAuthorize(w http.ResponseWriter, r *http.Request, flowID string, flow *authorizeFlow, userAlias string, approved, rememberMe bool) {
 	if err := m.store.TakeFlowCode(r.Context(), flowKindAuthorize, flowID, flow); err != nil {
 		m.renderConsent(w, http.StatusNotFound, consentPageData{Error: "Authorization request not found or expired. Start over from the application."})
 
@@ -464,6 +475,7 @@ func (m *Auth) finishAuthorize(w http.ResponseWriter, r *http.Request, flowID st
 		ClientID:            flow.ClientID,
 		RedirectURI:         flow.RedirectURI,
 		Resources:           flow.Resources,
+		RememberMe:          rememberMe,
 	})
 	if err != nil {
 		m.authorizeErrorRedirect(w, r, flow.RedirectURI, flow.State, "server_error", err.Error())

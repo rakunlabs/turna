@@ -42,6 +42,9 @@ type Code struct {
 	// Resources are RFC 8707 resource indicators requested during
 	// authorization; they end up in the access token audience.
 	Resources []string `json:"resources,omitempty"`
+	// RememberMe carries the user's consent-screen choice to extend the
+	// session lifetime of the tokens issued for this code.
+	RememberMe bool `json:"remember_me,omitempty"`
 }
 
 func Encode[T any](state T) (string, error) {

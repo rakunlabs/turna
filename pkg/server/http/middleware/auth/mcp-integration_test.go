@@ -213,6 +213,9 @@ func TestAuthMCPIntegration(t *testing.T) {
 		if !strings.Contains(string(page[:n]), "MCP Test Client") {
 			t.Errorf("consent page misses client name")
 		}
+		if !strings.Contains(string(page[:n]), `name="remember_me"`) {
+			t.Errorf("consent page misses remember-me checkbox")
+		}
 
 		flowID := consentURL[strings.Index(consentURL, "flow=")+len("flow="):]
 
@@ -273,13 +276,14 @@ func TestAuthMCPIntegration(t *testing.T) {
 			t.Fatal("token endpoint accepted a foreign client for a bound code")
 		}
 
-		// the code is one-time; re-run the authorize+consent quickly
+		// the code is one-time; re-run the authorize+consent quickly. The
+		// remember-me choice comes from the consent screen (not the token
+		// request), matching real MCP clients that never send remember_me.
 		authCode = reAuthorize(t, server.URL, client, registration.ClientID, redirectURI, challenge, resource)
 
 		form.Set("client_id", registration.ClientID)
 		form.Set("code", authCode)
 		form.Set("resource", resource)
-		form.Set("remember_me", "true")
 
 		res, err = http.DefaultClient.PostForm(server.URL+"/auth/oauth2/token", form)
 		if err != nil {
@@ -503,7 +507,7 @@ func reAuthorize(t *testing.T, baseURL string, client *http.Client, clientID, re
 	consentURL := res.Header.Get("Location")
 	flowID := consentURL[strings.Index(consentURL, "flow=")+len("flow="):]
 
-	form := url.Values{"flow": {flowID}, "action": {"approve"}}
+	form := url.Values{"flow": {flowID}, "action": {"approve"}, "remember_me": {"true"}}
 	req, _ := http.NewRequest(http.MethodPost, baseURL+"/auth/oauth2/consent", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("X-User", "mcp-it-user")

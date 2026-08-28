@@ -307,6 +307,10 @@ type AuthorizeSettings struct {
 	// back reference, matching the login middleware convention). Empty shows
 	// an error asking the user to log in first.
 	LoginURL string `json:"login_url"`
+	// DisableRememberMe hides the remember-me checkbox on the consent screen
+	// and ignores the form value, so authorization-code sessions always use
+	// the standard refresh lifetime.
+	DisableRememberMe bool `json:"disable_remember_me"`
 
 	flowLifetime time.Duration
 }

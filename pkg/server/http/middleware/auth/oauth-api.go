@@ -1070,11 +1070,13 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// nonce from the original authorization request lands in the id_token
+		// nonce from the original authorization request lands in the id_token;
+		// remember_me can come from the consent screen (stored in the code) or
+		// from the token request itself
 		m.writeTokenWithOptions(w, r, user, clientID, codeValue.Scope, accessClient.Scope, tokenIssueOptions{
 			Nonce:      codeValue.Nonce,
 			Resources:  resources,
-			RememberMe: accessTokenRequest.RememberMe,
+			RememberMe: accessTokenRequest.RememberMe || codeValue.RememberMe,
 		})
 
 		return
