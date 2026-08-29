@@ -146,6 +146,18 @@ func (m *Auth) PutSetting(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if namespace == "passkey" {
+		var setting PasskeySettings
+		if err := json.Unmarshal(req.Value, &setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("cannot decode passkey setting", err, http.StatusBadRequest))
+			return
+		}
+		if err := validatePasskeySettings(setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("invalid passkey setting", err, http.StatusBadRequest))
+			return
+		}
+	}
+
 	// the jwt namespace carries the signing key; reject broken material early
 	if namespace == jwtSettingNamespace {
 		var setting jwtSetting

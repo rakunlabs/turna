@@ -136,7 +136,7 @@ func (m *Login) CodeFlow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := sessionM.SetToken(w, r, data, providerName); err != nil {
+	if err := sessionM.SetLoginToken(w, r, data, providerName, session.AuthenticationMethodCode); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 
 		return
@@ -202,7 +202,7 @@ func (m *Login) PasswordFlow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := sessionM.SetToken(w, r, data, providerName); err != nil {
+	if err := sessionM.SetLoginToken(w, r, data, providerName, session.AuthenticationMethodPassword); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 
 		return
@@ -291,7 +291,7 @@ func (m *Login) PasskeyFlow(w http.ResponseWriter, r *http.Request) {
 		AccessToken string `json:"access_token"`
 	}
 	if statusCode >= 200 && statusCode <= 299 && json.Unmarshal(respBody, &token) == nil && token.AccessToken != "" {
-		if err := sessionM.SetToken(w, r, respBody, providerName); err != nil {
+		if err := sessionM.SetLoginToken(w, r, respBody, providerName, session.AuthenticationMethodPasskey); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 
 			return

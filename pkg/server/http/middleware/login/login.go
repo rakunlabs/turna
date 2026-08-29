@@ -66,6 +66,7 @@ type PathFixed struct {
 	InfoUI         string
 	Token          string
 	Passkey        string
+	PasskeyEnroll  string
 	Status         string
 	Signup         string
 	SignupVerify   string
@@ -166,6 +167,7 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 	} else {
 		m.pathFixed.Passkey = path.Join(m.Path.Base, "auth/passkey")
 	}
+	m.pathFixed.PasskeyEnroll = path.Join(m.Path.Base, "auth/passkey/enrollment")
 
 	if m.Path.Methods != "" {
 		m.pathFixed.Methods = m.Path.Methods
@@ -261,6 +263,12 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 
 			switch method {
 			case http.MethodGet:
+				if urlPath == m.pathFixed.PasskeyEnroll {
+					m.PasskeyEnrollmentStatus(w, r)
+
+					return
+				}
+
 				if group, ok := m.methodsGroup(urlPath); ok {
 					if group == "" {
 						m.Methods(w, r)
@@ -335,6 +343,12 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 
 				return
 			case http.MethodPost:
+				if urlPath == m.pathFixed.PasskeyEnroll {
+					m.PasskeyEnrollmentRegister(w, r)
+
+					return
+				}
+
 				if strings.HasPrefix(urlPath, m.pathFixed.Token) {
 					m.PasswordFlow(w, r)
 

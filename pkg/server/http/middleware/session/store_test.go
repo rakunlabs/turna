@@ -2,10 +2,56 @@ package session
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session/store"
 )
+
+func TestLoginAuthenticationMethodSurvivesRefresh(t *testing.T) {
+	m := &Session{
+		CookieName: "auth_session",
+		Store: Store{File: &store.File{
+			SessionKey: "test-session-key",
+			Path:       t.TempDir(),
+		}},
+	}
+	if err := m.SetStore(context.Background()); err != nil {
+		t.Fatalf("SetStore: %v", err)
+	}
+
+	loginRequest := httptest.NewRequest(http.MethodPost, "https://example.com/login", nil)
+	loginResponse := httptest.NewRecorder()
+	if err := m.SetLoginToken(loginResponse, loginRequest, []byte(`{"access_token":"first"}`), "auth", AuthenticationMethodCode); err != nil {
+		t.Fatalf("SetLoginToken: %v", err)
+	}
+
+	loginCookies := loginResponse.Result().Cookies()
+	if len(loginCookies) != 1 {
+		t.Fatalf("login cookies = %d, want 1", len(loginCookies))
+	}
+	refreshRequest := httptest.NewRequest(http.MethodPost, "https://example.com/refresh", nil)
+	refreshRequest.AddCookie(loginCookies[0])
+	if method, err := m.GetAuthenticationMethod(refreshRequest); err != nil || method != AuthenticationMethodCode {
+		t.Fatalf("method after login = %q, err=%v", method, err)
+	}
+
+	refreshResponse := httptest.NewRecorder()
+	if err := m.SetToken(refreshResponse, refreshRequest, []byte(`{"access_token":"refreshed"}`), "auth"); err != nil {
+		t.Fatalf("SetToken refresh: %v", err)
+	}
+	refreshCookies := refreshResponse.Result().Cookies()
+	if len(refreshCookies) != 1 {
+		t.Fatalf("refresh cookies = %d, want 1", len(refreshCookies))
+	}
+
+	checkRequest := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
+	checkRequest.AddCookie(refreshCookies[0])
+	if method, err := m.GetAuthenticationMethod(checkRequest); err != nil || method != AuthenticationMethodCode {
+		t.Fatalf("method after refresh = %q, err=%v", method, err)
+	}
+}
 
 func TestSetStoreSessionKey(t *testing.T) {
 	tests := []struct {

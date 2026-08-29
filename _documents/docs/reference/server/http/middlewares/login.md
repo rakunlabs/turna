@@ -95,6 +95,8 @@ For `path.base: /login/`, default routes are:
 | `GET` | `/login/auth/code/{provider}` | Start or finish OAuth2 authorization code flow. |
 | `POST` | `/login/auth/token/{provider}` | Password flow token login. |
 | `POST` | `/login/auth/passkey/{provider}` | WebAuthn (passkey) begin/finish ceremony; works with providers backed by an in-process [`auth`](./auth) middleware (`auth_middleware` + `passkey: true`). |
+| `GET` | `/login/auth/passkey/enrollment` | Return the connected Auth issuer's post-login enrollment decision for the validated session. |
+| `POST` | `/login/auth/passkey/enrollment` | Begin/finish optional passkey registration for the validated session subject. No user ID is accepted from the browser. |
 | `POST` | `/login/auth/signup/{provider}` | Self-registration proxy to the auth middleware (when its `signup` setting is enabled). |
 | `POST` | `/login/auth/signup/verify/{provider}` | Email verification code confirmation. |
 | `POST` | `/login/auth/reset/{provider}` | Forgot-password mail request. |
@@ -219,6 +221,8 @@ The middleware serves its complete flow logic as a framework-agnostic, zero-depe
 | `code(link, {rememberMe?, target?, features?, signal?, onPopupClosed?})` | OAuth2 popup flow. Each call mints a flow id, sends it as `turna_flow`, and waits for the matching `auth_verify_<flow>` cookie, so a nested sign-in inside the popup can never complete this call. A message from the exact popup triggers the authoritative cookie check; polling the same cookie remains the COOP fallback. Rejects when the popup is blocked or `signal` aborts. `onPopupClosed` is a one-shot hint for showing a "window closed?" message while the flow keeps waiting. `features` defaults to a centered popup *window* — browsers ignore scripted focus on background tabs, so only closing a real popup window reliably brings the opener back to front; pass `features: ""` to open a tab instead. |
 | `signup(link, {email, password, name?, redirectUri?})` | Self-registration; returns `{message, verificationRequired}`. |
 | `signupVerify(link, code)` / `resetRequest(link, {email})` / `resetConfirm(link, code, password)` | Email verification and forgot-password flows. |
+| `passkeyEnrollmentStatus()` | Reads Auth's optional post-login enrollment policy for the current validated session and honors its browser-local snooze marker. Policy failures do not invalidate the completed login. |
+| `enrollPasskey({name?})` / `snoozePasskeyEnrollment(status)` | Run the WebAuthn registration ceremony for the session subject, or defer the always-optional prompt for Auth's configured duration. |
 | `finish()` | Safe post-login navigation: reloads inside Turna's own authorization-code flow, otherwise follows the validated `redirect_path` query parameter, and only with nothing left to follow relays verified completion to a same-origin opener and closes. A pending `redirect_path` always wins: an intermediate login page in a nested flow is a popup that still has an authorize URL to walk back through. |
 | `isWebAuthnSupported()`, `flowFromURL()`, `getRedirectPath()`, `isResponseTypeCode()`, `LoginError` | Helpers: hide passkey buttons on unsupported browsers, prefill verify/reset forms from mail magic links (`?flow=...&code=...`), and branch on normalized errors (`status`, `credentials`). |
 

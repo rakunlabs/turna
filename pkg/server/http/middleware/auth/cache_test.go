@@ -2,9 +2,46 @@ package auth
 
 import (
 	"testing"
+	"time"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
+
+func TestPasskeyEnrollmentSettings(t *testing.T) {
+	setting := PasskeySettings{Enrollment: PasskeyEnrollmentSettings{
+		Enabled:        true,
+		Methods:        []string{session.AuthenticationMethodCode},
+		SnoozeDuration: "12h",
+	}}
+	if err := validatePasskeySettings(setting); err != nil {
+		t.Fatalf("validatePasskeySettings: %v", err)
+	}
+	if !setting.Enrollment.AllowsMethod(session.AuthenticationMethodCode) {
+		t.Fatal("configured code method was rejected")
+	}
+	if setting.Enrollment.AllowsMethod(session.AuthenticationMethodPassword) {
+		t.Fatal("unconfigured password method was accepted")
+	}
+
+	all := PasskeyEnrollmentSettings{}
+	if !all.AllowsMethod(session.AuthenticationMethodPassword) || !all.AllowsMethod(session.AuthenticationMethodPasskey) {
+		t.Fatal("empty methods must allow every interactive method")
+	}
+	if got := all.GetSnoozeDuration(); got != 30*24*time.Hour {
+		t.Fatalf("default snooze = %v", got)
+	}
+
+	setting.Enrollment.Methods = []string{"unknown"}
+	if err := validatePasskeySettings(setting); err == nil {
+		t.Fatal("unsupported enrollment method was accepted")
+	}
+	setting.Enrollment.Methods = nil
+	setting.Enrollment.SnoozeDuration = "later"
+	if err := validatePasskeySettings(setting); err == nil {
+		t.Fatal("invalid enrollment snooze duration was accepted")
+	}
+}
 
 func testSnapshot() *Snapshot {
 	perm := &data.Permission{

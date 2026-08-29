@@ -28,6 +28,27 @@
   const schema = $derived(getSettingString("oauth2", ["schema"]) || "https");
   const userVerification = $derived(getSettingString("passkey", ["user_verification"]) || "preferred");
 
+  function enrollmentMethodEnabled(method: string) {
+    const configured = getSettingList("passkey", ["enrollment", "methods"])
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    return configured.length === 0 || configured.includes(method);
+  }
+
+  function setEnrollmentMethod(method: string, enabled: boolean) {
+    const configured = getSettingList("passkey", ["enrollment", "methods"])
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const explicit = configured.length === 0 ? ["password", "code", "passkey"] : configured;
+    const next = new Set(explicit);
+    if (enabled) next.add(method);
+    else next.delete(method);
+    if (next.size === 0) return;
+    setSettingList("passkey", ["enrollment", "methods"], [...next].join(", "));
+  }
+
   // The published key is what verifiers actually see, not what is stored.
   const publishedKid = $derived(fieldText(registry.signingKey.kid));
   const publishedAlg = $derived(fieldText(registry.signingKey.alg));
@@ -450,6 +471,73 @@
         <p id="passkey-origins-hint" class="mt-1.5 max-w-[70ch] text-[12px] leading-[1.5] text-muted">
           Comma separated. Empty means the origin is taken from the request.
         </p>
+      </div>
+
+      <div class="sm:col-span-2 mt-2 border-t border-rule pt-7">
+        <h3 class="text-[15px] font-semibold text-ink">Post-login passkey suggestion</h3>
+        <p class="mt-1 max-w-[70ch] text-[12px] leading-[1.6] text-muted">
+          Offer an authenticated user a real WebAuthn registration before the login page continues to its destination. The user can always skip it.
+        </p>
+
+        <div class="mt-5 grid gap-6 sm:grid-cols-2">
+          <Switch
+            label="Suggest passkey enrollment"
+            hint="Disabled by default. When enabled, the login page asks this Auth instance whether it should show the optional step."
+            bind:checked={
+              () => getSettingBool("passkey", ["enrollment", "enabled"]),
+              (value: boolean) => setSettingBool("passkey", ["enrollment", "enabled"], value)
+            }
+          />
+
+          <Switch
+            label="Prompt users with a passkey"
+            hint="Normally only users with no registered passkey are prompted. Enable this to encourage another device credential."
+            bind:checked={
+              () => getSettingBool("passkey", ["enrollment", "prompt_when_registered"]),
+              (value: boolean) =>
+                setSettingBool("passkey", ["enrollment", "prompt_when_registered"], value)
+            }
+          />
+
+          <div class="min-w-0">
+            <p class="stamp">Eligible login methods</p>
+            <div class="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+              {#each [
+                ["password", "Password"],
+                ["code", "Provider / code"],
+                ["passkey", "Passkey"],
+              ] as method}
+                <label class="flex cursor-pointer items-center gap-2 text-[13px] text-ink">
+                  <input
+                    type="checkbox"
+                    checked={enrollmentMethodEnabled(method[0])}
+                    onchange={(event) => setEnrollmentMethod(method[0], event.currentTarget.checked)}
+                  />
+                  {method[1]}
+                </label>
+              {/each}
+            </div>
+            <p class="mt-2 text-[12px] leading-[1.5] text-muted">
+              These describe how the current session was created, not which upstream provider supplied the identity.
+            </p>
+          </div>
+
+          <div class="min-w-0">
+            <label class="stamp block" for="passkey-enrollment-snooze">Remind after</label>
+            <input
+              id="passkey-enrollment-snooze"
+              class="entry serial mt-1.5"
+              autocomplete="off"
+              placeholder="720h"
+              value={getSettingString("passkey", ["enrollment", "snooze_duration"]) || "720h"}
+              oninput={(event) =>
+                setSettingString("passkey", ["enrollment", "snooze_duration"], event.currentTarget.value)}
+            />
+            <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+              Browser-local delay after “Not now”. Use <span class="serial">0s</span> to ask again on the next login.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   </Section>

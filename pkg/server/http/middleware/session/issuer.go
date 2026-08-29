@@ -99,6 +99,23 @@ type InfPasskey interface {
 	PasskeyToken(ctx context.Context, orig *http.Request, body []byte) ([]byte, int, error)
 }
 
+// PasskeyEnrollmentStatus is the issuer's post-login prompt decision. PromptID
+// is opaque and lets the browser scope its optional snooze without learning a
+// user identifier.
+type PasskeyEnrollmentStatus struct {
+	Prompt        bool   `json:"prompt"`
+	PromptID      string `json:"prompt_id,omitempty"`
+	SnoozeSeconds int64  `json:"snooze_seconds,omitempty"`
+}
+
+// InfPasskeyEnrollment is implemented by issuers that allow a login
+// middleware to offer passkey registration for its authenticated session.
+// userID must come from a token already validated against this issuer.
+type InfPasskeyEnrollment interface {
+	PasskeyEnrollmentStatus(ctx context.Context, userID, method string) (PasskeyEnrollmentStatus, error)
+	PasskeyEnrollmentRegister(ctx context.Context, orig *http.Request, userID, method string, body []byte) ([]byte, int, error)
+}
+
 // Signup actions an issuer can run in-process for the login page.
 const (
 	SignupActionSignup       = "signup"

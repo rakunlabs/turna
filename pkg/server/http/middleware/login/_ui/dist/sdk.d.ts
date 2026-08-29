@@ -85,6 +85,15 @@ export type ResetRequestOptions = {
 	/** Defaults to the current page with `?flow=reset` appended. */
 	redirectUri?: string;
 };
+export type PasskeyEnrollmentStatus = {
+	prompt: boolean;
+	prompt_id?: string;
+	snooze_seconds?: number;
+};
+export type PasskeyEnrollmentOptions = {
+	/** Optional user-facing label used on the account's credential list. */
+	name?: string;
+};
 /** Magic-link state carried back to the login page by mail links. */
 export type FlowState = {
 	flow: "verify" | "reset";
@@ -123,6 +132,7 @@ export declare class TurnaLogin {
 	constructor(options?: CreateLoginOptions);
 	private authURL;
 	private methodsURL;
+	private enrollmentURL;
 	/**
 	 * Fetch the login method manifest. Render one control per link; `name`
 	 * is a display label and is not guaranteed to be unique.
@@ -137,6 +147,15 @@ export declare class TurnaLogin {
 	 * Resolves when the session cookie is set.
 	 */
 	passkey(link: LoginLink, options?: PasskeyOptions): Promise<void>;
+	/** Return Auth's post-login enrollment decision, honoring this browser's
+	 * optional snooze marker. A policy/storage failure never changes session
+	 * validity; callers may simply finish the successful login. */
+	passkeyEnrollmentStatus(): Promise<PasskeyEnrollmentStatus>;
+	/** Suppress this optional prompt for the duration selected by Auth. */
+	snoozePasskeyEnrollment(status: PasskeyEnrollmentStatus): void;
+	/** Register a passkey for the authenticated session. The login middleware
+	 * derives the target user from the validated token; no user id is sent. */
+	enrollPasskey(options?: PasskeyEnrollmentOptions): Promise<void>;
 	/**
 	 * OAuth2 authorization-code sign-in through a popup window. Resolves
 	 * when the callback marks the login as complete, rejects when the popup

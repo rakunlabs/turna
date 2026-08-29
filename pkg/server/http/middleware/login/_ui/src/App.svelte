@@ -8,6 +8,7 @@
     flowFromURL,
     type LoginMethods,
     type LoginLink,
+    type PasskeyEnrollmentStatus,
   } from "./sdk";
   import PasswordInput from "./components/PasswordInput.svelte";
 
@@ -66,10 +67,12 @@
       });
   };
 
-  type View = "signin" | "signup" | "verify" | "reset" | "reset-confirm";
+  type View = "signin" | "signup" | "verify" | "reset" | "reset-confirm" | "passkey-enrollment";
   let view: View = "signin";
   let verifyCode = "";
   let resetCode = "";
+  let passkeyLabel = "";
+  let enrollmentStatus: PasskeyEnrollmentStatus | null = null;
 
   const inputClass =
     "py-1.5 px-3 border rounded-md border-gray-300 bg-white text-gray-900 focus:border-blue-300 focus:outline-none focus:ring focus:ring-blue-200 focus:ring-opacity-50 disabled:bg-gray-100 mt-1 block w-full dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-blue-700 dark:focus:ring-blue-800 dark:disabled:bg-gray-800";
@@ -104,6 +107,44 @@
     view = next;
     error = "";
     notice = "";
+  };
+
+  const finishLogin = async () => {
+    try {
+      const status = await loginClient.passkeyEnrollmentStatus();
+      if (status.prompt) {
+        enrollmentStatus = status;
+        view = "passkey-enrollment";
+        error = "";
+        notice = "";
+        return;
+      }
+    } catch (reason: unknown) {
+      // Enrollment is optional; a policy check must never block a valid login.
+      console.error(errorMessage(reason));
+    }
+
+    loginClient.finish();
+  };
+
+  const enrollPasskey = async () => {
+    if (working) return;
+
+    working = true;
+    error = "";
+    try {
+      await loginClient.enrollPasskey({ name: passkeyLabel });
+      loginClient.finish();
+    } catch (reason: unknown) {
+      error = errorMessage(reason);
+    } finally {
+      working = false;
+    }
+  };
+
+  const skipPasskeyEnrollment = () => {
+    if (enrollmentStatus) loginClient.snoozePasskeyEnrollment(enrollmentStatus);
+    loginClient.finish();
   };
 
   const signup = async (
@@ -220,7 +261,7 @@
         extra: data,
       });
 
-      loginClient.finish();
+      await finishLogin();
 
       return;
     } catch (reason: unknown) {
@@ -247,7 +288,7 @@
         rememberMe,
       });
 
-      loginClient.finish();
+      await finishLogin();
 
       return;
     } catch (reason: unknown) {
@@ -279,7 +320,7 @@
           error = "The sign-in window may have closed before authentication completed.";
         },
       })
-      .then(() => loginClient.finish())
+      .then(() => finishLogin())
       .catch((reason: unknown) => {
         error = errorMessage(reason);
       });
@@ -323,6 +364,63 @@
         <span class={mounted ? "" : "invisible"}>{authInfo.title}</span>
       </h2>
       <hr class="mb-2 border-gray-200 dark:border-gray-800" />
+      {#if view === "passkey-enrollment"}
+        <section aria-labelledby="passkey-enrollment-title" class="py-2">
+          <div class="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-[#615fff] dark:bg-indigo-950 dark:text-indigo-300">
+            <svg
+              width="25"
+              height="25"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"></path>
+              <path d="M14 13.12c0 2.38 0 6.38-1 8.88"></path>
+              <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"></path>
+              <path d="M2 12a10 10 0 0 1 18-6"></path>
+              <path d="M2 16h.01"></path>
+              <path d="M21.8 16c.2-2 .131-5.354 0-6"></path>
+              <path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"></path>
+              <path d="M8.65 22c.21-.66.45-1.32.57-2"></path>
+              <path d="M9 6.8a6 6 0 0 1 9 5.2v2"></path>
+            </svg>
+          </div>
+          <h3 id="passkey-enrollment-title" class="text-lg font-bold text-gray-950 dark:text-white">
+            Make your next sign-in faster
+          </h3>
+          <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
+            Create a passkey for this device and sign in next time with your fingerprint, face, or device PIN.
+          </p>
+
+          <div class="mt-6">
+            <label class="block mb-1" for="passkey-label">Device name <span class="font-normal text-gray-500">(optional)</span></label>
+            <input
+              id="passkey-label"
+              type="text"
+              bind:value={passkeyLabel}
+              autocomplete="off"
+              placeholder="Work laptop"
+              class={inputClass}
+            />
+          </div>
+
+          <div class="mt-6 space-y-3">
+            <button type="button" class={submitClass} disabled={working} on:click={enrollPasskey}>
+              {working ? "Waiting for this device…" : "Create passkey"}
+            </button>
+            <button type="button" class={secondaryClass} disabled={working} on:click={skipPasskeyEnrollment}>
+              Not now
+            </button>
+          </div>
+          <p class="mt-4 text-xs leading-5 text-gray-500 dark:text-gray-400">
+            Your biometric data stays on this device. Turna stores only the public credential.
+          </p>
+        </section>
+      {/if}
       {#if authInfo.provider.password?.length && view === "signin"}
         {#if authInfo.provider.password?.length > 1}
           <div class="float-right">

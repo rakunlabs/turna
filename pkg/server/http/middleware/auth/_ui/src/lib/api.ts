@@ -143,6 +143,12 @@ export const settingTemplates = {
     rp_display_name: "",
     origins: [],
     user_verification: "preferred",
+    enrollment: {
+      enabled: false,
+      methods: [],
+      prompt_when_registered: false,
+      snooze_duration: "720h",
+    },
   },
   jwt: {
     kid: "",

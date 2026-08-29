@@ -17,6 +17,8 @@
 import {
   isWebAuthnSupported,
   startAuthentication,
+  startRegistration,
+  type ServerCreationOptions,
   type ServerRequestOptions,
 } from "../helper/webauthn";
 
@@ -120,6 +122,17 @@ export type ResetRequestOptions = {
   redirectUri?: string;
 };
 
+export type PasskeyEnrollmentStatus = {
+  prompt: boolean;
+  prompt_id?: string;
+  snooze_seconds?: number;
+};
+
+export type PasskeyEnrollmentOptions = {
+  /** Optional user-facing label used on the account's credential list. */
+  name?: string;
+};
+
 /** Magic-link state carried back to the login page by mail links. */
 export type FlowState = {
   flow: "verify" | "reset";
@@ -166,6 +179,7 @@ const popupFlowParam = "turna_popup";
 // completion. Keep in sync with the login middleware.
 const flowIDParam = "turna_flow";
 const successCookie = "auth_verify";
+const enrollmentSnoozePrefix = "turna:passkey-enrollment:";
 
 /** Read the standard {message, error} envelope, unwrapping any embedded
  * OAuth2 error body, and map credential failures to a friendly message. */
@@ -414,6 +428,10 @@ export class TurnaLogin {
     return this.authURL("methods");
   }
 
+  private enrollmentURL(): URL {
+    return this.authURL("passkey/enrollment");
+  }
+
   /**
    * Fetch the login method manifest. Render one control per link; `name`
    * is a display label and is not guaranteed to be unique.
@@ -472,6 +490,63 @@ export class TurnaLogin {
         session_id: begin.session_id,
         assertion,
         remember_me: rememberMe,
+      });
+    } catch (reason) {
+      throw asLoginError(reason);
+    }
+  }
+
+  /** Return Auth's post-login enrollment decision, honoring this browser's
+   * optional snooze marker. A policy/storage failure never changes session
+   * validity; callers may simply finish the successful login. */
+  async passkeyEnrollmentStatus(): Promise<PasskeyEnrollmentStatus> {
+    if (!isWebAuthnSupported()) return { prompt: false };
+
+    const response = await request(this.enrollmentURL());
+    const data = await response.json();
+    const status = (data?.payload ?? data) as PasskeyEnrollmentStatus;
+    if (!status.prompt || !status.prompt_id) return status;
+
+    try {
+      const snoozedUntil = Number(localStorage.getItem(enrollmentSnoozePrefix + status.prompt_id));
+      if (Number.isFinite(snoozedUntil) && snoozedUntil > Date.now()) {
+        return { ...status, prompt: false };
+      }
+    } catch {
+      // Storage is only a UX convenience; enrollment remains available.
+    }
+
+    return status;
+  }
+
+  /** Suppress this optional prompt for the duration selected by Auth. */
+  snoozePasskeyEnrollment(status: PasskeyEnrollmentStatus): void {
+    if (!status.prompt_id) return;
+
+    try {
+      const duration = Math.max(0, status.snooze_seconds ?? 0) * 1000;
+      localStorage.setItem(enrollmentSnoozePrefix + status.prompt_id, String(Date.now() + duration));
+    } catch {
+      // A blocked storage API must not block navigation.
+    }
+  }
+
+  /** Register a passkey for the authenticated session. The login middleware
+   * derives the target user from the validated token; no user id is sent. */
+  async enrollPasskey(options?: PasskeyEnrollmentOptions): Promise<void> {
+    if (!isWebAuthnSupported()) {
+      throw new LoginError("Passkeys are not supported in this browser");
+    }
+
+    try {
+      const beginData = await postJSON(this.enrollmentURL(), {});
+      const begin = beginData?.payload ?? beginData;
+      const credential = await startRegistration(begin.options as ServerCreationOptions);
+
+      await postJSON(this.enrollmentURL(), {
+        session_id: begin.session_id,
+        name: options?.name?.trim() ?? "",
+        credential,
       });
     } catch (reason) {
       throw asLoginError(reason);

@@ -49,7 +49,7 @@ Everything else is a settings namespace under `/auth/v1/settings/{namespace}` an
 | `cache` | `poll_interval`, `code_store` | Fallback version poll interval for the in-memory read model and OAuth2 temporary code/state store. PostgreSQL notifications normally propagate changes immediately; the poll catches changes missed during listener disconnects. `code_store.active` is `database` (default), `memory`, or `redis`. Database and Redis are shared across replicas; memory is single-instance only. |
 | `token` | `token_lifetime`, `refresh_lifetime`, `refresh_absolute_lifetime` | Access lifetime, refresh idle window and remembered-session ceiling (defaults `15m` / `24h` / `720h`). |
 | `jwt` | `kid`, `private_key` | RS256 signing key (PEM, PKCS#8 or PKCS#1); auto-generated on first start. Editable through the API/UI and applied without restart — the public JWKS key is derived from the private key. Changing or rotating the key invalidates outstanding tokens. |
-| `passkey` | `disabled`, `rp_id`, `rp_display_name`, `origins`, `user_verification` | WebAuthn (passkey) relying party settings. Empty `rp_id` defaults to the registrable domain (eTLD+1) of the request host — e.g. `auth.example.com` becomes `example.com`, so one passkey works across all subdomains; IPs and single-label hosts (`localhost`) are used as-is. Empty `origins` derives from the forwarded scheme + host. |
+| `passkey` | `disabled`, `rp_id`, `rp_display_name`, `origins`, `user_verification`, `enrollment.*` | WebAuthn (passkey) relying party settings. Empty `rp_id` defaults to the registrable domain (eTLD+1) of the request host — e.g. `auth.example.com` becomes `example.com`, so one passkey works across all subdomains; IPs and single-label hosts (`localhost`) are used as-is. Empty `origins` derives from the forwarded scheme + host. `enrollment.enabled` lets a connected login middleware offer an optional post-login registration step. `enrollment.methods` limits it to `password`, `code`, and/or `passkey` sessions (empty means all); `prompt_when_registered` includes users who already have a credential; `snooze_duration` controls the browser-local “Not now” delay (empty defaults to `720h`, `0s` asks again next login). The user can always skip. |
 | `password` | `disabled`, `local_disabled`, `ldap_disabled`, `ldap_register_disabled` | Password grant sources. Defaults keep the implicit behavior: local users check bcrypt, non-local users bind against LDAP, and unknown aliases are created only after a successful LDAP bind. |
 | `api_key` | `disabled`, `self_service`, `max_lifetime` | Static API key creation and validation. `self_service` (default off) lets any authenticated X-User issue and manage their own keys through `/v1/api-keys` — a "Personal access keys" panel appears on the account page. `max_lifetime` caps the expiry of new keys (duration string); empty means keys may live forever. |
 | `device` | `disabled`, `code_lifetime`, `interval`, `verification_uri` | RFC 8628 device flow. Defaults: codes live `10m`, minimum poll interval `5` seconds, verification URI `<prefix>/ui/device`. |
@@ -84,6 +84,12 @@ Migrations are embedded and run through `github.com/rakunlabs/muz` with a Postgr
 - `auth_api_keys` — api keys (sha256 hashes; the key itself is never stored).
 - `auth_totp_secrets` — encrypted TOTP shared secrets.
 - `auth_flow_codes` — short-lived flow state shared between instances (OAuth codes/state, passkey challenges, device and email codes, SAML relay states, pending consents, revoked token ids).
+
+### Post-login passkey enrollment
+
+When `passkey.enrollment.enabled` is on, a login middleware backed by this Auth issuer checks the policy after any successful interactive login. The login method is recorded by the server in the session, and the target account comes from the validated Auth access token's `sub` claim; browser-supplied user or provider identifiers are never accepted for enrollment. This works across password and upstream code providers as long as Auth mints the final session token.
+
+The prompt is adoption guidance, not another authentication factor: registration and “Not now” both continue through the login SDK's ordinary safe redirect/popup completion. The snooze marker is browser-local and opaque. Clearing or changing it cannot grant access; it only affects whether the optional prompt is shown.
 
 ## Routes
 

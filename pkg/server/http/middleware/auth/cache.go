@@ -245,6 +245,63 @@ type PasskeySettings struct {
 	Origins []string `json:"origins"`
 	// UserVerification is required, preferred (default) or discouraged.
 	UserVerification string `json:"user_verification"`
+	// Enrollment controls the optional post-login passkey suggestion shown by
+	// login middleware instances backed by this auth issuer.
+	Enrollment PasskeyEnrollmentSettings `json:"enrollment"`
+}
+
+// PasskeyEnrollmentSettings controls optional passkey adoption after a
+// successful interactive login. An empty Methods list allows every method.
+type PasskeyEnrollmentSettings struct {
+	Enabled              bool     `json:"enabled"`
+	Methods              []string `json:"methods"`
+	PromptWhenRegistered bool     `json:"prompt_when_registered"`
+	// SnoozeDuration is how long "Not now" suppresses the prompt in that
+	// browser. Empty defaults to 30 days; 0s prompts again on the next login.
+	SnoozeDuration string `json:"snooze_duration"`
+
+	snoozeDuration time.Duration
+}
+
+func (s PasskeyEnrollmentSettings) AllowsMethod(method string) bool {
+	if len(s.Methods) == 0 {
+		return true
+	}
+
+	for _, allowed := range s.Methods {
+		if allowed == method {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s PasskeyEnrollmentSettings) GetSnoozeDuration() time.Duration {
+	if s.SnoozeDuration == "" {
+		return 30 * 24 * time.Hour
+	}
+
+	return s.snoozeDuration
+}
+
+func validatePasskeySettings(setting PasskeySettings) error {
+	if err := validateDuration(setting.Enrollment.SnoozeDuration); err != nil {
+		return fmt.Errorf("enrollment.snooze_duration: %w", err)
+	}
+
+	allowedMethods := map[string]bool{
+		session.AuthenticationMethodPassword: true,
+		session.AuthenticationMethodCode:     true,
+		session.AuthenticationMethodPasskey:  true,
+	}
+	for _, method := range setting.Enrollment.Methods {
+		if !allowedMethods[method] {
+			return fmt.Errorf("enrollment.methods contains unsupported method %q", method)
+		}
+	}
+
+	return nil
 }
 
 // APIKeySettings is the decoded "api_key" setting namespace.
@@ -1027,6 +1084,11 @@ func (c *Cache) Reload(ctx context.Context) error {
 	if passkeyRaw != nil {
 		if err := json.Unmarshal(passkeyRaw, &snap.Passkey); err != nil {
 			slog.Warn("invalid passkey settings", slog.String("error", err.Error()))
+		}
+	}
+	if snap.Passkey.Enrollment.SnoozeDuration != "" {
+		if d, err := str2duration.ParseDuration(snap.Passkey.Enrollment.SnoozeDuration); err == nil {
+			snap.Passkey.Enrollment.snoozeDuration = d
 		}
 	}
 

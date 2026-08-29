@@ -17,8 +17,15 @@ type Store struct {
 }
 
 var (
-	TokenKey    = "token"
-	ProviderKey = "provider"
+	TokenKey                = "token"
+	ProviderKey             = "provider"
+	AuthenticationMethodKey = "authentication_method"
+)
+
+const (
+	AuthenticationMethodPassword = "password"
+	AuthenticationMethodCode     = "code"
+	AuthenticationMethodPasskey  = "passkey"
 )
 
 type StoreInf interface {
@@ -107,6 +114,17 @@ func (m *Session) SetStore(ctx context.Context) error {
 }
 
 func (m *Session) SetToken(w http.ResponseWriter, r *http.Request, token []byte, providerName string) error {
+	return m.setToken(w, r, token, providerName, "")
+}
+
+// SetLoginToken stores a token produced by an interactive login together with
+// its trusted server-side method. Ordinary refreshes use SetToken and preserve
+// this value in the existing session.
+func (m *Session) SetLoginToken(w http.ResponseWriter, r *http.Request, token []byte, providerName, method string) error {
+	return m.setToken(w, r, token, providerName, method)
+}
+
+func (m *Session) setToken(w http.ResponseWriter, r *http.Request, token []byte, providerName, method string) error {
 	cookieValue := base64.StdEncoding.EncodeToString(token)
 
 	if m.SetProvider != "" {
@@ -117,6 +135,9 @@ func (m *Session) SetToken(w http.ResponseWriter, r *http.Request, token []byte,
 	session, _ := m.store.Get(r, m.GetCookieName(r))
 	session.Values[TokenKey] = cookieValue
 	session.Values[ProviderKey] = providerName
+	if method != "" {
+		session.Values[AuthenticationMethodKey] = method
+	}
 
 	if err := session.Save(r, w); err != nil {
 		return err
@@ -126,6 +147,20 @@ func (m *Session) SetToken(w http.ResponseWriter, r *http.Request, token []byte,
 	w.Header().Set("X-Session-Set", "true")
 
 	return nil
+}
+
+func (m *Session) GetAuthenticationMethod(r *http.Request) (string, error) {
+	v, err := m.store.Get(r, m.GetCookieName(r))
+	if err != nil {
+		return "", err
+	}
+	if v.IsNew {
+		return "", errNoSession
+	}
+
+	method, _ := v.Values[AuthenticationMethodKey].(string)
+
+	return method, nil
 }
 
 func (m *Session) DelToken(w http.ResponseWriter, r *http.Request) error {
