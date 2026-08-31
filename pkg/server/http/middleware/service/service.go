@@ -8,8 +8,9 @@ import (
 )
 
 type Service struct {
-	InsecureSkipVerify bool  `cfg:"insecure_skip_verify"`
-	PassHostHeader     *bool `cfg:"pass_host_header"`
+	InsecureSkipVerify bool   `cfg:"insecure_skip_verify"`
+	PassHostHeader     *bool  `cfg:"pass_host_header"`
+	Proxy              string `cfg:"proxy"`
 
 	PrefixBalancer PrefixBalancer `cfg:"prefixbalancer"`
 	LoadBalancer   LoadBalancer   `cfg:"loadbalancer"`
@@ -91,6 +92,17 @@ func (m *Service) Middleware() ([]func(http.Handler) http.Handler, error) {
 	}
 
 	transport = transport.Clone()
+	if m.Proxy != "" {
+		proxyURL, err := url.Parse(m.Proxy)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse proxy url %s: %w", m.Proxy, err)
+		}
+		if proxyURL.Scheme != "http" && proxyURL.Scheme != "https" {
+			return nil, fmt.Errorf("proxy url %s must use http or https", m.Proxy)
+		}
+
+		transport.Proxy = http.ProxyURL(proxyURL)
+	}
 	if m.InsecureSkipVerify {
 		if transport.TLSClientConfig == nil {
 			transport.TLSClientConfig = &tls.Config{} //nolint:gosec // opt-in skip verify

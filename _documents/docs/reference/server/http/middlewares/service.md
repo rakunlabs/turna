@@ -10,6 +10,7 @@ server:
         service:
           insecure_skip_verify: false
           pass_host_header: true
+          proxy: http://proxy.internal:3128
           loadbalancer:
             servers:
               - url: http://localhost:3000
@@ -22,6 +23,7 @@ server:
 | --- | --- | --- |
 | `insecure_skip_verify` | `false` | Skip upstream TLS certificate verification. |
 | `pass_host_header` | | When explicitly `false`, clear `r.Host` before proxying. |
+| `proxy` | | Optional HTTP or HTTPS forward proxy URL used for upstream requests. Credentials may be included in the URL. |
 | `loadbalancer.servers` | | Round-robin upstream list. |
 | `prefixbalancer.prefixes` | | Path-prefix-specific upstream lists. |
 | `prefixbalancer.default_servers` | | Default upstreams when no prefix matches. |

@@ -53,13 +53,15 @@ func wsEchoHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func newProxyServer(t *testing.T, upstreamURL string) *httptest.Server {
-	t.Helper()
-
-	m := &Service{
+	return newProxyServerWithConfig(t, &Service{
 		LoadBalancer: LoadBalancer{
 			Servers: []Server{{URL: upstreamURL}},
 		},
-	}
+	})
+}
+
+func newProxyServerWithConfig(t *testing.T, m *Service) *httptest.Server {
+	t.Helper()
 
 	mws, err := m.Middleware()
 	if err != nil {
@@ -74,6 +76,55 @@ func newProxyServer(t *testing.T, upstreamURL string) *httptest.Server {
 	}
 
 	return httptest.NewServer(handler)
+}
+
+func TestServiceUsesForwardProxy(t *testing.T) {
+	var gotURL string
+	passHostHeader := false
+	forwardProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		_, _ = w.Write([]byte("from forward proxy"))
+	}))
+	defer forwardProxy.Close()
+
+	proxy := newProxyServerWithConfig(t, &Service{
+		Proxy:          forwardProxy.URL,
+		PassHostHeader: &passHostHeader,
+		LoadBalancer: LoadBalancer{
+			Servers: []Server{{URL: "http://portal.ai.pubc.worldline-solutions.com"}},
+		},
+	})
+	defer proxy.Close()
+
+	response, err := http.Get(proxy.URL + "/dashboard?team=turna")
+	if err != nil {
+		t.Fatalf("request service: %v", err)
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if string(body) != "from forward proxy" {
+		t.Fatalf("expected forward proxy response, got %q", body)
+	}
+	if want := "http://portal.ai.pubc.worldline-solutions.com/dashboard?team=turna"; gotURL != want {
+		t.Fatalf("expected proxy request URL %q, got %q", want, gotURL)
+	}
+}
+
+func TestServiceRejectsInvalidForwardProxyScheme(t *testing.T) {
+	m := &Service{
+		Proxy: "socks5://proxy.internal:1080",
+		LoadBalancer: LoadBalancer{
+			Servers: []Server{{URL: "https://portal.ai.pubc.worldline-solutions.com"}},
+		},
+	}
+
+	if _, err := m.Middleware(); err == nil {
+		t.Fatal("expected invalid proxy scheme error")
+	}
 }
 
 func TestProxyWebSocketUpgrade(t *testing.T) {
