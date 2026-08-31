@@ -27,8 +27,9 @@ func (m *View) GetPageUI(ctx context.Context, page *Page, pagePrefix string) (*h
 	defer m.pageUI.m.Unlock()
 
 	h, ok, err := m.pageUI.Handlers.Get(ctx, cacheKey{
-		Name: pagePrefix,
-		Addr: page.URL,
+		Name:  pagePrefix,
+		Addr:  page.URL,
+		Proxy: page.Proxy,
 	})
 	if err != nil {
 		return nil, err
@@ -48,7 +49,10 @@ func (m *View) GetPageUI(ctx context.Context, page *Page, pagePrefix string) (*h
 		return nil, err
 	}
 
-	c, err := okclient.New(okclient.WithDisableRetry(true))
+	c, err := okclient.New(
+		okclient.WithDisableRetry(true),
+		okclient.WithProxy(page.Proxy),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -98,8 +102,9 @@ func (m *View) GetPageUI(ctx context.Context, page *Page, pagePrefix string) (*h
 	}
 
 	if err := m.pageUI.Handlers.Set(ctx, cacheKey{
-		Name: pagePrefix,
-		Addr: page.URL,
+		Name:  pagePrefix,
+		Addr:  page.URL,
+		Proxy: page.Proxy,
 	}, proxy); err != nil {
 		return nil, err
 	}

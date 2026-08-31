@@ -61,6 +61,7 @@ type Page struct {
 	PathExtra string `cfg:"path_extra" json:"path_extra,omitempty"`
 
 	URL     string       `cfg:"url"     json:"-"`
+	Proxy   string       `cfg:"proxy"   json:"-"`
 	Header  HeaderHolder `cfg:"header"  json:"-"`
 	Host    bool         `cfg:"host"    json:"-"`
 	Rewrite *Rewrite     `cfg:"rewrite" json:"-"`

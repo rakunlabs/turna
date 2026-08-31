@@ -23,6 +23,7 @@ server:
               - name: admin
                 path: admin
                 url: http://admin.internal:8080
+                proxy: http://proxy.internal:3128
                 rewrite:
                   base: true
                   absolute: true
@@ -47,6 +48,10 @@ server:
 | `info.page` | Pages reverse-proxied under `{prefix_path}/page/{path}`. |
 
 Use `info_url` when the list should come from another service; otherwise configure `info` inline.
+
+Each page may set `proxy` to an HTTP proxy URL. Turna then sends that page's
+upstream HTTP and HTTPS requests through the configured proxy. Credentials may
+be included in the URL, for example `http://user:pass@proxy.internal:3128`.
 
 ## Page rewriting
 
