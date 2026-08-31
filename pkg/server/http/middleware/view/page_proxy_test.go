@@ -76,3 +76,30 @@ func TestPageCacheSeparatesHTTPProxies(t *testing.T) {
 		t.Fatal("expected a new page handler when the HTTP proxy changes")
 	}
 }
+
+func TestPageCacheSeparatesRewriteConfig(t *testing.T) {
+	m := &View{}
+	if _, err := m.Middleware(context.Background(), "test"); err != nil {
+		t.Fatalf("build middleware: %v", err)
+	}
+
+	page := &Page{
+		URL: "http://application.internal:8080",
+		Rewrite: &Rewrite{Replace: []Replace{
+			{Old: "/dashboard/api", New: "/first/api"},
+		}},
+	}
+	first, err := m.GetPageUI(context.Background(), page, "/view/page/application")
+	if err != nil {
+		t.Fatalf("build first page rewrite: %v", err)
+	}
+
+	page.Rewrite.Replace[0].New = "/second/api"
+	second, err := m.GetPageUI(context.Background(), page, "/view/page/application")
+	if err != nil {
+		t.Fatalf("build second page rewrite: %v", err)
+	}
+	if first == second {
+		t.Fatal("expected a new page handler when the rewrite config changes")
+	}
+}

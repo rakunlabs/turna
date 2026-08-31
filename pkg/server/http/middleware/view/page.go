@@ -2,6 +2,7 @@ package view
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -26,11 +27,12 @@ func (m *View) GetPageUI(ctx context.Context, page *Page, pagePrefix string) (*h
 	m.pageUI.m.Lock()
 	defer m.pageUI.m.Unlock()
 
-	h, ok, err := m.pageUI.Handlers.Get(ctx, cacheKey{
-		Name:  pagePrefix,
-		Addr:  page.URL,
-		Proxy: page.Proxy,
-	})
+	key, err := newPageCacheKey(page, pagePrefix)
+	if err != nil {
+		return nil, err
+	}
+
+	h, ok, err := m.pageUI.Handlers.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -101,15 +103,33 @@ func (m *View) GetPageUI(ctx context.Context, page *Page, pagePrefix string) (*h
 		},
 	}
 
-	if err := m.pageUI.Handlers.Set(ctx, cacheKey{
-		Name:  pagePrefix,
-		Addr:  page.URL,
-		Proxy: page.Proxy,
-	}, proxy); err != nil {
+	if err := m.pageUI.Handlers.Set(ctx, key, proxy); err != nil {
 		return nil, err
 	}
 
 	return proxy, nil
+}
+
+func newPageCacheKey(page *Page, pagePrefix string) (cacheKey, error) {
+	config, err := json.Marshal(struct {
+		Header  HeaderHolder
+		Host    bool
+		Rewrite *Rewrite
+	}{
+		Header:  page.Header,
+		Host:    page.Host,
+		Rewrite: page.Rewrite,
+	})
+	if err != nil {
+		return cacheKey{}, err
+	}
+
+	return cacheKey{
+		Name:   pagePrefix,
+		Addr:   page.URL,
+		Proxy:  page.Proxy,
+		Config: string(config),
+	}, nil
 }
 
 func findPageAddrList(nameList []string, pages []Page) (*Page, string) {

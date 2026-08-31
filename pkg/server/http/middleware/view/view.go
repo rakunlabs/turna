@@ -42,9 +42,10 @@ type View struct {
 }
 
 type cacheKey struct {
-	Name  string
-	Addr  string
-	Proxy string
+	Name   string
+	Addr   string
+	Proxy  string
+	Config string
 }
 
 //go:embed _ui/dist/*

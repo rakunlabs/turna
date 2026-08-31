@@ -118,6 +118,38 @@ func TestRewriterModifyResponse(t *testing.T) {
 	}
 }
 
+func TestRewriterReplacesJavaScriptLiteral(t *testing.T) {
+	t.Parallel()
+
+	r, err := newRewriter(&Rewrite{
+		ContentTypes: []string{"application/javascript"},
+		Replace: []Replace{
+			{Old: "'/dashboard/api';", New: "'/view/page/dashboard/api';"},
+		},
+	}, "/view/page/dashboard", mustParseURL(t, "https://backend.example"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := "const api = '/dashboard/api';"
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"application/javascript; charset=utf-8"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+	if err := r.modifyResponse(resp); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "const api = '/view/page/dashboard/api';"; string(got) != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
 func TestRewriterGzip(t *testing.T) {
 	t.Parallel()
 
