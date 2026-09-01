@@ -58,11 +58,15 @@ func (m *Auth) TOTPRegisterAPI(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleError(w, httputil.NewError("cannot save totp secret", err, http.StatusInternalServerError))
 		return
 	}
+	label := user.ID
+	if len(user.Alias) > 0 && user.Alias[0] != "" {
+		label = user.Alias[0]
+	}
 
 	httputil.JSON(w, http.StatusOK, Response[TOTPRegisterResponse]{
 		Payload: TOTPRegisterResponse{
 			Secret: secret,
-			URL:    totpProvisioningURL(cfg.GetIssuer(), r.Header.Get("X-User"), secret),
+			URL:    totpProvisioningURL(cfg.GetIssuer(), label, secret),
 		},
 	})
 }

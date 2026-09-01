@@ -42,22 +42,31 @@ type APIKeyCreateResponse struct {
 	ExpiresAt string `json:"expires_at,omitempty"`
 }
 
-// xUser resolves the X-User header to a user, writing the error response
-// itself and returning nil when that fails.
-func (m *Auth) xUser(w http.ResponseWriter, r *http.Request) *data.UserExtended {
-	alias := r.Header.Get("X-User")
-	if alias == "" {
+func (m *Auth) xUserRequest(w http.ResponseWriter, r *http.Request, req data.GetUserRequest) *data.UserExtended {
+	principal := r.Header.Get("X-User")
+	if principal == "" {
 		httputil.HandleError(w, httputil.NewError("X-User header is required", nil, http.StatusUnauthorized))
 		return nil
 	}
 
-	user, err := m.cache.GetUser(data.GetUserRequest{Alias: alias})
+	user, err := m.userForPrincipal(r.Context(), principal, req)
 	if err != nil {
+		if errors.Is(err, errAPIKeyOwnerRequired) {
+			httputil.HandleError(w, httputil.NewError("api key has no owner", err, http.StatusForbidden))
+			return nil
+		}
+
 		httputil.HandleError(w, httputil.NewError("user not found", err, http.StatusNotFound))
 		return nil
 	}
 
 	return user
+}
+
+// xUser resolves the X-User principal to the effective user for owner-scoped
+// operations, writing the error response itself when resolution fails.
+func (m *Auth) xUser(w http.ResponseWriter, r *http.Request) *data.UserExtended {
+	return m.xUserRequest(w, r, data.GetUserRequest{})
 }
 
 func cleanAPIKeyIDs(ids []string) []string {

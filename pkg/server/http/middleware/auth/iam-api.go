@@ -850,7 +850,7 @@ func (m *Auth) checkAccess(ctx context.Context, req data.CheckRequest) (*data.Ch
 		return resp, nil
 	}
 
-	meta, err := m.store.GetAPIKeyPrincipalByID(ctx, principal)
+	user, err := m.apiKeyUserByPrincipal(ctx, principal)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			return resp, nil
@@ -858,17 +858,6 @@ func (m *Auth) checkAccess(ctx context.Context, req data.CheckRequest) (*data.Ch
 
 		return nil, err
 	}
-
-	// system keys have no owner; owned keys die with a missing/disabled owner
-	var owner *data.UserExtended
-	if meta.UserID != "" {
-		owner, err = m.cache.GetUser(data.GetUserRequest{ID: meta.UserID})
-		if err != nil || owner.Disabled {
-			return resp, nil
-		}
-	}
-
-	user := m.apiKeyUser(meta, owner)
 
 	return m.cache.Snapshot().checkUser(user.User, req), nil
 }

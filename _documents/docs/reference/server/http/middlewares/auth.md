@@ -291,7 +291,7 @@ For CLIs, TVs and other browserless clients:
 
 ### API keys
 
-Static long-lived credentials for scripts and integrations, managed as machine principals with an explicit owner user/service account. There is no token exchange: the raw key is sent on every request and validated against the database each time, so revocation is immediate.
+Static long-lived credentials for scripts and integrations, managed as machine principals with an optional owner. There is no token exchange: the raw key is sent on every request and validated against the database each time, so revocation is immediate. The admin UI offers standalone system keys and service-account owners; users create their own personal keys through the owner-scoped API.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
@@ -302,6 +302,8 @@ Static long-lived credentials for scripts and integrations, managed as machine p
 | `GET/POST/PATCH/DELETE` | `/auth/v1/api-keys...` | X-User owner-scoped plane (personal access keys). Admin-only by default; with the `api_key.self_service` setting on, any authenticated X-User can issue, list, update and revoke **their own** keys here. A key never carries more than its owner's roles/permissions. The admin management UI uses `api-key-principals`. |
 
 Each key is its own principal: identity claims carry `sub`/`preferred_username` as `api-key:<id>`, `principal_type=api_key`, `api_key_id`, `owner_user_id`, plus the key's own `roles` and `permissions` (IDs and names). `POST /auth/v1/check` accepts `api-key:<id>` as alias. Validation endpoint: `POST /auth/oauth2/api-key` with the `X-API-Key` header returns the claims JSON (`401` when the key is unknown, disabled, expired, or its owner is disabled).
+
+An ownerless system key that carries the configured `admin.permission` can call the admin-protected `/auth/v1/...` management APIs. On owner-scoped routes such as `me`, `totp`, `passkey`, `device` and `api-keys`, an owner-bound key resolves to its owner; an ownerless key is refused. Authorization checks still use the key principal's own roles and permissions, so owner resolution does not widen a restricted key's access.
 
 Session integration: set `api_key: true` on the `session` provider. Session validates `X-API-Key` directly — in-process when the provider uses `auth_middleware`, or over `oauth2.api_key_url` against a remote auth instance — deletes the raw key header, and forwards the claims context and `X-User: api-key:<id>` downstream.
 

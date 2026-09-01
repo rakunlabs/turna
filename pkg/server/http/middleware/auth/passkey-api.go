@@ -173,8 +173,8 @@ func (m *Auth) passkeyRegisterTarget(w http.ResponseWriter, r *http.Request, use
 		return m.xUser(w, r)
 	}
 
-	if alias := r.Header.Get("X-User"); alias != "" {
-		if self, err := m.cache.GetUser(data.GetUserRequest{Alias: alias}); err == nil && self.ID == userID {
+	if principal := r.Header.Get("X-User"); principal != "" {
+		if self, err := m.userForPrincipal(r.Context(), principal, data.GetUserRequest{}); err == nil && self.ID == userID {
 			return self
 		}
 	}
@@ -290,8 +290,8 @@ func (m *Auth) PasskeyCredentialsAPI(w http.ResponseWriter, r *http.Request) {
 		}
 
 		userID = user.ID
-	} else if alias := r.Header.Get("X-User"); alias != "" {
-		user, err := m.cache.GetUser(data.GetUserRequest{Alias: alias})
+	} else if principal := r.Header.Get("X-User"); principal != "" {
+		user, err := m.userForPrincipal(r.Context(), principal, data.GetUserRequest{})
 		if err != nil || user.ID != userID {
 			if !m.requireAdmin(w, r) {
 				return
@@ -326,13 +326,13 @@ func (m *Auth) PasskeyCredentialDeleteAPI(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	alias := r.Header.Get("X-User")
-	if alias == "" {
+	principal := r.Header.Get("X-User")
+	if principal == "" {
 		if !m.requireAdmin(w, r) {
 			return
 		}
 	} else {
-		user, err := m.cache.GetUser(data.GetUserRequest{Alias: alias})
+		user, err := m.userForPrincipal(r.Context(), principal, data.GetUserRequest{})
 		if err != nil || user.ID != meta.UserID {
 			if !m.requireAdmin(w, r) {
 				return

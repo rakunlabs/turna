@@ -27,6 +27,7 @@ type deviceFlow struct {
 	Scope     []string `json:"scope"`
 	UserCode  string   `json:"user_code"`
 	Status    string   `json:"status"`
+	UserID    string   `json:"user_id,omitempty"`
 	UserAlias string   `json:"user_alias,omitempty"`
 	LastPoll  int64    `json:"last_poll,omitempty"`
 	Interval  int      `json:"interval"`
@@ -278,7 +279,10 @@ func (m *Auth) DeviceApproveAPI(w http.ResponseWriter, r *http.Request) {
 		flow.Status = deviceStatusDenied
 	} else {
 		flow.Status = deviceStatusApproved
-		flow.UserAlias = r.Header.Get("X-User")
+		flow.UserID = user.ID
+		if len(user.Alias) > 0 {
+			flow.UserAlias = user.Alias[0]
+		}
 	}
 
 	if err := m.store.UpdateFlowCode(r.Context(), flowKindDevice, deviceCode, flow); err != nil {
@@ -371,10 +375,13 @@ func (m *Auth) deviceCodeGrant(w http.ResponseWriter, r *http.Request, req Acces
 
 		return
 	case deviceStatusApproved:
-		user, err := m.cache.GetUser(data.GetUserRequest{
-			Alias:         flow.UserAlias,
-			AddScopeRoles: true,
-		})
+		userReq := data.GetUserRequest{ID: flow.UserID, AddScopeRoles: true}
+		if flow.UserID == "" {
+			// Existing pending flows stored before user_id was added still carry
+			// the alias and remain redeemable until they expire.
+			userReq.Alias = flow.UserAlias
+		}
+		user, err := m.cache.GetUser(userReq)
 		if err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",

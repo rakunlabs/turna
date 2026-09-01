@@ -29,20 +29,12 @@ type MeResponse struct {
 // MeAPI returns the authenticated user's profile, roles, permissions and
 // security material overview.
 func (m *Auth) MeAPI(w http.ResponseWriter, r *http.Request) {
-	alias := r.Header.Get("X-User")
-	if alias == "" {
-		httputil.HandleError(w, httputil.NewError("X-User header is required", nil, http.StatusUnauthorized))
-		return
-	}
-
-	user, err := m.cache.GetUser(data.GetUserRequest{
-		Alias:          alias,
+	user := m.xUserRequest(w, r, data.GetUserRequest{
 		AddRoles:       true,
 		AddPermissions: true,
 		Sanitize:       true,
 	})
-	if err != nil {
-		httputil.HandleError(w, httputil.NewError("user not found", err, http.StatusNotFound))
+	if user == nil {
 		return
 	}
 
@@ -91,16 +83,9 @@ const minPasswordLength = 8
 // MePasswordAPI changes the password of the authenticated local user.
 // The current password must be provided and verified.
 func (m *Auth) MePasswordAPI(w http.ResponseWriter, r *http.Request) {
-	alias := r.Header.Get("X-User")
-	if alias == "" {
-		httputil.HandleError(w, httputil.NewError("X-User header is required", nil, http.StatusUnauthorized))
-		return
-	}
-
 	// non-sanitized read; the stored bcrypt hash is needed for verification
-	user, err := m.cache.GetUser(data.GetUserRequest{Alias: alias})
-	if err != nil {
-		httputil.HandleError(w, httputil.NewError("user not found", err, http.StatusNotFound))
+	user := m.xUser(w, r)
+	if user == nil {
 		return
 	}
 

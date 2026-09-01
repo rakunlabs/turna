@@ -264,6 +264,68 @@ func TestAuthMethodsIntegration(t *testing.T) {
 	})
 
 	// ////////////////////////////////////////////////////////////////
+	t.Run("system api key admin API access", func(t *testing.T) {
+		permissionName := "it-system-key-admin-" + createdUser.Payload.ID
+		var createdPermission struct {
+			Payload struct {
+				ID string `json:"id"`
+			} `json:"payload"`
+		}
+		if code := postJSON(t, "/auth/v1/permissions", `{"name":"`+permissionName+`"}`, nil, &createdPermission); code != http.StatusOK {
+			t.Fatalf("create system key admin permission status=%d", code)
+		}
+
+		var createdKey struct {
+			Payload APIKeyCreateResponse `json:"payload"`
+		}
+		if code := postJSON(t, "/auth/v1/api-key-principals",
+			`{"name":"it-system-admin","permission_ids":["`+createdPermission.Payload.ID+`"]}`,
+			nil, &createdKey); code != http.StatusOK {
+			t.Fatalf("create system admin key status=%d", code)
+		}
+
+		defer func() {
+			_, _ = m.store.PutSetting(ctx, "admin", json.RawMessage(`{}`), "it")
+			_ = m.cache.Reload(ctx)
+			_ = m.store.DeleteAPIKeyByID(ctx, createdKey.Payload.ID)
+
+			req, _ := http.NewRequest(http.MethodDelete, server.URL+"/auth/v1/permissions/"+createdPermission.Payload.ID, nil)
+			if res, err := client.Do(req); err == nil {
+				res.Body.Close()
+			}
+		}()
+
+		if _, err := m.store.PutSetting(ctx, "admin", json.RawMessage(`{"permission":"`+permissionName+`","allow_missing_x_user":false}`), "it"); err != nil {
+			t.Fatalf("put system key admin setting: %v", err)
+		}
+		if err := m.cache.Reload(ctx); err != nil {
+			t.Fatalf("reload system key admin setting: %v", err)
+		}
+
+		keyHeader := map[string]string{"X-User": apiKeyPrincipalSubject(createdKey.Payload.ID)}
+		var caps Response[CapabilitiesResponse]
+		if code := getJSON(t, "/auth/v1/capabilities", keyHeader, &caps); code != http.StatusOK {
+			t.Fatalf("system key capabilities status=%d", code)
+		}
+		if !caps.Payload.IsAdmin {
+			t.Fatalf("system key with admin permission not reported admin: %+v", caps.Payload)
+		}
+		for _, path := range []string{
+			"/auth/v1/settings",
+			"/auth/v1/users",
+			"/auth/v1/roles",
+			"/auth/v1/permissions",
+		} {
+			if code := getJSON(t, path, keyHeader, nil); code != http.StatusOK {
+				t.Fatalf("GET %s with system admin key status=%d", path, code)
+			}
+		}
+		if code := getJSON(t, "/auth/v1/me", keyHeader, nil); code != http.StatusForbidden {
+			t.Fatalf("ownerless system key me status=%d", code)
+		}
+	})
+
+	// ////////////////////////////////////////////////////////////////
 	t.Run("api key", func(t *testing.T) {
 		permissionName := "it-api-key-perm-" + createdUser.Payload.ID
 		var createdPermission struct {
@@ -362,6 +424,24 @@ func TestAuthMethodsIntegration(t *testing.T) {
 		}
 		if !checkResp.Allowed {
 			t.Fatalf("api key check denied")
+		}
+
+		ownerKeyHeader := map[string]string{"X-User": apiKeyPrincipalSubject(created.Payload.ID)}
+		var me Response[MeResponse]
+		if code := getJSON(t, "/auth/v1/me", ownerKeyHeader, &me); code != http.StatusOK {
+			t.Fatalf("owner api key me status=%d", code)
+		}
+		if me.Payload.ID != createdUser.Payload.ID {
+			t.Fatalf("owner api key me user=%q want=%q", me.Payload.ID, createdUser.Payload.ID)
+		}
+		for _, path := range []string{
+			"/auth/v1/totp",
+			"/auth/v1/passkey/credentials",
+			"/auth/v1/api-keys",
+		} {
+			if code := getJSON(t, path, ownerKeyHeader, nil); code != http.StatusOK {
+				t.Fatalf("GET %s with owner api key status=%d", path, code)
+			}
 		}
 
 		// api keys are not a token grant anymore

@@ -55,10 +55,16 @@ func (m *Auth) capabilitiesForRequest(r *http.Request) CapabilitiesResponse {
 		return caps
 	}
 
-	user, err := m.cache.GetUser(data.GetUserRequest{
-		Alias:          xUser,
-		AddPermissions: true,
-	})
+	var user *data.UserExtended
+	var err error
+	if strings.HasPrefix(xUser, apiKeyPrincipalPrefix) {
+		user, err = m.apiKeyUserByPrincipal(r.Context(), xUser)
+	} else {
+		user, err = m.cache.GetUser(data.GetUserRequest{
+			Alias:          xUser,
+			AddPermissions: true,
+		})
+	}
 	if err != nil || user.Disabled {
 		caps.AuthorizationError = "user not found"
 		return caps

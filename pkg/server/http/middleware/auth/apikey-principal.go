@@ -2,10 +2,14 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 )
+
+var errAPIKeyOwnerRequired = errors.New("api key owner is required")
 
 // apiKeyUser builds the API key principal as a virtual service-account user.
 // A key with an explicit role or permission list carries exactly that list; a
@@ -53,6 +57,50 @@ func (m *Auth) apiKeyUser(meta *APIKeyMeta, owner *data.UserExtended) *data.User
 	ext.IsActive = !meta.Disabled
 
 	return &ext
+}
+
+func (m *Auth) apiKeyUserByPrincipal(ctx context.Context, principal string) (*data.UserExtended, error) {
+	meta, err := m.store.GetAPIKeyPrincipalByID(ctx, principal)
+	if err != nil {
+		return nil, err
+	}
+
+	var owner *data.UserExtended
+	if meta.UserID != "" {
+		owner, err = m.cache.GetUser(data.GetUserRequest{ID: meta.UserID})
+		if err != nil || owner.Disabled {
+			return nil, fmt.Errorf("api key owner not found; %w", data.ErrNotFound)
+		}
+	}
+
+	return m.apiKeyUser(meta, owner), nil
+}
+
+// userForPrincipal resolves user-scoped operations to the owner of an API key
+// while leaving authorization checks on the key's own virtual principal.
+func (m *Auth) userForPrincipal(ctx context.Context, principal string, req data.GetUserRequest) (*data.UserExtended, error) {
+	if strings.HasPrefix(principal, apiKeyPrincipalPrefix) {
+		meta, err := m.store.GetAPIKeyPrincipalByID(ctx, principal)
+		if err != nil {
+			return nil, err
+		}
+		if meta.UserID == "" {
+			return nil, errAPIKeyOwnerRequired
+		}
+
+		req.Alias = ""
+		req.ID = meta.UserID
+	} else {
+		req.ID = ""
+		req.Alias = principal
+	}
+
+	user, err := m.cache.GetUser(req)
+	if err != nil || user.Disabled {
+		return nil, fmt.Errorf("user not found; %w", data.ErrNotFound)
+	}
+
+	return user, nil
 }
 
 // apiKeyClaimsForKey validates a raw static api key against the database and

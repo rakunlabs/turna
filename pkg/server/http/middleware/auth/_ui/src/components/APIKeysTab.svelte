@@ -75,6 +75,7 @@
   ];
 
   const ownerByID = $derived(new Map(owners.map((owner) => [owner.id, owner])));
+  const selectableOwners = $derived(owners.filter((owner) => owner.service_account));
   const selectedOwner = $derived(ownerByID.get(selectedOwnerID) ?? null);
   const apiKeysDisabled = $derived(getSettingBool("api_key", ["disabled"]));
   const maxLifetime = $derived(getSettingString("api_key", ["max_lifetime"]));
@@ -311,7 +312,7 @@
 
 <Instrument
   title="API keys"
-  note="Static machine credentials — standalone system keys with their own access, or keys owned by a user or service account. A key is checked against the database on every request, so revoking or disabling one stops access immediately."
+  note="Static machine credentials — standalone system keys with their own access, or keys owned by a service account. A key is checked against the database on every request, so revoking or disabling one stops access immediately."
   wide
 >
   {#snippet actions()}
@@ -426,8 +427,8 @@
       <div class="border border-dashed border-rule px-6 py-14 text-center">
         <p class="text-[15px] font-semibold text-ink">No API keys issued</p>
         <p class="mx-auto mt-2 max-w-[58ch] text-[13px] leading-[1.6] text-muted">
-          A key gives a script, pipeline or service a way to call your API as a chosen user or
-          service account, without an interactive login.
+          A key gives a script, pipeline or service a way to call your API as a service account,
+          without an interactive login.
         </p>
         <button
           type="button"
@@ -523,14 +524,14 @@
 
     <Section
       title="Owner"
-      note="A system key stands on its own and carries exactly the roles and permissions you list below. Choosing an owner instead ties the key to that user or service account: the owner's access becomes the ceiling, and disabling the owner stops the key."
+      note="A system key stands on its own and carries exactly the roles and permissions you list below. Choosing a service account instead makes its access the ceiling, and disabling it stops the key."
       first
     >
       <div class="max-w-md">
         <label class="stamp block" for="key-owner">Owner</label>
         <select id="key-owner" class="entry mt-1.5" bind:value={selectedOwnerID}>
           <option value="">System key — no owner</option>
-          {#each owners as owner (owner.id)}
+          {#each selectableOwners as owner (owner.id)}
             <option value={owner.id}>{ownerLabel(owner)}</option>
           {/each}
         </select>

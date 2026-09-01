@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	adaproxy "github.com/rakunlabs/ada/middleware/auth/proxy"
 	adaratelimit "github.com/rakunlabs/ada/middleware/ratelimit"
 )
 
@@ -22,7 +23,7 @@ func (m *RateLimit) Middleware() func(http.Handler) http.Handler {
 	case "ip":
 		handler = adaratelimit.LimitByIP(m.Requests, m.Duration)
 	case "realip":
-		handler = adaratelimit.LimitByRealIP(m.Requests, m.Duration)
+		handler = adaratelimit.LimitByKey(m.Requests, m.Duration, adaproxy.UnsafeRealIP)
 	default: // all
 		handler = adaratelimit.LimitAll(m.Requests, m.Duration)
 	}
