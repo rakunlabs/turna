@@ -23,11 +23,11 @@ require (
 	github.com/lib/pq v1.12.3
 	github.com/miekg/dns v1.1.72
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/rakunlabs/ada v0.5.0
-	github.com/rakunlabs/ada/handler/swagger v0.5.0
-	github.com/rakunlabs/ada/middleware/auth v0.5.0
-	github.com/rakunlabs/ada/middleware/encoding v0.5.0
-	github.com/rakunlabs/ada/middleware/ratelimit v0.5.0
+	github.com/rakunlabs/ada v0.5.1
+	github.com/rakunlabs/ada/handler/swagger v0.5.1
+	github.com/rakunlabs/ada/middleware/auth v0.5.1
+	github.com/rakunlabs/ada/middleware/encoding v0.5.1
+	github.com/rakunlabs/ada/middleware/ratelimit v0.5.1
 	github.com/rakunlabs/cache v0.3.3
 	github.com/rakunlabs/cache/store/redis v0.1.0
 	github.com/rakunlabs/chu v0.4.7
