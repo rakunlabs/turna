@@ -51,7 +51,7 @@ require (
 	github.com/spf13/cast v1.10.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/pflag v1.0.10
-	github.com/swaggo/http-swagger/v2 v2.0.2
+	github.com/swaggo/swag v1.16.6
 	github.com/things-go/go-socks5 v0.0.5
 	github.com/timshannon/badgerhold/v4 v4.0.3
 	github.com/twmb/tlscfg v1.3.0
@@ -183,7 +183,7 @@ require (
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
 	github.com/swaggo/files/v2 v2.0.0 // indirect
-	github.com/swaggo/swag v1.16.6 // indirect
+	github.com/swaggo/http-swagger/v2 v2.0.2 // indirect
 	github.com/tdewolff/minify/v2 v2.24.3 // indirect
 	github.com/tdewolff/parse/v2 v2.8.3 // indirect
 	github.com/urfave/cli/v2 v2.3.0 // indirect

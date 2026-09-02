@@ -8,3 +8,4 @@
 /go.work.sum
 __debug_bin*
 graphify-out
+/pkg/server/http/middleware/auth/docs/swagger.json

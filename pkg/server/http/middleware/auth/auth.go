@@ -98,10 +98,6 @@ type LDAPStatic struct {
 	DisableSync bool `cfg:"disable_sync"`
 }
 
-func nowAdd(d time.Duration) int64 {
-	return time.Now().Add(d).Unix()
-}
-
 func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) http.Handler, error) {
 	if m.PrefixPath == "" {
 		m.PrefixPath = DefaultPrefixPath
@@ -468,7 +464,6 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 	}
 	mux.GET(prefix+"/swagger", admin(redirectSwagger))
 	mux.GET(prefix+"/swagger/", admin(redirectSwagger))
-	mux.GET(prefix+"/swagger/swagger.json", admin(m.SwaggerDocAPI))
 	mux.Handle(prefix+"/swagger/*", adminHandler(m.SwaggerUIHandler()))
 
 	// ui
