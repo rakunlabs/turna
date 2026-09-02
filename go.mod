@@ -30,20 +30,21 @@ require (
 	github.com/rakunlabs/ada/middleware/ratelimit v0.5.1
 	github.com/rakunlabs/cache v0.3.3
 	github.com/rakunlabs/cache/store/redis v0.1.0
-	github.com/rakunlabs/chu v0.4.7
-	github.com/rakunlabs/chu/loader/external/loaderawssecrets v0.0.0-20260529215824-15c48ce668ec
-	github.com/rakunlabs/chu/loader/external/loaderawsssm v0.0.0-20260529215824-15c48ce668ec
-	github.com/rakunlabs/chu/loader/external/loaderazurekeyvault v0.0.0-20260529215824-15c48ce668ec
-	github.com/rakunlabs/chu/loader/external/loaderconsul v0.0.0-20260529203529-25beb0ba3ee7
-	github.com/rakunlabs/chu/loader/external/loadergcpparameter v0.0.0-20260529215824-15c48ce668ec
-	github.com/rakunlabs/chu/loader/external/loadergcpsecret v0.0.0-20260529215824-15c48ce668ec
-	github.com/rakunlabs/chu/loader/external/loadervault v0.0.0-20260529203529-25beb0ba3ee7
+	github.com/rakunlabs/chu v0.5.0
+	github.com/rakunlabs/chu/loader/external/loaderawssecrets v0.0.0-20260831101252-0c6a77e06f7f
+	github.com/rakunlabs/chu/loader/external/loaderawsssm v0.0.0-20260831101252-0c6a77e06f7f
+	github.com/rakunlabs/chu/loader/external/loaderazurekeyvault v0.0.0-20260831101252-0c6a77e06f7f
+	github.com/rakunlabs/chu/loader/external/loaderconsul v0.0.0-20260831101252-0c6a77e06f7f
+	github.com/rakunlabs/chu/loader/external/loadergcpparameter v0.0.0-20260831101252-0c6a77e06f7f
+	github.com/rakunlabs/chu/loader/external/loadergcpsecret v0.0.0-20260831101252-0c6a77e06f7f
+	github.com/rakunlabs/chu/loader/external/loadervault v0.0.0-20260831101252-0c6a77e06f7f
+	github.com/rakunlabs/gofret v0.2.1
 	github.com/rakunlabs/into v0.5.3
 	github.com/rakunlabs/logi v0.4.5
 	github.com/rakunlabs/mapx v0.1.0
 	github.com/rakunlabs/muz v0.2.5
 	github.com/rakunlabs/ok v0.1.0
-	github.com/rakunlabs/query v0.4.6
+	github.com/rakunlabs/query v0.4.10
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/russellhaering/goxmldsig v1.4.0
 	github.com/rytsh/mugo v0.9.2
@@ -55,8 +56,7 @@ require (
 	github.com/timshannon/badgerhold/v4 v4.0.3
 	github.com/twmb/tlscfg v1.3.0
 	github.com/worldline-go/conn v0.1.0
-	github.com/worldline-go/struct2 v1.4.0
-	github.com/worldline-go/types v0.5.6
+	github.com/worldline-go/types v0.6.1
 	github.com/xhit/go-str2duration/v2 v2.1.0
 	golang.org/x/crypto v0.55.0
 	golang.org/x/exp v0.0.0-20250808145144-a408d31f581a
@@ -136,6 +136,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.14 // indirect
 	github.com/googleapis/gax-go/v2 v2.20.0 // indirect
+	github.com/greatcloak/decimal v1.6.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-envparse v0.1.0 // indirect
@@ -186,6 +187,7 @@ require (
 	github.com/tdewolff/minify/v2 v2.24.3 // indirect
 	github.com/tdewolff/parse/v2 v2.8.3 // indirect
 	github.com/urfave/cli/v2 v2.3.0 // indirect
+	go.mongodb.org/mongo-driver/v2 v2.8.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.61.0 // indirect

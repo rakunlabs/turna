@@ -42,31 +42,36 @@ func userCtx(r *http.Request) context.Context {
 	return data.WithContextUserName(r.Context(), getUserName(r))
 }
 
-// parseListQuery parses the raw query string with the rakunlabs/query syntax
-// (_limit, _offset, _sort, field filters). Invalid input falls back to an
-// empty query so list endpoints keep working.
-func parseListQuery(r *http.Request) *query.Query {
-	q, err := httputil.ParseQuery(r)
-	if err != nil {
-		return query.New()
-	}
+const defaultListLimit = 20
 
-	return q
+var queryOptions = []query.OptionQuery{
+	query.WithKeyAlias("limit", "_limit", "offset", "_offset"),
 }
 
-// getLimitOffset reads _limit/_offset with fallback to legacy limit/offset keys.
+func parseAPIQuery(r *http.Request, opts ...query.OptionQuery) (*query.Query, error) {
+	options := make([]query.OptionQuery, 0, len(queryOptions)+len(opts))
+	options = append(options, queryOptions...)
+	options = append(options, opts...)
+
+	return httputil.ParseQuery(r, options...)
+}
+
+func parseListQuery(r *http.Request) (*query.Query, error) {
+	return parseAPIQuery(r,
+		query.WithDefaultLimit(defaultListLimit),
+		query.WithDefaultOffset(0),
+	)
+}
+
 func getLimitOffset(q *query.Query) (limit, offset int64) {
 	limit = int64(q.GetLimit())   //nolint:gosec // G115
 	offset = int64(q.GetOffset()) //nolint:gosec // G115
 
-	if limit == 0 {
-		limit, _ = strconv.ParseInt(q.GetValue("limit"), 10, 64)
-	}
-	if offset == 0 {
-		offset, _ = strconv.ParseInt(q.GetValue("offset"), 10, 64)
-	}
-
 	return limit, offset
+}
+
+func handleQueryError(w http.ResponseWriter, err error) {
+	httputil.HandleError(w, httputil.NewError("cannot parse query", err, http.StatusBadRequest))
 }
 
 func parseBoolDefault(q *query.Query, key string, def bool) bool {
@@ -102,8 +107,11 @@ func (m *Auth) reload(r *http.Request) {
 // ////////////////////////////////////////////////////////////////////
 // users
 
-func parseUserQuery(r *http.Request) data.GetUserRequest {
-	q := parseListQuery(r)
+func parseUserQuery(r *http.Request) (data.GetUserRequest, error) {
+	q, err := parseListQuery(r)
+	if err != nil {
+		return data.GetUserRequest{}, err
+	}
 
 	req := data.GetUserRequest{
 		ID:             q.GetValue("id"),
@@ -114,7 +122,7 @@ func parseUserQuery(r *http.Request) data.GetUserRequest {
 		Search:         q.GetValue("search"),
 		Path:           q.GetValue("path"),
 		Method:         q.GetValue("method"),
-		RoleType:       q.GetValue("role_type"),
+		RoleType:       strings.ToUpper(strings.TrimSpace(q.GetValue("role_type"))),
 		RoleIDs:        q.GetValues("role_ids"),
 		Permissions:    q.GetValues("permission"),
 		ServiceAccount: isServiceAccountPtr(r),
@@ -134,11 +142,17 @@ func parseUserQuery(r *http.Request) data.GetUserRequest {
 
 	req.Limit, req.Offset = getLimitOffset(q)
 
-	return req
+	return req, nil
 }
 
 func (m *Auth) GetUsersAPI(w http.ResponseWriter, r *http.Request) {
-	users, err := m.cache.GetUsers(parseUserQuery(r))
+	req, err := parseUserQuery(r)
+	if err != nil {
+		handleQueryError(w, err)
+		return
+	}
+
+	users, err := m.cache.GetUsers(req)
 	if err != nil {
 		handleIAMError(w, err, "cannot get users")
 		return
@@ -148,7 +162,12 @@ func (m *Auth) GetUsersAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Auth) ExportUsersAPI(w http.ResponseWriter, r *http.Request) {
-	req := parseUserQuery(r)
+	req, err := parseUserQuery(r)
+	if err != nil {
+		handleQueryError(w, err)
+		return
+	}
+
 	req.AddRoles = true
 	req.Limit = 0
 	req.Offset = 0
@@ -192,7 +211,11 @@ func (m *Auth) ExportUsersAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Auth) GetUserAPI(w http.ResponseWriter, r *http.Request) {
-	q := parseListQuery(r)
+	q, err := parseAPIQuery(r)
+	if err != nil {
+		handleQueryError(w, err)
+		return
+	}
 
 	req := data.GetUserRequest{
 		ID:             r.PathValue("id"),
@@ -356,7 +379,26 @@ func (m *Auth) DeleteServiceAccountAPI(w http.ResponseWriter, r *http.Request) {
 // roles
 
 func (m *Auth) GetRolesAPI(w http.ResponseWriter, r *http.Request) {
-	q := parseListQuery(r)
+	req, err := parseRoleQuery(r)
+	if err != nil {
+		handleQueryError(w, err)
+		return
+	}
+
+	roles, err := m.cache.GetRoles(req)
+	if err != nil {
+		handleIAMError(w, err, "cannot get roles")
+		return
+	}
+
+	httputil.JSON(w, http.StatusOK, roles)
+}
+
+func parseRoleQuery(r *http.Request) (data.GetRoleRequest, error) {
+	q, err := parseListQuery(r)
+	if err != nil {
+		return data.GetRoleRequest{}, err
+	}
 
 	req := data.GetRoleRequest{
 		ID:             q.GetValue("id"),
@@ -369,23 +411,21 @@ func (m *Auth) GetRolesAPI(w http.ResponseWriter, r *http.Request) {
 		RoleIDs:        q.GetValues("role_ids"),
 		Permissions:    q.GetValues("permission"),
 		AddRoles:       parseBoolDefault(q, "add_roles", true),
-		AddPermissions: parseBoolDefault(q, "add_permissions", false),
-		AddTotalUsers:  parseBoolDefault(q, "add_total_users", false),
+		AddPermissions: parseBoolDefault(q, "add_permissions", true),
+		AddTotalUsers:  parseBoolDefault(q, "add_total_users", true),
 	}
 
 	req.Limit, req.Offset = getLimitOffset(q)
 
-	roles, err := m.cache.GetRoles(req)
-	if err != nil {
-		handleIAMError(w, err, "cannot get roles")
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, roles)
+	return req, nil
 }
 
 func (m *Auth) ExportRolesAPI(w http.ResponseWriter, r *http.Request) {
-	q := parseListQuery(r)
+	q, err := parseAPIQuery(r)
+	if err != nil {
+		handleQueryError(w, err)
+		return
+	}
 	req := data.GetRoleRequest{
 		ID:             q.GetValue("id"),
 		Name:           q.GetValue("name"),
@@ -463,13 +503,17 @@ func (m *Auth) GetRoleRelationAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Auth) GetRoleAPI(w http.ResponseWriter, r *http.Request) {
-	q := parseListQuery(r)
+	q, err := parseAPIQuery(r)
+	if err != nil {
+		handleQueryError(w, err)
+		return
+	}
 
 	role, err := m.cache.GetRole(data.GetRoleRequest{
 		ID:             r.PathValue("id"),
 		AddRoles:       parseBoolDefault(q, "add_roles", true),
-		AddPermissions: parseBoolDefault(q, "add_permissions", false),
-		AddTotalUsers:  parseBoolDefault(q, "add_total_users", false),
+		AddPermissions: parseBoolDefault(q, "add_permissions", true),
+		AddTotalUsers:  parseBoolDefault(q, "add_total_users", true),
 	})
 	if err != nil {
 		handleIAMError(w, err, "cannot get role")
@@ -548,25 +592,11 @@ func (m *Auth) DeleteRoleAPI(w http.ResponseWriter, r *http.Request) {
 // permissions
 
 func (m *Auth) GetPermissionsAPI(w http.ResponseWriter, r *http.Request) {
-	q := parseListQuery(r)
-
-	dataFilter := map[string]string{}
-	if v := q.GetValue("data"); v != "" {
-		dataFilter["value"] = v
+	req, err := parsePermissionQuery(r)
+	if err != nil {
+		handleQueryError(w, err)
+		return
 	}
-
-	req := data.GetPermissionRequest{
-		ID:          q.GetValue("id"),
-		Name:        q.GetValue("name"),
-		Description: q.GetValue("description"),
-		Search:      q.GetValue("search"),
-		Path:        q.GetValue("path"),
-		Method:      q.GetValue("method"),
-		Data:        dataFilter,
-		AddRoles:    parseBoolDefault(q, "add_roles", false),
-	}
-
-	req.Limit, req.Offset = getLimitOffset(q)
 
 	permissions, err := m.cache.GetPermissions(req)
 	if err != nil {
@@ -577,8 +607,41 @@ func (m *Auth) GetPermissionsAPI(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, permissions)
 }
 
+func parsePermissionQuery(r *http.Request) (data.GetPermissionRequest, error) {
+	q, err := parseListQuery(r)
+	if err != nil {
+		return data.GetPermissionRequest{}, err
+	}
+
+	dataFilter := map[string]string{}
+	for key, values := range r.URL.Query() {
+		if dataKey, ok := strings.CutPrefix(key, "data."); ok && len(values) > 0 {
+			dataFilter[dataKey] = values[0]
+		}
+	}
+
+	req := data.GetPermissionRequest{
+		ID:          q.GetValue("id"),
+		Name:        q.GetValue("name"),
+		Description: q.GetValue("description"),
+		Search:      q.GetValue("search"),
+		Path:        q.GetValue("path"),
+		Method:      q.GetValue("method"),
+		Data:        dataFilter,
+		AddRoles:    parseBoolDefault(q, "add_roles", true),
+	}
+
+	req.Limit, req.Offset = getLimitOffset(q)
+
+	return req, nil
+}
+
 func (m *Auth) ExportPermissionsAPI(w http.ResponseWriter, r *http.Request) {
-	q := parseListQuery(r)
+	q, err := parseAPIQuery(r)
+	if err != nil {
+		handleQueryError(w, err)
+		return
+	}
 	req := data.GetPermissionRequest{
 		ID:          q.GetValue("id"),
 		Name:        q.GetValue("name"),
@@ -611,11 +674,15 @@ func (m *Auth) ExportPermissionsAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Auth) GetPermissionAPI(w http.ResponseWriter, r *http.Request) {
-	q := parseListQuery(r)
+	q, err := parseAPIQuery(r)
+	if err != nil {
+		handleQueryError(w, err)
+		return
+	}
 
 	permission, err := m.cache.GetPermission(data.GetPermissionRequest{
 		ID:       r.PathValue("id"),
-		AddRoles: parseBoolDefault(q, "add_roles", false),
+		AddRoles: parseBoolDefault(q, "add_roles", true),
 	})
 	if err != nil {
 		handleIAMError(w, err, "cannot get permission")
@@ -733,7 +800,11 @@ func (m *Auth) DeletePermissionAPI(w http.ResponseWriter, r *http.Request) {
 // lmaps
 
 func (m *Auth) GetLMapsAPI(w http.ResponseWriter, r *http.Request) {
-	q := parseListQuery(r)
+	q, err := parseListQuery(r)
+	if err != nil {
+		handleQueryError(w, err)
+		return
+	}
 
 	req := data.GetLMapRequest{
 		Name:    q.GetValue("name"),
@@ -933,7 +1004,13 @@ func (m *Auth) UserInfoAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	getData := parseBoolDefault(parseListQuery(r), "data", false)
+	q, err := parseAPIQuery(r)
+	if err != nil {
+		handleQueryError(w, err)
+		return
+	}
+
+	getData := parseBoolDefault(q, "data", false)
 
 	user, err := m.cache.GetUser(data.GetUserRequest{
 		Alias:          xUser,

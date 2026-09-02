@@ -74,7 +74,11 @@ func (m *Auth) listConfigResources(w http.ResponseWriter, r *http.Request, fn li
 		return
 	}
 
-	q := parseListQuery(r)
+	q, err := parseAPIQuery(r)
+	if err != nil {
+		handleQueryError(w, err)
+		return
+	}
 
 	if v := q.GetValue("id"); v != "" {
 		filtered := make([]ConfigMeta, 0, len(resources))

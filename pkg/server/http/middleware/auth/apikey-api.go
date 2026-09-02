@@ -447,12 +447,15 @@ func (m *Auth) ListAPIKeysAPI(w http.ResponseWriter, r *http.Request) {
 
 // ListAPIKeyPrincipalsAPI lists api key principals across owners.
 func (m *Auth) ListAPIKeyPrincipalsAPI(w http.ResponseWriter, r *http.Request) {
-	q := parseListQuery(r)
+	q, err := parseAPIQuery(r)
+	if err != nil {
+		handleQueryError(w, err)
+		return
+	}
 	ownerID := strings.TrimSpace(q.GetValue("user_id"))
 
 	var (
 		keys []APIKeyMeta
-		err  error
 	)
 	if ownerID != "" {
 		keys, err = m.store.ListAPIKeys(r.Context(), ownerID)

@@ -68,6 +68,8 @@ class Registry {
       }
 
       query = `?${params.toString()}`;
+    } else if (kind === "lmaps") {
+      query = "?_limit=0";
     }
 
     const res = await session.request<Record<string, unknown>[]>(`${spec.listPath}${query}`);

@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/rakunlabs/chu"
+	"github.com/rakunlabs/gofret"
 	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/logi"
 	"github.com/rakunlabs/turna/internal/config"
@@ -15,7 +16,6 @@ import (
 	"github.com/rakunlabs/turna/pkg/runner"
 	"github.com/rakunlabs/turna/pkg/server/http"
 	serverReg "github.com/rakunlabs/turna/pkg/server/registry"
-	"github.com/worldline-go/struct2"
 
 	// External chu loaders (registered via init) so they can be selected by
 	// name when the env-provided config set enables them.
@@ -36,6 +36,8 @@ const (
 )
 
 var AppName = "turna"
+
+var configMapCodec = gofret.New(gofret.WithOmitNil())
 
 func init() {
 	if v := os.Getenv(envAppName); v != "" {
@@ -120,9 +122,11 @@ func loadConfig(ctx context.Context, visit func(fn func(*pflag.Flag))) error {
 	}
 
 	if slog.Default().Enabled(ctx, slog.LevelDebug) {
-		decoder := struct2.Decoder{TagName: "cfg", OmitNilPtr: true}
+		m, err := configMapCodec.To[map[string]any](config.Application)
+		if err != nil {
+			return fmt.Errorf("unable to render loaded configuration: %w", err)
+		}
 
-		m := decoder.Map(config.Application)
 		slog.Debug("loaded config", "config", m)
 	}
 

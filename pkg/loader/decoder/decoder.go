@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/rakunlabs/chu/loader"
 	"github.com/rakunlabs/chu/loader/loaderfile"
 	"github.com/rakunlabs/chu/utils/decoder"
+	"github.com/rakunlabs/gofret"
+	"github.com/xhit/go-str2duration/v2"
 )
 
 type Decoder struct {
@@ -18,7 +19,7 @@ func NewDecoder() *Decoder {
 	return &Decoder{
 		decoders: decoders(),
 		mapDecoder: decoder.New(
-			decoder.WithHooks(loader.HookTimeDuration),
+			decoder.WithCodecOptions(gofret.Between(str2duration.ParseDuration)),
 		),
 	}
 }

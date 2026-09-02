@@ -53,7 +53,11 @@ func (m *Auth) ListSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	q := parseListQuery(r)
+	q, err := parseAPIQuery(r)
+	if err != nil {
+		handleQueryError(w, err)
+		return
+	}
 
 	if v := q.GetValue("namespace"); v != "" {
 		filtered := make([]SettingMeta, 0, len(settings))

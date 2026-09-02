@@ -91,6 +91,6 @@ func OffsetLimit(r *http.Request) (offset, limit int64) {
 	return
 }
 
-func ParseQuery(r *http.Request) (*query.Query, error) {
-	return query.Parse(r.URL.RawQuery)
+func ParseQuery(r *http.Request, opts ...query.OptionQuery) (*query.Query, error) {
+	return query.Parse(r.URL.RawQuery, opts...)
 }

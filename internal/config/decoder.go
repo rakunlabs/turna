@@ -1,18 +1,13 @@
 package config
 
-import "github.com/worldline-go/struct2"
+import "github.com/rakunlabs/gofret"
+
+var decoder = gofret.New()
 
 func Decode(input, output any) error {
 	if input == nil {
 		return nil
 	}
 
-	decoder := struct2.Decoder{
-		TagName:               "cfg",
-		WeaklyTypedInput:      true,
-		WeaklyIgnoreSeperator: true,
-		WeaklyDashUnderscore:  true,
-	}
-
-	return decoder.Decode(input, output)
+	return decoder.ToInto(input, output)
 }
