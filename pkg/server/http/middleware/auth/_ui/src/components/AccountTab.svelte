@@ -82,6 +82,7 @@
   type OwnKeyMeta = {
     id: string;
     name: string;
+    description: string;
     disabled: boolean;
     expires_at?: string;
     created_at: string;
@@ -90,6 +91,7 @@
 
   let ownKeys = $state<OwnKeyMeta[]>([]);
   let ownKeyName = $state("");
+  let ownKeyDescription = $state("");
   let ownKeyEmail = $state("");
   let ownKeyExpires = $state("720h");
   let createdOwnKey = $state("");
@@ -172,6 +174,7 @@
           method: "POST",
           body: JSON.stringify({
             name: ownKeyName.trim(),
+            description: ownKeyDescription.trim(),
             details: { email: ownKeyEmail.trim() },
             expires_in: ownKeyExpires.trim(),
           }),
@@ -180,6 +183,7 @@
 
       createdOwnKey = res.payload.key;
       ownKeyName = "";
+      ownKeyDescription = "";
       ownKeyEmail = "";
       await loadOwnKeys();
     }, "Access key create failed");
@@ -955,6 +959,9 @@
                 <div class="flex flex-wrap items-center gap-x-6 gap-y-2 py-3">
                   <div class="min-w-0 flex-1 basis-64">
                     <p class="truncate text-[13.5px] font-medium text-ink">{ownKeyLabel(key)}</p>
+                    {#if key.description}
+                      <p class="mt-0.5 truncate text-[12px] text-muted">{key.description}</p>
+                    {/if}
                     <p class="serial mt-0.5 truncate text-[12px] text-muted">
                       Issued {formatStamp(key.created_at) || key.created_at || "—"} · Expires
                       {key.expires_at ? formatStamp(key.expires_at) : "never"} ·
@@ -1016,6 +1023,20 @@
             />
             <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
               Optional override. Empty uses your account email, then the key name.
+            </p>
+          </div>
+
+          <div class="min-w-0 flex-1 basis-64">
+            <label class="stamp block" for="own-key-description">Description</label>
+            <input
+              id="own-key-description"
+              class="entry mt-1.5"
+              placeholder="Used by my deployment script"
+              autocomplete="off"
+              bind:value={ownKeyDescription}
+            />
+            <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+              Optional note about where this key is used.
             </p>
           </div>
 

@@ -368,11 +368,25 @@ func TestAuthMethodsIntegration(t *testing.T) {
 		var created struct {
 			Payload APIKeyCreateResponse `json:"payload"`
 		}
-		if code := postJSON(t, "/auth/v1/api-keys", `{"name":"it-key","details":{"email":"it-key@example.com"},"role_ids":["`+createdRole.Payload.ID+`"],"permission_ids":[]}`, userHeader, &created); code != http.StatusOK {
+		if code := postJSON(t, "/auth/v1/api-keys", `{"name":"it-key","description":"integration deployment key","details":{"email":"it-key@example.com"},"role_ids":["`+createdRole.Payload.ID+`"],"permission_ids":[]}`, userHeader, &created); code != http.StatusOK {
 			t.Fatalf("create api key status=%d", code)
 		}
 		if !strings.HasPrefix(created.Payload.Key, APIKeyPrefix) {
 			t.Fatalf("api key shape invalid: %q", created.Payload.Key)
+		}
+		var listedKeys Response[[]APIKeyMeta]
+		if code := getJSON(t, "/auth/v1/api-keys", userHeader, &listedKeys); code != http.StatusOK {
+			t.Fatalf("list api keys status=%d", code)
+		}
+		var listedKey *APIKeyMeta
+		for i := range listedKeys.Payload {
+			if listedKeys.Payload[i].ID == created.Payload.ID {
+				listedKey = &listedKeys.Payload[i]
+				break
+			}
+		}
+		if listedKey == nil || listedKey.Description != "integration deployment key" {
+			t.Fatalf("api key description = %#v", listedKey)
 		}
 
 		// validate the static key directly; no token exchange happens

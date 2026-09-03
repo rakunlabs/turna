@@ -450,7 +450,7 @@ func swaggerDeleteLDAPConfig() {}
 // @Summary List API keys
 // @Tags api-keys
 // @Security XUserAuth
-// @Success 200 {object} Response[[]swaggerObject]
+// @Success 200 {object} Response[[]APIKeyMeta]
 // @Failure 401,500 {object} httputil.Error
 // @Router /v1/api-keys [get]
 func swaggerListAPIKeys() {}
@@ -459,8 +459,8 @@ func swaggerListAPIKeys() {}
 // @Description Returns the API key secret once. Store it securely.
 // @Tags api-keys
 // @Security XUserAuth
-// @Param request body swaggerObject true "API key configuration"
-// @Success 200 {object} Response[swaggerObject]
+// @Param request body APIKeyCreateRequest true "API key configuration"
+// @Success 200 {object} Response[APIKeyCreateResponse]
 // @Failure 400,401,500 {object} httputil.Error
 // @Router /v1/api-keys [post]
 func swaggerCreateAPIKey() {}
@@ -469,7 +469,7 @@ func swaggerCreateAPIKey() {}
 // @Tags api-keys
 // @Security XUserAuth
 // @Param id path string true "API key ID"
-// @Param request body swaggerObject true "API key changes"
+// @Param request body APIKeyUpdateRequest true "API key changes"
 // @Success 200 {object} Response[swaggerObject]
 // @Failure 400,401,404,500 {object} httputil.Error
 // @Router /v1/api-keys/{id} [patch]
@@ -487,7 +487,7 @@ func swaggerDeleteAPIKey() {}
 // @Summary List API key principals
 // @Tags api-key-principals
 // @Security XUserAuth
-// @Success 200 {object} Response[[]swaggerObject]
+// @Success 200 {object} Response[[]APIKeyMeta]
 // @Failure 401,500 {object} httputil.Error
 // @Router /v1/api-key-principals [get]
 func swaggerListAPIKeyPrincipals() {}
@@ -495,8 +495,8 @@ func swaggerListAPIKeyPrincipals() {}
 // @Summary Create an API key principal
 // @Tags api-key-principals
 // @Security XUserAuth
-// @Param request body swaggerObject true "Principal and API key configuration"
-// @Success 200 {object} Response[swaggerObject]
+// @Param request body APIKeyCreateRequest true "Principal and API key configuration"
+// @Success 200 {object} Response[APIKeyCreateResponse]
 // @Failure 400,401,500 {object} httputil.Error
 // @Router /v1/api-key-principals [post]
 func swaggerCreateAPIKeyPrincipal() {}
@@ -505,7 +505,7 @@ func swaggerCreateAPIKeyPrincipal() {}
 // @Tags api-key-principals
 // @Security XUserAuth
 // @Param id path string true "API key ID"
-// @Param request body swaggerObject true "Principal and API key changes"
+// @Param request body APIKeyUpdateRequest true "Principal and API key changes"
 // @Success 200 {object} Response[swaggerObject]
 // @Failure 400,401,404,500 {object} httputil.Error
 // @Router /v1/api-key-principals/{id} [patch]

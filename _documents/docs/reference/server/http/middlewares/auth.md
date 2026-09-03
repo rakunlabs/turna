@@ -101,7 +101,7 @@ With `prefix_path: /auth`:
 | --- | --- |
 | `/auth/ui/*` | Embedded Svelte management UI (users, roles, permissions, LDAP, OAuth, settings, API keys, email, mTLS, self-service account). |
 | `/auth/ui/#account` | Self-service account page for the current `X-User`: password, TOTP recovery, passkeys, roles and permissions. With `api_key.self_service` on it also carries a "Personal access keys" panel for issuing and revoking own API keys. |
-| `/auth/ui/#api-keys` | Admin API key principal management: choose an owner user/service account, create with a lifetime, attach role/permission IDs, copy the one-time key, list/update/revoke existing keys, and edit API key runtime settings. |
+| `/auth/ui/#api-keys` | Admin API key principal management: choose an owner user/service account, add a name and description, create with a lifetime, attach role/permission IDs, copy the one-time key, list/update/revoke existing keys, and edit API key runtime settings. |
 | `/auth/ui/#email` | Email code login settings: SMTP relay, code mail Go-template subject/body editor and preview. |
 | `/auth/ui/#magic-link` | Magic link login settings: enable toggle, magic link mail template editor and preview (shares the `email` SMTP relay). |
 | `/auth/ui/#signup` | Self-registration settings: signup/verification/password-reset toggles, default roles, code lifetime, mail template editors with preview. |
@@ -295,9 +295,9 @@ Static long-lived credentials for scripts and integrations, managed as machine p
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| `POST` | `/auth/v1/api-key-principals` | Create a key for `user_id` (`name`, optional `expires_in`, `role_ids`, `permission_ids`, `details`). The key (`tak_...`) is returned exactly once; only the sha256 hash is stored. If role/permission fields are omitted, the owner's current effective access is snapshotted; if present, requested IDs must be assigned to the owner. |
+| `POST` | `/auth/v1/api-key-principals` | Create a key for `user_id` (`name`, optional `description`, `expires_in`, `role_ids`, `permission_ids`, `details`). The key (`tak_...`) is returned exactly once; only the sha256 hash is stored. Empty role/permission lists inherit the owner's current effective access on each request; explicit IDs must be assigned to the owner. |
 | `GET` | `/auth/v1/api-key-principals` | List all key principals (metadata, owner, role/permission IDs; never the raw key). Optional `user_id` filters to one owner. |
-| `PATCH` | `/auth/v1/api-key-principals/{id}` | Update name, `role_ids`, `permission_ids`, `details` or `disabled`. Changes apply on the next request. |
+| `PATCH` | `/auth/v1/api-key-principals/{id}` | Update name, description, `role_ids`, `permission_ids`, `details` or `disabled`. Changes apply on the next request. |
 | `DELETE` | `/auth/v1/api-key-principals/{id}` | Revoke a key; access stops immediately. |
 | `GET/POST/PATCH/DELETE` | `/auth/v1/api-keys...` | X-User owner-scoped plane (personal access keys). Admin-only by default; with the `api_key.self_service` setting on, any authenticated X-User can issue, list, update and revoke **their own** keys here. A key never carries more than its owner's roles/permissions. The admin management UI uses `api-key-principals`. |
 

@@ -1555,7 +1555,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/auth.Response-array_auth_swaggerObject"
+                            "$ref": "#/definitions/auth.Response-array_auth_APIKeyMeta"
                         }
                     },
                     "401": {
@@ -1589,7 +1589,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.swaggerObject"
+                            "$ref": "#/definitions/auth.APIKeyCreateRequest"
                         }
                     }
                 ],
@@ -1597,7 +1597,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/auth.Response-auth_swaggerObject"
+                            "$ref": "#/definitions/auth.Response-auth_APIKeyCreateResponse"
                         }
                     },
                     "400": {
@@ -1692,7 +1692,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.swaggerObject"
+                            "$ref": "#/definitions/auth.APIKeyUpdateRequest"
                         }
                     }
                 ],
@@ -1745,7 +1745,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/auth.Response-array_auth_swaggerObject"
+                            "$ref": "#/definitions/auth.Response-array_auth_APIKeyMeta"
                         }
                     },
                     "401": {
@@ -1780,7 +1780,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.swaggerObject"
+                            "$ref": "#/definitions/auth.APIKeyCreateRequest"
                         }
                     }
                 ],
@@ -1788,7 +1788,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/auth.Response-auth_swaggerObject"
+                            "$ref": "#/definitions/auth.Response-auth_APIKeyCreateResponse"
                         }
                     },
                     "400": {
@@ -1883,7 +1883,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.swaggerObject"
+                            "$ref": "#/definitions/auth.APIKeyUpdateRequest"
                         }
                     }
                 ],
@@ -6483,6 +6483,142 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "auth.APIKeyCreateRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "description": "Description explains where or why the key is used.",
+                    "type": "string"
+                },
+                "details": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "disabled": {
+                    "type": "boolean"
+                },
+                "expires_in": {
+                    "description": "ExpiresIn is a duration string (e.g. \"720h\", \"30d\"); empty means no expiry\nunless the api_key setting enforces a max lifetime.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Name is a user-facing label for the key.",
+                    "type": "string"
+                },
+                "permission_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "role_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "user_id": {
+                    "description": "UserID owns the key. On the self-service plane it may only be the\ncaller's own id; on the admin plane an empty value issues a standalone\nsystem key that carries its own roles and permissions.",
+                    "type": "string"
+                }
+            }
+        },
+        "auth.APIKeyCreateResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "key": {
+                    "description": "Key is shown exactly once; only its hash is stored.",
+                    "type": "string"
+                }
+            }
+        },
+        "auth.APIKeyMeta": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "details": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "disabled": {
+                    "type": "boolean"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_used_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "permission_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "role_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.APIKeyUpdateRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "details": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "disabled": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "permission_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "role_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "auth.AccessTokenErrorResponse": {
             "type": "object",
             "properties": {
@@ -6662,6 +6798,20 @@ const docTemplate = `{
                 }
             }
         },
+        "auth.Response-array_auth_APIKeyMeta": {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "$ref": "#/definitions/auth.Meta"
+                },
+                "payload": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.APIKeyMeta"
+                    }
+                }
+            }
+        },
         "auth.Response-array_auth_ConfigMeta": {
             "type": "object",
             "properties": {
@@ -6702,6 +6852,17 @@ const docTemplate = `{
                         "type": "object",
                         "additionalProperties": true
                     }
+                }
+            }
+        },
+        "auth.Response-auth_APIKeyCreateResponse": {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "$ref": "#/definitions/auth.Meta"
+                },
+                "payload": {
+                    "$ref": "#/definitions/auth.APIKeyCreateResponse"
                 }
             }
         },

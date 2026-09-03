@@ -39,6 +39,7 @@
     id: string;
     user_id: string;
     name: string;
+    description: string;
     role_ids: string[];
     permission_ids: string[];
     details?: AnyRecord;
@@ -49,6 +50,7 @@
     updated_at: string;
     last_used_at?: string;
     draft_name?: string;
+    draft_description?: string;
     draft_email?: string;
     draft_role_ids?: string;
     draft_permission_ids?: string;
@@ -61,6 +63,7 @@
   let createdKey = $state("");
   let selectedOwnerID = $state("");
   let keyName = $state("");
+  let keyDescription = $state("");
   let keyEmail = $state("");
   let expiresIn = $state("720h");
   let keyRoleIDs = $state("");
@@ -133,6 +136,7 @@
       permission_ids: key.permission_ids ?? [],
       details: key.details ?? {},
       draft_name: key.name ?? "",
+      draft_description: key.description ?? "",
       draft_email: typeof key.details?.email === "string" ? key.details.email : "",
       draft_role_ids: joinValues(key.role_ids),
       draft_permission_ids: joinValues(key.permission_ids),
@@ -206,6 +210,7 @@
           body: JSON.stringify({
             user_id: selectedOwnerID,
             name: keyName.trim(),
+            description: keyDescription.trim(),
             details: { email: keyEmail.trim() },
             expires_in: expiresIn.trim(),
             role_ids: splitValues(keyRoleIDs),
@@ -216,6 +221,7 @@
 
       createdKey = res.payload.key;
       keyName = "";
+      keyDescription = "";
       keyEmail = "";
       keyRoleIDs = "";
       keyPermissionIDs = "";
@@ -235,6 +241,7 @@
         method: "PATCH",
         body: JSON.stringify({
           name: (key.draft_name ?? "").trim(),
+          description: (key.draft_description ?? "").trim(),
           details: { ...(key.details ?? {}), email: (key.draft_email ?? "").trim() },
           role_ids: splitValues(key.draft_role_ids ?? ""),
           permission_ids: splitValues(key.draft_permission_ids ?? ""),
@@ -269,6 +276,7 @@
 
   function resetDraft(key: APIKeyMeta) {
     key.draft_name = key.name ?? "";
+    key.draft_description = key.description ?? "";
     key.draft_email = typeof key.details?.email === "string" ? key.details.email : "";
     key.draft_role_ids = joinValues(key.role_ids);
     key.draft_permission_ids = joinValues(key.permission_ids);
@@ -470,6 +478,9 @@
                 <div class="min-w-0">
                   <p class="truncate text-[13.5px] font-medium text-ink">{keyLabel(key)}</p>
                   <p class="serial mt-0.5 truncate text-[12px] text-muted">api-key:{key.id}</p>
+                  {#if key.description}
+                    <p class="mt-1 truncate text-[12px] text-muted">{key.description}</p>
+                  {/if}
                 </div>
 
                 <p class="min-w-0 truncate text-[12.5px] text-muted">
@@ -570,7 +581,7 @@
       {/if}
     </Section>
 
-    <Section title="Name and lifetime">
+    <Section title="Identity and lifetime">
       <div class="grid gap-6 sm:grid-cols-2">
         <div class="min-w-0">
           <label class="stamp block" for="key-name">Name</label>
@@ -583,6 +594,19 @@
           />
           <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
             How this key appears in the register. Name it after what will hold it.
+          </p>
+        </div>
+
+        <div class="min-w-0 sm:col-span-2">
+          <label class="stamp block" for="key-description">Description</label>
+          <textarea
+            id="key-description"
+            class="entry mt-1.5 min-h-20 resize-y"
+            placeholder="Used by the production deployment pipeline"
+            bind:value={keyDescription}
+          ></textarea>
+          <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+            Optional context for operators reviewing this key later.
           </p>
         </div>
 
@@ -691,6 +715,16 @@
             autocomplete="off"
             bind:value={editKey.draft_email}
           />
+        </div>
+
+        <div class="min-w-0 sm:col-span-2">
+          <label class="stamp block" for="edit-key-description">Description</label>
+          <textarea
+            id="edit-key-description"
+            class="entry mt-1.5 min-h-20 resize-y"
+            placeholder="Where this key is used"
+            bind:value={editKey.draft_description}
+          ></textarea>
         </div>
 
         <div class="min-w-0">

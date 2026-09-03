@@ -30,6 +30,7 @@ type APIKeyMeta struct {
 	ID            string         `json:"id"`
 	UserID        string         `json:"user_id"`
 	Name          string         `json:"name"`
+	Description   string         `json:"description"`
 	RoleIDs       []string       `json:"role_ids"`
 	PermissionIDs []string       `json:"permission_ids"`
 	Details       map[string]any `json:"details,omitempty"`
@@ -43,6 +44,7 @@ type APIKeyMeta struct {
 
 type APIKeyUpdate struct {
 	Name          *string
+	Description   *string
 	RoleIDs       *[]string
 	PermissionIDs *[]string
 	Details       *map[string]any
@@ -116,7 +118,7 @@ func scanAPIKeyMeta(scan func(dest ...any) error) (*APIKeyMeta, error) {
 	var meta APIKeyMeta
 	var roleRaw, permissionRaw, detailsRaw []byte
 
-	if err := scan(&meta.ID, &meta.UserID, &meta.Name, &meta.ExpiresAt, &meta.CreatedAt,
+	if err := scan(&meta.ID, &meta.UserID, &meta.Name, &meta.Description, &meta.ExpiresAt, &meta.CreatedAt,
 		&meta.UpdatedAt, &meta.LastUsedAt, &roleRaw, &permissionRaw, &detailsRaw, &meta.Disabled, &meta.Revision); err != nil {
 		return nil, err
 	}
@@ -141,7 +143,7 @@ func scanAPIKeyMeta(scan func(dest ...any) error) (*APIKeyMeta, error) {
 	return &meta, nil
 }
 
-const apiKeyMetaSelect = `SELECT id, user_id, name,
+const apiKeyMetaSelect = `SELECT id, user_id, name, description,
 	coalesce(to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), ''),
 	to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 	to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
@@ -203,9 +205,9 @@ func (s *Store) CreateAPIKey(ctx context.Context, meta APIKeyMeta, keyHash strin
 	}
 
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO auth_api_keys
-		(id, user_id, name, key_hash, expires_at, role_ids, permission_ids, details, disabled)
-		VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9)`,
-		meta.ID, meta.UserID, meta.Name, keyHash, expires, rolesRaw, permissionsRaw, detailsRaw, meta.Disabled); err != nil {
+		(id, user_id, name, description, key_hash, expires_at, role_ids, permission_ids, details, disabled)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10)`,
+		meta.ID, meta.UserID, meta.Name, meta.Description, keyHash, expires, rolesRaw, permissionsRaw, detailsRaw, meta.Disabled); err != nil {
 		return "", fmt.Errorf("insert api key: %w", err)
 	}
 
@@ -219,7 +221,7 @@ func (s *Store) GetAPIKeyPrincipal(ctx context.Context, key string) (*APIKeyMeta
 	keyHash := hashAPIKey(key)
 
 	var storedHash string
-	row := s.db.QueryRowContext(ctx, `SELECT id, user_id, name,
+	row := s.db.QueryRowContext(ctx, `SELECT id, user_id, name, description,
 		coalesce(to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), ''),
 		to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
@@ -256,7 +258,7 @@ func (s *Store) GetAPIKeyPrincipal(ctx context.Context, key string) (*APIKeyMeta
 }
 
 func (s *Store) GetAPIKeyPrincipalByID(ctx context.Context, id string) (*APIKeyMeta, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id, user_id, name,
+	row := s.db.QueryRowContext(ctx, `SELECT id, user_id, name, description,
 		coalesce(to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), ''),
 		to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
@@ -305,6 +307,9 @@ func applyAPIKeyUpdate(meta *APIKeyMeta, update APIKeyUpdate) {
 	if update.Name != nil {
 		meta.Name = *update.Name
 	}
+	if update.Description != nil {
+		meta.Description = *update.Description
+	}
 	if update.RoleIDs != nil {
 		meta.RoleIDs = slicesUnique(*update.RoleIDs)
 	}
@@ -336,16 +341,17 @@ func (s *Store) updateAPIKeyMeta(ctx context.Context, meta *APIKeyMeta, ownerSco
 
 	query := `UPDATE auth_api_keys SET
 		name = $2,
-		role_ids = $3::jsonb,
-		permission_ids = $4::jsonb,
-		details = $5::jsonb,
-		disabled = $6,
+		description = $3,
+		role_ids = $4::jsonb,
+		permission_ids = $5::jsonb,
+		details = $6::jsonb,
+		disabled = $7,
 		revision = revision + 1,
 		updated_at = now()
 		WHERE id = $1`
-	args := []any{meta.ID, meta.Name, rolesRaw, permissionsRaw, detailsRaw, meta.Disabled}
+	args := []any{meta.ID, meta.Name, meta.Description, rolesRaw, permissionsRaw, detailsRaw, meta.Disabled}
 	if ownerScoped {
-		query += " AND user_id = $7"
+		query += " AND user_id = $8"
 		args = append(args, meta.UserID)
 	}
 

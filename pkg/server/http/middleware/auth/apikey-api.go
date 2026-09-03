@@ -18,6 +18,8 @@ type APIKeyCreateRequest struct {
 	UserID string `json:"user_id"`
 	// Name is a user-facing label for the key.
 	Name string `json:"name"`
+	// Description explains where or why the key is used.
+	Description string `json:"description"`
 	// ExpiresIn is a duration string (e.g. "720h", "30d"); empty means no expiry
 	// unless the api_key setting enforces a max lifetime.
 	ExpiresIn     string         `json:"expires_in"`
@@ -29,6 +31,7 @@ type APIKeyCreateRequest struct {
 
 type APIKeyUpdateRequest struct {
 	Name          *string         `json:"name"`
+	Description   *string         `json:"description"`
 	RoleIDs       *[]string       `json:"role_ids"`
 	PermissionIDs *[]string       `json:"permission_ids"`
 	Details       *map[string]any `json:"details"`
@@ -280,6 +283,7 @@ func (m *Auth) createAPIKey(w http.ResponseWriter, r *http.Request, adminPlane b
 	id, err := m.store.CreateAPIKey(r.Context(), APIKeyMeta{
 		UserID:        ownerID,
 		Name:          strings.TrimSpace(req.Name),
+		Description:   strings.TrimSpace(req.Description),
 		RoleIDs:       roleIDs,
 		PermissionIDs: permissionIDs,
 		Details:       details,
@@ -299,7 +303,7 @@ func (m *Auth) createAPIKey(w http.ResponseWriter, r *http.Request, adminPlane b
 }
 
 func apiKeyUpdateFromRequest(owner *data.UserExtended, req APIKeyUpdateRequest) (APIKeyUpdate, error) {
-	update := APIKeyUpdate{Name: req.Name, Details: req.Details, Disabled: req.Disabled}
+	update := APIKeyUpdate{Name: req.Name, Description: req.Description, Details: req.Details, Disabled: req.Disabled}
 	if req.RoleIDs != nil || req.PermissionIDs != nil {
 		roleIDs, permissionIDs, err := apiKeyAccessForOwner(owner, req.RoleIDs, req.PermissionIDs)
 		if err != nil {
@@ -385,7 +389,7 @@ func (m *Auth) UpdateAPIKeyPrincipalAPI(w http.ResponseWriter, r *http.Request) 
 
 		update, err = apiKeyUpdateFromRequest(owner, req)
 	} else {
-		update = APIKeyUpdate{Name: req.Name, Details: req.Details, Disabled: req.Disabled}
+		update = APIKeyUpdate{Name: req.Name, Description: req.Description, Details: req.Details, Disabled: req.Disabled}
 		if req.RoleIDs != nil || req.PermissionIDs != nil {
 			var roleIDs, permissionIDs []string
 			roleIDs, permissionIDs, err = m.apiKeyRegistryAccess(req.RoleIDs, req.PermissionIDs)

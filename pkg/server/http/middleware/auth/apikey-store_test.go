@@ -22,3 +22,14 @@ func TestShouldRefreshAPIKeyLastUsed(t *testing.T) {
 		t.Fatal("a different key should have its own refresh interval")
 	}
 }
+
+func TestApplyAPIKeyUpdateDescription(t *testing.T) {
+	meta := APIKeyMeta{Description: "old description"}
+	description := "new description"
+
+	applyAPIKeyUpdate(&meta, APIKeyUpdate{Description: &description})
+
+	if meta.Description != description {
+		t.Fatalf("description = %q", meta.Description)
+	}
+}
