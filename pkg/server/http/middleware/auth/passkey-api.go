@@ -173,7 +173,7 @@ func (m *Auth) passkeyRegisterTarget(w http.ResponseWriter, r *http.Request, use
 		return m.xUser(w, r)
 	}
 
-	if principal := r.Header.Get("X-User"); principal != "" {
+	if principal := requestPrincipal(r); principal != "" {
 		if self, err := m.userForPrincipal(r.Context(), principal, data.GetUserRequest{}); err == nil && self.ID == userID {
 			return self
 		}
@@ -290,7 +290,7 @@ func (m *Auth) PasskeyCredentialsAPI(w http.ResponseWriter, r *http.Request) {
 		}
 
 		userID = user.ID
-	} else if principal := r.Header.Get("X-User"); principal != "" {
+	} else if principal := requestPrincipal(r); principal != "" {
 		user, err := m.userForPrincipal(r.Context(), principal, data.GetUserRequest{})
 		if err != nil || user.ID != userID {
 			if !m.requireAdmin(w, r) {
@@ -326,7 +326,7 @@ func (m *Auth) PasskeyCredentialDeleteAPI(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	principal := r.Header.Get("X-User")
+	principal := requestPrincipal(r)
 	if principal == "" {
 		if !m.requireAdmin(w, r) {
 			return

@@ -51,6 +51,18 @@ func TestParseUserQueryNormalizesRoleType(t *testing.T) {
 	if req.RoleType != "TEMPORARY" {
 		t.Fatalf("RoleType = %q, want TEMPORARY", req.RoleType)
 	}
+	if !req.AddPermissions {
+		t.Fatal("AddPermissions = false, want default true")
+	}
+
+	r = httptest.NewRequest("GET", "/?add_permissions=false", nil)
+	req, err = parseUserQuery(r)
+	if err != nil {
+		t.Fatalf("parseUserQuery() error = %v", err)
+	}
+	if req.AddPermissions {
+		t.Fatal("AddPermissions = true, want explicit false")
+	}
 }
 
 func TestParseRoleQueryDefaults(t *testing.T) {

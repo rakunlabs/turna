@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
 
 type Response[T any] struct {
@@ -22,8 +23,12 @@ type SettingRequest struct {
 	Value json.RawMessage `json:"value"`
 }
 
+func requestPrincipal(r *http.Request) string {
+	return session.RequestPrincipal(r)
+}
+
 func getUserName(r *http.Request) string {
-	if v := r.Header.Get("X-User"); v != "" {
+	if v := requestPrincipal(r); v != "" {
 		return v
 	}
 

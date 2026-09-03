@@ -158,7 +158,7 @@ provider:
 | --- | --- |
 | `auth_middleware` | Name of the auth middleware instance to use as token issuer. |
 | `passkey` | Show a passkey button on the login page for this provider. Requires `auth_middleware` (in-process) or `oauth2.passkey_url` (remote). |
-| `api_key` | Accept static API keys on protected routes. The key is validated directly against the auth middleware database on every request; no token exchange. Downstream services receive the key principal's claims and `X-User: api-key:<id>`. |
+| `api_key` | Accept static API keys on protected routes. The key is validated directly against the auth middleware database on every request; no token exchange. The stable `sub=api-key:<id>` claim is used for authorization, while downstream `X-User` uses the key email, owner email, key name, then canonical subject fallback. |
 | `api_key_header` | Header carrying the raw API key. Defaults to `X-API-Key`. |
 
 ### Remote auth provider
@@ -283,7 +283,7 @@ claim mapping changes apply immediately without a rebuild.
 
 ### API key requests
 
-When `api_key: true` is set on a provider, `session` checks the configured API key header after bearer-token validation and before cookie redirects. If present, the static key is validated directly — in-process via `auth_middleware`, or with a request to `oauth2.api_key_url` on a remote auth instance. On success the raw key header is deleted and the key principal's claims and `X-User: api-key:<id>` headers are set; no JWT is involved.
+When `api_key: true` is set on a provider, `session` checks the configured API key header after bearer-token validation and before cookie redirects. If present, the static key is validated directly — in-process via `auth_middleware`, or with a request to `oauth2.api_key_url` on a remote auth instance. On success the raw key header is deleted and the key principal's claims are attached; no JWT is involved. `X-User` is selected from the key email, owner email, key name, then `api-key:<id>`, while `X-User-Id` uses the key name with the canonical subject as fallback. Authorization middleware uses the canonical `sub` from the validated claims rather than these presentation headers.
 
 Validation hits the auth database on every request, so deleting or disabling a key (or its owner) cuts access immediately.
 

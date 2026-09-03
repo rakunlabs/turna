@@ -82,7 +82,7 @@ func TestMiddlewareIntegration(t *testing.T) {
 	}
 
 	// create service account
-	saBody := `{"alias":["it-svc"],"details":{"secret":"it-secret","scope":"openid"},"is_active":true}`
+	saBody := `{"alias":["it-svc"],"description":"integration service account","details":{"secret":"it-secret","scope":"openid"},"is_active":true}`
 	res, err := client.Post(server.URL+"/auth/v1/service-accounts", "application/json", strings.NewReader(saBody))
 	if err != nil {
 		t.Fatalf("create sa: %v", err)
@@ -107,6 +107,18 @@ func TestMiddlewareIntegration(t *testing.T) {
 			res.Body.Close()
 		}
 	}()
+
+	var serviceAccount struct {
+		Payload struct {
+			Description string `json:"description"`
+		} `json:"payload"`
+	}
+	if res := getJSON(t, "/auth/v1/service-accounts/"+created.Payload.ID, &serviceAccount); res.StatusCode != http.StatusOK {
+		t.Fatalf("get service account status = %d", res.StatusCode)
+	}
+	if serviceAccount.Payload.Description != "integration service account" {
+		t.Fatalf("service account description = %q", serviceAccount.Payload.Description)
+	}
 
 	// token via client_credentials
 	form := url.Values{"grant_type": {"client_credentials"}}

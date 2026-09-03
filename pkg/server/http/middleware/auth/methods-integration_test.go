@@ -368,7 +368,7 @@ func TestAuthMethodsIntegration(t *testing.T) {
 		var created struct {
 			Payload APIKeyCreateResponse `json:"payload"`
 		}
-		if code := postJSON(t, "/auth/v1/api-keys", `{"name":"it-key","role_ids":["`+createdRole.Payload.ID+`"],"permission_ids":[]}`, userHeader, &created); code != http.StatusOK {
+		if code := postJSON(t, "/auth/v1/api-keys", `{"name":"it-key","details":{"email":"it-key@example.com"},"role_ids":["`+createdRole.Payload.ID+`"],"permission_ids":[]}`, userHeader, &created); code != http.StatusOK {
 			t.Fatalf("create api key status=%d", code)
 		}
 		if !strings.HasPrefix(created.Payload.Key, APIKeyPrefix) {
@@ -403,6 +403,9 @@ func TestAuthMethodsIntegration(t *testing.T) {
 		}
 		if claims["sub"] != apiKeyPrincipalSubject(created.Payload.ID) {
 			t.Fatalf("api key subject = %v", claims["sub"])
+		}
+		if claims["preferred_username"] != "it-key" || claims["name"] != "it-key" || claims["email"] != "it-key@example.com" {
+			t.Fatalf("api key identity claims = %#v", claims)
 		}
 		if !claimStringSliceContains(claims["roles"], createdRole.Payload.ID) || !claimStringSliceContains(claims["roles"], roleName) {
 			t.Fatalf("api key roles claim = %#v", claims["roles"])

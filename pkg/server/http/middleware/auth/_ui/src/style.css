@@ -21,6 +21,7 @@
   --color-rule: var(--w-rule);
   --color-rule-strong: var(--w-rule-strong);
   --color-seal: var(--w-seal);
+  --color-mark: var(--w-mark);
   --color-carbon: var(--w-carbon);
   --color-endorsed: var(--w-endorsed);
   --color-caution: var(--w-caution);
@@ -39,30 +40,62 @@
   --ease-settle: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* --- Instrument: the document plane, read under office light ------------- */
+/* --- Instrument: the document plane, read under office light -------------
+   The chrome keeps its vault colours in both surfaces (see below); this is the
+   plane between them, and it is where the colour lives.
+
+   The surfaces are deliberately neutral and the colour is spent entirely on the
+   accents and on the ink. Tinting the grounds was tried twice and rejected: at
+   low chroma they read as fog, and at the chroma needed to read as a colour at
+   all they read as a decision the console had no business making. A near-white
+   plane makes no claim, and it gives the four meaning-bearing inks the whole
+   contrast budget instead of a share of it.
+
+   The separation between ground and sheet is 1.05:1 — far too small to see, and
+   that is the point: a panel is bounded by its rule, not by a fill. It is the
+   same argument the rest of this file makes about boxes, applied to the plane.
+
+   Every accent is checked against *raised*, the darkest of the three surfaces,
+   and clears 4.5:1 there. Several are therefore darkened siblings of the source
+   colour rather than the source colour itself. */
 :root,
 :root[data-theme="light"] {
   color-scheme: light;
-  /* Three grounds, three clear steps: the desk (ground) sits well below the
-     paper (sheet), and raised is far enough from sheet that a hovered or
-     selected row reads at a glance. All four stay in the same sage family. */
-  --w-ground: #d5dad2;
-  --w-sheet: #f7f8f4;
-  --w-raised: #e5e9e0;
-  --w-ink: #16191a;
-  --w-muted: #565f59;
-  --w-faint: #6f7872;
-  --w-rule: #b2bbae;
-  --w-rule-strong: #16191a;
-  --w-seal: #a3252b;
-  --w-carbon: #2a4674;
-  --w-endorsed: #2f6b4a;
-  --w-caution: #7d5110;
+  /* Three grounds. The desk sits a hair under the paper; raised is far enough
+     below both that a hovered or selected row reads at a glance. */
+  --w-ground: #f9f9f9;
+  --w-sheet: #ffffff;
+  --w-raised: #ededed;
+  /* Ink is #3D405B, not black: at 10:1 on the sheet it clears AAA with room to
+     spare, and every rule, every .act border and the double rule take their
+     colour from it — so on a neutral plane the text itself carries the warmth
+     the surfaces gave up. */
+  --w-ink: #3d405b;
+  --w-muted: #565a6e;
+  --w-faint: #9a9aa2;
+  --w-rule: #c3c3c3;
+  --w-rule-strong: #3d405b;
+  /* Seal red is text as often as it is a mark (act-seal, the Break-glass
+     stamp), and #EF233C is 3.6:1 on raised — under the floor. So the text tier
+     is the darkened sibling, and the source red survives as --w-mark: the same
+     seal used only where it is never read as text. Today that is the
+     tamper-evident hatch band, a 14% wash where the darkened red goes muddy. */
+  --w-seal: #cd1e33;
+  --w-mark: #ef233c;
+  /* Carbon is held apart from ink on purpose. Preflight resets `a` to
+     text-decoration: inherit, so a link is never underlined and colour is its
+     only cue; at #35529e it sat 1.46:1 from ink, which is not a cue. This is
+     1.77:1, against 1.87:1 in the original near-black build. */
+  --w-carbon: #3a63bb;
+  /* Endorsement and caution are the darkened siblings of #81B29A and #EB5E28
+     for the same reason: both source colours sit near 2.3:1 as text. */
+  --w-endorsed: #1d7550;
+  --w-caution: #b2471e;
   /* Text laid on a filled accent. Kept per theme: the dark theme's accents are
      tints, so white on them falls under 3:1. */
   --w-on-carbon: #ffffff;
   --w-on-seal: #ffffff;
-  --w-guilloche: #16191a;
+  --w-guilloche: #3d405b;
   --w-guilloche-alpha: 0.09;
   --w-hatch-alpha: 0.14;
 }
@@ -83,6 +116,7 @@
   --w-rule: #2c332d;
   --w-rule-strong: #e4e9e2;
   --w-seal: #e4737a;
+  --w-mark: #e4737a;
   --w-carbon: #7fa8e8;
   --w-endorsed: #4fa97a;
   --w-caution: #c79a3e;
@@ -264,11 +298,13 @@
       );
   }
 
-  /* ---- Tamper-evident hatching, for what cannot be undone -------------- */
+  /* ---- Tamper-evident hatching, for what cannot be undone --------------
+     Laid in --w-mark, not --w-seal: a wash at 14% is never read as text, so it
+     takes the undarkened red and the band actually registers as a warning. */
   .hatch {
     background-image: repeating-linear-gradient(
       -45deg,
-      color-mix(in srgb, var(--w-seal) calc(var(--w-hatch-alpha) * 100%), transparent) 0 6px,
+      color-mix(in srgb, var(--w-mark) calc(var(--w-hatch-alpha) * 100%), transparent) 0 6px,
       transparent 6px 12px
     );
   }

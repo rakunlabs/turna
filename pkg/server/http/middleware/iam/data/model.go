@@ -143,6 +143,7 @@ type User struct {
 	RoleIDs        []string       `json:"role_ids"`
 	SyncRoleIDs    []string       `json:"sync_role_ids"`
 	Details        map[string]any `json:"details"`
+	Description    string         `json:"description"`
 	Disabled       bool           `json:"-"`
 	ServiceAccount bool           `json:"service_account"`
 	Local          bool           `json:"local"`
@@ -172,6 +173,7 @@ type UserPatch struct {
 	SyncRoleIDs   *[]string       `json:"sync_role_ids"`
 	PermissionIDs *[]string       `json:"permission_ids"`
 	Details       *map[string]any `json:"details"`
+	Description   *string         `json:"description"`
 	IsActive      *bool           `json:"is_active"`
 }
 
@@ -324,8 +326,8 @@ type GetUserRequest struct {
 	Name     string `json:"name"`
 	Email    string `json:"email"`
 	RoleType string `json:"role_type"`
-	// Search is a case-insensitive substring match across aliases and the
-	// name/email/uid detail fields — one box on the UI, one parameter here.
+	// Search is a case-insensitive substring match across aliases, description,
+	// and the name/email/uid detail fields — one box on the UI, one parameter here.
 	Search string `json:"search"`
 
 	Path        string   `json:"path"`

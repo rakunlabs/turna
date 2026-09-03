@@ -419,6 +419,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     example: {
       id: "generated-on-create",
       alias: ["my-service"],
+      description: "",
       details: { name: "my-service", secret: "change-me", scope: "openid" },
       role_ids: [],
       sync_role_ids: [],

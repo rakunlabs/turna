@@ -77,9 +77,10 @@ func testSnapshot() *Snapshot {
 	}
 
 	user := &data.User{
-		ID:      "user-1",
-		Alias:   []string{"my-user"},
-		RoleIDs: []string{"role-parent"},
+		ID:          "user-1",
+		Alias:       []string{"my-user"},
+		RoleIDs:     []string{"role-parent"},
+		Description: "Primary automation account",
 		Details: map[string]any{
 			"name":     "My User",
 			"email":    "my@user.com",
@@ -318,6 +319,14 @@ func TestCacheSearchRolesAndPermissions(t *testing.T) {
 
 func TestCacheGetUsersSearchPaged(t *testing.T) {
 	c := testCache()
+
+	descriptionResult, err := c.GetUsers(data.GetUserRequest{Search: "AUTOMATION"})
+	if err != nil {
+		t.Fatalf("GetUsers() description search error = %v", err)
+	}
+	if descriptionResult.Meta.TotalItemCount != 1 || descriptionResult.Payload[0].ID != "user-1" {
+		t.Fatalf("description search: expected user-1, got %v", descriptionResult.Payload)
+	}
 
 	// search + windowing together: total counts every match, payload is the page
 	res, err := c.GetUsers(data.GetUserRequest{Search: "user", Limit: 1, Offset: 1})

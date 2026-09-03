@@ -41,6 +41,7 @@
     name: string;
     role_ids: string[];
     permission_ids: string[];
+    details?: AnyRecord;
     disabled: boolean;
     revision: number;
     expires_at?: string;
@@ -48,6 +49,7 @@
     updated_at: string;
     last_used_at?: string;
     draft_name?: string;
+    draft_email?: string;
     draft_role_ids?: string;
     draft_permission_ids?: string;
   };
@@ -59,6 +61,7 @@
   let createdKey = $state("");
   let selectedOwnerID = $state("");
   let keyName = $state("");
+  let keyEmail = $state("");
   let expiresIn = $state("720h");
   let keyRoleIDs = $state("");
   let keyPermissionIDs = $state("");
@@ -128,7 +131,9 @@
       ...key,
       role_ids: key.role_ids ?? [],
       permission_ids: key.permission_ids ?? [],
+      details: key.details ?? {},
       draft_name: key.name ?? "",
+      draft_email: typeof key.details?.email === "string" ? key.details.email : "",
       draft_role_ids: joinValues(key.role_ids),
       draft_permission_ids: joinValues(key.permission_ids),
     }));
@@ -201,6 +206,7 @@
           body: JSON.stringify({
             user_id: selectedOwnerID,
             name: keyName.trim(),
+            details: { email: keyEmail.trim() },
             expires_in: expiresIn.trim(),
             role_ids: splitValues(keyRoleIDs),
             permission_ids: splitValues(keyPermissionIDs),
@@ -210,6 +216,7 @@
 
       createdKey = res.payload.key;
       keyName = "";
+      keyEmail = "";
       keyRoleIDs = "";
       keyPermissionIDs = "";
       await fetchAll();
@@ -228,6 +235,7 @@
         method: "PATCH",
         body: JSON.stringify({
           name: (key.draft_name ?? "").trim(),
+          details: { ...(key.details ?? {}), email: (key.draft_email ?? "").trim() },
           role_ids: splitValues(key.draft_role_ids ?? ""),
           permission_ids: splitValues(key.draft_permission_ids ?? ""),
           disabled: key.disabled,
@@ -261,6 +269,7 @@
 
   function resetDraft(key: APIKeyMeta) {
     key.draft_name = key.name ?? "";
+    key.draft_email = typeof key.details?.email === "string" ? key.details.email : "";
     key.draft_role_ids = joinValues(key.role_ids);
     key.draft_permission_ids = joinValues(key.permission_ids);
   }
@@ -578,6 +587,21 @@
         </div>
 
         <div class="min-w-0">
+          <label class="stamp block" for="key-email">Email</label>
+          <input
+            id="key-email"
+            class="entry mt-1.5"
+            type="email"
+            placeholder="robot@example.com"
+            autocomplete="off"
+            bind:value={keyEmail}
+          />
+          <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+            Optional X-User identity. Empty uses the owner's email, then the key name.
+          </p>
+        </div>
+
+        <div class="min-w-0">
           <label class="stamp block" for="key-expires">Expires in</label>
           <input
             id="key-expires"
@@ -654,6 +678,18 @@
             placeholder={editKey.id}
             autocomplete="off"
             bind:value={editKey.draft_name}
+          />
+        </div>
+
+        <div class="min-w-0">
+          <label class="stamp block" for="edit-key-email">Email</label>
+          <input
+            id="edit-key-email"
+            class="entry mt-1.5"
+            type="email"
+            placeholder="owner email fallback"
+            autocomplete="off"
+            bind:value={editKey.draft_email}
           />
         </div>
 

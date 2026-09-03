@@ -752,6 +752,12 @@
         placeholder: "my-service",
       })}
       {@render line({
+        label: "Description",
+        value: editor.getString("description"),
+        set: (value) => editor.setString("description", value),
+        placeholder: "optional",
+      })}
+      {@render line({
         label: `Client secret${
           editor.loadedID ||
           editor.getNestedString("details", "secret") ||

@@ -364,10 +364,17 @@ func (m *Session) serveAPIKey(next http.Handler, w http.ResponseWriter, r *http.
 
 		return
 	}
+	if apiKeyPrincipal(customClaims) == "" {
+		slog.Debug("api key validation returned an invalid principal")
+		m.unauthorized(w, r)
+
+		return
+	}
 
 	r.Header.Del(headerName)
 
 	tcontext.Set(r, "claims", customClaims)
+	tcontext.Set(r, apiKeyAuthenticatedContextKey, true)
 	tcontext.Set(r, "provider", providerName)
 	addXUserHeader(r, customClaims, provider.XUser, provider.EmailVerifyCheck, provider.ClaimHeader)
 

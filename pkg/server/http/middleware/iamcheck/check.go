@@ -112,8 +112,8 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 				}
 			}
 
-			xUser := r.Header.Get("X-User")
-			allowed, err := m.allowed(r.Context(), xUser, hostToCheck, r.URL.Path, r.Method)
+			principal := session.RequestPrincipal(r)
+			allowed, err := m.allowed(r.Context(), principal, hostToCheck, r.URL.Path, r.Method)
 			if err != nil {
 				httputil.HandleError(w, httputil.NewErrorAs(err))
 				return
@@ -137,7 +137,7 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 				}
 
 				status := http.StatusForbidden
-				if xUser == "" {
+				if principal == "" {
 					status = http.StatusUnauthorized
 				}
 

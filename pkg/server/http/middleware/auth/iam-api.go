@@ -127,7 +127,7 @@ func parseUserQuery(r *http.Request) (data.GetUserRequest, error) {
 		Permissions:    q.GetValues("permission"),
 		ServiceAccount: isServiceAccountPtr(r),
 		AddRoles:       parseBoolDefault(q, "add_roles", true),
-		AddPermissions: parseBoolDefault(q, "add_permissions", false),
+		AddPermissions: parseBoolDefault(q, "add_permissions", true),
 		AddData:        parseBoolDefault(q, "add_data", false),
 		AddScopeRoles:  parseBoolDefault(q, "add_scope_roles", false),
 		Sanitize:       true,
@@ -221,7 +221,7 @@ func (m *Auth) GetUserAPI(w http.ResponseWriter, r *http.Request) {
 		ID:             r.PathValue("id"),
 		ServiceAccount: isServiceAccountPtr(r),
 		AddRoles:       parseBoolDefault(q, "add_roles", true),
-		AddPermissions: parseBoolDefault(q, "add_permissions", false),
+		AddPermissions: parseBoolDefault(q, "add_permissions", true),
 		AddData:        parseBoolDefault(q, "add_data", false),
 		AddScopeRoles:  parseBoolDefault(q, "add_scope_roles", false),
 		// never expose the stored password hash to the management UI; an
@@ -958,7 +958,7 @@ func (m *Auth) AccessAllowed(ctx context.Context, alias, host, path, method stri
 // Anonymous requests (no X-User) are checked against permissions flagged
 // public only; a match answers allowed, anything else stays 401.
 func (m *Auth) CheckUserAPI(w http.ResponseWriter, r *http.Request) {
-	xUser := r.Header.Get("X-User")
+	xUser := requestPrincipal(r)
 	if xUser == "" {
 		var body data.CheckRequestUser
 		if err := httputil.Decode(r, &body); err != nil {
@@ -998,7 +998,7 @@ func (m *Auth) CheckUserAPI(w http.ResponseWriter, r *http.Request) {
 
 // UserInfoAPI returns identity info for the X-User header.
 func (m *Auth) UserInfoAPI(w http.ResponseWriter, r *http.Request) {
-	xUser := r.Header.Get("X-User")
+	xUser := requestPrincipal(r)
 	if xUser == "" {
 		httputil.HandleError(w, httputil.NewError("X-User header is required", nil, http.StatusUnauthorized))
 		return
@@ -1012,13 +1012,18 @@ func (m *Auth) UserInfoAPI(w http.ResponseWriter, r *http.Request) {
 
 	getData := parseBoolDefault(q, "data", false)
 
-	user, err := m.cache.GetUser(data.GetUserRequest{
-		Alias:          xUser,
-		AddRoles:       true,
-		AddPermissions: true,
-		AddData:        getData,
-		Sanitize:       true,
-	})
+	var user *data.UserExtended
+	if strings.HasPrefix(xUser, apiKeyPrincipalPrefix) {
+		user, err = m.apiKeyUserByPrincipal(r.Context(), xUser)
+	} else {
+		user, err = m.cache.GetUser(data.GetUserRequest{
+			Alias:          xUser,
+			AddRoles:       true,
+			AddPermissions: true,
+			AddData:        getData,
+			Sanitize:       true,
+		})
+	}
 	if err != nil {
 		handleIAMError(w, err, "cannot get user info")
 		return

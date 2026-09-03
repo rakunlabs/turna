@@ -229,43 +229,67 @@ Both are first-class, so neither may be unreachable at any width.
 
 ## Colors
 
-Three closely-related desaturated greens carry the paper, and four saturated
-inks carry meaning; the palette is cold safety-paper stock, not neutral grey.
+The masthead and index rail are vault-coloured on both surfaces and are not part
+of this system — the palette below is the plane between them. On the Instrument
+surface the grounds are **neutral by decision**, and the entire colour budget is
+spent on the four meaning-bearing inks and on the ink itself. The vault inverts
+to low-light neutrals.
+
+**Why the plane is not tinted.** Two passes tried it. At low chroma the surfaces
+landed a few points off neutral and read as fog; at the chroma needed to read as
+a colour at all, the plane started asserting a mood the console has no business
+asserting. A near-white ground makes no claim and hands the whole contrast budget
+to the accents. If a future pass wants to tint it, it has to beat that argument,
+not just prefer a hue.
+
+**Ground and sheet are 1.05:1 apart** — too close to see, deliberately. A panel
+is bounded by its rule, not by a fill; this is the same argument the rest of the
+system makes about boxes, applied to the plane itself.
 
 ### Primary
-- **Wax Seal Red** (`#a3252b` light / `#e4737a` vault): the irreversible. It
-  marks the tamper-evident hatch band on `BreakSeal`, the `act-seal` control,
-  the broken seal mark, a rejected docket entry, the focus ring, the caret, the
-  text selection, and the 6px dot on the active index entry. It is never the
-  primary button and never decorative emphasis.
-- **Carbon Indigo** (`#2a4674` light / `#7fa8e8` vault): the action colour.
+- **Wax Seal Red** (`#cd1e33` light / `#e4737a` vault): the irreversible. It
+  marks the `act-seal` control, the broken seal mark, a rejected docket entry,
+  the focus ring, the caret and the text selection. It is never the primary
+  button and never decorative emphasis.
+- **Mark Red** (`#ef233c` light / `#e4737a` vault): the *same* seal where it is
+  never read as text — today only the tamper-evident hatch band, a 14% wash in
+  which the darkened seal goes muddy. Source red at full chroma, which as text
+  sits at 3.1:1 on the ground and is therefore barred from the text tier.
+- **Carbon Blue** (`#3a63bb` light / `#7fa8e8` vault): the action colour.
+  Held 1.77:1 away from ink on purpose — preflight resets `a` to
+  `text-decoration: inherit`, so a link is never underlined and colour is its
+  only cue.
   Fills `act-primary`, colours links, colours the `Switch` rail when on, and is
   the hover colour for the Overview holdings list.
 
 ### Secondary
-- **Endorsement Green** (`#2f6b4a` light / `#4fa97a` vault): standing that is
+- **Endorsement Green** (`#1d7550` light / `#4fa97a` vault): standing that is
   intact — the endorsed seal mark, a committed docket entry, a completed
   ceremony step, the certificate seal when the database link holds.
-- **Held Ochre** (`#7d5110` light / `#c79a3e` vault): standing that is
+- **Held Ochre** (`#b2471e` light / `#c79a3e` vault): standing that is
   suspended or incomplete — the held seal mark, the bootstrap-admin banner, an
   outstanding ceremony count.
 
 ### Neutral
-- **Register Ground** (`#dce1db` / vault `#101311`): the desk the instruments
+- **Register Ground** (`#f9f9f9` / vault `#101311`): the desk the instruments
   lie on. Body background and the scroll region behind every page.
-- **Sheet** (`#f2f4f0` / vault `#181c19`): the instrument's own stock. Masthead,
-  index rail, `.sheet` panels, ledger tables, docket entries.
-- **Raised** (`#e8ebe4` / vault `#1f2420`): a third ground half a step up, used
+- **Sheet** (`#ffffff` / vault `#181c19`): the instrument's own stock. `.sheet`
+  panels, ledger tables, docket entries — and, in vault colours whichever
+  surface is active, the masthead and index rail.
+- **Raised** (`#ededed` / vault `#1f2420`): a third ground half a step up, used
   for the `.exhibit` code well and for the active/hover state of index entries.
-- **Ink** (`#16191a` / vault `#e4e9e2`): all primary text; also `rule-strong`,
-  the colour of the double rule and of every `.act` border.
-- **Muted** (`#565f59` / vault `#98a199`): secondary text — labels, hints,
+- **Ink** (`#3d405b` / vault `#e4e9e2`): all primary text; also `rule-strong`,
+  the colour of the double rule and of every `.act` border. Indigo, not black —
+  it clears AAA at 9.8:1 on the sheet, so the plane costs nothing in legibility.
+- **Muted** (`#565a6e` / vault `#98a199`): secondary text — labels, hints,
   notes, placeholders, inactive index entries.
-- **Faint** (`#6f7872` / vault `#8a938c`): **not a text colour.** Disabled
+- **Faint** (`#9a9aa2` / vault `#8a938c`): **not a text colour.** Disabled
   control text, the off-state switch knob, the void seal ring, the scrollbar
   thumb on hover.
-- **Rule** (`#c2c9bf` / vault `#2c332d`): every hairline. Panel borders, table
-  row separators, field underlines, group dividers, scrollbar thumb.
+- **Rule** (`#c3c3c3` / vault `#2c332d`): every hairline. Panel borders, table
+  row separators, field underlines, group dividers, scrollbar thumb. It is the
+  rule, not a fill, that bounds a panel on this surface.
+
 
 ### Named Rules
 

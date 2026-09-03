@@ -7468,6 +7468,9 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
+                "description": {
+                    "type": "string"
+                },
                 "details": {
                     "type": "object",
                     "additionalProperties": {}
@@ -7560,6 +7563,9 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
+                "description": {
+                    "type": "string"
+                },
                 "details": {
                     "type": "object",
                     "additionalProperties": {}
@@ -7629,6 +7635,9 @@ const docTemplate = `{
                 "data": {
                     "type": "array",
                     "items": {}
+                },
+                "description": {
+                    "type": "string"
                 },
                 "details": {
                     "type": "object",
@@ -7741,6 +7750,9 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "description": {
+                    "type": "string"
                 },
                 "details": {
                     "type": "object",

@@ -314,6 +314,10 @@ func (s *Store) PatchUser(ctx context.Context, id string, patch data.UserPatch) 
 			user.Details = *patch.Details
 		}
 
+		if patch.Description != nil {
+			user.Description = *patch.Description
+		}
+
 		if patch.PermissionIDs != nil {
 			user.PermissionIDs = slicesUnique(*patch.PermissionIDs)
 		}

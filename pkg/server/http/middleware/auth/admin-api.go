@@ -26,25 +26,26 @@ func (m *Auth) capabilitiesForRequest(r *http.Request) CapabilitiesResponse {
 	cfg := sn.Admin
 	permission := strings.TrimSpace(cfg.GetPermission())
 	xUser := strings.TrimSpace(r.Header.Get("X-User"))
+	principal := requestPrincipal(r)
 
 	caps := CapabilitiesResponse{
 		AdminPermission:           permission,
 		AdminPermissionConfigured: permission != "",
 		AllowMissingXUser:         cfg.GetAllowMissingXUser(),
 		XUser:                     xUser,
-		SelfService:               xUser != "",
-		APIKeySelfService:         xUser != "" && sn.APIKey.SelfService && !sn.APIKey.Disabled,
+		SelfService:               principal != "",
+		APIKeySelfService:         principal != "" && sn.APIKey.SelfService && !sn.APIKey.Disabled,
 	}
 
 	if permission == "" {
 		caps.IsAdmin = true
 		caps.BootstrapAdmin = true
-		caps.AnonymousAdmin = xUser == ""
+		caps.AnonymousAdmin = principal == ""
 
 		return caps
 	}
 
-	if xUser == "" {
+	if principal == "" {
 		if caps.AllowMissingXUser {
 			caps.IsAdmin = true
 			caps.AnonymousAdmin = true
@@ -57,11 +58,11 @@ func (m *Auth) capabilitiesForRequest(r *http.Request) CapabilitiesResponse {
 
 	var user *data.UserExtended
 	var err error
-	if strings.HasPrefix(xUser, apiKeyPrincipalPrefix) {
-		user, err = m.apiKeyUserByPrincipal(r.Context(), xUser)
+	if strings.HasPrefix(principal, apiKeyPrincipalPrefix) {
+		user, err = m.apiKeyUserByPrincipal(r.Context(), principal)
 	} else {
 		user, err = m.cache.GetUser(data.GetUserRequest{
-			Alias:          xUser,
+			Alias:          principal,
 			AddPermissions: true,
 		})
 	}
@@ -119,7 +120,7 @@ func (m *Auth) adminOnly(next http.HandlerFunc) http.HandlerFunc {
 func (m *Auth) apiKeySelfOrAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg := m.cache.Snapshot().APIKey
-		if cfg.SelfService && !cfg.Disabled && strings.TrimSpace(r.Header.Get("X-User")) != "" {
+		if cfg.SelfService && !cfg.Disabled && requestPrincipal(r) != "" {
 			next(w, r)
 
 			return

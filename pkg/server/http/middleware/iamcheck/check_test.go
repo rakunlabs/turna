@@ -11,6 +11,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/claims"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
 )
@@ -105,6 +106,29 @@ func TestAnonymousRequestUsesCentralPublicCheck(t *testing.T) {
 		}
 		if gotXUser != "user1" {
 			t.Fatalf("X-User = %q, want user1", gotXUser)
+		}
+	})
+
+	t.Run("remote check receives canonical api key principal", func(t *testing.T) {
+		called = false
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "http://example.com/public", nil)
+		r.Header.Set("X-User", "robot@example.com")
+		turna, r := tcontext.New(w, r)
+		turna.Set("claims", &claims.Custom{Map: map[string]any{
+			"principal_type": "api_key",
+			"api_key_id":     "key-1",
+			"sub":            "api-key:key-1",
+		}})
+		turna.Set("session_api_key_authenticated", true)
+
+		handler.ServeHTTP(w, r)
+
+		if w.Code != http.StatusNoContent || !called {
+			t.Fatalf("status = %d, called = %v", w.Code, called)
+		}
+		if got.Alias != "api-key:key-1" || gotXUser != "api-key:key-1" {
+			t.Fatalf("remote principal: body=%q header=%q", got.Alias, gotXUser)
 		}
 	})
 }
@@ -213,5 +237,44 @@ func TestAuthMiddlewareChecksInProcess(t *testing.T) {
 	}
 	if issuer.alias != "user1" || issuer.path != "/public" {
 		t.Fatalf("in-process check got alias=%q path=%q", issuer.alias, issuer.path)
+	}
+}
+
+func TestAPIKeyClaimsUseCanonicalPrincipal(t *testing.T) {
+	issuer := &fakeAccessIssuer{allowed: true}
+	session.IssuerRegistry.Set("iamcheck-api-key", issuer)
+
+	middleware, err := (&IamCheck{AuthMiddleware: "iamcheck-api-key"}).Middleware()
+	if err != nil {
+		t.Fatalf("Middleware: %v", err)
+	}
+
+	var downstreamXUser string
+	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		downstreamXUser = r.Header.Get("X-User")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "http://example.com/private", nil)
+	r.Header.Set("X-User", "robot@example.com")
+	turna, r := tcontext.New(w, r)
+	turna.Set("claims", &claims.Custom{Map: map[string]any{
+		"principal_type": "api_key",
+		"api_key_id":     "key-1",
+		"sub":            "api-key:key-1",
+	}})
+	turna.Set("session_api_key_authenticated", true)
+
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d", w.Code)
+	}
+	if issuer.alias != "api-key:key-1" {
+		t.Fatalf("authorization alias = %q", issuer.alias)
+	}
+	if downstreamXUser != "robot@example.com" {
+		t.Fatalf("downstream X-User = %q", downstreamXUser)
 	}
 }

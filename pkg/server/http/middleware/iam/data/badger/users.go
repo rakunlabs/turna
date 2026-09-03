@@ -528,6 +528,10 @@ func (b *Badger) PatchUser(ctx context.Context, id string, userPatch data.UserPa
 			foundUser.Details = *userPatch.Details
 		}
 
+		if userPatch.Description != nil {
+			foundUser.Description = *userPatch.Description
+		}
+
 		if userPatch.PermissionIDs != nil {
 			foundUser.PermissionIDs = slicesUnique(*userPatch.PermissionIDs)
 		}

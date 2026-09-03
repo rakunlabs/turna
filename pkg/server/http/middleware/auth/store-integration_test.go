@@ -181,10 +181,18 @@ func TestStoreIntegration(t *testing.T) {
 	}
 
 	// patch user
-	if err := store.PatchUser(userCtx, userID, data.UserPatch{IsActive: &data.False}); err != nil {
+	description := "Integration user"
+	if err := store.PatchUser(userCtx, userID, data.UserPatch{Description: &description, IsActive: &data.False}); err != nil {
 		t.Fatalf("patch user: %v", err)
 	}
 	_ = cache.Reload(ctx)
+	user, err = cache.GetUser(data.GetUserRequest{ID: userID})
+	if err != nil {
+		t.Fatalf("get patched user: %v", err)
+	}
+	if user.Description != description {
+		t.Fatalf("patched user description = %q", user.Description)
+	}
 
 	resp, _ = cache.Check(data.CheckRequest{Alias: "it-user@example.com", Path: "/it/x", Method: "POST"})
 	if resp.Allowed {

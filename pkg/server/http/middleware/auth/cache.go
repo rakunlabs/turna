@@ -1532,12 +1532,15 @@ func castString(v any) string {
 }
 
 // matchUserSearch is the one-box search: a case-insensitive substring match
-// across every alias and the name/email/uid detail fields.
+// across every alias, description, and the name/email/uid detail fields.
 func matchUserSearch(user *data.User, term string) bool {
 	for _, alias := range user.Alias {
 		if containsFold(alias, term) {
 			return true
 		}
+	}
+	if containsFold(user.Description, term) {
+		return true
 	}
 
 	for _, key := range []string{"name", "email", "uid"} {

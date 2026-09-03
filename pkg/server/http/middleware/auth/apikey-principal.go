@@ -125,19 +125,38 @@ func (m *Auth) apiKeyClaimsForKey(ctx context.Context, key string) (map[string]a
 		}
 	}
 
+	return m.apiKeyClaims(meta, owner), nil
+}
+
+func (m *Auth) apiKeyClaims(meta *APIKeyMeta, owner *data.UserExtended) map[string]any {
 	user := m.apiKeyUser(meta, owner)
 	subject := apiKeyPrincipalSubject(meta.ID)
+	name := strings.TrimSpace(meta.Name)
+	if name == "" {
+		name = strings.TrimSpace(castString(user.Details["name"]))
+	}
+	if name == "" {
+		name = subject
+	}
+
+	email := strings.TrimSpace(castString(meta.Details["email"]))
+	if email == "" && owner != nil && owner.User != nil {
+		email = strings.TrimSpace(castString(owner.Details["email"]))
+	}
 
 	claims := map[string]any{
 		"sub":                subject,
-		"preferred_username": subject,
-		"name":               user.Details["name"],
+		"preferred_username": name,
+		"name":               name,
 		"typ":                "APIKey",
 		"principal_type":     "api_key",
 		"api_key_id":         meta.ID,
 	}
 	if meta.UserID != "" {
 		claims["owner_user_id"] = meta.UserID
+	}
+	if email != "" {
+		claims["email"] = email
 	}
 
 	roles := idNameClaimValues(user.Roles)
@@ -150,7 +169,7 @@ func (m *Auth) apiKeyClaimsForKey(ctx context.Context, key string) (map[string]a
 		claims["permissions"] = permissions
 	}
 
-	return claims, nil
+	return claims
 }
 
 func idNameClaimValues(values []data.IDName) []string {

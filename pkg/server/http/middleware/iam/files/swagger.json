@@ -3350,6 +3350,9 @@
                 "created_at": {
                     "type": "string"
                 },
+                "description": {
+                    "type": "string"
+                },
                 "details": {
                     "type": "object",
                     "additionalProperties": {}
@@ -3442,6 +3445,9 @@
                 "created_at": {
                     "type": "string"
                 },
+                "description": {
+                    "type": "string"
+                },
                 "details": {
                     "type": "object",
                     "additionalProperties": {}
@@ -3511,6 +3517,9 @@
                 "data": {
                     "type": "array",
                     "items": {}
+                },
+                "description": {
+                    "type": "string"
                 },
                 "details": {
                     "type": "object",
@@ -3623,6 +3632,9 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "description": {
+                    "type": "string"
                 },
                 "details": {
                     "type": "object",

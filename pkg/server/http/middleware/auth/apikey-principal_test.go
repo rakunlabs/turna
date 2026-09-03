@@ -69,6 +69,55 @@ func TestAPIKeyUserAccess(t *testing.T) {
 	})
 }
 
+func TestAPIKeyClaimsIdentity(t *testing.T) {
+	m := &Auth{cache: testCache()}
+	owner, err := m.cache.GetUser(data.GetUserRequest{ID: "user-1"})
+	if err != nil {
+		t.Fatalf("GetUser() error = %v", err)
+	}
+
+	t.Run("key email overrides owner", func(t *testing.T) {
+		claims := m.apiKeyClaims(&APIKeyMeta{
+			ID:     "key-1",
+			UserID: owner.ID,
+			Name:   "deploy-key",
+			Details: map[string]any{
+				"email": "robot@example.com",
+			},
+		}, owner)
+
+		if claims["sub"] != "api-key:key-1" || claims["preferred_username"] != "deploy-key" {
+			t.Fatalf("identity claims = %#v", claims)
+		}
+		if claims["email"] != "robot@example.com" {
+			t.Fatalf("email = %v", claims["email"])
+		}
+	})
+
+	t.Run("owner email is the fallback", func(t *testing.T) {
+		claims := m.apiKeyClaims(&APIKeyMeta{ID: "key-2", UserID: owner.ID, Name: "owner-key"}, owner)
+
+		if claims["email"] != "my@user.com" {
+			t.Fatalf("email = %v", claims["email"])
+		}
+	})
+
+	t.Run("name and subject fallbacks", func(t *testing.T) {
+		claims := m.apiKeyClaims(&APIKeyMeta{ID: "key-3", Name: "system-key"}, nil)
+		if claims["preferred_username"] != "system-key" {
+			t.Fatalf("preferred_username = %v", claims["preferred_username"])
+		}
+		if _, ok := claims["email"]; ok {
+			t.Fatalf("unexpected email = %v", claims["email"])
+		}
+
+		claims = m.apiKeyClaims(&APIKeyMeta{ID: "key-4"}, nil)
+		if claims["preferred_username"] != "api-key:key-4" || claims["name"] != "api-key:key-4" {
+			t.Fatalf("fallback claims = %#v", claims)
+		}
+	})
+}
+
 // TestAPIKeyRegistryAccess covers the system-key validation path: ids must
 // exist in the registry, and the create path refuses a key with no access.
 func TestAPIKeyRegistryAccess(t *testing.T) {

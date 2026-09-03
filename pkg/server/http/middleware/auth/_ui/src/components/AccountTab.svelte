@@ -90,6 +90,7 @@
 
   let ownKeys = $state<OwnKeyMeta[]>([]);
   let ownKeyName = $state("");
+  let ownKeyEmail = $state("");
   let ownKeyExpires = $state("720h");
   let createdOwnKey = $state("");
   let pendingKeyRevoke = $state("");
@@ -171,6 +172,7 @@
           method: "POST",
           body: JSON.stringify({
             name: ownKeyName.trim(),
+            details: { email: ownKeyEmail.trim() },
             expires_in: ownKeyExpires.trim(),
           }),
         },
@@ -178,6 +180,7 @@
 
       createdOwnKey = res.payload.key;
       ownKeyName = "";
+      ownKeyEmail = "";
       await loadOwnKeys();
     }, "Access key create failed");
 
@@ -998,6 +1001,21 @@
             />
             <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
               Name it after what will hold it, so you can tell your keys apart later.
+            </p>
+          </div>
+
+          <div class="min-w-0 flex-1 basis-64">
+            <label class="stamp block" for="own-key-email">Email for X-User</label>
+            <input
+              id="own-key-email"
+              class="entry mt-1.5"
+              type="email"
+              placeholder={profileEmail || "you@example.com"}
+              autocomplete="off"
+              bind:value={ownKeyEmail}
+            />
+            <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+              Optional override. Empty uses your account email, then the key name.
             </p>
           </div>
 

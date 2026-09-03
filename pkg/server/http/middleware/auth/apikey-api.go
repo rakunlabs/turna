@@ -43,7 +43,7 @@ type APIKeyCreateResponse struct {
 }
 
 func (m *Auth) xUserRequest(w http.ResponseWriter, r *http.Request, req data.GetUserRequest) *data.UserExtended {
-	principal := r.Header.Get("X-User")
+	principal := requestPrincipal(r)
 	if principal == "" {
 		httputil.HandleError(w, httputil.NewError("X-User header is required", nil, http.StatusUnauthorized))
 		return nil

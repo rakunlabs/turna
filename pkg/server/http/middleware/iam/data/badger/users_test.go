@@ -188,8 +188,9 @@ func TestBadgerPatchUser(t *testing.T) {
 	defer db.Close()
 
 	user := data.User{
-		Alias:   []string{"test"},
-		RoleIDs: []string{"role-1"},
+		Alias:       []string{"test"},
+		RoleIDs:     []string{"role-1"},
+		Description: "old description",
 	}
 
 	ctx := data.WithContextUserName(context.Background(), "testing")
@@ -207,9 +208,11 @@ func TestBadgerPatchUser(t *testing.T) {
 		t.Fatalf("failed to get users: %v", err)
 	}
 
+	description := "new description"
 	userPath := data.UserPatch{
-		Alias:   &[]string{"test2"},
-		RoleIDs: &[]string{},
+		Alias:       &[]string{"test2"},
+		RoleIDs:     &[]string{},
+		Description: &description,
 	}
 
 	if err := db.PatchUser(ctx, res.Payload[0].ID, userPath); err != nil {
@@ -235,5 +238,9 @@ func TestBadgerPatchUser(t *testing.T) {
 
 	if slices.Compare(res.Payload[0].RoleIDs, []string{}) != 0 {
 		t.Fatalf("expected role-1, got %v", res.Payload[0].RoleIDs)
+	}
+
+	if res.Payload[0].Description != description {
+		t.Fatalf("expected patched description, got %q", res.Payload[0].Description)
 	}
 }

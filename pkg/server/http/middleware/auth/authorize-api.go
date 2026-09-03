@@ -329,7 +329,7 @@ func (m *Auth) renderConsent(w http.ResponseWriter, code int, data consentPageDa
 // It returns the user alias; when it returns "", the response has already
 // been written.
 func (m *Auth) consentUser(w http.ResponseWriter, r *http.Request, flowID string, allowRedirect bool) string {
-	if userAlias := r.Header.Get("X-User"); userAlias != "" {
+	if userAlias := requestPrincipal(r); userAlias != "" {
 		return userAlias
 	}
 
