@@ -75,12 +75,12 @@
   let enrollmentStatus: PasskeyEnrollmentStatus | null = null;
 
   const inputClass =
-    "py-1.5 px-3 border rounded-md border-gray-300 bg-white text-gray-900 focus:border-blue-300 focus:outline-none focus:ring focus:ring-blue-200 focus:ring-opacity-50 disabled:bg-gray-100 mt-1 block w-full dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-blue-700 dark:focus:ring-blue-800 dark:disabled:bg-gray-800";
+    "py-1.5 px-3 border rounded-md border-gray-300 bg-white text-gray-900 focus:border-blue-300 focus:outline-none focus:ring focus:ring-blue-200 focus:ring-opacity-50 disabled:bg-gray-100 mt-1 block w-full dark:border-night-border dark:bg-night-canvas dark:text-night-text dark:placeholder-night-muted dark:focus:border-night-sage dark:focus:ring-night-sage dark:focus:ring-opacity-100 dark:disabled:bg-night-hover";
   const submitClass =
-    "block w-full text-center px-4 py-1.5 bg-[#615fff] border rounded-md border-transparent font-semibold capitalize text-white hover:bg-blue-500 active:bg-blue-500 focus:outline-none focus:border-blue-500 focus:ring focus:ring-blue-200 disabled:bg-gray-400 transition dark:focus:ring-blue-800 dark:disabled:bg-gray-600";
+    "block w-full text-center px-4 py-1.5 bg-[#615fff] border rounded-md border-transparent font-semibold capitalize text-white hover:bg-blue-500 active:bg-blue-500 focus:outline-none focus:border-blue-500 focus:ring focus:ring-blue-200 disabled:bg-gray-400 transition dark:bg-night-accent dark:text-night-on-accent dark:hover:bg-night-accent-hover dark:active:bg-night-accent dark:focus:border-night-sage dark:focus:ring-night-sage dark:disabled:bg-night-hover dark:disabled:text-night-muted";
   const secondaryClass =
-    "block w-full text-center px-4 py-1.5 bg-white border border-gray-300 rounded-md font-semibold text-black hover:bg-gray-50 active:bg-blue-50 focus:outline-none focus:border-blue-500 focus:ring focus:ring-blue-200 disabled:bg-gray-400 transition dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800 dark:active:bg-gray-800 dark:focus:ring-blue-800 dark:disabled:bg-gray-700";
-  const linkClass = "text-sm text-blue-600 hover:underline cursor-pointer bg-transparent border-0 p-0 dark:text-blue-400";
+    "block w-full text-center px-4 py-1.5 bg-white border border-gray-300 rounded-md font-semibold text-black hover:bg-gray-50 active:bg-blue-50 focus:outline-none focus:border-blue-500 focus:ring focus:ring-blue-200 disabled:bg-gray-400 transition dark:border-night-border dark:bg-night-surface dark:text-night-text dark:hover:bg-night-hover dark:active:bg-night-canvas dark:focus:border-night-sage dark:focus:ring-night-sage dark:disabled:bg-night-hover dark:disabled:text-night-muted";
+  const linkClass = "text-sm text-blue-600 hover:underline cursor-pointer bg-transparent border-0 p-0 dark:text-night-sage dark:focus-visible:outline-night-sage";
 
   let authInfo: LoginMethods = {
     title: "Login",
@@ -357,16 +357,16 @@
   });
 </script>
 
-<div class="login-bg w-full min-h-screen bg-gray-50 flex flex-col items-center sm:pt-6 dark:bg-gray-950">
+<div class="login-bg w-full min-h-screen bg-gray-50 flex flex-col items-center sm:pt-6 dark:bg-night-canvas">
   <div class="w-full sm:max-w-md sm:p-5 mx-auto">
-    <div class="border border-gray-200 p-4 bg-white text-gray-900 relative shadow-sm sm:rounded-md dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100">
+    <div class="border border-gray-200 p-4 bg-white text-gray-900 relative shadow-sm sm:rounded-md dark:border-night-divider dark:bg-night-surface dark:text-night-text">
       <h2 class="mb-2 pr-10 text-xl font-bold [line-height:1.2]">
         <span class={mounted ? "" : "invisible"}>{authInfo.title}</span>
       </h2>
-      <hr class="mb-2 border-gray-200 dark:border-gray-800" />
+      <hr class="mb-2 border-gray-200 dark:border-night-divider" />
       {#if view === "passkey-enrollment"}
         <section aria-labelledby="passkey-enrollment-title" class="py-2">
-          <div class="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-[#615fff] dark:bg-indigo-950 dark:text-indigo-300">
+          <div class="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-[#615fff] dark:bg-night-canvas dark:text-night-sage">
             <svg
               width="25"
               height="25"
@@ -389,10 +389,10 @@
               <path d="M9 6.8a6 6 0 0 1 9 5.2v2"></path>
             </svg>
           </div>
-          <h3 id="passkey-enrollment-title" class="text-lg font-bold text-gray-950 dark:text-white">
+          <h3 id="passkey-enrollment-title" class="text-lg font-bold text-gray-950 dark:text-night-text">
             Make your next sign-in faster
           </h3>
-          <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
+          <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-night-muted">
             Create a passkey for this device and sign in next time with your fingerprint, face, or device PIN.
           </p>
 
@@ -416,7 +416,7 @@
               Not now
             </button>
           </div>
-          <p class="mt-4 text-xs leading-5 text-gray-500 dark:text-gray-400">
+          <p class="mt-4 text-xs leading-5 text-gray-500 dark:text-night-muted">
             Your biometric data stays on this device. Turna stores only the public credential.
           </p>
         </section>
@@ -424,7 +424,7 @@
       {#if authInfo.provider.password?.length && view === "signin"}
         {#if authInfo.provider.password?.length > 1}
           <div class="float-right">
-            <select bind:value={providerSelected} class="border rounded-md border-gray-300 bg-white px-2 py-1 text-sm focus:border-blue-300 focus:outline-none focus:ring focus:ring-blue-200 focus:ring-opacity-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-blue-700 dark:focus:ring-blue-800">
+            <select bind:value={providerSelected} class="border rounded-md border-gray-300 bg-white px-2 py-1 text-sm focus:border-blue-300 focus:outline-none focus:ring focus:ring-blue-200 focus:ring-opacity-50 dark:border-night-border dark:bg-night-canvas dark:text-night-text dark:focus:border-night-sage dark:focus:ring-night-sage dark:focus:ring-opacity-100">
               {#each authInfo.provider.password as provider}
                 <option value={provider.name}>
                   {provider.name}
@@ -583,7 +583,7 @@
       {/if}
       {#if view === "signin" && authInfo.provider.passkey?.length && isWebAuthnSupported()}
         {#if authInfo.provider.password?.length}
-          <hr class="mt-8 mb-6 custom-hr border-gray-200 text-gray-600 dark:border-gray-800 dark:text-gray-400" />
+          <hr class="mt-8 mb-6 custom-hr border-gray-200 text-gray-600 dark:border-night-divider dark:text-night-muted" />
         {/if}
         {#each authInfo.provider.passkey as provider}
           <button
@@ -614,7 +614,7 @@
       {/if}
       {#if view === "signin" && authInfo.provider.code?.length}
         {#if authInfo.provider.password?.length || authInfo.provider.passkey?.length}
-          <hr class="mt-8 mb-6 custom-hr border-gray-200 text-gray-600 dark:border-gray-800 dark:text-gray-400" />
+          <hr class="mt-8 mb-6 custom-hr border-gray-200 text-gray-600 dark:border-night-divider dark:text-night-muted" />
         {/if}
         {#each authInfo.provider.code as provider}
           <button
@@ -631,23 +631,23 @@
       {#if view === "signin" && !authInfo.disable_remember_me && (authInfo.provider.password?.length || authInfo.provider.passkey?.length || authInfo.provider.code?.length)}
         <label
           title="Keep this sign-in active while you use the site, subject to the server's maximum session lifetime."
-          class="mt-6 flex cursor-pointer items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-800 dark:bg-gray-950"
+          class="mt-6 flex cursor-pointer items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-night-divider dark:bg-night-canvas"
         >
           <input
             type="checkbox"
             bind:checked={rememberMe}
-            class="h-4 w-4 rounded border-gray-300 text-[#615fff] focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-900 dark:focus:ring-blue-800"
+            class="h-4 w-4 rounded border-gray-300 text-[#615fff] focus:ring-2 focus:ring-blue-200 dark:border-night-border dark:bg-night-surface dark:text-night-sage dark:focus:ring-night-sage"
           />
-          <span class="min-w-0 text-sm font-semibold text-gray-900 dark:text-gray-100">Remember me</span>
+          <span class="min-w-0 text-sm font-semibold text-gray-900 dark:text-night-text">Remember me</span>
         </label>
       {/if}
       {#if notice != ""}
-        <div class="mt-4 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+        <div class="mt-4 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-night-sage dark:bg-night-success dark:text-night-sage">
           <span class="break-all">{notice}</span>
         </div>
       {/if}
       {#if error != ""}
-        <div class="mt-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+        <div class="mt-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-night-accent dark:bg-night-error dark:text-night-error-text">
           <span class="break-all">{error}</span>
         </div>
       {/if}
@@ -656,7 +656,7 @@
         on:click={cycleTheme}
         aria-label={`Theme: ${theme} — click to switch`}
         title={`Theme: ${theme}`}
-        class="absolute right-2.5 top-2.5 flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring focus:ring-blue-200 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200 dark:focus:ring-blue-800"
+        class="absolute right-2.5 top-2.5 flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring focus:ring-blue-200 dark:text-night-muted dark:hover:bg-night-hover dark:hover:text-night-text dark:focus:ring-night-sage"
       >
         <!-- lucide sun / moon / monitor -->
         <svg
@@ -707,7 +707,7 @@
   }
 
   :global(html.dark) .custom-hr::after {
-    background-color: #111827; // gray-900, matches the card
+    background-color: theme("colors.night.surface");
   }
 
   // WhatsApp-style faint doodle wallpaper: auth-themed lucide outlines
@@ -727,7 +727,7 @@
 
   :global(html.dark) .login-bg {
     background-image:
-      radial-gradient(48rem 26rem at 50% -8rem, rgb(97 95 255 / 0.13), transparent 70%),
-      doodles("%2394a3b8", ".055");
+      radial-gradient(48rem 26rem at 50% -8rem, rgb(129 178 154 / 0.08), transparent 70%),
+      doodles("%23FFFCF2", ".055");
   }
 </style>

@@ -2,7 +2,7 @@
 
 `auth` is the PostgreSQL-backed authentication middleware. It replaces the legacy [`iam`](./iam) + [`oauth2`](./oauth2) stack with one middleware that serves IAM, OAuth2, LDAP sync, and an embedded management UI.
 
-The middleware behaves like a standalone app with its own UI: every runtime setting (OAuth2 redirect behavior, permission check rules, cache polling, token lifetimes, OAuth clients/providers, LDAP) lives in PostgreSQL and is managed through the API or UI. The static configuration only covers how to reach that database: encryption key, database connection, and migration settings.
+The middleware behaves like a standalone app with its own UI: shared runtime settings (OAuth2 redirect behavior, permission check rules, cache polling, token lifetimes, OAuth clients/providers, LDAP) live in PostgreSQL and are managed through the API or UI. The static configuration covers the encryption key, database connection, migration settings, and instance-local LDAP overrides.
 
 Reads are served from an in-memory read model; writes go to PostgreSQL inside a transaction that bumps a version, records an event, and emits `pg_notify('auth_changed', version)`. Every instance keeps a dedicated `LISTEN auth_changed` connection and normally reloads immediately; version polling remains the durable fallback for disconnects or missed notifications.
 
@@ -35,6 +35,7 @@ server:
 | `database.migration.table` | Migration tracking table. Defaults to `auth_migrations`. |
 | `database.migration.lock_key` | PostgreSQL advisory lock key. Defaults to `muz:postgres:turna:auth_migrations`. |
 | `encryption.key` | Required encryption key for secrets stored in PostgreSQL. Raw strings are SHA-256 derived; base64 16/24/32-byte keys are used directly. |
+| `ldap.addr` | Optional instance-local LDAP URL (e.g. `ldap://10.20.0.15:389` or `ldaps://ldap.site-b.example.com:636`). Overrides the stored address for login, directory queries, and manual/periodic sync. Empty uses the stored address. Requires an enabled LDAP config in the database; does not modify the shared config. |
 | `ldap.disable_sync` | Keep this instance out of the periodic LDAP sync loop; the manual sync API keeps working. Config-file only. Instances that do participate coordinate through the `auth_sync_locks` table, so a fleet sharing one database syncs once per `sync_duration` instead of once per instance. |
 
 ## Runtime settings (stored in PostgreSQL)
@@ -168,6 +169,20 @@ A [`session`](./session) middleware in front picks these up when this auth is li
 | `POST` | `/auth/v1/ldap/sync/{uid}` | Sync one LDAP user. |
 
 The active LDAP config is the first enabled record under `/auth/v1/ldap/configs`. A background loop syncs on `sync_duration` (default `10m`) unless `disable_sync` is set.
+
+Instances reaching the same directory through a different DNS name or IP can override the address in their local config:
+
+```yaml
+server:
+  http:
+    middlewares:
+      auth:
+        auth:
+          ldap:
+            addr: ldaps://ldap.site-b.example.com:636
+```
+
+Merge this into the instance's existing Auth configuration and restart that instance. The override remains in effect when shared LDAP settings are reloaded; bind credentials, base DNs, and group settings still come from the database.
 
 Automatic group mapping (same model as the legacy `iam` middleware):
 

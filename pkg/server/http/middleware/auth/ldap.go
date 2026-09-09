@@ -95,7 +95,8 @@ func (s LDAPSettings) runtime() *ldap.Ldap {
 	return l
 }
 
-// ldapRuntime returns the LDAP runtime built from the first enabled stored config.
+// ldapRuntime returns the LDAP runtime built from the first enabled stored config
+// with instance-local address overrides applied.
 func (m *Auth) ldapRuntime() *ldap.Ldap {
 	sn := m.cache.Snapshot()
 
@@ -115,6 +116,9 @@ func (m *Auth) ldapRuntime() *ldap.Ldap {
 	}
 
 	cfg := sn.LDAP[0]
+	if m.LDAP.Addr != "" {
+		cfg.Addr = m.LDAP.Addr
+	}
 	m.ldap.runtime = cfg.runtime()
 	m.ldap.cfg = &cfg
 	m.ldap.version = sn.Version

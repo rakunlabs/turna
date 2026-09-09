@@ -15,5 +15,12 @@ html {
 
 html.dark {
   color-scheme: dark;
-  background-color: #030712; // gray-950
+  background-color: theme("colors.night.canvas");
+  accent-color: theme("colors.night.sage");
+  caret-color: theme("colors.night.sage");
+
+  ::selection {
+    background-color: theme("colors.night.sage");
+    color: theme("colors.night.canvas");
+  }
 }

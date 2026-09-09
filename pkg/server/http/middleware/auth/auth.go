@@ -30,8 +30,8 @@ const (
 // Auth is a self-contained identity provider with its own UI.
 // All runtime settings (oauth2, check, cache, token, providers, clients, ldap)
 // live in PostgreSQL and are managed through the API/UI. The static
-// configuration is only what is needed to reach that database:
-// encryption key, database connection and migration settings.
+// configuration covers encryption, database connection and migration settings,
+// plus instance-local LDAP overrides.
 type Auth struct {
 	PrefixPath string     `cfg:"prefix_path"`
 	Database   Database   `cfg:"database"`
@@ -88,11 +88,12 @@ type Encryption struct {
 	Key string `cfg:"key" log:"-"`
 }
 
-// LDAPStatic is the static (config-file) side of LDAP behavior. Everything
-// else about LDAP lives in the database; this only controls whether this
-// instance takes part in the periodic sync, so single instances can be kept
-// out of the rotation without touching the shared settings.
+// LDAPStatic holds instance-local LDAP overrides for the shared database settings.
 type LDAPStatic struct {
+	// Addr overrides the stored LDAP URL for all connections on this instance.
+	// Empty uses the address from the first enabled stored LDAP config.
+	Addr string `cfg:"addr"`
+
 	// DisableSync keeps this instance out of the periodic LDAP sync loop.
 	// The manual sync API keeps working. Config-file only, by design.
 	DisableSync bool `cfg:"disable_sync"`
