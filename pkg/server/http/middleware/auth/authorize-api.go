@@ -248,31 +248,56 @@ var consentTemplate = template.Must(template.New("consent").Parse(`<!DOCTYPE htm
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Authorize {{.ClientName}}</title>
 <style>
-:root { color-scheme: light dark; }
-body { font-family: system-ui, sans-serif; display: flex; justify-content: center; padding-top: 8vh; margin: 0; background: #f3f4f6; color: #111827; }
-@media (prefers-color-scheme: dark) { body { background: #111827; color: #f9fafb; } .card { background: #1f2937 !important; } }
-.card { background: #fff; border-radius: 8px; padding: 2rem; max-width: 26rem; width: 100%; box-shadow: 0 1px 6px rgba(0,0,0,.15); }
-h1 { font-size: 1.2rem; margin: 0 0 1rem; }
-.scopes { margin: 1rem 0; padding-left: 1.2rem; }
+:root { color-scheme: light dark; --page: #f3f4f6; --surface: #fff; --text: #111827; --muted: #4b5563; --line: #d1d5db; --subtle: #f9fafb; --focus: #2563eb; --error: #b91c1c; }
+* { box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; line-height: 1.5; margin: 0; padding: clamp(1rem, 8vh, 5rem) 1rem 2rem; background: var(--page); color: var(--text); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 2rem; max-width: 32rem; margin-inline: auto; overflow-wrap: anywhere; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+h1 { font-size: 1.375rem; line-height: 1.4; font-weight: 500; margin: 0; }
+h1 strong { font-weight: 650; }
+p { margin: 0; }
+.identity { margin-top: .75rem; }
+.access { margin-top: 2rem; }
+h2 { font-size: .9375rem; font-weight: 600; margin: 0 0 .75rem; }
+.scopes { margin: 0; padding-left: 1.25rem; }
+.scopes li + li { margin-top: .5rem; }
+.resources { list-style: none; padding: 0; margin: 0; border-block: 1px solid var(--line); }
+.resources li { padding-block: .75rem; }
+.resources li + li { border-top: 1px solid var(--line); }
+.resources code { display: block; font-family: ui-monospace, monospace; font-size: .8125rem; line-height: 1.7; white-space: normal; overflow-wrap: anywhere; }
+form { margin-top: 2rem; }
 .actions { display: flex; gap: .75rem; margin-top: 1.5rem; }
-button { flex: 1; padding: .6rem 1rem; border-radius: 6px; border: 1px solid transparent; font-size: 1rem; cursor: pointer; }
+button { flex: 1; min-width: 0; min-height: 2.75rem; padding: .625rem 1rem; border-radius: 6px; border: 1px solid transparent; font: inherit; font-weight: 600; cursor: pointer; }
 .approve { background: #2563eb; color: #fff; }
-.deny { background: transparent; border-color: #9ca3af; color: inherit; }
-.muted { color: #6b7280; font-size: .85rem; }
-.error { color: #dc2626; }
-.remember { display: flex; align-items: center; gap: .5rem; margin-top: 1rem; font-size: .9rem; }
+.approve:hover { background: #1d4ed8; }
+.deny { background: transparent; border-color: var(--line); color: inherit; }
+.deny:hover { background: var(--subtle); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.muted { color: var(--muted); font-size: .875rem; }
+.error { color: var(--error); }
+.error + p { margin-top: 1rem; }
+.remember { display: flex; align-items: flex-start; gap: .75rem; min-height: 2.75rem; font-size: .9375rem; cursor: pointer; }
+.remember input { flex: 0 0 auto; width: 1.125rem; height: 1.125rem; margin: .1875rem 0 0; accent-color: #2563eb; }
+.remember-copy { min-width: 0; }
+.remember-title { display: block; font-weight: 600; }
+.remember-description { display: block; margin-top: .25rem; }
+::selection { background: #dbeafe; color: #111827; }
+@media (max-width: 380px) { .card { padding: 1.25rem; } }
+@media (prefers-color-scheme: dark) {
+  :root { --page: #111827; --surface: #1f2937; --text: #f9fafb; --muted: #cbd5e1; --line: #4b5563; --subtle: #374151; --focus: #93c5fd; --error: #fca5a5; }
+}
 </style>
 </head>
 <body>
-<div class="card">
+<main class="card">
 {{- if .Error}}
 <h1 class="error">Authorization error</h1>
 <p>{{.Error}}</p>
 {{- else}}
 <h1><strong>{{.ClientName}}</strong> wants to access your account</h1>
-<p class="muted">Signed in as <strong>{{.User}}</strong></p>
+<p class="identity muted">Signed in as <strong>{{.User}}</strong></p>
+<section class="access" aria-labelledby="requested-access">
+<h2 id="requested-access">Requested access</h2>
 {{- if .Scopes}}
-<p>Requested access:</p>
 <ul class="scopes">
 {{- range .Scopes}}
 <li>{{.}}</li>
@@ -281,14 +306,27 @@ button { flex: 1; padding: .6rem 1rem; border-radius: 6px; border: 1px solid tra
 {{- else}}
 <p>No additional scopes requested.</p>
 {{- end}}
+</section>
 {{- if .Resources}}
-<p class="muted">For resource:
-{{- range .Resources}} <code>{{.}}</code>{{- end}}</p>
+<section class="access" aria-labelledby="requested-resources">
+<h2 id="requested-resources">For resource</h2>
+<ul class="resources">
+{{- range .Resources}}
+<li><code>{{.}}</code></li>
+{{- end}}
+</ul>
+</section>
 {{- end}}
 <form method="post" action="{{.Action}}">
 <input type="hidden" name="flow" value="{{.Flow}}">
 {{- if .RememberMe}}
-<label class="remember"><input type="checkbox" name="remember_me" value="true"> Remember me — keep <strong>{{.ClientName}}</strong> signed in longer</label>
+<label class="remember">
+<input type="checkbox" name="remember_me" value="true" aria-describedby="remember-description">
+<span class="remember-copy">
+<span class="remember-title">Remember me</span>
+<span class="remember-description muted" id="remember-description">Keep <strong>{{.ClientName}}</strong> signed in longer</span>
+</span>
+</label>
 {{- end}}
 <div class="actions">
 <button class="deny" type="submit" name="action" value="deny">Deny</button>
@@ -296,7 +334,7 @@ button { flex: 1; padding: .6rem 1rem; border-radius: 6px; border: 1px solid tra
 </div>
 </form>
 {{- end}}
-</div>
+</main>
 </body>
 </html>
 `))
