@@ -26,6 +26,9 @@ const providerSourceFetchTimeout = 5 * time.Second
 // provider list of an auth middleware ("session_providers" settings
 // namespace). Dynamic providers overlay same-named static ones.
 type ProviderSource struct {
+	// Overrides apply last, after static providers and the Auth provider source.
+	Overrides map[string]ProviderEndpointOverride `cfg:"overrides"`
+
 	// AuthMiddleware is the name of an in-process auth middleware instance.
 	// The provider list is read directly from its cache; changes apply as
 	// soon as the auth cache reloads (no HTTP involved).
@@ -280,13 +283,8 @@ func (m *Session) refreshFromURL(src *ProviderSource) {
 		return
 	}
 
-	if st := m.dynamic.Load(); st != nil && st.signature != "" && st.version == version && version != 0 {
-		next := *st
-		next.fetchedAt = now
-		m.dynamic.Store(&next)
-
-		return
-	}
+	// Always apply a successful response: Auth instances sharing a database
+	// version may serve different instance-local endpoint overrides.
 
 	m.applyDynamic(dynamic, nil, version, now)
 }
@@ -303,6 +301,10 @@ func (m *Session) applyDynamic(dynamic map[string]Provider, providerGroups map[s
 	}
 	for k, v := range dynamic {
 		merged[k] = v
+	}
+	if m.ProviderSource != nil {
+		merged = ApplyProviderEndpointOverrides(merged, m.ProviderSource.Overrides)
+		providerGroups = ApplyProviderGroupEndpointOverrides(providerGroups, m.ProviderSource.Overrides)
 	}
 
 	st := &providerState{

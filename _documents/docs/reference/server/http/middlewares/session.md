@@ -281,6 +281,47 @@ The token validation keyfunc is rebuilt only when the provider set actually
 changes (new/removed providers, changed `cert_url` or `auth_middleware`);
 claim mapping changes apply immediately without a rebuild.
 
+#### Instance-local endpoint overrides
+
+Use `provider_source.overrides` to customize endpoints by provider name after
+loading the dynamic source. This works with both `auth_middleware` and `url`,
+including group sources:
+
+```yaml
+session:
+  provider_source:
+    auth_middleware: auth
+    # Or use url: https://idp.example.com/auth/v1/session-providers
+    overrides:
+      company:
+        oauth2:
+          auth_url: https://login.site-b.example.com/auth/oauth2/authorize
+          token_url: http://auth.internal:8080/auth/oauth2/token
+```
+
+Use your provider's actual endpoint paths. `auth_url` must be reachable by the
+user's browser; `token_url`, `userinfo_url`, and `cert_url` must be reachable by
+the Session instance.
+
+Supported fields under `oauth2`: `auth_url`, `token_url`, `userinfo_url`,
+`cert_url`, `introspect_url`, `revocation_url`, `logout_url`, `passkey_url`,
+`api_key_url`, `signup_url`, and `password_reset_url`.
+Only non-empty fields replace existing values. Overrides do not create providers
+or add OAuth2 settings to providers that have none. Client credentials and other
+provider fields are preserved.
+
+Precedence is **static provider → dynamic provider (including any
+[Auth instance overrides](./auth#instance-local-session-provider-endpoints)) →
+Session endpoint overrides**. The dynamic provider replaces a same-named static
+provider; endpoint overrides then replace individual fields. Group presentation
+receives the same overrides. Shared source settings are never mutated.
+
+Overrides are reapplied on source refresh. URL sources accept updated endpoints
+even when the source database version is unchanged, allowing Auth instances with
+different local overrides to share a database. Restart the Session instance after
+changing its static overrides. Providers using `auth_middleware` continue to use
+in-process operations where supported.
+
 ### API key requests
 
 When `api_key: true` is set on a provider, `session` checks the configured API key header after bearer-token validation and before cookie redirects. If present, the static key is validated directly — in-process via `auth_middleware`, or with a request to `oauth2.api_key_url` on a remote auth instance. On success the raw key header is deleted and the key principal's claims are attached; no JWT is involved. `X-User` is selected from the key email, owner email, key name, then `api-key:<id>`, while `X-User-Id` uses the key name with the canonical subject as fallback. Authorization middleware uses the canonical `sub` from the validated claims rather than these presentation headers.

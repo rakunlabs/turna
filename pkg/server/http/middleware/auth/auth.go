@@ -31,12 +31,13 @@ const (
 // All runtime settings (oauth2, check, cache, token, providers, clients, ldap)
 // live in PostgreSQL and are managed through the API/UI. The static
 // configuration covers encryption, database connection and migration settings,
-// plus instance-local LDAP overrides.
+// plus instance-local LDAP and session provider endpoint overrides.
 type Auth struct {
-	PrefixPath string     `cfg:"prefix_path"`
-	Database   Database   `cfg:"database"`
-	Encryption Encryption `cfg:"encryption"`
-	LDAP       LDAPStatic `cfg:"ldap"`
+	PrefixPath             string                 `cfg:"prefix_path"`
+	Database               Database               `cfg:"database"`
+	Encryption             Encryption             `cfg:"encryption"`
+	LDAP                   LDAPStatic             `cfg:"ldap"`
+	SessionProvidersConfig SessionProvidersStatic `cfg:"session_providers"`
 
 	instanceID   string                  `cfg:"-"`
 	db           *sql.DB                 `cfg:"-"`
@@ -97,6 +98,11 @@ type LDAPStatic struct {
 	// DisableSync keeps this instance out of the periodic LDAP sync loop.
 	// The manual sync API keeps working. Config-file only, by design.
 	DisableSync bool `cfg:"disable_sync"`
+}
+
+// SessionProvidersStatic customizes the providers served by this Auth instance.
+type SessionProvidersStatic struct {
+	Overrides map[string]session.ProviderEndpointOverride `cfg:"overrides"`
 }
 
 func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) http.Handler, error) {

@@ -43,7 +43,7 @@ func (o *SessionProviderOverride) UnmarshalJSON(data []byte) error {
 func (m *Auth) SessionProviders() (map[string]session.Provider, uint64) {
 	snap := m.cache.Snapshot()
 
-	return snap.SessionProviders, snap.Version
+	return session.ApplyProviderEndpointOverrides(snap.SessionProviders, m.SessionProvidersConfig.Overrides), snap.Version
 }
 
 // SessionProvidersGroup implements session.InfSessionProviderGroups: it
@@ -54,7 +54,7 @@ func (m *Auth) SessionProvidersGroup(group string) (map[string]session.Provider,
 
 	providers, ok := snap.SessionProviderGroups[group]
 
-	return providers, snap.Version, ok
+	return session.ApplyProviderEndpointOverrides(providers, m.SessionProvidersConfig.Overrides), snap.Version, ok
 }
 
 // SessionProviderCatalog implements session.InfSessionProviderCatalog. Both
@@ -64,7 +64,8 @@ func (m *Auth) SessionProvidersGroup(group string) (map[string]session.Provider,
 func (m *Auth) SessionProviderCatalog() (map[string]session.Provider, map[string]map[string]session.Provider, uint64) {
 	snap := m.cache.Snapshot()
 
-	return snap.SessionProviders, snap.SessionProviderGroups, snap.Version
+	return session.ApplyProviderEndpointOverrides(snap.SessionProviders, m.SessionProvidersConfig.Overrides),
+		session.ApplyProviderGroupEndpointOverrides(snap.SessionProviderGroups, m.SessionProvidersConfig.Overrides), snap.Version
 }
 
 // SessionProvidersAPI answers GET /v1/session-providers with the UI-managed
@@ -73,11 +74,11 @@ func (m *Auth) SessionProviderCatalog() (map[string]session.Provider, map[string
 // `provider_source.url`. Admin-protected: the payload carries provider
 // client secrets.
 func (m *Auth) SessionProvidersAPI(w http.ResponseWriter, r *http.Request) {
-	snap := m.cache.Snapshot()
+	providers, version := m.SessionProviders()
 
 	httputil.JSON(w, http.StatusOK, Response[map[string]session.Provider]{
-		Meta:    &Meta{Version: snap.Version},
-		Payload: snap.SessionProviders,
+		Meta:    &Meta{Version: version},
+		Payload: providers,
 	})
 }
 

@@ -2,7 +2,7 @@
 
 `auth` is the PostgreSQL-backed authentication middleware. It replaces the legacy [`iam`](./iam) + [`oauth2`](./oauth2) stack with one middleware that serves IAM, OAuth2, LDAP sync, and an embedded management UI.
 
-The middleware behaves like a standalone app with its own UI: shared runtime settings (OAuth2 redirect behavior, permission check rules, cache polling, token lifetimes, OAuth clients/providers, LDAP) live in PostgreSQL and are managed through the API or UI. The static configuration covers the encryption key, database connection, migration settings, and instance-local LDAP overrides.
+The middleware behaves like a standalone app with its own UI: shared runtime settings (OAuth2 redirect behavior, permission check rules, cache polling, token lifetimes, OAuth clients/providers, LDAP) live in PostgreSQL and are managed through the API or UI. The static configuration covers the encryption key, database connection, migration settings, and instance-local LDAP and session provider endpoint overrides.
 
 Reads are served from an in-memory read model; writes go to PostgreSQL inside a transaction that bumps a version, records an event, and emits `pg_notify('auth_changed', version)`. Every instance keeps a dedicated `LISTEN auth_changed` connection and normally reloads immediately; version polling remains the durable fallback for disconnects or missed notifications.
 
@@ -39,6 +39,47 @@ server:
 | `ldap.disable_sync` | Keep this instance out of the periodic LDAP sync loop; the manual sync API keeps working. Config-file only. Instances that do participate coordinate through the `auth_sync_locks` table, so a fleet sharing one database syncs once per `sync_duration` instead of once per instance. |
 
 ## Runtime settings (stored in PostgreSQL)
+
+### Instance-local session provider endpoints
+
+Use `auth.session_providers.overrides.<provider-name>.oauth2` in the static config
+when this Auth instance needs to publish different endpoints for a shared provider:
+
+```yaml
+server:
+  http:
+    middlewares:
+      auth:
+        auth:
+          # Keep the existing database and encryption settings here.
+          session_providers:
+            overrides:
+              company:
+                oauth2:
+                  auth_url: https://login.site-b.example.com/auth/oauth2/authorize
+                  token_url: http://auth.internal:8080/auth/oauth2/token
+```
+
+Supported endpoint fields: `auth_url`, `token_url`, `userinfo_url`, `cert_url`,
+`introspect_url`, `revocation_url`, `logout_url`, `passkey_url`, `api_key_url`,
+`signup_url`, and `password_reset_url`. Use your provider's actual endpoint paths.
+Non-empty fields replace the stored values; empty or omitted fields keep them.
+Unknown provider names are ignored, and overrides do not create providers or add
+OAuth2 settings to providers that have none.
+
+Overrides apply to the merged list and all groups, including inherited providers,
+through both in-process access and `GET /v1/session-providers[/{group}]`.
+The settings API/UI continues to show and edit the shared database values.
+Client credentials and other provider settings remain centrally managed.
+
+A consuming Session can also set
+[`provider_source.overrides`](./session#instance-local-endpoint-overrides).
+Precedence is **shared provider → Auth override → Session override**, field by field.
+Restart the affected instance after changing these static settings. An
+`auth_middleware` provider still uses in-process operations where supported;
+endpoint overrides do not switch it to remote mode.
+
+### Shared settings
 
 Everything else is a settings namespace under `/auth/v1/settings/{namespace}` and takes effect without a restart. The UI exposes dedicated pages for OAuth2, access checks, API keys, email and mTLS; the *Runtime Settings* page keeps the remaining operational namespaces.
 

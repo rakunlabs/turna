@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -287,7 +288,7 @@ func TestProviderSourceURL(t *testing.T) {
 
 		_ = json.NewEncoder(w).Encode(providersResponse{
 			Payload: map[string]Provider{
-				"remote": {Name: "Remote", Oauth2: &Oauth2{ClientID: "cid"}},
+				"remote": {Name: "Remote", Oauth2: &Oauth2{ClientID: "cid", AuthURL: fmt.Sprintf("https://site-%d/login", requests), TokenURL: "https://source/token"}},
 			},
 			Meta: struct {
 				Version uint64 `json:"version"`
@@ -299,9 +300,10 @@ func TestProviderSourceURL(t *testing.T) {
 	m := &Session{
 		Provider: map[string]Provider{"local": {Name: "Local"}},
 		ProviderSource: &ProviderSource{
-			URL:     server.URL,
-			TTL:     time.Minute,
-			Headers: map[string]string{"X-API-Key": "secret"},
+			URL:       server.URL,
+			TTL:       time.Minute,
+			Headers:   map[string]string{"X-API-Key": "secret"},
+			Overrides: map[string]ProviderEndpointOverride{"remote": {Oauth2: OAuth2EndpointOverride{TokenURL: "https://local/token"}}},
 		},
 	}
 	if err := m.InitProviderSource(); err != nil {
@@ -325,13 +327,19 @@ func TestProviderSourceURL(t *testing.T) {
 		t.Fatalf("requests = %d, want 1 (TTL not honored)", requests)
 	}
 
-	// expire the TTL: refetch happens, same version keeps the state
+	if p := providers["remote"].Oauth2; p.AuthURL != "https://site-1/login" || p.TokenURL != "https://local/token" {
+		t.Fatalf("remote override failed: %+v", p)
+	}
+	// Expire the TTL: different Auth instance overrides can share a DB version.
 	st := m.dynamic.Load()
 	expired := *st
 	expired.fetchedAt = time.Now().Add(-2 * time.Minute)
 	m.dynamic.Store(&expired)
 
-	_ = m.Providers()
+	updated := m.Providers()["remote"].Oauth2
+	if updated.AuthURL != "https://site-2/login" || updated.TokenURL != "https://local/token" {
+		t.Fatalf("same-version endpoint refresh failed: %+v", updated)
+	}
 	if requests != 2 {
 		t.Fatalf("requests = %d, want 2 after TTL expiry", requests)
 	}
