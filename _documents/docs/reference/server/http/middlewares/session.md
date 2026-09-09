@@ -283,6 +283,29 @@ claim mapping changes apply immediately without a rebuild.
 
 #### Instance-local endpoint overrides
 
+For a shared host change across **all providers and all OAuth2 endpoints**, use:
+
+```yaml
+session:
+  provider_source:
+    auth_middleware: auth
+    host_replacements:
+      example.com: myweb.com
+      "example.com:8443": "myweb.com:9443"
+```
+
+This changes `https://example.com/any/path` to `https://myweb.com/any/path`,
+preserving the scheme, path, query, and fragment. Rules match the complete host
+exactly (case-sensitive, including any explicit port), not subdomains or text
+elsewhere in the URL. Specify only a host and optional port on either side, with
+no scheme or path. Each URL is rewritten once, without chaining rules.
+
+Works with `url` sources and provider groups too. Host replacements run before
+the explicit endpoint overrides below, so a provider can opt into a different
+endpoint. Full order: **DB → Auth host replacements → Auth endpoint overrides →
+Session host replacements → Session endpoint overrides**. These settings are
+instance-local and require a restart after changes.
+
 Use `provider_source.overrides` to customize endpoints by provider name after
 loading the dynamic source. This works with both `auth_middleware` and `url`,
 including group sources:

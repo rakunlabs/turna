@@ -1,5 +1,7 @@
 package session
 
+import "net/url"
+
 // ProviderEndpointOverride replaces non-empty endpoint fields of an existing
 // provider. It is instance-local configuration, keyed by provider name.
 type ProviderEndpointOverride struct {
@@ -23,14 +25,15 @@ type OAuth2EndpointOverride struct {
 // ApplyProviderEndpointOverrides returns a read-only provider map without
 // modifying the source map or its OAuth2 settings. Unknown names are ignored;
 // overrides never create providers or enable OAuth2 on a non-OAuth2 provider.
-func ApplyProviderEndpointOverrides(providers map[string]Provider, overrides map[string]ProviderEndpointOverride) map[string]Provider {
-	if len(overrides) == 0 || providers == nil {
+func ApplyProviderEndpointOverrides(providers map[string]Provider, overrides map[string]ProviderEndpointOverride, hostReplacements map[string]string) map[string]Provider {
+	if (len(overrides) == 0 && len(hostReplacements) == 0) || providers == nil {
 		return providers
 	}
 
 	result := make(map[string]Provider, len(providers))
 	for name, provider := range providers {
-		if override, ok := overrides[name]; ok && provider.Oauth2 != nil {
+		override, ok := overrides[name]
+		if (ok || len(hostReplacements) != 0) && provider.Oauth2 != nil {
 			oauth := *provider.Oauth2
 			for _, field := range []struct {
 				dst *string
@@ -48,6 +51,7 @@ func ApplyProviderEndpointOverrides(providers map[string]Provider, overrides map
 				{&oauth.SignupURL, override.Oauth2.SignupURL},
 				{&oauth.PasswordResetURL, override.Oauth2.PasswordResetURL},
 			} {
+				*field.dst = replaceEndpointHost(*field.dst, hostReplacements)
 				if field.src != "" {
 					*field.dst = field.src
 				}
@@ -61,13 +65,31 @@ func ApplyProviderEndpointOverrides(providers map[string]Provider, overrides map
 
 // ApplyProviderGroupEndpointOverrides applies the same provider-name overrides
 // to every group, including inherited providers, without mutating the catalog.
-func ApplyProviderGroupEndpointOverrides(groups map[string]map[string]Provider, overrides map[string]ProviderEndpointOverride) map[string]map[string]Provider {
-	if len(overrides) == 0 || groups == nil {
+func ApplyProviderGroupEndpointOverrides(groups map[string]map[string]Provider, overrides map[string]ProviderEndpointOverride, hostReplacements map[string]string) map[string]map[string]Provider {
+	if (len(overrides) == 0 && len(hostReplacements) == 0) || groups == nil {
 		return groups
 	}
 	result := make(map[string]map[string]Provider, len(groups))
 	for name, providers := range groups {
-		result[name] = ApplyProviderEndpointOverrides(providers, overrides)
+		result[name] = ApplyProviderEndpointOverrides(providers, overrides, hostReplacements)
 	}
 	return result
+}
+
+// replaceEndpointHost matches the full URL authority host (including any port).
+// Paths, query parameters and fragments are preserved. Replacements are not chained.
+func replaceEndpointHost(endpoint string, replacements map[string]string) string {
+	if len(replacements) == 0 {
+		return endpoint
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Host == "" {
+		return endpoint
+	}
+	replacement := replacements[u.Host]
+	if replacement == "" {
+		return endpoint
+	}
+	u.Host = replacement
+	return u.String()
 }

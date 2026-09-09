@@ -42,6 +42,28 @@ server:
 
 ### Instance-local session provider endpoints
 
+To replace a host across **all providers and all their OAuth2 endpoint URLs**, use
+`auth.session_providers.host_replacements`:
+
+```yaml
+auth:
+  session_providers:
+    host_replacements:
+      example.com: myweb.com
+      "example.com:8443": "myweb.com:9443"
+```
+
+For example, `https://example.com/auth/oauth2/token` becomes
+`https://myweb.com/auth/oauth2/token`. Keys match the full host exactly, including
+any explicit port (case-sensitive). Values are hosts with an optional port, not
+URLs: omit the scheme and path. Scheme, path, query, and fragment are preserved;
+text in paths or query parameters and subdomains are not replaced. Each URL is
+rewritten once per layer; replacement rules do not chain within that layer.
+
+Host replacements run before explicit provider endpoint overrides. Full order:
+**DB → Auth host replacements → Auth endpoint overrides → Session host
+replacements → Session endpoint overrides**. Both features also apply to groups.
+
 Use `auth.session_providers.overrides.<provider-name>.oauth2` in the static config
 when this Auth instance needs to publish different endpoints for a shared provider:
 

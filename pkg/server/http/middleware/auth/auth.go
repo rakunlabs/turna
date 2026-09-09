@@ -102,7 +102,9 @@ type LDAPStatic struct {
 
 // SessionProvidersStatic customizes the providers served by this Auth instance.
 type SessionProvidersStatic struct {
-	Overrides map[string]session.ProviderEndpointOverride `cfg:"overrides"`
+	// HostReplacements rewrites exact endpoint hosts (including ports) before Overrides.
+	HostReplacements map[string]string                           `cfg:"host_replacements"`
+	Overrides        map[string]session.ProviderEndpointOverride `cfg:"overrides"`
 }
 
 func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) http.Handler, error) {

@@ -11,12 +11,12 @@ import (
 
 func TestSessionProviderEndpointOverrides(t *testing.T) {
 	base := map[string]session.Provider{
-		"company": {Oauth2: &session.Oauth2{ClientID: "client", ClientSecret: "secret", AuthURL: "https://shared/login", TokenURL: "https://shared/token"}},
+		"company": {Oauth2: &session.Oauth2{ClientID: "client", ClientSecret: "secret", AuthURL: "https://shared/login", TokenURL: "https://shared/token", UserInfoURL: "https://shared/userinfo"}},
 		"plain":   {},
 	}
 	c := NewCache(nil)
 	c.snap.Store(&Snapshot{Version: 1, SessionProviders: base, SessionProviderGroups: map[string]map[string]session.Provider{"site": base}})
-	m := &Auth{cache: c, SessionProvidersConfig: SessionProvidersStatic{Overrides: map[string]session.ProviderEndpointOverride{
+	m := &Auth{cache: c, SessionProvidersConfig: SessionProvidersStatic{HostReplacements: map[string]string{"shared": "auth-local"}, Overrides: map[string]session.ProviderEndpointOverride{
 		"company": {Oauth2: session.OAuth2EndpointOverride{AuthURL: "https://site/login", TokenURL: "https://site/token"}},
 		"missing": {Oauth2: session.OAuth2EndpointOverride{TokenURL: "https://missing/token"}},
 		"plain":   {Oauth2: session.OAuth2EndpointOverride{TokenURL: "https://plain/token"}},
@@ -24,6 +24,9 @@ func TestSessionProviderEndpointOverrides(t *testing.T) {
 	check := func(providers map[string]session.Provider) {
 		t.Helper()
 		p := providers["company"].Oauth2
+		if p.UserInfoURL != "https://auth-local/userinfo" {
+			t.Fatalf("Auth host replacement failed: %+v", p)
+		}
 		if len(providers) != 2 || p.AuthURL != "https://site/login" || p.TokenURL != "https://site/token" || p.ClientID != "client" || p.ClientSecret != "secret" || providers["plain"].Oauth2 != nil {
 			t.Fatalf("unexpected providers: %+v, oauth: %+v", providers, p)
 		}
@@ -60,9 +63,13 @@ func TestSessionProviderEndpointOverrides(t *testing.T) {
 	session.IssuerRegistry.Set("endpoint-override-test", m)
 	s := &session.Session{ProviderSource: &session.ProviderSource{
 		AuthMiddleware: "endpoint-override-test", Group: "site",
-		Overrides: map[string]session.ProviderEndpointOverride{"company": {Oauth2: session.OAuth2EndpointOverride{TokenURL: "https://consumer/token"}}},
+		HostReplacements: map[string]string{"auth-local": "session-local"},
+		Overrides:        map[string]session.ProviderEndpointOverride{"company": {Oauth2: session.OAuth2EndpointOverride{TokenURL: "https://consumer/token"}}},
 	}}
 	p := s.Providers()["company"].Oauth2
+	if p.UserInfoURL != "https://session-local/userinfo" {
+		t.Fatalf("Session host replacement precedence failed: %+v", p)
+	}
 	if p.AuthURL != "https://site/login" || p.TokenURL != "https://consumer/token" {
 		t.Fatalf("precedence failed: %+v", p)
 	}

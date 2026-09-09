@@ -43,7 +43,7 @@ func (o *SessionProviderOverride) UnmarshalJSON(data []byte) error {
 func (m *Auth) SessionProviders() (map[string]session.Provider, uint64) {
 	snap := m.cache.Snapshot()
 
-	return session.ApplyProviderEndpointOverrides(snap.SessionProviders, m.SessionProvidersConfig.Overrides), snap.Version
+	return session.ApplyProviderEndpointOverrides(snap.SessionProviders, m.SessionProvidersConfig.Overrides, m.SessionProvidersConfig.HostReplacements), snap.Version
 }
 
 // SessionProvidersGroup implements session.InfSessionProviderGroups: it
@@ -54,7 +54,7 @@ func (m *Auth) SessionProvidersGroup(group string) (map[string]session.Provider,
 
 	providers, ok := snap.SessionProviderGroups[group]
 
-	return session.ApplyProviderEndpointOverrides(providers, m.SessionProvidersConfig.Overrides), snap.Version, ok
+	return session.ApplyProviderEndpointOverrides(providers, m.SessionProvidersConfig.Overrides, m.SessionProvidersConfig.HostReplacements), snap.Version, ok
 }
 
 // SessionProviderCatalog implements session.InfSessionProviderCatalog. Both
@@ -64,8 +64,8 @@ func (m *Auth) SessionProvidersGroup(group string) (map[string]session.Provider,
 func (m *Auth) SessionProviderCatalog() (map[string]session.Provider, map[string]map[string]session.Provider, uint64) {
 	snap := m.cache.Snapshot()
 
-	return session.ApplyProviderEndpointOverrides(snap.SessionProviders, m.SessionProvidersConfig.Overrides),
-		session.ApplyProviderGroupEndpointOverrides(snap.SessionProviderGroups, m.SessionProvidersConfig.Overrides), snap.Version
+	return session.ApplyProviderEndpointOverrides(snap.SessionProviders, m.SessionProvidersConfig.Overrides, m.SessionProvidersConfig.HostReplacements),
+		session.ApplyProviderGroupEndpointOverrides(snap.SessionProviderGroups, m.SessionProvidersConfig.Overrides, m.SessionProvidersConfig.HostReplacements), snap.Version
 }
 
 // SessionProvidersAPI answers GET /v1/session-providers with the UI-managed
