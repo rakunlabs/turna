@@ -689,7 +689,8 @@
                     },
                     {
                         "type": "integer",
-                        "description": "limit (0 or omitted means no limit)",
+                        "default": 20,
+                        "description": "limit",
                         "name": "limit",
                         "in": "query"
                     },

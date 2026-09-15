@@ -1183,7 +1183,7 @@ func (m *Iam) DeleteRole(w http.ResponseWriter, r *http.Request) {
 // @Param path query string false "request path"
 // @Param method query string false "request method"
 // @Param add_roles query bool false "add roles default(true)"
-// @Param limit query int false "limit (0 or omitted means no limit)"
+// @Param limit query int false "limit" default(20)
 // @Param offset query int false "offset"
 // @Success 200 {object} data.Response[[]data.Permission]
 // @Failure 500 {object} httputil.Error

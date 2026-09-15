@@ -608,7 +608,7 @@ func (m *Auth) GetPermissionsAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func parsePermissionQuery(r *http.Request) (data.GetPermissionRequest, error) {
-	q, err := parseListQuery(r)
+	q, err := parseAPIQuery(r)
 	if err != nil {
 		return data.GetPermissionRequest{}, err
 	}

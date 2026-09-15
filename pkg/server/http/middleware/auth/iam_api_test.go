@@ -80,6 +80,41 @@ func TestParseRoleQueryDefaults(t *testing.T) {
 	}
 }
 
+func TestParsePermissionQueryPagination(t *testing.T) {
+	tests := []struct {
+		name       string
+		rawQuery   string
+		wantLimit  int64
+		wantOffset int64
+		wantError  bool
+	}{
+		{name: "omitted limit is unlimited"},
+		{name: "offset only", rawQuery: "offset=5", wantOffset: 5},
+		{name: "explicit unlimited", rawQuery: "limit=0"},
+		{name: "canonical", rawQuery: "_limit=50&_offset=10", wantLimit: 50, wantOffset: 10},
+		{name: "legacy aliases", rawQuery: "limit=40&offset=5", wantLimit: 40, wantOffset: 5},
+		{name: "canonical wins", rawQuery: "limit=40&_limit=0", wantLimit: 0},
+		{name: "invalid limit", rawQuery: "_limit=invalid", wantError: true},
+		{name: "invalid offset", rawQuery: "offset=-1", wantError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest("GET", "/?"+tt.rawQuery, nil)
+			req, err := parsePermissionQuery(r)
+			if (err != nil) != tt.wantError {
+				t.Fatalf("parsePermissionQuery() error = %v, wantError %v", err, tt.wantError)
+			}
+			if err != nil {
+				return
+			}
+			if req.Limit != tt.wantLimit || req.Offset != tt.wantOffset {
+				t.Fatalf("pagination = (%d, %d), want (%d, %d)", req.Limit, req.Offset, tt.wantLimit, tt.wantOffset)
+			}
+		})
+	}
+}
+
 func TestParsePermissionQueryDataFilters(t *testing.T) {
 	r := httptest.NewRequest("GET", "/?data.tenant=acme&data.region=eu&data=ignored", nil)
 	req, err := parsePermissionQuery(r)
