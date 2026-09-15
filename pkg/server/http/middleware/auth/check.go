@@ -11,8 +11,8 @@ import (
 // normalizeResources folds the deprecated Resource.Path field into Resource.Paths.
 //
 // Path is still accepted on the wire for backwards compatibility, but it is
-// never persisted or served: everything ends up in Paths so callers only have
-// one field to reason about. Excluded is normalized recursively.
+// never persisted or used for matching. Read responses derive a display-only
+// Path from Paths. Excluded is normalized recursively.
 func normalizeResources(resources []data.Resource) []data.Resource {
 	for i := range resources {
 		resources[i] = normalizeResource(resources[i])
@@ -23,7 +23,7 @@ func normalizeResources(resources []data.Resource) []data.Resource {
 
 func normalizeResource(resource data.Resource) data.Resource {
 	if resource.Path != "" {
-		if !slices.Contains(resource.Paths, resource.Path) {
+		if resource.Path != strings.Join(resource.Paths, " ") && !slices.Contains(resource.Paths, resource.Path) {
 			// copy instead of append in place, the backing array may be shared.
 			paths := make([]string, 0, len(resource.Paths)+1)
 			paths = append(paths, resource.Paths...)
@@ -36,6 +36,17 @@ func normalizeResource(resource data.Resource) data.Resource {
 	resource.Excluded = normalizeResources(resource.Excluded)
 
 	return resource
+}
+
+// resourcesForDisplay adds the legacy Path display without mutating the cache.
+func resourcesForDisplay(resources []data.Resource) []data.Resource {
+	resources = slices.Clone(resources)
+	for i := range resources {
+		resources[i].Path = strings.Join(resources[i].Paths, " ")
+		resources[i].Excluded = resourcesForDisplay(resources[i].Excluded)
+	}
+
+	return resources
 }
 
 // checkAccess reports whether the permission allows host/path/method with the given check config.
@@ -64,9 +75,6 @@ func checkAccess(cfg data.CheckConfig, perm *data.Permission, host, pathRequest,
 			return true
 		}
 
-		if checkPath(req.Path, pathRequest) {
-			return true
-		}
 	}
 
 	return false
@@ -86,9 +94,6 @@ func checkExcluded(resources []data.Resource, host, pathRequest, method string) 
 			return true
 		}
 
-		if checkPath(req.Path, pathRequest) {
-			return true
-		}
 	}
 
 	return false
@@ -112,16 +117,6 @@ func checkMethod(methods []string, method string) bool {
 
 		return strings.EqualFold(v, method)
 	})
-}
-
-func checkPath(pattern, pathRequest string) bool {
-	if pattern == "" {
-		return false
-	}
-
-	v, _ := doublestar.Match(pattern, pathRequest)
-
-	return v
 }
 
 func checkPaths(patterns []string, pathRequest string) bool {
@@ -152,7 +147,7 @@ func permissionMatchesRequest(perm *data.Permission, method, path string) bool {
 	if path != "" {
 		found := false
 		for _, res := range perm.Resources {
-			if checkPath(res.Path, path) || checkPaths(res.Paths, path) {
+			if checkPaths(res.Paths, path) {
 				found = true
 				break
 			}

@@ -975,6 +975,7 @@ func (c *Cache) Reload(ctx context.Context) error {
 	sort.Strings(snap.RoleIDs)
 
 	for _, permission := range permissions {
+		permission.Resources = normalizeResources(permission.Resources)
 		snap.Permissions[permission.ID] = permission
 		snap.PermIDs = append(snap.PermIDs, permission.ID)
 		snap.PermNames[permission.Name] = permission.ID
@@ -1939,7 +1940,9 @@ func (c *Cache) GetRole(req data.GetRoleRequest) (*data.RoleExtended, error) {
 // permissions
 
 func (sn *Snapshot) extendPermission(addRoles bool, permission *data.Permission) data.PermissionExtended {
-	extended := data.PermissionExtended{Permission: permission}
+	display := *permission
+	display.Resources = resourcesForDisplay(permission.Resources)
+	extended := data.PermissionExtended{Permission: &display}
 
 	if !addRoles {
 		return extended

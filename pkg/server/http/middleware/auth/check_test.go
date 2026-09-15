@@ -51,6 +51,11 @@ func TestNormalizeResources(t *testing.T) {
 			}},
 		},
 		{
+			name:  "display path is not appended on round trip",
+			input: []data.Resource{{Path: "/api/** /other/**", Paths: []string{"/api/**", "/other/**"}}},
+			want:  []data.Resource{{Paths: []string{"/api/**", "/other/**"}}},
+		},
+		{
 			name:  "nil stays nil",
 			input: nil,
 			want:  nil,
@@ -64,6 +69,48 @@ func TestNormalizeResources(t *testing.T) {
 				t.Fatalf("normalizeResources() = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestPermissionDisplayPath(t *testing.T) {
+	permission := &data.Permission{Resources: []data.Resource{{
+		Paths:    []string{"/api/**", "/other/**"},
+		Excluded: []data.Resource{{Paths: []string{"/api/private/**", "/other/private/**"}}},
+	}}}
+	snapshot := &Snapshot{}
+	display := snapshot.extendPermission(false, permission)
+	if got := display.Resources[0].Path; got != "/api/** /other/**" {
+		t.Fatalf("display Path = %q", got)
+	}
+	if got := display.Resources[0].Excluded[0].Path; got != "/api/private/** /other/private/**" {
+		t.Fatalf("excluded display Path = %q", got)
+	}
+	if permission.Resources[0].Path != "" || permission.Resources[0].Excluded[0].Path != "" {
+		t.Fatal("display mutated cached resources")
+	}
+	display.Resources = normalizeResources(display.Resources)
+	if !reflect.DeepEqual(display.Resources, permission.Resources) {
+		t.Fatal("read/write round trip changed resources")
+	}
+}
+
+func TestPermissionMatchingIgnoresLegacyPath(t *testing.T) {
+	permission := &data.Permission{Resources: []data.Resource{{
+		Path: "/legacy/**", Paths: []string{"/api/**"}, Methods: []string{"GET"},
+		Excluded: []data.Resource{{Path: "/api/**", Paths: []string{"/api/private/**"}, Methods: []string{"GET"}}},
+	}}}
+	cfg := data.CheckConfig{NoHostCheck: true}
+	if checkAccess(cfg, permission, "", "/legacy/users", "GET") {
+		t.Fatal("legacy Path granted access")
+	}
+	if !checkAccess(cfg, permission, "", "/api/users", "GET") {
+		t.Fatal("legacy excluded Path denied access")
+	}
+	if checkAccess(cfg, permission, "", "/api/private/keys", "GET") {
+		t.Fatal("excluded Paths did not deny access")
+	}
+	if permissionMatchesRequest(permission, "GET", "/legacy/users") {
+		t.Fatal("permission filter matched legacy Path")
 	}
 }
 
