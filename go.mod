@@ -41,7 +41,7 @@ require (
 	github.com/rakunlabs/gofret v0.2.1
 	github.com/rakunlabs/into v0.5.3
 	github.com/rakunlabs/logi v0.4.5
-	github.com/rakunlabs/mapx v0.1.0
+	github.com/rakunlabs/mapx v0.2.0
 	github.com/rakunlabs/muz v0.2.5
 	github.com/rakunlabs/ok v0.1.0
 	github.com/rakunlabs/query v0.4.10
