@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"gopkg.in/yaml.v3"
+	"github.com/goccy/go-yaml"
 )
 
 // codec encodes/decodes structured content.

@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/goccy/go-yaml"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rakunlabs/ok"
 	"github.com/rytsh/mugo/fstore"
 	"github.com/rytsh/mugo/templatex"
-	"gopkg.in/yaml.v3"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/model"
