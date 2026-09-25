@@ -25,6 +25,10 @@
   const namespaces = ["token", "oauth2", "authorize", "registration", "password", "passkey", "jwt"] as const;
   const schema = $derived(getSettingString("oauth2", ["schema"]) || "https");
   const publishedOAuth = $derived(session.info?.oauth2);
+  const editedBaseURL = $derived(getSettingString("oauth2", ["base_url"]).trim());
+  const baseURLPending = $derived(
+    Boolean(publishedOAuth) && editedBaseURL !== (publishedOAuth?.configured_base_url ?? "").trim(),
+  );
   const userVerification = $derived(getSettingString("passkey", ["user_verification"]) || "preferred");
   type PasskeySite = { name: string; rp_id: string; rp_display_name: string; origins: string[] };
   const passkeySites = $derived((getSettingValue("passkey", ["sites"]) as PasskeySite[] | undefined) ?? []);
@@ -234,21 +238,32 @@
               Discovery, token claims, client registration, device flow and upstream callbacks all use the published origin.
             </p>
           </div>
-          {#if publishedOAuth.replacement_from && publishedOAuth.replacement_to}
-            <span class="stamp-raw text-caution">
-              Host replacement {publishedOAuth.replacement_from} → {publishedOAuth.replacement_to}
-            </span>
-          {:else}
-            <span class="stamp text-muted">No host replacement applied</span>
-          {/if}
+          <div class="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+            {#if baseURLPending}
+              <span class="stamp text-caution">Pending commit</span>
+            {/if}
+            {#if publishedOAuth.replacement_from && publishedOAuth.replacement_to}
+              <span class="stamp-raw text-caution">
+                Instance replacement {publishedOAuth.replacement_from} → {publishedOAuth.replacement_to}
+              </span>
+            {:else}
+              <span class="stamp text-muted">No host replacement applied</span>
+            {/if}
+          </div>
         </div>
 
         <dl class="mt-5 grid gap-x-8 gap-y-4 sm:grid-cols-[10rem_minmax(0,1fr)]">
-          <dt class="stamp">Configured base</dt>
+          <dt class="stamp">Edited base</dt>
           <dd class="serial min-w-0 break-all text-[12.5px] text-ink">
-            {publishedOAuth.configured_base_url || "Derived from request"}
+            {editedBaseURL || "Derived from request"}
           </dd>
-          <dt class="stamp">Effective base</dt>
+          {#if baseURLPending}
+            <dt class="stamp">Active configured base</dt>
+            <dd class="serial min-w-0 break-all text-[12.5px] text-muted">
+              {publishedOAuth.configured_base_url || "Derived from request"}
+            </dd>
+          {/if}
+          <dt class="stamp">Effective runtime base</dt>
           <dd class="serial min-w-0 break-all text-[12.5px] text-ink">{publishedOAuth.effective_base_url}</dd>
           <dt class="stamp">Canonical issuer</dt>
           <dd class="serial min-w-0 break-all text-[12.5px] text-ink">{publishedOAuth.issuer_url}</dd>
@@ -262,8 +277,15 @@
           <dd class="serial min-w-0 break-all text-[12.5px] text-ink">{publishedOAuth.callback_url_pattern}</dd>
         </dl>
 
+        {#if baseURLPending}
+          <p class="mt-5 border-t border-rule pt-4 text-[12px] leading-[1.6] text-caution">
+            The edited base has not changed the published OAuth surface yet. Commit all to apply it;
+            the effective URLs above will then be recalculated with this instance's host replacement.
+          </p>
+        {/if}
+
         {#if publishedOAuth.replacement_from && publishedOAuth.replacement_to}
-          <p class="mt-5 border-t border-rule pt-4 text-[12px] leading-[1.6] text-muted">
+          <p class:border-t={!baseURLPending} class="mt-5 border-rule pt-4 text-[12px] leading-[1.6] text-muted">
             Clients must discover and validate <span class="serial text-ink">{publishedOAuth.issuer_url}</span>.
             Redirect URIs registered with upstream providers must use the replaced host. Tokens issued
             before this instance published the replacement carry the previous issuer and may require users to sign in again.

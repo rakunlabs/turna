@@ -68,10 +68,18 @@ provider endpoint overrides. Full order:
 **DB → Auth host replacements → Auth endpoint overrides → Session host
 replacements → Session endpoint overrides**. Both features also apply to groups.
 
-Changing the effective host changes the canonical token issuer. Tokens minted
-with the previous `iss` may be rejected by strict issuer validation and require
-clients to start a new login; upstream providers must register callback URLs on
-the effective host.
+Changing the effective host changes the canonical token issuer published in
+discovery and in new tokens. Auth's own endpoints (refresh, userinfo,
+introspection, token exchange) and `oauth2resource` without explicit
+`authorization_servers` accept any `iss` of the form
+`{scheme}://{host}{prefix_path}/oauth2` for tokens signed with this instance's
+key, so a client may log in through one host and refresh or call userinfo
+through another. External verifiers doing strict `iss` checks still see the new
+issuer; upstream providers must register callback URLs on the effective host.
+
+`oauth2.base_url` must be an origin (`https://auth.example.com`); a value without
+a scheme gets `oauth2.schema` (default `https`), and paths, queries and fragments
+are rejected when the setting is saved.
 
 Use `auth.session_providers.overrides.<provider-name>.oauth2` in the static config
 when this Auth instance needs to publish different endpoints for a shared provider:

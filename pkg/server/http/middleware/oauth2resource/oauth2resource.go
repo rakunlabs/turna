@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -173,7 +174,28 @@ func (m *OAuth2Resource) authorizationServers(r *http.Request) []string {
 		return m.AuthorizationServers
 	}
 
+	// the in-process auth middleware knows its canonical issuer
+	// (oauth2.base_url after host replacement)
+	if issuer, ok := session.IssuerRegistry.Get(m.AuthMiddleware).(session.InfIssuerURL); ok {
+		if issuerURL := issuer.IssuerURL(r); issuerURL != "" {
+			return []string{issuerURL}
+		}
+	}
+
 	return []string{requestBase(r) + m.AuthPrefixPath + "/oauth2"}
+}
+
+// acceptsIssuer checks the token iss. Explicit authorization_servers are
+// matched exactly; otherwise the in-process auth middleware decides, so a
+// token minted through one public host is accepted on another.
+func (m *OAuth2Resource) acceptsIssuer(r *http.Request, issuer any, iss string) bool {
+	if len(m.AuthorizationServers) == 0 {
+		if acceptor, ok := issuer.(session.InfIssuerAcceptor); ok {
+			return acceptor.AcceptsIssuer(iss)
+		}
+	}
+
+	return slices.Contains(m.authorizationServers(r), iss)
 }
 
 // metadata serves the RFC 9728 protected resource metadata document.
@@ -261,12 +283,17 @@ func (m *OAuth2Resource) protect(w http.ResponseWriter, r *http.Request, next ht
 	}
 
 	claims := jwt.MapClaims{}
-	opts := []jwt.ParserOption{jwt.WithIssuer(m.authorizationServers(r)[0])}
+	opts := []jwt.ParserOption{}
 	if m.getCheckAudience() {
 		opts = append(opts, jwt.WithAudience(m.resourceID(r)))
 	}
 	if _, err := jwt.ParseWithClaims(token, claims, issuer.Keyfunc, opts...); err != nil {
 		m.challenge(w, r, http.StatusUnauthorized, "invalid_token", err.Error())
+
+		return
+	}
+	if iss, _ := claims["iss"].(string); !m.acceptsIssuer(r, issuer, iss) {
+		m.challenge(w, r, http.StatusUnauthorized, "invalid_token", jwt.ErrTokenInvalidIssuer.Error())
 
 		return
 	}

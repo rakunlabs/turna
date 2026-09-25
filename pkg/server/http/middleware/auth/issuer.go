@@ -19,6 +19,7 @@ import (
 // middleware can consume.
 var (
 	_ session.InfIssuer            = (*Auth)(nil)
+	_ session.InfIssuerAcceptor    = (*Auth)(nil)
 	_ session.InfPublicPaths       = (*Auth)(nil)
 	_ session.InfAccessChecker     = (*Auth)(nil)
 	_ session.InfPasskey           = (*Auth)(nil)

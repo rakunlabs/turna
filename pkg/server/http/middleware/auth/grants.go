@@ -70,8 +70,7 @@ func (m *Auth) tokenExchangeGrant(w http.ResponseWriter, r *http.Request, req Ac
 	}
 
 	claims := jwt.MapClaims{}
-	if _, err := signer.JWT.Parse(req.SubjectToken, &claims,
-		jwt.WithIssuer(m.issuerURL(r)), jwt.WithAudience("turna-auth")); err != nil {
+	if err := m.parseOwnToken(signer, req.SubjectToken, &claims); err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_grant",
 			ErrorDescription: err.Error(),

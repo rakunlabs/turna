@@ -44,44 +44,60 @@ func (m *Auth) Info(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	configuredBaseURL := ""
-	if m.cache != nil {
-		configuredBaseURL = strings.TrimSpace(m.cache.Snapshot().OAuth2.BaseURL)
-	}
-	effectiveBaseURL := m.effectiveOAuthBaseURL()
-	if effectiveBaseURL == "" {
-		issuer, _ := url.Parse(m.issuerURL(r))
-		if issuer != nil {
-			effectiveBaseURL = issuer.Scheme + "://" + issuer.Host
-		}
-	}
-	issuerURL := m.issuerURL(r)
-	replacementFrom, replacementTo := "", ""
-	if configured, err := url.Parse(configuredBaseURL); err == nil && configured.Host != "" {
-		if effective, err := url.Parse(effectiveBaseURL); err == nil && configured.Host != effective.Host {
-			replacementFrom, replacementTo = configured.Host, effective.Host
-		}
-	}
-
 	httputil.JSON(w, http.StatusOK, Response[map[string]any]{
 		Payload: map[string]any{
 			"prefix_path": m.PrefixPath,
 			"version":     version,
 			"storage":     "postgres",
-			"oauth2": map[string]any{
-				"configured_base_url":               configuredBaseURL,
-				"effective_base_url":                effectiveBaseURL,
-				"issuer_url":                        issuerURL,
-				"openid_configuration_url":          issuerURL + "/.well-known/openid-configuration",
-				"authorization_server_metadata_url": issuerURL + "/.well-known/oauth-authorization-server",
-				"token_url":                         issuerURL + "/token",
-				"jwks_url":                          issuerURL + "/certs",
-				"callback_url_pattern":              strings.TrimSuffix(effectiveBaseURL, "/") + m.PrefixPath + "/oauth2/code/{provider}",
-				"replacement_from":                  replacementFrom,
-				"replacement_to":                    replacementTo,
-			},
+			"oauth2":      m.oauthSurface(r),
 		},
 	})
+}
+
+// oauthSurface describes the public OAuth addresses exactly as this instance
+// serves them for r, so operators see what upstream providers and clients
+// will actually receive.
+func (m *Auth) oauthSurface(r *http.Request) map[string]any {
+	configuredBaseURL := ""
+	normalizedBaseURL := ""
+	if m.cache != nil {
+		cfg := m.cache.Snapshot().OAuth2
+		configuredBaseURL = strings.TrimSpace(cfg.BaseURL)
+		normalizedBaseURL, _ = normalizeOAuthBaseURL(cfg.BaseURL, cfg.Schema)
+	}
+
+	issuerURL := m.issuerURL(r)
+	effectiveBaseURL := strings.TrimSuffix(issuerURL, m.PrefixPath+"/oauth2")
+
+	replacementFrom, replacementTo := "", ""
+	if configured, err := url.Parse(normalizedBaseURL); err == nil && configured.Host != "" {
+		if effective, err := url.Parse(effectiveBaseURL); err == nil && configured.Host != effective.Host {
+			replacementFrom, replacementTo = configured.Host, effective.Host
+		}
+	}
+
+	// Build the callback with the same runtime that builds redirect_uri; with
+	// an empty base_url it follows oauth2.schema, not the issuer's scheme.
+	callbackURLPattern := effectiveBaseURL + m.PrefixPath + "/oauth2/code/{provider}"
+	if code, err := m.codeRuntime(); err == nil {
+		const placeholder = "turna-provider-placeholder"
+		if callback, err := code.AuthCodeRedirectURL(r.Clone(r.Context()), placeholder); err == nil {
+			callbackURLPattern = strings.Replace(callback, placeholder, "{provider}", 1)
+		}
+	}
+
+	return map[string]any{
+		"configured_base_url":               configuredBaseURL,
+		"effective_base_url":                effectiveBaseURL,
+		"issuer_url":                        issuerURL,
+		"openid_configuration_url":          issuerURL + "/.well-known/openid-configuration",
+		"authorization_server_metadata_url": issuerURL + "/.well-known/oauth-authorization-server",
+		"token_url":                         issuerURL + "/token",
+		"jwks_url":                          issuerURL + "/certs",
+		"callback_url_pattern":              callbackURLPattern,
+		"replacement_from":                  replacementFrom,
+		"replacement_to":                    replacementTo,
+	}
 }
 
 func (m *Auth) ListSettings(w http.ResponseWriter, r *http.Request) {
@@ -278,6 +294,18 @@ func (m *Auth) PutSetting(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := validateSessionProviders(setting); err != nil {
 			httputil.HandleError(w, httputil.NewError("invalid session_providers setting", err, http.StatusBadRequest))
+			return
+		}
+	}
+
+	if namespace == "oauth2" {
+		var setting OAuth2Settings
+		if err := json.Unmarshal(req.Value, &setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("cannot decode oauth2 setting", err, http.StatusBadRequest))
+			return
+		}
+		if err := validateOAuth2Settings(setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("invalid oauth2 setting", err, http.StatusBadRequest))
 			return
 		}
 	}

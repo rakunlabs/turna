@@ -797,8 +797,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 		}
 
 		claims := jwt.MapClaims{}
-		if _, err := signer.JWT.Parse(accessTokenRequest.RefreshToken, &claims,
-			jwt.WithIssuer(m.issuerURL(r)), jwt.WithAudience("turna-auth")); err != nil {
+		if err := m.parseOwnToken(signer, accessTokenRequest.RefreshToken, &claims); err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
 				ErrorDescription: err.Error(),
@@ -1157,8 +1156,7 @@ func (m *Auth) APIUserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	claims := jwt.MapClaims{}
-	if _, err := signer.JWT.Parse(tokenHeader, &claims,
-		jwt.WithIssuer(m.issuerURL(r)), jwt.WithAudience("turna-auth")); err != nil {
+	if err := m.parseOwnToken(signer, tokenHeader, &claims); err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_token",
 			ErrorDescription: err.Error(),
@@ -1433,6 +1431,36 @@ func (m *Auth) IssuerURL(r *http.Request) string {
 	return m.issuerURL(r)
 }
 
+// AcceptsIssuer reports whether iss names this Auth instance on any public
+// host: {scheme}://{host}{prefix}/oauth2. The issuer URL follows the host a
+// token was requested through (or oauth2.base_url after host replacement), so
+// a token signed with this instance's key stays valid when a client logs in
+// through one host and refreshes or calls userinfo through another. The
+// signature proves the token is ours; the prefix separates Auth instances
+// sharing the same key. It implements session.InfIssuerAcceptor.
+func (m *Auth) AcceptsIssuer(iss string) bool {
+	u, err := url.Parse(iss)
+	if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+
+	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.Path == m.PrefixPath+"/oauth2"
+}
+
+// parseOwnToken validates a token signed by this instance for its own
+// endpoints (refresh, userinfo, introspection, token exchange).
+func (m *Auth) parseOwnToken(signer *jwtSigner, raw string, claims *jwt.MapClaims) error {
+	if _, err := signer.JWT.Parse(raw, claims, jwt.WithAudience("turna-auth")); err != nil {
+		return err
+	}
+
+	if iss, _ := (*claims)["iss"].(string); !m.AcceptsIssuer(iss) {
+		return fmt.Errorf("token validate: %w", jwt.ErrTokenInvalidIssuer)
+	}
+
+	return nil
+}
+
 // effectiveOAuthBaseURL applies this instance's endpoint host mapping to the
 // stored canonical OAuth origin. Every externally published OAuth URL must use
 // this same value; applying the mapping only to an upstream callback would make
@@ -1442,13 +1470,63 @@ func (m *Auth) effectiveOAuthBaseURL() string {
 		return ""
 	}
 
-	baseURL := strings.TrimSpace(m.cache.Snapshot().OAuth2.BaseURL)
-	baseURL = session.ReplaceEndpointHost(baseURL, m.SessionProvidersConfig.HostReplacements)
-	if parsed, err := url.Parse(baseURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
-		return fmt.Sprintf("%s://%s", parsed.Scheme, parsed.Host)
+	cfg := m.cache.Snapshot().OAuth2
+	// An unusable stored origin falls back to the request instead of
+	// publishing a relative or scheme-less redirect_uri.
+	baseURL, err := normalizeOAuthBaseURL(cfg.BaseURL, cfg.Schema)
+	if err != nil || baseURL == "" {
+		return ""
 	}
 
-	return baseURL
+	return session.ReplaceEndpointHost(baseURL, m.SessionProvidersConfig.HostReplacements)
+}
+
+// normalizeOAuthBaseURL reduces oauth2.base_url to {scheme}://{host}. A value
+// without a scheme ("auth.example.com") gets oauth2.schema (default https);
+// otherwise the host would parse as a path, host replacement would never
+// match and upstream callbacks would become relative URLs.
+func normalizeOAuthBaseURL(raw, schema string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+
+	if !strings.Contains(raw, "://") {
+		if schema == "" {
+			schema = "https"
+		}
+		raw = schema + "://" + raw
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("invalid base_url: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("base_url scheme must be http or https")
+	}
+	if parsed.Host == "" {
+		return "", fmt.Errorf("base_url host is required")
+	}
+	if parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("base_url must be an origin like https://auth.example.com without path, query or fragment")
+	}
+
+	return parsed.Scheme + "://" + parsed.Host, nil
+}
+
+// validateOAuth2Settings rejects origins that would silently break the
+// published OAuth surface.
+func validateOAuth2Settings(setting OAuth2Settings) error {
+	switch setting.Schema {
+	case "", "http", "https":
+	default:
+		return fmt.Errorf("schema must be http or https")
+	}
+
+	_, err := normalizeOAuthBaseURL(setting.BaseURL, setting.Schema)
+
+	return err
 }
 
 func (m *Auth) issuerURL(r *http.Request) string {
@@ -1456,9 +1534,7 @@ func (m *Auth) issuerURL(r *http.Request) string {
 	// instance after its instance-local host replacement. Use it for discovery,
 	// token issuers and upstream code callbacks so every protocol surface agrees.
 	if baseURL := m.effectiveOAuthBaseURL(); baseURL != "" {
-		if parsed, err := url.Parse(baseURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
-			return fmt.Sprintf("%s://%s%s/oauth2", parsed.Scheme, parsed.Host, m.PrefixPath)
-		}
+		return baseURL + m.PrefixPath + "/oauth2"
 	}
 
 	scheme := r.Header.Get("X-Forwarded-Proto")

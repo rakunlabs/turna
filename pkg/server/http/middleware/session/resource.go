@@ -22,6 +22,14 @@ type InfIssuerURL interface {
 	IssuerURL(r *http.Request) string
 }
 
+// InfIssuerAcceptor is implemented by issuers that publish more than one
+// issuer URL for the same signing key (one per public host). Resource
+// servers use it to accept a token minted through one host and presented
+// through another.
+type InfIssuerAcceptor interface {
+	AcceptsIssuer(iss string) bool
+}
+
 // ProtectedResource publishes this session-protected surface as an OAuth2
 // protected resource (RFC 9728): the metadata document is served under
 // /.well-known/oauth-protected-resource (path-insertion style, so

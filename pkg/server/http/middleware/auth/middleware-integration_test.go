@@ -98,11 +98,15 @@ func TestMiddlewareIntegration(t *testing.T) {
 		"openid configuration": info.Payload.OAuth2.OpenIDConfigurationURL,
 		"token":                info.Payload.OAuth2.TokenURL,
 		"jwks":                 info.Payload.OAuth2.JWKSURL,
-		"callback":             info.Payload.OAuth2.CallbackURLPattern,
 	} {
 		if !strings.HasPrefix(value, info.Payload.OAuth2.IssuerURL) {
 			t.Fatalf("info %s URL = %q, want issuer prefix %q", name, value, info.Payload.OAuth2.IssuerURL)
 		}
+	}
+	// Without base_url, upstream callbacks follow oauth2.schema (default
+	// https) rather than the plain-HTTP test server scheme.
+	if got, want := info.Payload.OAuth2.CallbackURLPattern, "https://"+strings.TrimPrefix(server.URL, "http://")+"/auth/oauth2/code/{provider}"; got != want {
+		t.Fatalf("info callback URL = %q, want %q", got, want)
 	}
 
 	// create service account
@@ -198,6 +202,20 @@ func TestMiddlewareIntegration(t *testing.T) {
 	res.Body.Close()
 	if res.StatusCode != http.StatusOK || userinfo["sub"] != created.Payload.ID {
 		t.Fatalf("userinfo status=%d sub=%v want %s", res.StatusCode, userinfo["sub"], created.Payload.ID)
+	}
+
+	// a token minted through the main host stays valid through another host
+	req, _ = http.NewRequest(http.MethodGet, server.URL+"/auth/oauth2/userinfo", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenRes.AccessToken)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "other.example.com")
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatalf("cross-host userinfo: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("cross-host userinfo status=%d", res.StatusCode)
 	}
 
 	// check endpoint denies unknown path
