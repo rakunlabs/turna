@@ -957,10 +957,20 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 		}
 
 		codeRaw, ok, err := codeStore.TakeCode(r.Context(), "code_"+accessTokenRequest.Code)
-		if err != nil || !ok {
+		if err != nil {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "server_error",
+				ErrorDescription: "code store: " + err.Error(),
+				code:             http.StatusInternalServerError,
+			})
+
+			return
+		}
+		if !ok {
+			// codes are single use and expire after oauth2store.DefaultCodeTimeout
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
-				ErrorDescription: "code not found",
+				ErrorDescription: "code not found, already used or expired",
 				code:             http.StatusUnauthorized,
 			})
 

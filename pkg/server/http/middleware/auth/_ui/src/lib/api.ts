@@ -37,6 +37,31 @@ export type InfoPayload = {
   };
 };
 
+/**
+ * Settings this instance takes from its static config instead of PostgreSQL,
+ * from GET /v1/instance-config (admin only). Secrets are reported as set or
+ * not, never returned.
+ */
+export type InstanceConfig = {
+  cache: {
+    code_store: {
+      pinned: boolean;
+      active?: string;
+      redis?: {
+        address: string[] | null;
+        username: string;
+        password_set: boolean;
+        client_name: string;
+        tls: { enabled: boolean; cert_file: string; key_file: string; ca_file: string };
+      };
+    };
+  };
+  ldap: {
+    addr: string;
+    disable_sync: boolean;
+  };
+};
+
 export type Dashboard = {
   total_roles: number;
   total_permissions: number;

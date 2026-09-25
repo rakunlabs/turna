@@ -166,6 +166,41 @@ func (m *Auth) GetSetting(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, Response[*Setting]{Payload: setting})
 }
 
+// InstanceConfigAPI reports the settings this instance takes from its static
+// config instead of the database, so the UI can show them as read-only.
+// Secrets are never returned; only whether they are set.
+func (m *Auth) InstanceConfigAPI(w http.ResponseWriter, r *http.Request) {
+	codeStore := map[string]any{"pinned": m.codeStorePinned()}
+	if m.codeStorePinned() {
+		cfg := m.codeStoreSettings()
+		codeStore["active"] = cfg.Active
+		if cfg.Active == "redis" {
+			codeStore["redis"] = map[string]any{
+				"address":      cfg.Redis.Address,
+				"username":     cfg.Redis.Username,
+				"password_set": cfg.Redis.Password != "",
+				"client_name":  cfg.Redis.ClientName,
+				"tls": map[string]any{
+					"enabled":   cfg.Redis.TLS.Enabled,
+					"cert_file": cfg.Redis.TLS.CertFile,
+					"key_file":  cfg.Redis.TLS.KeyFile,
+					"ca_file":   cfg.Redis.TLS.CAFile,
+				},
+			}
+		}
+	}
+
+	httputil.JSON(w, http.StatusOK, Response[map[string]any]{
+		Payload: map[string]any{
+			"cache": map[string]any{"code_store": codeStore},
+			"ldap": map[string]any{
+				"addr":         m.LDAP.Addr,
+				"disable_sync": m.LDAP.DisableSync,
+			},
+		},
+	})
+}
+
 func (m *Auth) PutSetting(w http.ResponseWriter, r *http.Request) {
 	var req SettingRequest
 	if err := httputil.Decode(r, &req); err != nil {

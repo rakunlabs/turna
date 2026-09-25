@@ -37,6 +37,21 @@ server:
 | `encryption.key` | Required encryption key for secrets stored in PostgreSQL. Raw strings are SHA-256 derived; base64 16/24/32-byte keys are used directly. |
 | `ldap.addr` | Optional instance-local LDAP URL (e.g. `ldap://10.20.0.15:389` or `ldaps://ldap.site-b.example.com:636`). Overrides the stored address for login, directory queries, and manual/periodic sync. Empty uses the stored address. Requires an enabled LDAP config in the database; does not modify the shared config. |
 | `ldap.disable_sync` | Keep this instance out of the periodic LDAP sync loop; the manual sync API keeps working. Config-file only. Instances that do participate coordinate through the `auth_sync_locks` table, so a fleet sharing one database syncs once per `sync_duration` instead of once per instance. |
+| `cache.code_store` | Optional instance-local OAuth code/state store, same shape as the stored `cache.code_store` (`active`, `redis.address`, `redis.username`, `redis.password`, `redis.client_name`, `redis.tls.*`). When `active` is set, this instance ignores the stored `code_store` and uses this one; other instances keep the stored value. The UI shows it as read-only. |
+
+Static overrides (`ldap.*`, `cache.code_store`) are reported to admins by
+`GET /auth/v1/instance-config` (secrets only as `password_set`) and marked
+"Set from config" in the UI.
+
+```yaml
+auth:
+  cache:
+    code_store:
+      active: redis
+      redis:
+        address: ["redis:6379"]
+        password: change-me
+```
 
 ## Runtime settings (stored in PostgreSQL)
 

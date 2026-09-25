@@ -3,6 +3,7 @@
   import Section from "./ui/Section.svelte";
   import Switch from "./ui/Switch.svelte";
   import Seal from "./ui/Seal.svelte";
+  import CodeStorePinned from "./CodeStorePinned.svelte";
   import { session } from "../lib/state/session.svelte";
   import {
     getSettingBool,
@@ -15,7 +16,12 @@
   } from "../lib/state/settings.svelte";
 
   const pollInterval = $derived(getSettingString("cache", ["poll_interval"]));
-  const codeStore = $derived(getSettingString("cache", ["code_store", "active"]) || "database");
+  const pinned = $derived(session.codeStorePinned);
+  const storedCodeStore = $derived(getSettingString("cache", ["code_store", "active"]) || "database");
+  // what this instance actually runs: the static config wins when it pins one
+  const codeStore = $derived(
+    pinned ? session.instanceConfig?.cache.code_store.active || storedCodeStore : storedCodeStore,
+  );
   const redisTLS = $derived(getSettingBool("cache", ["code_store", "redis", "tls", "enabled"]));
   const addresses = $derived(getSettingList("cache", ["code_store", "redis", "address"]));
 
@@ -69,6 +75,9 @@
     title="OAuth code store"
     note="Authorization codes, provider callback state and passkey challenges are held here briefly while a flow is in progress. They are not a cache of records — losing them fails whichever logins were mid-flight."
   >
+    {#if pinned}
+      <CodeStorePinned />
+    {:else}
     <div class="max-w-[52ch]">
       <label class="stamp block" for="cache-code-store">Store</label>
       <select
@@ -87,9 +96,10 @@
         Memory is safe only when exactly one instance serves every step of every flow.
       </p>
     </div>
+    {/if}
   </Section>
 
-  {#if codeStore === "redis"}
+  {#if !pinned && codeStore === "redis"}
     <Section title="Redis connection">
       <div class="grid gap-6">
         <div class="max-w-[62ch]">

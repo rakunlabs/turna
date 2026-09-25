@@ -1,4 +1,4 @@
-import type { ApiResponse, Capabilities, Dashboard, InfoPayload } from "../api";
+import type { ApiResponse, Capabilities, Dashboard, InfoPayload, InstanceConfig } from "../api";
 
 /**
  * The docket is the console's record of what just happened. Entries are stamped
@@ -80,6 +80,9 @@ class Session {
   apiBase = $state("/auth/v1");
   info = $state<InfoPayload | null>(null);
   dashboard = $state<Dashboard | null>(null);
+  /** Static-config overrides of this instance; null until loaded. */
+  instanceConfig = $state<InstanceConfig | null>(null);
+  codeStorePinned = $derived(this.instanceConfig?.cache.code_store.pinned === true);
   capabilities = $state<Capabilities | null>(null);
   loading = $state(true);
   busy = $state(false);
@@ -135,13 +138,16 @@ class Session {
   }
 
   async loadCore() {
-    const [infoRes, dashboardRes] = await Promise.all([
+    const [infoRes, dashboardRes, instanceRes] = await Promise.all([
       this.request<InfoPayload>("info"),
       this.request<Dashboard>("dashboard"),
+      // an older server without the endpoint simply shows nothing as pinned
+      this.request<InstanceConfig>("instance-config").catch(() => null),
     ]);
 
     this.info = infoRes.payload;
     this.dashboard = dashboardRes.payload;
+    this.instanceConfig = instanceRes?.payload ?? null;
   }
 
   /**

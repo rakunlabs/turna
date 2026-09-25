@@ -31,13 +31,14 @@ const (
 // All runtime settings (oauth2, check, cache, token, providers, clients, ldap)
 // live in PostgreSQL and are managed through the API/UI. The static
 // configuration covers encryption, database connection and migration settings,
-// plus instance-local LDAP and session provider endpoint overrides.
+// plus instance-local LDAP, session provider endpoint and code store overrides.
 type Auth struct {
 	PrefixPath             string                 `cfg:"prefix_path"`
 	Database               Database               `cfg:"database"`
 	Encryption             Encryption             `cfg:"encryption"`
 	LDAP                   LDAPStatic             `cfg:"ldap"`
 	SessionProvidersConfig SessionProvidersStatic `cfg:"session_providers"`
+	Cache                  CacheStatic            `cfg:"cache"`
 
 	instanceID   string                  `cfg:"-"`
 	db           *sql.DB                 `cfg:"-"`
@@ -188,7 +189,8 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 	}
 
 	// OAuth2 code/state store; defaults to the shared PostgreSQL flow table and
-	// can be moved to memory or Redis through the runtime "cache" namespace.
+	// can be moved to memory or Redis through the runtime "cache" namespace or
+	// pinned per instance with the static cache.code_store config.
 	if _, err := m.codeStoreRuntime(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("init auth code store: %w", err)
@@ -269,6 +271,7 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 
 	// settings
 	mux.GET(prefix+"/v1/settings", admin(m.ListSettings))
+	mux.GET(prefix+"/v1/instance-config", admin(m.InstanceConfigAPI))
 	mux.GET(prefix+"/v1/settings/{namespace}", admin(m.GetSetting))
 	mux.PUT(prefix+"/v1/settings/{namespace}", admin(m.PutSetting))
 	mux.DELETE(prefix+"/v1/settings/{namespace}", admin(m.DeleteSetting))

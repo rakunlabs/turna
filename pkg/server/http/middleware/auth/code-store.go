@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -13,25 +14,51 @@ import (
 )
 
 // CodeStoreSettings configures the temporary OAuth2 code/state cache.
+// The same shape is read from the "cache" setting namespace (json) and from
+// the static config auth.cache.code_store (cfg).
 type CodeStoreSettings struct {
 	// Active is "database", "memory" or "redis". Empty defaults to database.
-	Active string                 `json:"active"`
-	Redis  CodeStoreRedisSettings `json:"redis"`
+	Active string                 `json:"active" cfg:"active"`
+	Redis  CodeStoreRedisSettings `json:"redis"  cfg:"redis"`
 }
 
 type CodeStoreRedisSettings struct {
-	ClientName string                    `json:"client_name"`
-	Address    []string                  `json:"address"`
-	Username   string                    `json:"username"`
-	Password   string                    `json:"password"`
-	TLS        CodeStoreRedisTLSSettings `json:"tls"`
+	ClientName string                    `json:"client_name" cfg:"client_name"`
+	Address    []string                  `json:"address"     cfg:"address"`
+	Username   string                    `json:"username"    cfg:"username"`
+	Password   string                    `json:"password"    cfg:"password" log:"-"`
+	TLS        CodeStoreRedisTLSSettings `json:"tls"         cfg:"tls"`
 }
 
 type CodeStoreRedisTLSSettings struct {
-	Enabled  bool   `json:"enabled"`
-	CertFile string `json:"cert_file"`
-	KeyFile  string `json:"key_file"`
-	CAFile   string `json:"ca_file"`
+	Enabled  bool   `json:"enabled"   cfg:"enabled"`
+	CertFile string `json:"cert_file" cfg:"cert_file"`
+	KeyFile  string `json:"key_file"  cfg:"key_file"`
+	CAFile   string `json:"ca_file"   cfg:"ca_file"`
+}
+
+// CacheStatic holds instance-local cache overrides from the static config.
+type CacheStatic struct {
+	// CodeStore pins this instance's OAuth code/state store. When Active is
+	// set, the whole code_store of the "cache" setting namespace is ignored on
+	// this instance and the UI shows it as read-only. Other instances without
+	// an override keep using the stored value.
+	CodeStore CodeStoreSettings `cfg:"code_store"`
+}
+
+// codeStorePinned reports whether the static config owns the code store.
+func (m *Auth) codeStorePinned() bool {
+	return strings.TrimSpace(m.Cache.CodeStore.Active) != ""
+}
+
+// codeStoreSettings returns the code store settings in effect on this
+// instance: the static override when pinned, otherwise the stored setting.
+func (m *Auth) codeStoreSettings() CodeStoreSettings {
+	if m.codeStorePinned() {
+		return m.Cache.CodeStore.normalized()
+	}
+
+	return m.cache.Snapshot().Cache.CodeStore.normalized()
 }
 
 func (c CodeStoreSettings) normalized() CodeStoreSettings {
@@ -116,8 +143,12 @@ func (c *databaseCodeCache) Take(ctx context.Context, key string) (string, bool,
 }
 
 func (m *Auth) codeStoreRuntime(ctx context.Context) (*oauth2store.StoreCache, error) {
-	cfg := m.cache.Snapshot().Cache.CodeStore.normalized()
+	cfg := m.codeStoreSettings()
 	if err := validateCodeStoreSettings(cfg); err != nil {
+		if m.codeStorePinned() {
+			return nil, fmt.Errorf("static config cache.code_store: %w", err)
+		}
+
 		return nil, err
 	}
 

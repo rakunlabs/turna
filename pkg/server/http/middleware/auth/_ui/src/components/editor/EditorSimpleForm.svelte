@@ -2,6 +2,9 @@
   import Section from "../ui/Section.svelte";
   import TemporaryAccessPanel from "./TemporaryAccessPanel.svelte";
   import PasskeyPanel from "./PasskeyPanel.svelte";
+  import CodeStorePinned from "../CodeStorePinned.svelte";
+  import ConfigPinned from "../ui/ConfigPinned.svelte";
+  import { session } from "../../lib/state/session.svelte";
   import { splitValues } from "../../lib/records";
   import { editor } from "../../lib/state/editor.svelte";
 
@@ -222,6 +225,7 @@
           hint: "How often this instance re-reads the auth version.",
         })}
 
+        {#if !session.codeStorePinned}
         <div class="min-w-0">
           <label class="stamp block" for="code-store">OAuth code store</label>
           <select
@@ -239,10 +243,15 @@
             when a single instance serves every step.
           </p>
         </div>
+        {/if}
       </div>
     </Section>
 
-    {#if codeStore === "redis"}
+    {#if session.codeStorePinned}
+      <Section title="OAuth code store">
+        <CodeStorePinned />
+      </Section>
+    {:else if codeStore === "redis"}
       <Section title="Redis" note="Connection used for the shared code store.">
         <div class="grid gap-6 sm:grid-cols-2">
           {@render line({
@@ -580,7 +589,26 @@
     </div>
   </Section>
 {:else if editor.kind === "ldap"}
+  {@const ldapStatic = session.instanceConfig?.ldap}
   <Section title="Directory" note="The connection used for password checks and group sync.">
+    {#if ldapStatic?.addr}
+      <div class="mb-6">
+        <ConfigPinned
+          configKey="ldap.addr"
+          rows={[
+            { label: "Connects to", value: ldapStatic.addr },
+            {
+              label: "Stored address",
+              value: editor.getString("addr") || "—",
+              muted: true,
+            },
+          ]}
+        >
+          This instance connects every LDAP config to the address from its config file; the stored
+          address below is not used here. It still applies to instances without ldap.addr.
+        </ConfigPinned>
+      </div>
+    {/if}
     <div class="grid gap-6 sm:grid-cols-2">
       {@render line({
         label: "LDAP address",
@@ -651,6 +679,14 @@
         hint: "Group membership stops being pulled; existing sync roles stay as they are.",
       })}
     </div>
+    {#if ldapStatic?.disable_sync}
+      <div class="mt-6">
+        <ConfigPinned configKey="ldap.disable_sync">
+          This instance never runs the periodic LDAP sync, whatever this config says; other instances
+          do. The manual sync action still works here.
+        </ConfigPinned>
+      </div>
+    {/if}
   </Section>
 {:else if editor.kind === "users"}
   <Section title="Identity" note="What this person logs in with and how they are named.">
