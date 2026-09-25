@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"time"
 
@@ -30,17 +31,41 @@ type DNS struct {
 	// Records are zone-file lines, e.g. "www 3600 IN A 10.0.0.1" or
 	// "*.example.com. IN A 10.0.0.2".
 	Records []string `cfg:"records"`
-	// Upstream resolvers (host:port) used when no static record matches.
+	// Upstream resolvers used when no static record matches: "1.1.1.1:53",
+	// "tcp://1.1.1.1:53", "tls://1.1.1.1:853#cloudflare-dns.com" or
+	// "https://cloudflare-dns.com/dns-query".
 	Upstream []string `cfg:"upstream"`
+	// Forward sends queries of some domains to other upstreams (conditional
+	// forwarding). The longest matching domain wins.
+	Forward []Forward `cfg:"forward"`
 	// Timeout for upstream queries, default is 5s.
 	Timeout time.Duration `cfg:"timeout"`
+	// InsecureSkipVerify skips certificate checks of tls and https upstreams.
+	InsecureSkipVerify bool `cfg:"insecure_skip_verify"`
+	// Cache enables caching of upstream answers.
+	Cache *Cache `cfg:"cache"`
+	// Blocklist answers queries of blocked domains without forwarding.
+	Blocklist *Blocklist `cfg:"blocklist"`
+}
+
+type Forward struct {
+	// Domains forwarded to Upstream, including their subdomains.
+	Domains  []string `cfg:"domains"`
+	Upstream []string `cfg:"upstream"`
+}
+
+type forwardRule struct {
+	domain    string
+	upstreams []upstream
 }
 
 type handler struct {
-	origin   string
-	records  map[string][]dns.RR
-	upstream []string
-	client   *dns.Client
+	origin    string
+	records   map[string][]dns.RR
+	upstream  []upstream
+	forward   []forwardRule
+	cache     *cache
+	blocklist *blocklist
 }
 
 func (m *DNS) Middleware(ctx context.Context, _ string) (func(conn net.PacketConn, addr net.Addr, data []byte) error, error) {
@@ -88,12 +113,62 @@ func newHandler(m *DNS) (*handler, error) {
 		timeout = 5 * time.Second
 	}
 
-	return &handler{
-		origin:   origin,
-		records:  records,
-		upstream: m.Upstream,
-		client:   &dns.Client{Net: "udp", Timeout: timeout},
-	}, nil
+	h := &handler{
+		origin:  origin,
+		records: records,
+	}
+
+	parse := func(list []string) ([]upstream, error) {
+		out := make([]upstream, 0, len(list))
+
+		for _, raw := range list {
+			u, err := newUpstream(raw, timeout, m.InsecureSkipVerify)
+			if err != nil {
+				return nil, err
+			}
+
+			out = append(out, u)
+		}
+
+		return out, nil
+	}
+
+	var err error
+	if h.upstream, err = parse(m.Upstream); err != nil {
+		return nil, err
+	}
+
+	for i, f := range m.Forward {
+		if len(f.Domains) == 0 || len(f.Upstream) == 0 {
+			return nil, fmt.Errorf("forward %d needs domains and upstream", i)
+		}
+
+		ups, err := parse(f.Upstream)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, d := range f.Domains {
+			h.forward = append(h.forward, forwardRule{domain: dns.CanonicalName(strings.TrimPrefix(d, "*.")), upstreams: ups})
+		}
+	}
+
+	// longest domain first
+	sort.SliceStable(h.forward, func(i, j int) bool {
+		return dns.CountLabel(h.forward[i].domain) > dns.CountLabel(h.forward[j].domain)
+	})
+
+	if m.Cache != nil {
+		h.cache = newCache(*m.Cache)
+	}
+
+	if m.Blocklist != nil {
+		if h.blocklist, err = newBlocklist(m.Blocklist); err != nil {
+			return nil, err
+		}
+	}
+
+	return h, nil
 }
 
 func (h *handler) serve(ctx context.Context, conn net.PacketConn, addr net.Addr, data []byte) error {
@@ -102,14 +177,15 @@ func (h *handler) serve(ctx context.Context, conn net.PacketConn, addr net.Addr,
 		return fmt.Errorf("unpack dns request: %w", err)
 	}
 
-	resp := h.answer(req)
-	if resp == nil && len(h.upstream) > 0 {
-		resp = h.forward(ctx, req)
+	resp := h.resolve(ctx, req)
+
+	// keep udp answers within the client buffer size
+	size := dns.MinMsgSize
+	if opt := req.IsEdns0(); opt != nil {
+		size = max(int(opt.UDPSize()), dns.MinMsgSize)
 	}
 
-	if resp == nil {
-		resp = new(dns.Msg).SetRcode(req, dns.RcodeRefused)
-	}
+	resp.Truncate(size)
 
 	out, err := resp.Pack()
 	if err != nil {
@@ -121,6 +197,52 @@ func (h *handler) serve(ctx context.Context, conn net.PacketConn, addr net.Addr,
 	}
 
 	return nil
+}
+
+// resolve answers a query: blocklist, static records, conditional forward,
+// cache and default upstreams in this order.
+func (h *handler) resolve(ctx context.Context, req *dns.Msg) *dns.Msg {
+	if len(req.Question) == 1 && h.blocklist != nil && h.blocklist.blocks(dns.CanonicalName(req.Question[0].Name)) {
+		return h.blocklist.reply(req)
+	}
+
+	if resp := h.answer(req); resp != nil {
+		return resp
+	}
+
+	upstreams := h.upstream
+	if len(req.Question) == 1 {
+		qname := dns.CanonicalName(req.Question[0].Name)
+
+		for _, f := range h.forward {
+			if dns.IsSubDomain(f.domain, qname) {
+				upstreams = f.upstreams
+
+				break
+			}
+		}
+	}
+
+	if len(upstreams) == 0 {
+		return new(dns.Msg).SetRcode(req, dns.RcodeRefused)
+	}
+
+	if h.cache != nil {
+		if resp := h.cache.get(req); resp != nil {
+			return resp
+		}
+	}
+
+	resp := exchange(ctx, upstreams, req)
+	if resp == nil {
+		return new(dns.Msg).SetRcode(req, dns.RcodeServerFailure)
+	}
+
+	if h.cache != nil {
+		h.cache.set(req, resp)
+	}
+
+	return resp
 }
 
 // answer builds a response from the static records. It returns nil when the
@@ -255,9 +377,9 @@ func (h *handler) nameExists(qname string) bool {
 	return false
 }
 
-func (h *handler) forward(ctx context.Context, req *dns.Msg) *dns.Msg {
-	for _, up := range h.upstream {
-		r, _, err := h.client.ExchangeContext(ctx, req, up)
+func exchange(ctx context.Context, upstreams []upstream, req *dns.Msg) *dns.Msg {
+	for _, up := range upstreams {
+		r, err := up.Exchange(ctx, req)
 		if err == nil && r != nil {
 			return r
 		}

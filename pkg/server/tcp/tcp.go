@@ -8,8 +8,11 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/rakunlabs/turna/pkg/server/registry"
+	"github.com/rakunlabs/turna/pkg/server/tcp/tcpchain"
+	"github.com/rakunlabs/turna/pkg/server/tcp/tcpmw"
 )
 
 type TCP struct {
@@ -22,11 +25,6 @@ type Router struct {
 	Middlewares []string `cfg:"middlewares"`
 }
 
-type Middleware struct {
-	Name string
-	Conn func(lconn *net.TCPConn) error
-}
-
 func (h *TCP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 	for name, middleware := range h.Middlewares {
 		if err := middleware.Set(ctx, name); err != nil {
@@ -35,17 +33,9 @@ func (h *TCP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 	}
 
 	for _, router := range h.Routers {
-		middlewares := make([]Middleware, 0, len(router.Middlewares))
-
-		for _, middlewareName := range router.Middlewares {
-			middlewaresGet, err := registry.GlobalReg.GetTcpMiddleware(middlewareName)
-			if err != nil {
-				return fmt.Errorf("middleware '%s' not found", middlewareName)
-			}
-
-			for _, m := range middlewaresGet {
-				middlewares = append(middlewares, Middleware{Name: middlewareName, Conn: m})
-			}
+		handler, err := BuildChain(router.Middlewares)
+		if err != nil {
+			return err
 		}
 
 		for _, entrypoint := range router.EntryPoints {
@@ -59,53 +49,58 @@ func (h *TCP) Set(ctx context.Context, wg *sync.WaitGroup) error {
 				return fmt.Errorf("listener '%s' is not a TCP listener", entrypoint)
 			}
 
-			wg.Add(1)
-			go func(entrypoint string) {
-				defer wg.Done()
-
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					default:
-					}
-
-					conn, err := listener.AcceptTCP()
-					if err != nil {
-						if !(errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed)) {
-							slog.Warn("failed to accept connection", "err", err.Error())
-						}
-
-						continue
-					}
-
-					wg.Add(1)
-					go func(conn *net.TCPConn) {
-						defer wg.Done()
-
-						<-ctx.Done()
-
-						conn.Close()
-					}(conn)
-
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
-						defer conn.Close()
-
-						// do something with conn
-						for _, m := range middlewares {
-							if err := m.Conn(conn); err != nil {
-								slog.Warn("middleware ["+m.Name+"] failed", "err", err.Error())
-
-								return
-							}
-						}
-					}()
-				}
-			}(entrypoint)
+			serve(ctx, wg, entrypoint, listener, handler)
 		}
 	}
 
 	return nil
+}
+
+// BuildChain returns the handler running the named middlewares in order.
+func BuildChain(names []string) (tcpmw.Handler, error) {
+	return tcpchain.Build(names)
+}
+
+func serve(ctx context.Context, wg *sync.WaitGroup, entrypoint string, listener *net.TCPListener, handler tcpmw.Handler) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		for {
+			conn, err := listener.AcceptTCP()
+			if err != nil {
+				if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
+					return
+				}
+
+				if !errors.Is(err, io.EOF) {
+					slog.Warn("failed to accept connection", "entrypoint", entrypoint, "err", err.Error())
+				}
+
+				// avoid a busy loop on persistent accept errors (e.g. too many open files)
+				time.Sleep(50 * time.Millisecond)
+
+				continue
+			}
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				defer conn.Close()
+
+				stop := context.AfterFunc(ctx, func() { conn.Close() })
+				defer stop()
+
+				if err := handler(conn); err != nil {
+					if errors.Is(err, tcpmw.ErrReject) {
+						slog.Debug("tcp connection rejected", "entrypoint", entrypoint, "remote", conn.RemoteAddr().String(), "err", err.Error())
+
+						return
+					}
+
+					slog.Warn("tcp connection failed", "entrypoint", entrypoint, "remote", conn.RemoteAddr().String(), "err", err.Error())
+				}
+			}()
+		}
+	}()
 }

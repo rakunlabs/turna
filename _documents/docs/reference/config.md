@@ -10,6 +10,7 @@ loads: []
 preprocess: []
 server: {}
 services: []
+telemetry: {}
 ```
 
 ## Startup Order
@@ -36,6 +37,31 @@ Dynamic `loads` can update loaded data later. When that happens, Turna refreshes
 | `preprocess` | array | Pre-start file processors. See [Preprocess](./preprocess/preprocess). |
 | `server` | object | HTTP/TCP server configuration. See [Server](./server/server). |
 | `services` | array | Local commands to run. See [Services](./services). |
+| `telemetry` | object | OpenTelemetry exporter settings. See [Telemetry](#telemetry). |
+
+## Telemetry
+
+`telemetry` configures the global OpenTelemetry meter and tracer providers with [`github.com/rakunlabs/tell`](https://github.com/rakunlabs/tell). Metrics and traces are exported over OTLP/gRPC. Without a collector address (and without `OTEL_EXPORTER_OTLP_ENDPOINT`) the providers are noop, so the telemetry middlewares cost almost nothing.
+
+```yaml
+telemetry:
+  collector: otel-collector:4317
+  server_name: ""
+  tls:
+    enabled: false
+    insecure_skip_verify: false
+    cert_file: ""
+    key_file: ""
+    ca_file: ""
+  metric:
+    disabled: false
+    default:
+      go_runtime: true
+  trace:
+    disabled: false
+```
+
+Telemetry is recorded by the `telemetry` middlewares of [HTTP](./server/http/middlewares/telemetry), [TCP](./server/tcp/middlewares/telemetry) and [UDP](./server/udp/middlewares/telemetry). Service name and resource attributes follow the standard `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES` environment variables.
 
 ## Bootstrap Settings
 

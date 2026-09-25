@@ -241,7 +241,39 @@ server:
           - docker_socket
 ```
 
-TCP middleware runs sequentially for each accepted connection. If a middleware returns an error, the chain stops and the connection is closed.
+TCP middlewares form a chain for each accepted connection, in router order. Filters such as `ip_allow_list`, `rate_limit` or `conn_limit` check the connection and call the next middleware; wrappers such as `tls_terminate`, `proxy_protocol`, `idle_timeout` or `bandwidth_limit` pass a wrapped connection to the next middleware; terminal middlewares such as `redirect`, `load_balancer`, `socks5`, `http_connect` or `sni_router` consume the connection. If a middleware returns an error, the chain stops and the connection is closed. Expected rejections (deny list, limits) are logged at debug level.
+
+```yaml
+server:
+  tcp:
+    middlewares:
+      metrics:
+        telemetry: {}
+      limit:
+        conn_limit:
+          max_per_ip: 20
+      tls:
+        tls_terminate:
+          certificates:
+            - cert_file: /certs/tls.crt
+              key_file: /certs/tls.key
+      backend:
+        load_balancer:
+          servers:
+            - address: 10.0.0.1:5432
+            - address: 10.0.0.2:5432
+    routers:
+      db:
+        entrypoints:
+          - db
+        middlewares:
+          - metrics
+          - limit
+          - tls
+          - backend
+```
+
+TCP middlewares: [`bandwidth_limit`](./tcp/middlewares/bandwidth_limit), [`conn_limit`](./tcp/middlewares/conn_limit), [`http_connect`](./tcp/middlewares/http_connect), [`idle_timeout`](./tcp/middlewares/idle_timeout), [`ip_allow_list`](./tcp/middlewares/ip_allow_list), [`ip_deny_list`](./tcp/middlewares/ip_deny_list), [`load_balancer`](./tcp/middlewares/load_balancer), [`log`](./tcp/middlewares/log), [`proxy_protocol`](./tcp/middlewares/proxy_protocol), [`rate_limit`](./tcp/middlewares/rate_limit), [`redirect`](./tcp/middlewares/redirect), [`sni_router`](./tcp/middlewares/sni_router), [`socks5`](./tcp/middlewares/socks5), [`telemetry`](./tcp/middlewares/telemetry), [`tls_terminate`](./tcp/middlewares/tls_terminate).
 
 ## UDP Routers
 
@@ -279,4 +311,4 @@ server:
 
 UDP middleware runs sequentially for each datagram. A pre-filter such as `ip_allow_list` returns an error to drop the packet; a terminal middleware such as `dns` or `redirect` writes the response back to the peer. Datagrams are handled concurrently with a bounded worker pool.
 
-See the UDP middleware references for [`dns`](./udp/middlewares/dns), [`ip_allow_list`](./udp/middlewares/ip_allow_list), and [`redirect`](./udp/middlewares/redirect).
+UDP middlewares: [`dns`](./udp/middlewares/dns), [`ip_allow_list`](./udp/middlewares/ip_allow_list), [`ip_deny_list`](./udp/middlewares/ip_deny_list), [`load_balancer`](./udp/middlewares/load_balancer), [`log`](./udp/middlewares/log), [`mirror`](./udp/middlewares/mirror), [`rate_limit`](./udp/middlewares/rate_limit), [`redirect`](./udp/middlewares/redirect), [`telemetry`](./udp/middlewares/telemetry).

@@ -37,6 +37,27 @@ server:
 | `cache_regex` | | Regex-based `Cache-Control` rules. |
 | `browse_cache` | `no-cache` | `Cache-Control` value for browse pages. |
 | `disable_folder_slash_redirect` | `false` | Disable automatic slash redirect for directories. |
+| `etag` | | ETag generation for files: `weak` or `strong`. Empty disables it. |
+
+## ETag
+
+When `etag` is set, served files get an `ETag` header and conditional requests (`If-None-Match`, `If-Match`, `If-Range`) are answered with `304 Not Modified` / `412` as appropriate.
+
+| Mode | Value | Notes |
+| --- | --- | --- |
+| `weak` | `W/"<modtime>-<size>"` | Cheap, no file read. Skipped for filesystems without a modification time. |
+| `strong` | `"<sha256 of content>"` | Content hash, cached per file path, modification time and size. Works for embedded filesystems. |
+
+```yaml
+folder:
+  path: ./dist
+  etag: strong
+  cache_regex:
+    - regex: index\.html$
+      cache_control: no-cache
+```
+
+`Last-Modified` / `If-Modified-Since` keep working independently of this setting.
 
 ## Versioned Docs Example
 

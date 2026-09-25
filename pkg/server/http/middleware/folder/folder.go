@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rakunlabs/turna/pkg/render"
@@ -56,7 +57,13 @@ type Folder struct {
 
 	DisableFolderSlashRedirect bool `cfg:"disable_folder_slash_redirect"`
 
+	// ETag enables ETag generation for served files; empty disables it.
+	//   - weak: W/"<modtime>-<size>", cheap and computed without reading the file.
+	//   - strong: "<sha256 of content>", required for filesystems without modtime (embedded).
+	ETag string `cfg:"etag"`
+
 	fs            http.FileSystem
+	etagCache     sync.Map
 	customContent func(r *http.Request, name string, content io.ReadSeeker) io.ReadSeeker
 }
 
@@ -116,6 +123,12 @@ func (f *Folder) Middleware() (func(http.Handler) http.Handler, error) {
 		}
 
 		f.CacheRegex[i].rgx = rgx
+	}
+
+	switch f.ETag {
+	case "", etagWeak, etagStrong:
+	default:
+		return nil, fmt.Errorf("unsupported etag mode %q, use %q or %q", f.ETag, etagWeak, etagStrong)
 	}
 
 	if f.BrowseCache == "" {
@@ -210,15 +223,18 @@ func (f *Folder) serveFile(w http.ResponseWriter, r *http.Request, uPath, cPath 
 		}
 	}
 
+	filePath := cPath
 	if d.IsDir() && f.Index {
 		// use contents of index.html for directory, if present
-		ff, err := f.fs.Open(filepath.Join(cPath, f.IndexName))
+		indexPath := path.Join(cPath, f.IndexName)
+		ff, err := f.fs.Open(indexPath)
 		if err == nil {
 			defer ff.Close()
 			dd, err := ff.Stat()
 			if err == nil {
 				d = dd
 				file = ff
+				filePath = indexPath
 			}
 		}
 	}
@@ -232,7 +248,7 @@ func (f *Folder) serveFile(w http.ResponseWriter, r *http.Request, uPath, cPath 
 		return toHTTPError(os.ErrNotExist)
 	}
 
-	return f.fsFileInfo(w, r, d, file)
+	return f.fsFileInfo(w, r, filePath, d, file)
 }
 
 func (f *Folder) dirList(w http.ResponseWriter, r *http.Request, folder http.File) error {
@@ -379,13 +395,13 @@ func (f *Folder) fsFile(w http.ResponseWriter, r *http.Request, file string) err
 		return err
 	}
 
-	f.ServeContent(w, r, fi.Name(), fi.ModTime(), hFile)
+	f.serveContent(w, r, file, fi.Name(), fi.ModTime(), hFile)
 
 	return nil
 }
 
-func (f *Folder) fsFileInfo(w http.ResponseWriter, r *http.Request, fi fs.FileInfo, file http.File) error {
-	f.ServeContent(w, r, fi.Name(), fi.ModTime(), file)
+func (f *Folder) fsFileInfo(w http.ResponseWriter, r *http.Request, filePath string, fi fs.FileInfo, file http.File) error {
+	f.serveContent(w, r, filePath, fi.Name(), fi.ModTime(), file)
 
 	return nil
 }
@@ -401,9 +417,24 @@ func (f *Folder) Cache(w http.ResponseWriter, fileName string) {
 }
 
 func (f *Folder) ServeContent(w http.ResponseWriter, req *http.Request, name string, modtime time.Time, content io.ReadSeeker) {
+	f.serveContent(w, req, "", name, modtime, content)
+}
+
+// serveContent serves the content; filePath is the key used to cache strong
+// ETags, an empty filePath disables caching.
+func (f *Folder) serveContent(w http.ResponseWriter, req *http.Request, filePath, name string, modtime time.Time, content io.ReadSeeker) {
 	f.Cache(w, name)
 	if f.customContent != nil {
 		content = f.customContent(req, name, content)
+	}
+
+	if f.ETag != "" {
+		etag, err := f.etag(filePath, modtime, content)
+		if err != nil {
+			slog.Warn("cannot generate etag", "file", filePath, "err", err.Error())
+		} else if etag != "" {
+			w.Header().Set("ETag", etag)
+		}
 	}
 
 	http.ServeContent(w, req, name, modtime, content)

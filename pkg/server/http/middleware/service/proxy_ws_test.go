@@ -2,6 +2,7 @@ package service
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -63,7 +64,7 @@ func newProxyServer(t *testing.T, upstreamURL string) *httptest.Server {
 func newProxyServerWithConfig(t *testing.T, m *Service) *httptest.Server {
 	t.Helper()
 
-	mws, err := m.Middleware()
+	mws, err := m.Middleware(context.Background())
 	if err != nil {
 		t.Fatalf("build middleware: %v", err)
 	}
@@ -122,7 +123,7 @@ func TestServiceRejectsInvalidForwardProxyScheme(t *testing.T) {
 		},
 	}
 
-	if _, err := m.Middleware(); err == nil {
+	if _, err := m.Middleware(context.Background()); err == nil {
 		t.Fatal("expected invalid proxy scheme error")
 	}
 }

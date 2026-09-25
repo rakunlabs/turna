@@ -79,6 +79,8 @@ type ProxyConfig struct {
 
 	// ModifyResponse defines function to modify response from ProxyTarget.
 	ModifyResponse func(*http.Response) error
+
+	passive *PassiveHealthCheck
 }
 
 var (
@@ -164,6 +166,9 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 			retries := config.RetryCount
 			errHolder := httputil2.Error{}
 
+			// a chain can be run again (try middleware), start a fresh attempt list
+			tcontext.Set(r, triedTargetsKey, nil)
+
 			for {
 				var tgt *ProxyTarget
 				var err error
@@ -175,6 +180,11 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 					}
 				} else {
 					tgt = config.Balancer.Next(w, r)
+				}
+
+				if tgt == nil {
+					httputil2.HandleError(w, httputil2.NewErrorAs(config.ErrorHandler(w, r, errNoUpstream)))
+					return
 				}
 
 				tcontext.Set(r, config.ContextKey, tgt)
@@ -193,10 +203,16 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 				// Proxy. httputil.ReverseProxy natively handles WebSocket/Upgrade
 				// requests over the configured Transport, so TLS (wss), Host header
 				// and path rewrites all work the same as for regular HTTP.
+				tgt.acquire()
 				proxyHTTP(tgt, &errHolder, config).ServeHTTP(w, r)
+				tgt.release()
 
 				if errHolder.Err == nil {
 					return
+				}
+
+				if errHolder.Code != StatusCodeContextCanceled {
+					tgt.report(false)
 				}
 
 				retry := retries > 0 && config.RetryFilter(w, r, &errHolder)
@@ -241,6 +257,22 @@ func proxyHTTP(tgt *ProxyTarget, errHolder *httputil2.Error, config ProxyConfig)
 	}
 	proxy.Transport = config.Transport
 	proxy.ModifyResponse = config.ModifyResponse
+
+	if config.passive != nil && len(config.passive.FailStatuses) > 0 {
+		modify := config.ModifyResponse
+		proxy.ModifyResponse = func(resp *http.Response) error {
+			if config.passive.isFailStatus(resp.StatusCode) {
+				tgt.report(false)
+			}
+
+			if modify != nil {
+				return modify(resp)
+			}
+
+			return nil
+		}
+	}
+
 	return proxy
 }
 

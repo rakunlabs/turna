@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/rakunlabs/turna/pkg/server/registry"
+	"github.com/rakunlabs/turna/pkg/server/udp/udpmw"
 )
 
 // MaxPacketSize is the read buffer size for a single datagram.
@@ -23,7 +24,7 @@ var MaxInFlight = 1024
 // Handler processes a single datagram. It may write a response back to the
 // peer through conn.WriteTo(resp, addr). Returning an error stops the chain
 // and drops the packet.
-type Handler = func(conn net.PacketConn, addr net.Addr, data []byte) error
+type Handler = udpmw.Handler
 
 type UDP struct {
 	Routers     map[string]Router        `cfg:"routers"`
@@ -129,6 +130,12 @@ func serve(ctx context.Context, wg *sync.WaitGroup, entrypoint string, conn net.
 
 				for _, m := range middlewares {
 					if err := m.Conn(conn, addr, data); err != nil {
+						if errors.Is(err, udpmw.ErrReject) {
+							slog.Debug("middleware ["+m.Name+"] dropped packet", "remote", addr.String(), "err", err.Error())
+
+							return
+						}
+
 						slog.Warn("middleware ["+m.Name+"] failed", "err", err.Error())
 
 						return

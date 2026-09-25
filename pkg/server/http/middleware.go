@@ -10,7 +10,9 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/basicauth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/block"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/compress"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/cors"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/csrf"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/decompress"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/dnspath"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
@@ -46,6 +48,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/set"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/splitter"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/stripprefix"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/telemetry"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/template"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/tokenpass"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/try"
@@ -104,6 +107,9 @@ type HTTPMiddleware struct {
 	RateLimit                  *ratelimit.RateLimit                  `cfg:"rate_limit"`
 	Auth                       *auth.Auth                            `cfg:"auth"`
 	OAuth2Resource             *oauth2resource.OAuth2Resource        `cfg:"oauth2_resource"`
+	Compress                   *compress.Compress                    `cfg:"compress"`
+	CSRF                       *csrf.CSRF                            `cfg:"csrf"`
+	Telemetry                  *telemetry.Telemetry                  `cfg:"telemetry"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
@@ -131,7 +137,7 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 	case h.ScopeMiddleware != nil:
 		return []MiddlewareFunc{h.ScopeMiddleware.Middleware()}, nil
 	case h.ServiceMiddleware != nil:
-		m, err := h.ServiceMiddleware.Middleware()
+		m, err := h.ServiceMiddleware.Middleware(ctx)
 		return m, err
 	case h.FolderMiddleware != nil:
 		m, err := h.FolderMiddleware.Middleware()
@@ -231,6 +237,8 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 	case h.URL != nil:
 		m, err := h.URL.Middleware()
 		return []MiddlewareFunc{m}, err
+	case h.Telemetry != nil:
+		return []MiddlewareFunc{h.Telemetry.Middleware()}, nil
 	case h.RateLimit != nil:
 		m := h.RateLimit.Middleware()
 		return []MiddlewareFunc{m}, nil
@@ -239,6 +247,12 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	case h.OAuth2Resource != nil:
 		m, err := h.OAuth2Resource.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.Compress != nil:
+		m, err := h.Compress.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.CSRF != nil:
+		m, err := h.CSRF.Middleware()
 		return []MiddlewareFunc{m}, err
 	}
 

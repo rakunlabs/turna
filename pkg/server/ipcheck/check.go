@@ -97,3 +97,40 @@ func parseIP(addr string) (net.IP, error) {
 
 	return ip[:], nil
 }
+
+// Deny returns an error wrapping reject when addr is in the checker list.
+// Unparsable addresses are rejected too.
+func Deny(checker *Checker, addr string, reject error) error {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+
+	ok, err := checker.Contains(host)
+	if err != nil {
+		return fmt.Errorf("%w: %w", reject, err)
+	}
+
+	if ok {
+		return fmt.Errorf("%w: %q is denied", reject, addr)
+	}
+
+	return nil
+}
+
+// Host returns the IP part of addr.
+func Host(addr net.Addr) string {
+	switch a := addr.(type) {
+	case *net.TCPAddr:
+		return a.IP.String()
+	case *net.UDPAddr:
+		return a.IP.String()
+	}
+
+	host, _, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return addr.String()
+	}
+
+	return host
+}

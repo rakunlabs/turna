@@ -7,6 +7,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/preprocess"
 	"github.com/rakunlabs/turna/pkg/server"
 	"github.com/rakunlabs/turna/pkg/service"
+	"github.com/rakunlabs/turna/pkg/telemetry"
 )
 
 var (
@@ -22,6 +23,7 @@ var Application = struct {
 	Print      string             `cfg:"print"`
 	Server     server.Server      `cfg:"server"`
 	Preprocess preprocess.Configs `cfg:"preprocess"`
+	Telemetry  telemetry.Config   `cfg:"telemetry"`
 }{
 	LogLevel: "info",
 }

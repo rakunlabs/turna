@@ -13,14 +13,22 @@ import (
 
 type Server struct {
 	URL string `cfg:"url"`
+	// Weight for weighted balancing, default is 1.
+	Weight int `cfg:"weight"`
 }
 
 type (
 	// ProxyTarget defines the upstream target.
 	ProxyTarget struct {
-		Name string
-		URL  *url.URL
-		Meta map[string]any
+		Name   string
+		URL    *url.URL
+		Meta   map[string]any
+		Weight int
+
+		// current is the smooth weighted round-robin weight, guarded by the balancer.
+		current int
+		// state is shared by targets with the same URL.
+		state *targetState
 	}
 
 	// ProxyBalancer defines an interface to implement a load balancing technique.
@@ -192,16 +200,38 @@ func (b *PrefixBalancer) IsEnabled() bool {
 	return len(b.Prefixes) > 0 || len(b.DefaultServers) > 0
 }
 
-func (b *PrefixBalancer) Next(w http.ResponseWriter, r *http.Request) *ProxyTarget {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
+func (b *PrefixBalancer) balancer(r *http.Request) ProxyBalancer {
 	path := r.URL.Path
 
 	for _, prefix := range b.Prefixes {
 		if strings.HasPrefix(path, prefix.Prefix) {
-			return prefix.Balancer.Next(w, r)
+			return prefix.Balancer
 		}
 	}
 
-	return b.DefaultBalancer.Next(w, r)
+	return b.DefaultBalancer
+}
+
+func (b *PrefixBalancer) Next(w http.ResponseWriter, r *http.Request) *ProxyTarget {
+	t, _ := b.NextTarget(w, r)
+
+	return t
+}
+
+func (b *PrefixBalancer) NextTarget(w http.ResponseWriter, r *http.Request) (*ProxyTarget, error) {
+	balancer := b.balancer(r)
+	if balancer == nil {
+		return nil, errNoUpstream
+	}
+
+	if p, ok := balancer.(TargetProvider); ok {
+		return p.NextTarget(w, r)
+	}
+
+	t := balancer.Next(w, r)
+	if t == nil {
+		return nil, errNoUpstream
+	}
+
+	return t, nil
 }

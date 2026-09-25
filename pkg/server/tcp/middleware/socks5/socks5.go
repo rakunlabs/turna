@@ -11,6 +11,8 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/things-go/go-socks5"
+
+	"github.com/rakunlabs/turna/pkg/server/tcp/tcpmw"
 )
 
 type DNSResolver struct {
@@ -90,7 +92,7 @@ type Socks5 struct {
 	IPMap map[string]string `cfg:"ip_map"`
 }
 
-func (m *Socks5) Middleware(ctx context.Context, name string) (func(lconn *net.TCPConn) error, error) {
+func (m *Socks5) Middleware(_ context.Context, _ string) (tcpmw.Middleware, error) {
 	var authenticators []socks5.Authenticator
 	if m.NoAuthAuthenticator {
 		authenticators = append(authenticators, socks5.NoAuthAuthenticator{})
@@ -112,14 +114,16 @@ func (m *Socks5) Middleware(ctx context.Context, name string) (func(lconn *net.T
 
 	server := socks5.NewServer(opts...)
 
-	return func(lconn *net.TCPConn) error {
-		slog.Debug(fmt.Sprintf("socks5 connection from %s opened", lconn.RemoteAddr()))
+	return func(_ tcpmw.Handler) tcpmw.Handler {
+		return func(conn net.Conn) error {
+			slog.Debug(fmt.Sprintf("socks5 connection from %s opened", conn.RemoteAddr()))
 
-		err := server.ServeConn(lconn)
-		if err != nil {
-			slog.Warn(fmt.Sprintf("socks5 connection from %s closed", lconn.RemoteAddr()), "error", err.Error())
+			err := server.ServeConn(conn)
+			if err != nil {
+				slog.Warn(fmt.Sprintf("socks5 connection from %s closed", conn.RemoteAddr()), "error", err.Error())
+			}
+
+			return nil
 		}
-
-		return nil
 	}, nil
 }

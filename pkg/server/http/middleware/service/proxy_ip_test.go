@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -27,7 +28,7 @@ func TestServiceForwardedClientIP(t *testing.T) {
 			}))
 			defer upstream.Close()
 			m := Service{LoadBalancer: LoadBalancer{Servers: []Server{{URL: upstream.URL}}}}
-			middlewares, err := m.Middleware()
+			middlewares, err := m.Middleware(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}

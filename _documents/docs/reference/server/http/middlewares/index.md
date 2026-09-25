@@ -35,8 +35,10 @@ A single named middleware can hold only one middleware type. If you need both he
 | `auth` | PostgreSQL-backed unified IAM/OAuth2 middleware. |
 | `basic_auth` | HTTP Basic authentication with htpasswd hashes. |
 | `block` | Block methods or paths. |
+| `compress` | Compress responses with zstd, Brotli or gzip. |
 | `cors` | CORS headers and preflight handling. |
-| `decompress` | Decompress gzip request bodies. |
+| `csrf` | Reject cross-site requests; optional double-submit token. |
+| `decompress` | Decompress gzip, Brotli or zstd request bodies. |
 | `dns_path` | Route to DNS-resolved instances selected from the path. |
 | `folder` | Serve files and SPA assets from a directory. |
 | `forward` | Forward proxy for HTTP and CONNECT requests. |
@@ -71,6 +73,7 @@ A single named middleware can hold only one middleware type. If you need both he
 | `set` | Set Turna request-context values for other middlewares. |
 | `splitter` | Select a sub-chain using expressions. |
 | `strip_prefix` | Remove one of several path prefixes. |
+| `telemetry` | OpenTelemetry traces and metrics of requests. |
 | `template` | Render a response body template. |
 | `token_pass` | Generate a JWT and redirect or call another service. |
 | `try` | Retry a chain with a rewritten path for selected response statuses. |

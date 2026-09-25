@@ -16,6 +16,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/runner"
 	"github.com/rakunlabs/turna/pkg/server/http"
 	serverReg "github.com/rakunlabs/turna/pkg/server/registry"
+	"github.com/rakunlabs/turna/pkg/telemetry"
 
 	// External chu loaders (registered via init) so they can be selected by
 	// name when the env-provided config set enables them.
@@ -175,6 +176,14 @@ func runRoot(ctx context.Context) error {
 	if err := Print(); err != nil {
 		return err
 	}
+
+	// telemetry, global providers are used by the middlewares
+	telemetryShutdown, err := telemetry.Start(ctx, config.Application.Telemetry)
+	if err != nil {
+		return err
+	}
+
+	into.ShutdownAdd(telemetryShutdown, "telemetry")
 
 	// server
 	into.ShutdownAdd(into.FnWarp(serverReg.GlobalReg.Shutdown), "server registry")

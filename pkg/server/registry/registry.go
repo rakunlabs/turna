@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/rakunlabs/turna/pkg/server/tcp/tcpmw"
 )
 
 var ShutdownTimeout = 5 * time.Second
@@ -18,7 +20,7 @@ var GlobalReg = Registry{
 	udpListeners:   make(map[string]net.PacketConn),
 	server:         make(map[string]*http.Server),
 	httpMiddleware: make(map[string][]func(http.Handler) http.Handler),
-	tcpMiddleware:  make(map[string][]func(lconn *net.TCPConn) error),
+	tcpMiddleware:  make(map[string][]tcpmw.Middleware),
 	udpMiddleware:  make(map[string][]func(conn net.PacketConn, addr net.Addr, data []byte) error),
 	shutdownFuncs:  make(map[string]func()),
 	httpInitFuncs:  make(map[string]func() error),
@@ -29,7 +31,7 @@ type Registry struct {
 	udpListeners   map[string]net.PacketConn
 	server         map[string]*http.Server
 	httpMiddleware map[string][]func(http.Handler) http.Handler
-	tcpMiddleware  map[string][]func(lconn *net.TCPConn) error
+	tcpMiddleware  map[string][]tcpmw.Middleware
 	udpMiddleware  map[string][]func(conn net.PacketConn, addr net.Addr, data []byte) error
 	shutdownFuncs  map[string]func()
 	httpInitFuncs  map[string]func() error
@@ -85,14 +87,14 @@ func (r *Registry) DeleteShutdownFunc(name string) {
 	delete(r.shutdownFuncs, name)
 }
 
-func (r *Registry) AddTcpMiddleware(name string, m []func(lconn *net.TCPConn) error) {
+func (r *Registry) AddTcpMiddleware(name string, m []tcpmw.Middleware) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	r.tcpMiddleware[name] = m
 }
 
-func (r *Registry) GetTcpMiddleware(name string) ([]func(lconn *net.TCPConn) error, error) {
+func (r *Registry) GetTcpMiddleware(name string) ([]tcpmw.Middleware, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
