@@ -47,6 +47,7 @@ export type InstanceConfig = {
     code_store: {
       pinned: boolean;
       active?: string;
+      key_prefix?: string;
       redis?: {
         address: string[] | null;
         username: string;
@@ -196,6 +197,7 @@ export const settingTemplates = {
     poll_interval: "5s",
     code_store: {
       active: "database",
+      key_prefix: "",
       redis: {
         address: ["127.0.0.1:6379"],
         username: "",

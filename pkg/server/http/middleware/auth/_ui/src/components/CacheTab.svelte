@@ -120,6 +120,25 @@
           </p>
         </div>
 
+        <div class="max-w-[62ch]">
+          <label class="stamp block" for="cache-redis-key-prefix">Key prefix</label>
+          <input
+            id="cache-redis-key-prefix"
+            class="entry serial mt-1.5"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="none"
+            aria-describedby="cache-redis-key-prefix-hint"
+            value={getSettingString("cache", ["code_store", "key_prefix"])}
+            oninput={(e) => setSettingString("cache", ["code_store", "key_prefix"], e.currentTarget.value)}
+          />
+          <p id="cache-redis-key-prefix-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+            Namespaces the keys in Redis, e.g. <span class="serial">turna-a:</span>. Empty keeps the
+            plain <span class="serial">code_…</span> keys. A login middleware that mints codes into this
+            Redis must use the same prefix in its <span class="serial">store.key_prefix</span>.
+          </p>
+        </div>
+
         <div class="grid gap-6 sm:grid-cols-2">
           <div>
             <label class="stamp block" for="cache-redis-username">Username</label>

@@ -175,6 +175,7 @@ func (m *Auth) InstanceConfigAPI(w http.ResponseWriter, r *http.Request) {
 		cfg := m.codeStoreSettings()
 		codeStore["active"] = cfg.Active
 		if cfg.Active == "redis" {
+			codeStore["key_prefix"] = cfg.KeyPrefix
 			codeStore["redis"] = map[string]any{
 				"address":      cfg.Redis.Address,
 				"username":     cfg.Redis.Username,

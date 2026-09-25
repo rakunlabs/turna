@@ -68,7 +68,7 @@ server:
 | `access_clients` | OAuth clients accepted by the token endpoint. |
 | `providers` | Upstream OAuth2 providers used by auth/code flows. |
 | `code` | Redirect URL construction and upstream TLS options. |
-| `store` | Temporary code/state store. Empty means memory; `active: redis` uses Redis. |
+| `store` | Temporary code/state store. Empty means memory; `active: redis` uses Redis. `key_prefix` namespaces the Redis keys; empty keeps the plain `code_<id>` keys. |
 | `pass_lower` | Lowercase password-flow password before checking. |
 | `well_known` | Custom OpenID configuration responses by name. |
 | `custom_info` | Custom userinfo claim templates by name. |

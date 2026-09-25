@@ -23,6 +23,11 @@ type Store struct {
 	// Active store type empty mean memory or could be redis.
 	Active string           `cfg:"active"`
 	Redis  connredis.Config `cfg:"redis"`
+	// KeyPrefix namespaces the Redis keys ("<prefix>code_<id>" and
+	// "<prefix><state>"). Empty keeps the historic unprefixed keys. A code
+	// minted by one component (e.g. login) is only found by another (e.g. the
+	// auth token endpoint) when both use the same Redis and the same prefix.
+	KeyPrefix string `cfg:"key_prefix"`
 }
 
 type StoreCache struct {
@@ -30,6 +35,7 @@ type StoreCache struct {
 	State cache.Cacher[string, string]
 
 	redisClient redis.UniversalClient
+	keyPrefix   string
 	codeTakeM   sync.Mutex
 	stateTakeM  sync.Mutex
 }
@@ -47,20 +53,24 @@ func (m *Store) Init(ctx context.Context) (*StoreCache, error) {
 		}
 
 		storeCache.redisClient = redisClient
+		storeCache.keyPrefix = m.KeyPrefix
 
-		storeCache.Code, err = cache.New(ctx, storeredis.Store(redisClient), cache.WithStoreConfig(storeredis.Config{
+		code, err := cache.New(ctx, storeredis.Store(redisClient), cache.WithStoreConfig(storeredis.Config{
 			TTL: DefaultCodeTimeout,
 		}))
 		if err != nil {
 			return nil, err
 		}
 
-		storeCache.State, err = cache.New(ctx, storeredis.Store(redisClient), cache.WithStoreConfig(storeredis.Config{
+		state, err := cache.New(ctx, storeredis.Store(redisClient), cache.WithStoreConfig(storeredis.Config{
 			TTL: DefaultStateTimeout,
 		}))
 		if err != nil {
 			return nil, err
 		}
+
+		storeCache.Code = prefixed(code, m.KeyPrefix)
+		storeCache.State = prefixed(state, m.KeyPrefix)
 	} else {
 		var err error
 		storeCache.Code, err = cache.New(ctx, memory.Store[string, string], cache.WithStoreConfig(&memory.Config{
@@ -99,7 +109,7 @@ func (m *StoreCache) TakeState(ctx context.Context, key string) (string, bool, e
 
 func (m *StoreCache) take(ctx context.Context, store cache.Cacher[string, string], lock *sync.Mutex, key string) (string, bool, error) {
 	if m.redisClient != nil {
-		value, err := m.redisClient.GetDel(ctx, key).Result()
+		value, err := m.redisClient.GetDel(ctx, m.keyPrefix+key).Result()
 		if errors.Is(err, redis.Nil) {
 			return "", false, nil
 		}
@@ -150,4 +160,30 @@ func (m *StoreCache) CodeGen(ctx context.Context, code Code) (string, error) {
 	}
 
 	return codeID, nil
+}
+
+// prefixCache namespaces every key of a cacher.
+type prefixCache struct {
+	next   cache.Cacher[string, string]
+	prefix string
+}
+
+func prefixed(next cache.Cacher[string, string], prefix string) cache.Cacher[string, string] {
+	if prefix == "" {
+		return next
+	}
+
+	return &prefixCache{next: next, prefix: prefix}
+}
+
+func (c *prefixCache) Get(ctx context.Context, key string) (string, bool, error) {
+	return c.next.Get(ctx, c.prefix+key)
+}
+
+func (c *prefixCache) Set(ctx context.Context, key, value string) error {
+	return c.next.Set(ctx, c.prefix+key, value)
+}
+
+func (c *prefixCache) Delete(ctx context.Context, key string) error {
+	return c.next.Delete(ctx, c.prefix+key)
 }

@@ -1,7 +1,9 @@
 package login
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"path"
@@ -188,7 +190,7 @@ func (m *Login) AuthCodeReturn(w http.ResponseWriter, r *http.Request, customCla
 	// Bind the code to the requesting client and redirect target; the auth
 	// middleware token endpoint rejects codes without these bindings
 	// (RFC 6749 §4.1.3).
-	code, err := m.store.CodeGen(r.Context(), store.Code{
+	code, err := m.codeGen(r, store.Code{
 		Alias:               alias,
 		Scope:               strings.Fields(scope),
 		Nonce:               query.Get("nonce"),
@@ -198,6 +200,7 @@ func (m *Login) AuthCodeReturn(w http.ResponseWriter, r *http.Request, customCla
 		CodeChallengeMethod: codeChallengeMethod,
 	})
 	if err != nil {
+		slog.Error("cannot generate authorization code", "error", err.Error())
 		writeError(w, http.StatusInternalServerError, "failed to generate code")
 
 		return
@@ -220,4 +223,67 @@ func (m *Login) AuthCodeReturn(w http.ResponseWriter, r *http.Request, customCla
 	urlParsed.RawQuery = q.Encode()
 
 	httputil.Redirect(w, http.StatusTemporaryRedirect, urlParsed.String())
+}
+
+// codeIssuer is implemented by an in-process auth middleware that can store an
+// authorization code where its own token endpoint redeems it.
+type codeIssuer interface {
+	IssueAuthorizationCode(ctx context.Context, code store.Code) (string, error)
+}
+
+// codeGen stores the authorization code where the token endpoint will look
+// for it. With an in-process auth middleware that is the auth middleware's
+// code store (database, memory or redis); login's own store is only a
+// fallback for a remote token endpoint sharing the same Redis.
+func (m *Login) codeGen(r *http.Request, code store.Code) (string, error) {
+	if issuer := m.codeIssuer(r); issuer != nil {
+		return issuer.IssueAuthorizationCode(r.Context(), code)
+	}
+
+	return m.store.CodeGen(r.Context(), code)
+}
+
+// codeIssuer picks the configured auth_middleware, else the auth middleware
+// of the provider the user is logged in with, else the only in-process auth
+// middleware among the session providers.
+func (m *Login) codeIssuer(r *http.Request) codeIssuer {
+	if m.AuthMiddleware != "" {
+		issuer, _ := session.IssuerRegistry.Get(m.AuthMiddleware).(codeIssuer)
+
+		return issuer
+	}
+
+	if m.session == nil {
+		return nil
+	}
+
+	name := ""
+	if m.session.GetStore() != nil {
+		if _, providerName, err := m.session.GetTokenData(r); err == nil {
+			if provider, ok := m.session.GetProvider(providerName); ok {
+				name = provider.AuthMiddleware
+			}
+		}
+	}
+
+	if name == "" {
+		for _, provider := range m.session.Providers() {
+			if provider.AuthMiddleware == "" {
+				continue
+			}
+			if name != "" && name != provider.AuthMiddleware {
+				// several auth middlewares and no session provider to choose by
+				return nil
+			}
+			name = provider.AuthMiddleware
+		}
+	}
+
+	if name == "" {
+		return nil
+	}
+
+	issuer, _ := session.IssuerRegistry.Get(name).(codeIssuer)
+
+	return issuer
 }

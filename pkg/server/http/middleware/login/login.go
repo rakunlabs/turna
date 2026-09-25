@@ -29,10 +29,19 @@ type Login struct {
 
 	SessionMiddleware string `cfg:"session_middleware"`
 
+	// AuthMiddleware names the in-process auth middleware whose token endpoint
+	// redeems the response_type=code codes issued here. The code is then
+	// written to that auth middleware's code store (database, memory or
+	// redis). Empty picks the auth_middleware of the session provider, if any.
+	AuthMiddleware string `cfg:"auth_middleware"`
+
 	StateCookie   auth.Cookie `cfg:"state_cookie"`
 	SuccessCookie auth.Cookie `cfg:"success_cookie"`
 
-	// Store for effect code, only for code flow and works with redis.
+	// Store for response_type=code codes when no in-process auth middleware
+	// redeems them. With a provider backed by auth_middleware the code is
+	// written to that auth middleware's own code store instead, so this is
+	// only needed (as a shared Redis) for a remote token endpoint.
 	Store             store.Store `cfg:"store"`
 	RedirectWhiteList []string    `cfg:"redirect_white_list"`
 

@@ -39,6 +39,7 @@ server:
 | Field | Description |
 | --- | --- |
 | `session_middleware` | Required session middleware instance name. |
+| `auth_middleware` | In-process auth middleware whose token endpoint redeems the codes minted here. The code is written to that middleware's own code store (`cache.code_store`: database, memory or redis), so `store` is not involved. Empty uses the `auth_middleware` of the logged-in session provider, or the only one among the session providers. |
 | `path.base` | Base path for login UI and API routes. |
 | `path.base_url` | Optional prefix used in login info responses. |
 | `path.code` | Override code-flow route. Defaults to `{base}/auth/code`. |
@@ -55,14 +56,34 @@ server:
 | `request.insecure_skip_verify` | Skip TLS verification for token requests. |
 | `state_cookie` | Cookie settings for OAuth2 state. |
 | `success_cookie` | Cookie settings for login success marker. |
-| `store` | Temporary code/state store. Empty means memory; `active: redis` uses Redis. |
+| `store` | Temporary code store used only when no in-process auth middleware is linked (see `auth_middleware`). Empty means memory; `active: redis` uses Redis, which must then be the same Redis as the redeeming auth middleware's `cache.code_store`. `store.key_prefix` namespaces the Redis keys; empty keeps plain `code_<id>` keys, and it must equal the auth middleware's `cache.code_store.key_prefix`. |
 | `redirect_white_list` | Allowed redirect URI prefixes when minting internal codes. Empty allows all. |
 
 ### Internal authorization codes
 
 A logged-in `GET {base}?response_type=code&client_id=...&redirect_uri=...` mints an internal authorization code in `store` and redirects back with `?code=&state=`. The code is bound to the request's `client_id` and `redirect_uri` and carries `nonce` plus any `code_challenge`/`code_challenge_method` (RFC 7636); the [`auth`](./auth) middleware token endpoint verifies those bindings and rejects unbound codes with `code was issued to another client`. Send the same `client_id` and `redirect_uri` at the exchange.
 
-This matters when one login page is used as the provider of another (nested login windows): the outer login must forward `client_id` and redeem with the same value, and both sides must share the same code store as the auth middleware for the code to be found at all. `redirect_white_list` should be set whenever codes are minted this way — an empty list accepts every redirect target.
+This matters when one login page is used as the provider of another (nested login windows): the outer login must forward `client_id` and redeem with the same value, and the code must land in the code store the auth middleware reads. In the same process, link them with `auth_middleware`; across processes, point `login.store` and the auth middleware's `cache.code_store` at the same Redis with the same `key_prefix` (the auth side can be pinned in its static config):
+
+```yaml
+# turna running login
+login:
+  store:
+    active: redis
+    key_prefix: "turna-auth:"
+    redis:
+      address: ["redis:6379"]
+
+# turna running auth
+auth:
+  cache:
+    code_store:
+      active: redis
+      key_prefix: "turna-auth:"
+      redis:
+        address: ["redis:6379"]
+```
+ Otherwise the token endpoint answers `invalid_grant: code not found`. `redirect_white_list` should be set whenever codes are minted this way — an empty list accepts every redirect target.
 
 ### Custom paths and nested bases
 

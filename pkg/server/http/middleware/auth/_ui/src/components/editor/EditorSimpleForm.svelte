@@ -264,6 +264,15 @@
             wide: true,
           })}
           {@render line({
+            label: "Key prefix",
+            value: editor.getPathString(["code_store", "key_prefix"]),
+            set: (value) => editor.setPathValue(["code_store", "key_prefix"], value),
+            placeholder: "none",
+            hint: "Namespaces the Redis keys. Empty keeps plain code_… keys; a login sharing this Redis needs the same store.key_prefix.",
+            mono: true,
+            wide: true,
+          })}
+          {@render line({
             label: "Redis username",
             value: editor.getPathString(["code_store", "redis", "username"]),
             set: (value) => editor.setPathValue(["code_store", "redis", "username"], value),

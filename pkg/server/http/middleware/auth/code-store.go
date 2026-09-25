@@ -20,6 +20,9 @@ type CodeStoreSettings struct {
 	// Active is "database", "memory" or "redis". Empty defaults to database.
 	Active string                 `json:"active" cfg:"active"`
 	Redis  CodeStoreRedisSettings `json:"redis"  cfg:"redis"`
+	// KeyPrefix namespaces the Redis keys. Empty keeps the unprefixed keys;
+	// a login middleware sharing this Redis must use the same prefix.
+	KeyPrefix string `json:"key_prefix" cfg:"key_prefix"`
 }
 
 type CodeStoreRedisSettings struct {
@@ -81,7 +84,7 @@ func validateCodeStoreSettings(c CodeStoreSettings) error {
 
 func (c CodeStoreSettings) store() oauth2store.Store {
 	c = c.normalized()
-	store := oauth2store.Store{Active: c.Active}
+	store := oauth2store.Store{Active: c.Active, KeyPrefix: c.KeyPrefix}
 	if c.Active != "redis" {
 		return store
 	}
@@ -197,4 +200,18 @@ func (m *Auth) closeCodeStore() error {
 	}
 
 	return m.codeStore.Close()
+}
+
+// IssueAuthorizationCode stores an authorization code in this instance's
+// code store, whichever backend is active, and returns its identifier. A
+// login middleware in the same process uses it so the code lands exactly
+// where this middleware's token endpoint looks for it; writing to a separate
+// login store only works when both happen to share one Redis.
+func (m *Auth) IssueAuthorizationCode(ctx context.Context, code oauth2store.Code) (string, error) {
+	codeStore, err := m.codeStoreRuntime(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	return codeStore.CodeGen(ctx, code)
 }
