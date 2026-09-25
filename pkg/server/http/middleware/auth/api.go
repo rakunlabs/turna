@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
@@ -42,11 +44,42 @@ func (m *Auth) Info(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	configuredBaseURL := ""
+	if m.cache != nil {
+		configuredBaseURL = strings.TrimSpace(m.cache.Snapshot().OAuth2.BaseURL)
+	}
+	effectiveBaseURL := m.effectiveOAuthBaseURL()
+	if effectiveBaseURL == "" {
+		issuer, _ := url.Parse(m.issuerURL(r))
+		if issuer != nil {
+			effectiveBaseURL = issuer.Scheme + "://" + issuer.Host
+		}
+	}
+	issuerURL := m.issuerURL(r)
+	replacementFrom, replacementTo := "", ""
+	if configured, err := url.Parse(configuredBaseURL); err == nil && configured.Host != "" {
+		if effective, err := url.Parse(effectiveBaseURL); err == nil && configured.Host != effective.Host {
+			replacementFrom, replacementTo = configured.Host, effective.Host
+		}
+	}
+
 	httputil.JSON(w, http.StatusOK, Response[map[string]any]{
 		Payload: map[string]any{
 			"prefix_path": m.PrefixPath,
 			"version":     version,
 			"storage":     "postgres",
+			"oauth2": map[string]any{
+				"configured_base_url":               configuredBaseURL,
+				"effective_base_url":                effectiveBaseURL,
+				"issuer_url":                        issuerURL,
+				"openid_configuration_url":          issuerURL + "/.well-known/openid-configuration",
+				"authorization_server_metadata_url": issuerURL + "/.well-known/oauth-authorization-server",
+				"token_url":                         issuerURL + "/token",
+				"jwks_url":                          issuerURL + "/certs",
+				"callback_url_pattern":              strings.TrimSuffix(effectiveBaseURL, "/") + m.PrefixPath + "/oauth2/code/{provider}",
+				"replacement_from":                  replacementFrom,
+				"replacement_to":                    replacementTo,
+			},
 		},
 	})
 }

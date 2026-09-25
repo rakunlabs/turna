@@ -144,11 +144,11 @@
   });
 
   function userinfoURL(name: string) {
-    return `${window.location.origin}${session.oauthBase}/oauth2/userinfo/${encodeURIComponent(name.trim())}`;
+    return `${session.oauthIssuer}/userinfo/${encodeURIComponent(name.trim())}`;
   }
 
   function discoveryURL(name: string) {
-    return `${window.location.origin}${session.oauthBase}/oauth2/openid/${encodeURIComponent(name.trim())}/.well-known/openid-configuration`;
+    return `${session.oauthIssuer}/openid/${encodeURIComponent(name.trim())}/.well-known/openid-configuration`;
   }
 
   async function copyText(value: string, what: string) {
@@ -241,7 +241,7 @@
       {sets.length}
       {sets.length === 1 ? "set" : "sets"}{dropped > 0 ? ` · ${dropped} unnamed` : ""}
     </span>
-    <span class="serial stamp-raw">{session.oauthBase}/oauth2/userinfo/…</span>
+    <span class="serial stamp-raw">{session.oauthIssuer}/userinfo/…</span>
   {/snippet}
 
   <div class="max-w-[104ch] border border-rule bg-sheet px-4 py-3.5">

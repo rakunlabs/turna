@@ -158,8 +158,9 @@ type LDAPSettings struct {
 // OAuth2Settings is the decoded "oauth2" setting namespace.
 // It controls the code-flow redirect behavior for upstream providers.
 type OAuth2Settings struct {
-	// BaseURL is the canonical external origin used for redirect URLs and
-	// the token issuer. Default is the request host.
+	// BaseURL is the canonical external origin used for redirect URLs and the
+	// token issuer. Instance host replacements produce the effective public
+	// origin. Default is the request host.
 	BaseURL string `json:"base_url"`
 	// Schema for redirect URLs when base_url is empty. Default https.
 	Schema string `json:"schema"`

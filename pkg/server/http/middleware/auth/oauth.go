@@ -27,6 +27,7 @@ import (
 type codeManager struct {
 	m       sync.Mutex
 	cfg     OAuth2Settings
+	baseURL string
 	runtime *oauth2auth.Code
 }
 
@@ -34,16 +35,17 @@ type codeManager struct {
 // settings, rebuilding it when those settings change.
 func (m *Auth) codeRuntime() (*oauth2auth.Code, error) {
 	sn := m.cache.Snapshot()
+	baseURL := m.effectiveOAuthBaseURL()
 
 	m.code.m.Lock()
 	defer m.code.m.Unlock()
 
-	if m.code.runtime != nil && m.code.cfg == sn.OAuth2 {
+	if m.code.runtime != nil && m.code.cfg == sn.OAuth2 && m.code.baseURL == baseURL {
 		return m.code.runtime, nil
 	}
 
 	code := &oauth2auth.Code{
-		BaseURL:            session.ReplaceEndpointHost(sn.OAuth2.BaseURL, m.SessionProvidersConfig.HostReplacements),
+		BaseURL:            baseURL,
 		Schema:             sn.OAuth2.Schema,
 		Path:               m.PrefixPath + "/oauth2/code",
 		InsecureSkipVerify: sn.OAuth2.InsecureSkipVerify,
@@ -55,6 +57,7 @@ func (m *Auth) codeRuntime() (*oauth2auth.Code, error) {
 
 	m.code.runtime = code
 	m.code.cfg = sn.OAuth2
+	m.code.baseURL = baseURL
 
 	return code, nil
 }

@@ -85,6 +85,13 @@ class Session {
   busy = $state(false);
 
   oauthBase = $derived(this.apiBase.replace(/\/v1$/, ""));
+  /** Public addresses include this instance's committed host replacement. */
+  oauthIssuer = $derived(this.info?.oauth2.issuer_url || `${this.oauthBase}/oauth2`);
+  authPublicBase = $derived(
+    this.info?.oauth2.effective_base_url
+      ? `${this.info.oauth2.effective_base_url}${this.oauthBase}`
+      : this.oauthBase,
+  );
   isAdmin = $derived(this.capabilities?.is_admin === true);
   version = $derived(this.info?.version ?? null);
   linked = $derived(this.info !== null);

@@ -23,6 +23,18 @@ export type InfoPayload = {
   prefix_path: string;
   version: number;
   storage: string;
+  oauth2: {
+    configured_base_url: string;
+    effective_base_url: string;
+    issuer_url: string;
+    openid_configuration_url: string;
+    authorization_server_metadata_url: string;
+    token_url: string;
+    jwks_url: string;
+    callback_url_pattern: string;
+    replacement_from: string;
+    replacement_to: string;
+  };
 };
 
 export type Dashboard = {

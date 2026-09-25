@@ -169,7 +169,7 @@
   }
 
   onMount(() => {
-    origin = window.location.origin;
+    origin = session.info?.oauth2.effective_base_url || window.location.origin;
   });
 </script>
 

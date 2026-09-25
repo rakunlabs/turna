@@ -192,7 +192,7 @@
 
   <Section title="Token request">
     <pre class="exhibit overflow-auto">curl --cert client.crt --key client.key \
-  -X POST {session.oauthBase}/oauth2/token \
+  -X POST {session.oauthIssuer}/token \
   -d grant_type=client_credentials \
   -d client_id=my-service</pre>
   </Section>

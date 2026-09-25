@@ -60,12 +60,18 @@ URLs: omit the scheme and path. Scheme, path, query, and fragment are preserved;
 text in paths or query parameters and subdomains are not replaced. Each URL is
 rewritten once per layer; replacement rules do not chain within that layer.
 
-Host replacements also rewrite the host of `oauth2.base_url` when Auth builds
-the upstream code-flow callback `redirect_uri`; the canonical token issuer keeps
-the stored `oauth2.base_url`. Host replacements run before explicit provider
-endpoint overrides. Full order:
+Host replacements rewrite the host of `oauth2.base_url` for the complete public
+OAuth surface of that Auth instance: the canonical issuer, discovery metadata,
+token `iss`, registration and device URLs, and upstream code-flow callback
+`redirect_uri` all use the effective host. Host replacements run before explicit
+provider endpoint overrides. Full order:
 **DB → Auth host replacements → Auth endpoint overrides → Session host
 replacements → Session endpoint overrides**. Both features also apply to groups.
+
+Changing the effective host changes the canonical token issuer. Tokens minted
+with the previous `iss` may be rejected by strict issuer validation and require
+clients to start a new login; upstream providers must register callback URLs on
+the effective host.
 
 Use `auth.session_providers.overrides.<provider-name>.oauth2` in the static config
 when this Auth instance needs to publish different endpoints for a shared provider:

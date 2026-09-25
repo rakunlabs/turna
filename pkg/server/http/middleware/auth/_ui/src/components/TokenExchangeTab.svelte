@@ -40,7 +40,7 @@
     />
   </Section>
 
-  <Section title="The grant" note="What a client sends to {session.oauthBase}/oauth2/token.">
+  <Section title="The grant" note="What a client sends to {session.oauthIssuer}/token.">
     <pre class="exhibit overflow-auto">grant_type=urn:ietf:params:oauth:grant-type:token-exchange
 subject_token=&lt;the token being handed in&gt;
 subject_token_type=urn:ietf:params:oauth:token-type:access_token</pre>

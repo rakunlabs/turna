@@ -888,7 +888,7 @@
 api_key: true            # accept X-API-Key
 # remote auth instance:
 # oauth2:
-#   api_key_url: {session.oauthBase}/oauth2/api-key</pre>
+#   api_key_url: {session.oauthIssuer}/api-key</pre>
           <p class="mt-3 max-w-[62ch] text-[12.5px] leading-[1.55] text-muted">
             Session checks <span class="serial">X-API-Key</span> on each request, strips the raw key
             header, and forwards <span class="serial">X-User: api-key:&lt;id&gt;</span> carrying the

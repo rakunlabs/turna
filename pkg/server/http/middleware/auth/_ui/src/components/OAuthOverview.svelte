@@ -24,6 +24,7 @@
   /** Everything that decides what a token is and who may ask for one. */
   const namespaces = ["token", "oauth2", "authorize", "registration", "password", "passkey", "jwt"] as const;
   const schema = $derived(getSettingString("oauth2", ["schema"]) || "https");
+  const publishedOAuth = $derived(session.info?.oauth2);
   const userVerification = $derived(getSettingString("passkey", ["user_verification"]) || "preferred");
   type PasskeySite = { name: string; rp_id: string; rp_display_name: string; origins: string[] };
   const passkeySites = $derived((getSettingValue("passkey", ["sites"]) as PasskeySite[] | undefined) ?? []);
@@ -77,10 +78,10 @@
   const published = $derived(registry.jwks.length > 0);
 
   const references = $derived([
-    { label: "JWKS", href: `${session.oauthBase}/oauth2/certs` },
+    { label: "JWKS", href: `${session.oauthIssuer}/certs` },
     {
       label: "OpenID configuration",
-      href: `${session.oauthBase}/oauth2/.well-known/openid-configuration`,
+      href: `${session.oauthIssuer}/.well-known/openid-configuration`,
     },
   ]);
 
@@ -117,7 +118,7 @@
     <span class="stamp">
       Namespaces <span class="serial stamp-raw">token · oauth2 · authorize · registration · password · passkey · jwt</span>
     </span>
-    <span class="serial stamp-raw">{session.oauthBase}/oauth2/token</span>
+    <span class="serial stamp-raw">{session.oauthIssuer}/token</span>
   {/snippet}
 
   <Section title="Token lifetimes" note="How long an issued token stays good. Duration strings, e.g. 15m, 24h." first>
@@ -201,7 +202,8 @@
         <p id="oauth2-base-url-hint" class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
           Empty means the address and token issuer are derived from each incoming request. Set it
           explicitly when this instance sits behind a proxy or serves sessions on more than one
-          host, so tokens issued on one host can be refreshed through another.
+          host. Instance host replacements apply to this origin before discovery, token issuance,
+          and upstream callbacks are published.
         </p>
       </div>
 
@@ -221,6 +223,54 @@
         </p>
       </div>
     </div>
+
+    {#if publishedOAuth}
+      <div class="mt-7 border-y border-rule py-5" aria-live="polite">
+        <div class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+          <div>
+            <h3 class="text-[13.5px] font-semibold text-ink">Published OAuth addresses</h3>
+            <p class="mt-1 max-w-[70ch] text-[12px] leading-[1.6] text-muted">
+              The configured origin is rewritten for this instance before any public OAuth address is produced.
+              Discovery, token claims, client registration, device flow and upstream callbacks all use the published origin.
+            </p>
+          </div>
+          {#if publishedOAuth.replacement_from && publishedOAuth.replacement_to}
+            <span class="stamp-raw text-caution">
+              Host replacement {publishedOAuth.replacement_from} → {publishedOAuth.replacement_to}
+            </span>
+          {:else}
+            <span class="stamp text-muted">No host replacement applied</span>
+          {/if}
+        </div>
+
+        <dl class="mt-5 grid gap-x-8 gap-y-4 sm:grid-cols-[10rem_minmax(0,1fr)]">
+          <dt class="stamp">Configured base</dt>
+          <dd class="serial min-w-0 break-all text-[12.5px] text-ink">
+            {publishedOAuth.configured_base_url || "Derived from request"}
+          </dd>
+          <dt class="stamp">Effective base</dt>
+          <dd class="serial min-w-0 break-all text-[12.5px] text-ink">{publishedOAuth.effective_base_url}</dd>
+          <dt class="stamp">Canonical issuer</dt>
+          <dd class="serial min-w-0 break-all text-[12.5px] text-ink">{publishedOAuth.issuer_url}</dd>
+          <dt class="stamp">OpenID discovery</dt>
+          <dd class="serial min-w-0 break-all text-[12.5px] text-ink">{publishedOAuth.openid_configuration_url}</dd>
+          <dt class="stamp">Token endpoint</dt>
+          <dd class="serial min-w-0 break-all text-[12.5px] text-ink">{publishedOAuth.token_url}</dd>
+          <dt class="stamp">JWKS endpoint</dt>
+          <dd class="serial min-w-0 break-all text-[12.5px] text-ink">{publishedOAuth.jwks_url}</dd>
+          <dt class="stamp">Upstream callback</dt>
+          <dd class="serial min-w-0 break-all text-[12.5px] text-ink">{publishedOAuth.callback_url_pattern}</dd>
+        </dl>
+
+        {#if publishedOAuth.replacement_from && publishedOAuth.replacement_to}
+          <p class="mt-5 border-t border-rule pt-4 text-[12px] leading-[1.6] text-muted">
+            Clients must discover and validate <span class="serial text-ink">{publishedOAuth.issuer_url}</span>.
+            Redirect URIs registered with upstream providers must use the replaced host. Tokens issued
+            before this instance published the replacement carry the previous issuer and may require users to sign in again.
+          </p>
+        {/if}
+      </div>
+    {/if}
 
     <div class="mt-7">
       <Switch

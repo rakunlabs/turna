@@ -19,6 +19,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	oauth2auth "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
 	oauth2store "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -1432,16 +1433,31 @@ func (m *Auth) IssuerURL(r *http.Request) string {
 	return m.issuerURL(r)
 }
 
+// effectiveOAuthBaseURL applies this instance's endpoint host mapping to the
+// stored canonical OAuth origin. Every externally published OAuth URL must use
+// this same value; applying the mapping only to an upstream callback would make
+// discovery, token issuers and redirect_uri disagree about the public host.
+func (m *Auth) effectiveOAuthBaseURL() string {
+	if m.cache == nil {
+		return ""
+	}
+
+	baseURL := strings.TrimSpace(m.cache.Snapshot().OAuth2.BaseURL)
+	baseURL = session.ReplaceEndpointHost(baseURL, m.SessionProvidersConfig.HostReplacements)
+	if parsed, err := url.Parse(baseURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		return fmt.Sprintf("%s://%s", parsed.Scheme, parsed.Host)
+	}
+
+	return baseURL
+}
+
 func (m *Auth) issuerURL(r *http.Request) string {
 	// oauth2.base_url is the canonical external origin of this auth
-	// instance. Use it for the issuer as well as upstream code callbacks so
-	// tokens issued through one application host can be refreshed through
-	// another host without an issuer mismatch.
-	if m.cache != nil {
-		if baseURL := strings.TrimSpace(m.cache.Snapshot().OAuth2.BaseURL); baseURL != "" {
-			if parsed, err := url.Parse(baseURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
-				return fmt.Sprintf("%s://%s%s/oauth2", parsed.Scheme, parsed.Host, m.PrefixPath)
-			}
+	// instance after its instance-local host replacement. Use it for discovery,
+	// token issuers and upstream code callbacks so every protocol surface agrees.
+	if baseURL := m.effectiveOAuthBaseURL(); baseURL != "" {
+		if parsed, err := url.Parse(baseURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+			return fmt.Sprintf("%s://%s%s/oauth2", parsed.Scheme, parsed.Host, m.PrefixPath)
 		}
 	}
 

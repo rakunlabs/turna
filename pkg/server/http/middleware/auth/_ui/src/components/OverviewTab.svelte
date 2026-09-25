@@ -96,9 +96,9 @@
   const settled = $derived(surveyed && outstanding.length === 0);
 
   const references = $derived([
-    { label: "OpenID configuration", href: `${session.oauthBase}/oauth2/.well-known/openid-configuration` },
-    { label: "Authorization server metadata", href: `${session.oauthBase}/oauth2/.well-known/oauth-authorization-server` },
-    { label: "JWKS", href: `${session.oauthBase}/oauth2/certs` },
+    { label: "OpenID configuration", href: `${session.oauthIssuer}/.well-known/openid-configuration` },
+    { label: "Authorization server metadata", href: `${session.oauthIssuer}/.well-known/oauth-authorization-server` },
+    { label: "JWKS", href: `${session.oauthIssuer}/certs` },
     { label: "API reference", href: `${session.oauthBase}/swagger/index.html` },
   ]);
 

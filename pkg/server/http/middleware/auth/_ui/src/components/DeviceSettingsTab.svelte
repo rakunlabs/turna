@@ -21,7 +21,7 @@
   const verificationURI = $derived(getSettingString("device", ["verification_uri"]));
 
   /** What a device is actually told to display when the field is left empty. */
-  const effectiveURI = $derived(verificationURI.trim() || `${session.oauthBase}/ui/device`);
+  const effectiveURI = $derived(verificationURI.trim() || `${session.authPublicBase}/ui/device`);
 </script>
 
 <Instrument
@@ -103,7 +103,7 @@
         class="entry serial mt-1.5"
         autocomplete="off"
         spellcheck="false"
-        placeholder="{session.oauthBase}/ui/device"
+        placeholder="{session.authPublicBase}/ui/device"
         aria-describedby="device-verification-uri-hint"
         value={verificationURI}
         oninput={(e) => setSettingString("device", ["verification_uri"], e.currentTarget.value)}

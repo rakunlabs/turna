@@ -72,6 +72,14 @@ func TestMiddlewareIntegration(t *testing.T) {
 	var info struct {
 		Payload struct {
 			Storage string `json:"storage"`
+			OAuth2  struct {
+				EffectiveBaseURL       string `json:"effective_base_url"`
+				IssuerURL              string `json:"issuer_url"`
+				OpenIDConfigurationURL string `json:"openid_configuration_url"`
+				TokenURL               string `json:"token_url"`
+				JWKSURL                string `json:"jwks_url"`
+				CallbackURLPattern     string `json:"callback_url_pattern"`
+			} `json:"oauth2"`
 		} `json:"payload"`
 	}
 	if res := getJSON(t, "/auth/v1/info", &info); res.StatusCode != http.StatusOK {
@@ -79,6 +87,22 @@ func TestMiddlewareIntegration(t *testing.T) {
 	}
 	if info.Payload.Storage != "postgres" {
 		t.Fatalf("info storage = %s", info.Payload.Storage)
+	}
+	if got, want := info.Payload.OAuth2.EffectiveBaseURL, server.URL; got != want {
+		t.Fatalf("info effective OAuth base = %q, want %q", got, want)
+	}
+	if got, want := info.Payload.OAuth2.IssuerURL, server.URL+"/auth/oauth2"; got != want {
+		t.Fatalf("info issuer = %q, want %q", got, want)
+	}
+	for name, value := range map[string]string{
+		"openid configuration": info.Payload.OAuth2.OpenIDConfigurationURL,
+		"token":                info.Payload.OAuth2.TokenURL,
+		"jwks":                 info.Payload.OAuth2.JWKSURL,
+		"callback":             info.Payload.OAuth2.CallbackURLPattern,
+	} {
+		if !strings.HasPrefix(value, info.Payload.OAuth2.IssuerURL) {
+			t.Fatalf("info %s URL = %q, want issuer prefix %q", name, value, info.Payload.OAuth2.IssuerURL)
+		}
 	}
 
 	// create service account

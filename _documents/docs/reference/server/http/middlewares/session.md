@@ -403,7 +403,7 @@ Several MCP endpoints behind one session (`/krabby/mcp`, `/krabby/mcp/admin`, ..
 | Field | Default | Description |
 | --- | --- | --- |
 | `resource` | `{scheme}://{host}{path}` per request | Pins one canonical RFC 8707/9728 resource identifier for the whole surface (honors `X-Forwarded-Proto`/`X-Forwarded-Host` when deriving). Leave empty for per-path resources. |
-| `authorization_servers` | derived | Issuer URLs listed in the metadata. Empty derives them from every provider backed by an in-process `auth_middleware` (the auth middleware's canonical issuer URL, honoring its `oauth2.base_url`). Set explicitly for remote/oauth2 providers. |
+| `authorization_servers` | derived | Issuer URLs listed in the metadata. Empty derives them from every provider backed by an in-process `auth_middleware` (the auth middleware's canonical issuer URL, honoring its effective `oauth2.base_url` after that instance's host replacement). Set explicitly for remote/oauth2 providers. |
 | `scopes_supported` | | Advertised scopes. |
 | `check_audience_azp` | empty | OAuth client IDs (`azp` claims) whose bearer tokens must contain the exact requested resource identifier in `aud`. Matching is exact. Empty disables audience enforcement; unlisted clients continue to downstream `iam_check` normally. A listed client with a missing/wrong audience gets `401` + `error="invalid_token"` and the resource metadata pointer. |
 
