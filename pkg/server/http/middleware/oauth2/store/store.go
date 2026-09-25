@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +24,9 @@ type Store struct {
 	// Active store type empty mean memory or could be redis.
 	Active string           `cfg:"active"`
 	Redis  connredis.Config `cfg:"redis"`
+	// Cluster forces Redis Cluster mode, including when only one bootstrap
+	// address is configured. When false, cluster mode is detected automatically.
+	Cluster bool `cfg:"cluster"`
 	// KeyPrefix namespaces the Redis keys ("<prefix>code_<id>" and
 	// "<prefix><state>"). Empty keeps the historic unprefixed keys. A code
 	// minted by one component (e.g. login) is only found by another (e.g. the
@@ -47,7 +51,7 @@ type atomicTaker interface {
 func (m *Store) Init(ctx context.Context) (*StoreCache, error) {
 	var storeCache StoreCache
 	if m.Active == "redis" {
-		redisClient, err := connredis.New(m.Redis)
+		redisClient, err := newRedisClient(ctx, m.Redis, m.Cluster)
 		if err != nil {
 			return nil, err
 		}
@@ -89,6 +93,71 @@ func (m *Store) Init(ctx context.Context) (*StoreCache, error) {
 	}
 
 	return &storeCache, nil
+}
+
+// newRedisClient supports standalone Redis and Redis Cluster with the same
+// configuration. connredis selects cluster mode for multiple seed addresses;
+// for a single address we detect whether that server belongs to a cluster.
+func newRedisClient(ctx context.Context, cfg connredis.Config, forceCluster bool) (redis.UniversalClient, error) {
+	if forceCluster {
+		return newRedisClusterClient(cfg)
+	}
+
+	client, err := connredis.New(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(cfg.Address) != 1 {
+		return client, nil
+	}
+
+	info, err := client.Info(ctx, "cluster").Result()
+	if err != nil || !redisClusterEnabled(info) {
+		// INFO may be ACL-restricted. Preserve the existing connection and let
+		// the first real store operation return any connection/ACL error.
+		return client, nil
+	}
+
+	clusterClient, err := newRedisClusterClient(cfg)
+	if err != nil {
+		_ = client.Close()
+
+		return nil, err
+	}
+
+	_ = client.Close()
+
+	return clusterClient, nil
+}
+
+func newRedisClusterClient(cfg connredis.Config) (redis.UniversalClient, error) {
+	if len(cfg.Address) == 0 {
+		return nil, errors.New("no address provided")
+	}
+
+	tlsConfig, err := cfg.TLS.Generate()
+	if err != nil {
+		return nil, err
+	}
+
+	return redis.NewClusterClient(&redis.ClusterOptions{
+		Addrs:      cfg.Address,
+		Username:   cfg.UserName,
+		Password:   cfg.Password,
+		ClientName: cfg.ClientName,
+		TLSConfig:  tlsConfig,
+	}), nil
+}
+
+func redisClusterEnabled(info string) bool {
+	for line := range strings.Lines(info) {
+		if strings.TrimSpace(line) == "cluster_enabled:1" {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (m *StoreCache) Close() error {

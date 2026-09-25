@@ -53,6 +53,7 @@ export type InstanceConfig = {
         username: string;
         password_set: boolean;
         client_name: string;
+        cluster: boolean;
         tls: { enabled: boolean; cert_file: string; key_file: string; ca_file: string };
       };
     };
@@ -203,6 +204,7 @@ export const settingTemplates = {
         username: "",
         password: "",
         client_name: "turna-auth",
+        cluster: false,
         tls: {
           enabled: false,
           cert_file: "",

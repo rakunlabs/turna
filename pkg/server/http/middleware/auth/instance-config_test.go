@@ -20,6 +20,7 @@ cache:
     redis:
       address: ["redis:6379"]
       password: s3cret
+      cluster: true
       tls:
         enabled: true
         ca_file: /ca.pem
@@ -37,7 +38,7 @@ ldap:
 	}
 
 	cs := m.Cache.CodeStore
-	if cs.Active != "redis" || len(cs.Redis.Address) != 1 || cs.Redis.Password != "s3cret" ||
+	if cs.Active != "redis" || len(cs.Redis.Address) != 1 || cs.Redis.Password != "s3cret" || !cs.Redis.Cluster ||
 		!cs.Redis.TLS.Enabled || cs.Redis.TLS.CAFile != "/ca.pem" {
 		t.Fatalf("decoded code store = %+v", cs)
 	}
@@ -72,7 +73,7 @@ func TestInstanceConfigAPIHidesSecrets(t *testing.T) {
 	m := &Auth{
 		Cache: CacheStatic{CodeStore: CodeStoreSettings{
 			Active: "redis",
-			Redis:  CodeStoreRedisSettings{Address: []string{"redis:6379"}, Password: "s3cret"},
+			Redis:  CodeStoreRedisSettings{Address: []string{"redis:6379"}, Password: "s3cret", Cluster: true},
 		}},
 		LDAP: LDAPStatic{Addr: "ldap://local:389", DisableSync: true},
 	}
@@ -92,7 +93,7 @@ func TestInstanceConfigAPIHidesSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 	cs := res.Payload.Cache.CodeStore
-	if !cs.Pinned || cs.Active != "redis" || !cs.Redis.PasswordSet || cs.Redis.Address[0] != "redis:6379" {
+	if !cs.Pinned || cs.Active != "redis" || !cs.Redis.PasswordSet || cs.Redis.Address[0] != "redis:6379" || !cs.Redis.Cluster {
 		t.Fatalf("code store = %+v", cs)
 	}
 	if res.Payload.LDAP.Addr != "ldap://local:389" || !res.Payload.LDAP.DisableSync {
@@ -108,6 +109,7 @@ type InstanceConfigPayloadForTest struct {
 			Redis  struct {
 				Address     []string `json:"address"`
 				PasswordSet bool     `json:"password_set"`
+				Cluster     bool     `json:"cluster"`
 			} `json:"redis"`
 		} `json:"code_store"`
 	} `json:"cache"`

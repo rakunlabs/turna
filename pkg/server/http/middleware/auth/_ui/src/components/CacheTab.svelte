@@ -23,6 +23,7 @@
     pinned ? session.instanceConfig?.cache.code_store.active || storedCodeStore : storedCodeStore,
   );
   const redisTLS = $derived(getSettingBool("cache", ["code_store", "redis", "tls", "enabled"]));
+  const redisCluster = $derived(getSettingBool("cache", ["code_store", "redis", "cluster"]));
   const addresses = $derived(getSettingList("cache", ["code_store", "redis", "address"]));
 
   const shared = $derived(codeStore !== "memory");
@@ -102,6 +103,16 @@
   {#if !pinned && codeStore === "redis"}
     <Section title="Redis connection">
       <div class="grid gap-6">
+        <Switch
+          label="Redis Cluster"
+          hint="Force cluster-aware routing, including when only one bootstrap address is listed. Leave off to detect cluster mode automatically."
+          bind:checked={
+            () => redisCluster,
+            (value: boolean) =>
+              setSettingBool("cache", ["code_store", "redis", "cluster"], value)
+          }
+        />
+
         <div class="max-w-[62ch]">
           <label class="stamp block" for="cache-redis-address">Addresses</label>
           <input
@@ -116,7 +127,8 @@
               setSettingList("cache", ["code_store", "redis", "address"], e.currentTarget.value)}
           />
           <p id="cache-redis-address-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
-            Comma separated. More than one address is treated as a cluster.
+            Comma separated bootstrap addresses. Cluster mode is detected automatically unless the
+            switch above forces it.
           </p>
         </div>
 

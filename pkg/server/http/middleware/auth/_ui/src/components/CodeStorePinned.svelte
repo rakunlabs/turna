@@ -13,6 +13,7 @@
     if (pinned.active === "redis" && redis) {
       out.push(
         { label: "Addresses", value: (redis.address ?? []).join(", ") || "—" },
+        { label: "Cluster mode", value: redis.cluster ? "forced" : "automatic" },
         { label: "Key prefix", value: pinned.key_prefix || "none (code_…)" },
         { label: "Username", value: redis.username || "—" },
         { label: "Password", value: redis.password_set ? "set in config" : "not set" },

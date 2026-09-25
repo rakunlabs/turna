@@ -56,7 +56,7 @@ server:
 | `request.insecure_skip_verify` | Skip TLS verification for token requests. |
 | `state_cookie` | Cookie settings for OAuth2 state. |
 | `success_cookie` | Cookie settings for login success marker. |
-| `store` | Temporary code store used only when no in-process auth middleware is linked (see `auth_middleware`). Empty means memory; `active: redis` uses Redis, which must then be the same Redis as the redeeming auth middleware's `cache.code_store`. `store.key_prefix` namespaces the Redis keys; empty keeps plain `code_<id>` keys, and it must equal the auth middleware's `cache.code_store.key_prefix`. |
+| `store` | Temporary code store used only when no in-process auth middleware is linked (see `auth_middleware`). Empty means memory; `active: redis` uses Redis, which must then be the same Redis as the redeeming auth middleware's `cache.code_store`. Redis Cluster is auto-detected; `store.cluster: true` forces cluster-aware routing with one or more bootstrap addresses. `store.key_prefix` namespaces the Redis keys; empty keeps plain `code_<id>` keys, and it must equal the auth middleware's `cache.code_store.key_prefix`. |
 | `redirect_white_list` | Allowed redirect URI prefixes when minting internal codes. Empty allows all. |
 
 ### Internal authorization codes
@@ -70,6 +70,7 @@ This matters when one login page is used as the provider of another (nested logi
 login:
   store:
     active: redis
+    cluster: true
     key_prefix: "turna-auth:"
     redis:
       address: ["redis:6379"]

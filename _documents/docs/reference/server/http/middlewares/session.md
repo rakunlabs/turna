@@ -44,6 +44,7 @@ store:
     address: localhost:6379
     username: ""
     password: ""
+    cluster: false # true forces Redis Cluster; false auto-detects
     key_prefix: session_
     session_key: "" # optional store-specific override
     compat: ""      # "", v1 or mixed
@@ -57,7 +58,7 @@ store:
     path: ""
 ```
 
-If `active` is empty, Turna uses `redis` when configured, otherwise `file` when configured. A store is required. The top-level `session_key` is used by both Redis and file stores unless that store defines its own `session_key`.
+If `active` is empty, Turna uses `redis` when configured, otherwise `file` when configured. A store is required. The top-level `session_key` is used by both Redis and file stores unless that store defines its own `session_key`. Redis Cluster is detected automatically from the configured address; set `store.redis.cluster: true` to force cluster-aware routing, including through a single bootstrap address.
 
 ## Redis Compatibility Mode
 

@@ -26,11 +26,13 @@ type CodeStoreSettings struct {
 }
 
 type CodeStoreRedisSettings struct {
-	ClientName string                    `json:"client_name" cfg:"client_name"`
-	Address    []string                  `json:"address"     cfg:"address"`
-	Username   string                    `json:"username"    cfg:"username"`
-	Password   string                    `json:"password"    cfg:"password" log:"-"`
-	TLS        CodeStoreRedisTLSSettings `json:"tls"         cfg:"tls"`
+	ClientName string   `json:"client_name" cfg:"client_name"`
+	Address    []string `json:"address"     cfg:"address"`
+	Username   string   `json:"username"    cfg:"username"`
+	Password   string   `json:"password"    cfg:"password" log:"-"`
+	// Cluster forces Redis Cluster mode. False keeps automatic detection.
+	Cluster bool                      `json:"cluster"      cfg:"cluster"`
+	TLS     CodeStoreRedisTLSSettings `json:"tls"         cfg:"tls"`
 }
 
 type CodeStoreRedisTLSSettings struct {
@@ -84,7 +86,7 @@ func validateCodeStoreSettings(c CodeStoreSettings) error {
 
 func (c CodeStoreSettings) store() oauth2store.Store {
 	c = c.normalized()
-	store := oauth2store.Store{Active: c.Active, KeyPrefix: c.KeyPrefix}
+	store := oauth2store.Store{Active: c.Active, KeyPrefix: c.KeyPrefix, Cluster: c.Redis.Cluster}
 	if c.Active != "redis" {
 		return store
 	}

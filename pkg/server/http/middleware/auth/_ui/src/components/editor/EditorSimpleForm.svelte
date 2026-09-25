@@ -259,7 +259,7 @@
             value: editor.getPathList(["code_store", "redis", "address"]),
             set: (value) => editor.setPathList(["code_store", "redis", "address"], value),
             placeholder: "127.0.0.1:6379",
-            hint: "Comma separated for a cluster.",
+            hint: "Comma separated bootstrap addresses. Cluster mode is detected automatically unless forced below.",
             mono: true,
             wide: true,
           })}
@@ -289,6 +289,11 @@
             value: editor.getPathString(["code_store", "redis", "client_name"]),
             set: (value) => editor.setPathValue(["code_store", "redis", "client_name"], value),
             placeholder: "turna-auth",
+          })}
+          {@render toggle({
+            label: "Redis Cluster",
+            on: editor.getPathBool(["code_store", "redis", "cluster"]),
+            set: (value) => editor.setPathValue(["code_store", "redis", "cluster"], value),
           })}
           {@render toggle({
             label: "Redis TLS",

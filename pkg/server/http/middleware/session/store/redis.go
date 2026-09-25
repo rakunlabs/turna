@@ -20,10 +20,13 @@ import (
 )
 
 type Redis struct {
-	Address  string    `cfg:"address"`
-	Username string    `cfg:"username"`
-	Password string    `cfg:"password"`
-	TLS      TLSConfig `cfg:"tls"`
+	Address  string `cfg:"address"`
+	Username string `cfg:"username"`
+	Password string `cfg:"password"`
+	// Cluster forces Redis Cluster mode for this address. When false, cluster
+	// mode is detected automatically.
+	Cluster bool      `cfg:"cluster"`
+	TLS     TLSConfig `cfg:"tls"`
 
 	KeyPrefix string `cfg:"key_prefix"`
 	// SessionKey signs the session ID cookie. If empty, a random key is generated.
@@ -34,7 +37,7 @@ type Redis struct {
 }
 
 type RedisStore struct {
-	client    *redis.Client
+	client    redis.UniversalClient
 	keyPrefix string
 	codec     *securecookie.Codec
 	options   sessions.Options
@@ -52,12 +55,10 @@ func (r Redis) Store(ctx context.Context, opts sessions.Options) (*RedisStore, e
 		return nil, err
 	}
 
-	client := redis.NewClient(&redis.Options{
-		Addr:      r.Address,
-		Username:  r.Username,
-		Password:  r.Password,
-		TLSConfig: tlsConfig,
-	})
+	client, err := r.newClient(ctx, tlsConfig)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := client.Ping(ctx).Err(); err != nil {
 		_ = client.Close()
@@ -84,6 +85,51 @@ func (r Redis) Store(ctx context.Context, opts sessions.Options) (*RedisStore, e
 		options:   opts,
 		compat:    r.Compat,
 	}, nil
+}
+
+func (r Redis) newClient(ctx context.Context, tlsConfig *tls.Config) (redis.UniversalClient, error) {
+	if strings.TrimSpace(r.Address) == "" {
+		return nil, fmt.Errorf("redis address is required")
+	}
+
+	if r.Cluster {
+		return r.newClusterClient(tlsConfig), nil
+	}
+
+	client := redis.NewClient(&redis.Options{
+		Addr:      r.Address,
+		Username:  r.Username,
+		Password:  r.Password,
+		TLSConfig: tlsConfig,
+	})
+
+	info, err := client.Info(ctx, "cluster").Result()
+	if err != nil || !redisClusterEnabled(info) {
+		return client, nil
+	}
+
+	_ = client.Close()
+
+	return r.newClusterClient(tlsConfig), nil
+}
+
+func (r Redis) newClusterClient(tlsConfig *tls.Config) redis.UniversalClient {
+	return redis.NewClusterClient(&redis.ClusterOptions{
+		Addrs:     []string{r.Address},
+		Username:  r.Username,
+		Password:  r.Password,
+		TLSConfig: tlsConfig,
+	})
+}
+
+func redisClusterEnabled(info string) bool {
+	for line := range strings.Lines(info) {
+		if strings.TrimSpace(line) == "cluster_enabled:1" {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (s *RedisStore) Get(r *http.Request, name string) (*sessions.Session, error) {
