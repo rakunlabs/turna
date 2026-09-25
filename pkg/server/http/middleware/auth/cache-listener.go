@@ -2,7 +2,9 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"time"
 
@@ -32,10 +34,16 @@ func (c *Cache) listenChanges(ctx context.Context, dsn string, changes chan<- st
 			retry = authListenRetryMin
 		}
 
-		slog.Error("auth cache notification listener disconnected",
+		attrs := []any{
 			slog.String("error", err.Error()),
-			slog.Duration("retry_in", retry),
-		)
+			// JSON slog handlers encode Duration values as nanoseconds. Keep this
+			// operator-facing backoff readable regardless of the active handler.
+			slog.String("retry_in", retry.String()),
+		}
+		if hint := authListenerErrorHint(err); hint != "" {
+			attrs = append(attrs, slog.String("hint", hint))
+		}
+		slog.Error("auth cache notification listener disconnected", attrs...)
 
 		timer := time.NewTimer(retry)
 		select {
@@ -48,6 +56,14 @@ func (c *Cache) listenChanges(ctx context.Context, dsn string, changes chan<- st
 
 		retry = min(retry*2, authListenRetryMax)
 	}
+}
+
+func authListenerErrorHint(err error) string {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return "the PostgreSQL server or proxy closed the dedicated LISTEN connection; use a direct PostgreSQL DSN or PgBouncer session pooling"
+	}
+
+	return ""
 }
 
 func (c *Cache) listenChangesOnce(ctx context.Context, dsn string, changes chan<- struct{}) (time.Duration, error) {

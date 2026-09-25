@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/rakunlabs/gofret"
@@ -15,6 +16,8 @@ func TestStaticCodeStoreConfigDecodes(t *testing.T) {
 	var raw map[string]any
 	if err := yaml.Unmarshal([]byte(`
 cache:
+  disable_notification_listener: true
+  poll_interval: 15s
   code_store:
     active: redis
     redis:
@@ -38,6 +41,9 @@ ldap:
 	}
 
 	cs := m.Cache.CodeStore
+	if !m.Cache.DisableNotificationListener || m.Cache.PollInterval != 15*time.Second {
+		t.Fatalf("decoded cache watch config = %+v", m.Cache)
+	}
 	if cs.Active != "redis" || len(cs.Redis.Address) != 1 || cs.Redis.Password != "s3cret" || !cs.Redis.Cluster ||
 		!cs.Redis.TLS.Enabled || cs.Redis.TLS.CAFile != "/ca.pem" {
 		t.Fatalf("decoded code store = %+v", cs)
@@ -71,10 +77,14 @@ func TestStaticCodeStoreOverridesStoredSetting(t *testing.T) {
 
 func TestInstanceConfigAPIHidesSecrets(t *testing.T) {
 	m := &Auth{
-		Cache: CacheStatic{CodeStore: CodeStoreSettings{
-			Active: "redis",
-			Redis:  CodeStoreRedisSettings{Address: []string{"redis:6379"}, Password: "s3cret", Cluster: true},
-		}},
+		Cache: CacheStatic{
+			DisableNotificationListener: true,
+			PollInterval:                15 * time.Second,
+			CodeStore: CodeStoreSettings{
+				Active: "redis",
+				Redis:  CodeStoreRedisSettings{Address: []string{"redis:6379"}, Password: "s3cret", Cluster: true},
+			},
+		},
 		LDAP: LDAPStatic{Addr: "ldap://local:389", DisableSync: true},
 	}
 
@@ -99,11 +109,16 @@ func TestInstanceConfigAPIHidesSecrets(t *testing.T) {
 	if res.Payload.LDAP.Addr != "ldap://local:389" || !res.Payload.LDAP.DisableSync {
 		t.Fatalf("ldap = %+v", res.Payload.LDAP)
 	}
+	if !res.Payload.Cache.DisableNotificationListener || res.Payload.Cache.PollInterval != "15s" {
+		t.Fatalf("cache watch config = %+v", res.Payload.Cache)
+	}
 }
 
 type InstanceConfigPayloadForTest struct {
 	Cache struct {
-		CodeStore struct {
+		DisableNotificationListener bool   `json:"disable_notification_listener"`
+		PollInterval                string `json:"poll_interval"`
+		CodeStore                   struct {
 			Pinned bool   `json:"pinned"`
 			Active string `json:"active"`
 			Redis  struct {

@@ -19,7 +19,10 @@ import (
 	"github.com/xhit/go-str2duration/v2"
 )
 
-var DefaultCachePollInterval = 5 * time.Second
+var (
+	DefaultCachePollInterval                        = 5 * time.Second
+	DefaultDisabledNotificationListenerPollInterval = 10 * time.Second
+)
 
 // AccessClient is the decoded OAuth client config stored in auth_oauth_clients.
 type AccessClient struct {
@@ -1295,13 +1298,32 @@ func (c *Cache) Reload(ctx context.Context) error {
 	return nil
 }
 
-// Watch reloads on PostgreSQL notifications and polls as a durable fallback.
-// The poll interval comes from the "cache" setting namespace and is applied live.
-func (c *Cache) Watch(ctx context.Context, dsn string) {
-	changes := make(chan struct{}, 1)
-	go c.listenChanges(ctx, dsn, changes)
+type CacheWatchConfig struct {
+	DisableNotificationListener bool
+	PollInterval                time.Duration
+}
 
-	interval := c.Snapshot().Cache.GetPollInterval()
+func (c *Cache) watchPollInterval(cfg CacheWatchConfig) time.Duration {
+	if cfg.PollInterval > 0 {
+		return cfg.PollInterval
+	}
+	if cfg.DisableNotificationListener {
+		return DefaultDisabledNotificationListenerPollInterval
+	}
+
+	return c.Snapshot().Cache.GetPollInterval()
+}
+
+// Watch reloads on PostgreSQL notifications and polls as a durable fallback.
+// PollInterval pins polling for one instance; otherwise the interval comes from
+// the shared "cache" setting namespace and is applied live.
+func (c *Cache) Watch(ctx context.Context, dsn string, cfg CacheWatchConfig) {
+	changes := make(chan struct{}, 1)
+	if !cfg.DisableNotificationListener {
+		go c.listenChanges(ctx, dsn, changes)
+	}
+
+	interval := c.watchPollInterval(cfg)
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -1328,7 +1350,7 @@ func (c *Cache) Watch(ctx context.Context, dsn string) {
 			}
 		}
 
-		if newInterval := c.Snapshot().Cache.GetPollInterval(); newInterval != interval {
+		if newInterval := c.watchPollInterval(cfg); newInterval != interval {
 			interval = newInterval
 			ticker.Reset(interval)
 		}

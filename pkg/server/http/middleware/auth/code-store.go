@@ -44,6 +44,13 @@ type CodeStoreRedisTLSSettings struct {
 
 // CacheStatic holds instance-local cache overrides from the static config.
 type CacheStatic struct {
+	// DisableNotificationListener keeps this instance from opening the
+	// dedicated PostgreSQL LISTEN connection. Version polling remains active.
+	DisableNotificationListener bool `cfg:"disable_notification_listener"`
+	// PollInterval pins the fallback polling interval for this instance. Zero
+	// keeps using the shared runtime cache.poll_interval setting.
+	PollInterval time.Duration `cfg:"poll_interval"`
+
 	// CodeStore pins this instance's OAuth code/state store. When Active is
 	// set, the whole code_store of the "cache" setting namespace is ignored on
 	// this instance and the UI shows it as read-only. Other instances without

@@ -119,6 +119,9 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 	if m.Database.DSN == "" {
 		return nil, errors.New("auth database dsn is required")
 	}
+	if m.Cache.PollInterval < 0 {
+		return nil, errors.New("auth cache poll_interval must be positive")
+	}
 
 	// identifies this process in fleet-wide records such as auth_sync_locks
 	m.instanceID = ulid.Make().String()
@@ -213,7 +216,10 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 
 	into.ShutdownAdd(db.Close, "auth db")
 
-	go m.cache.Watch(ctx, m.Database.DSN)
+	go m.cache.Watch(ctx, m.Database.DSN, CacheWatchConfig{
+		DisableNotificationListener: m.Cache.DisableNotificationListener,
+		PollInterval:                m.Cache.PollInterval,
+	})
 	go m.watchLDAP(ctx)
 	go m.watchFlowCleanup(ctx)
 

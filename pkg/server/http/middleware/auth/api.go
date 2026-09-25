@@ -171,6 +171,12 @@ func (m *Auth) GetSetting(w http.ResponseWriter, r *http.Request) {
 // Secrets are never returned; only whether they are set.
 func (m *Auth) InstanceConfigAPI(w http.ResponseWriter, r *http.Request) {
 	codeStore := map[string]any{"pinned": m.codeStorePinned()}
+	pollInterval := ""
+	if m.Cache.PollInterval > 0 {
+		pollInterval = m.Cache.PollInterval.String()
+	} else if m.Cache.DisableNotificationListener {
+		pollInterval = DefaultDisabledNotificationListenerPollInterval.String()
+	}
 	if m.codeStorePinned() {
 		cfg := m.codeStoreSettings()
 		codeStore["active"] = cfg.Active
@@ -194,7 +200,11 @@ func (m *Auth) InstanceConfigAPI(w http.ResponseWriter, r *http.Request) {
 
 	httputil.JSON(w, http.StatusOK, Response[map[string]any]{
 		Payload: map[string]any{
-			"cache": map[string]any{"code_store": codeStore},
+			"cache": map[string]any{
+				"code_store":                    codeStore,
+				"disable_notification_listener": m.Cache.DisableNotificationListener,
+				"poll_interval":                 pollInterval,
+			},
 			"ldap": map[string]any{
 				"addr":         m.LDAP.Addr,
 				"disable_sync": m.LDAP.DisableSync,

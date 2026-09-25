@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -18,6 +20,30 @@ func TestSignalCacheChangeCoalesces(t *testing.T) {
 
 	if len(changes) != 1 {
 		t.Fatalf("pending changes = %d, want 1", len(changes))
+	}
+}
+
+func TestAuthListenerErrorHint(t *testing.T) {
+	if hint := authListenerErrorHint(fmt.Errorf("wait for auth_changed: %w", io.ErrUnexpectedEOF)); hint == "" {
+		t.Fatal("expected an actionable hint for unexpected EOF")
+	}
+	if hint := authListenerErrorHint(errors.New("permission denied")); hint != "" {
+		t.Fatalf("unexpected hint for unrelated error: %q", hint)
+	}
+}
+
+func TestCacheWatchPollIntervalOverride(t *testing.T) {
+	cache := NewCache(nil)
+	cache.snap.Store(&Snapshot{Cache: CacheSettings{pollInterval: 7 * time.Second}})
+
+	if got := cache.watchPollInterval(CacheWatchConfig{}); got != 7*time.Second {
+		t.Fatalf("shared poll interval = %s, want 7s", got)
+	}
+	if got := cache.watchPollInterval(CacheWatchConfig{DisableNotificationListener: true}); got != 10*time.Second {
+		t.Fatalf("listener-disabled default poll interval = %s, want 10s", got)
+	}
+	if got := cache.watchPollInterval(CacheWatchConfig{PollInterval: 15 * time.Second}); got != 15*time.Second {
+		t.Fatalf("instance poll interval = %s, want 15s", got)
 	}
 }
 
