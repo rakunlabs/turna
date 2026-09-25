@@ -87,6 +87,23 @@ class Settings {
     if (ok) docket.commit(`${namespace} settings committed`);
     return ok;
   }
+
+  async saveMany(namespaces: readonly SettingNamespace[]) {
+    const ok = await session.run(async () => {
+      for (const namespace of namespaces) {
+        await session.request(`settings/${encodeURIComponent(namespace)}`, {
+          method: "PUT",
+          body: JSON.stringify({ value: this.record(namespace) }),
+        });
+      }
+
+      await Promise.all(namespaces.map((namespace) => this.load(namespace)));
+      await session.loadCore();
+    }, "Settings could not be committed");
+
+    if (ok) docket.commit("OAuth2 settings committed");
+    return ok;
+  }
 }
 
 export const settings = new Settings();
@@ -102,6 +119,14 @@ export function settingRecord(namespace: SettingNamespace) {
 
 export function setSettingRecord(namespace: SettingNamespace, value: AnyRecord) {
   settings.set(namespace, value);
+}
+
+export function getSettingValue(namespace: SettingNamespace, path: string[]) {
+  return settings.pathValue(namespace, path);
+}
+
+export function setSettingValue(namespace: SettingNamespace, path: string[], value: unknown) {
+  settings.setPathValue(namespace, path, value);
 }
 
 export function getSettingString(namespace: SettingNamespace, path: string[]) {
@@ -149,4 +174,8 @@ export function setSettingList(namespace: SettingNamespace, path: string[], valu
 
 export function saveSetting(namespace: SettingNamespace) {
   return settings.save(namespace);
+}
+
+export function saveSettings(namespaces: readonly SettingNamespace[]) {
+  return settings.saveMany(namespaces);
 }

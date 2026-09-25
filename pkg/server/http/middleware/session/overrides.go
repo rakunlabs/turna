@@ -51,7 +51,7 @@ func ApplyProviderEndpointOverrides(providers map[string]Provider, overrides map
 				{&oauth.SignupURL, override.Oauth2.SignupURL},
 				{&oauth.PasswordResetURL, override.Oauth2.PasswordResetURL},
 			} {
-				*field.dst = replaceEndpointHost(*field.dst, hostReplacements)
+				*field.dst = ReplaceEndpointHost(*field.dst, hostReplacements)
 				if field.src != "" {
 					*field.dst = field.src
 				}
@@ -76,9 +76,9 @@ func ApplyProviderGroupEndpointOverrides(groups map[string]map[string]Provider, 
 	return result
 }
 
-// replaceEndpointHost matches the full URL authority host (including any port).
+// ReplaceEndpointHost matches the full URL authority host (including any port).
 // Paths, query parameters and fragments are preserved. Replacements are not chained.
-func replaceEndpointHost(endpoint string, replacements map[string]string) string {
+func ReplaceEndpointHost(endpoint string, replacements map[string]string) string {
 	if len(replacements) == 0 {
 		return endpoint
 	}

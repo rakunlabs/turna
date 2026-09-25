@@ -66,7 +66,7 @@ func (m *Login) PasskeyEnrollmentStatus(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	status, err := issuer.PasskeyEnrollmentStatus(r.Context(), userID, method)
+	status, err := issuer.PasskeyEnrollmentStatus(r.Context(), r, userID, method)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "cannot check passkey enrollment")
 

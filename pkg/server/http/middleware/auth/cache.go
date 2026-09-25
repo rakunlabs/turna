@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/url"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -245,9 +248,19 @@ type PasskeySettings struct {
 	Origins []string `json:"origins"`
 	// UserVerification is required, preferred (default) or discouraged.
 	UserVerification string `json:"user_verification"`
+	// Sites provide origin-selected relying parties for unrelated domains that
+	// share this Auth database. The root fields above remain the default site.
+	Sites []PasskeySiteSettings `json:"sites"`
 	// Enrollment controls the optional post-login passkey suggestion shown by
 	// login middleware instances backed by this auth issuer.
 	Enrollment PasskeyEnrollmentSettings `json:"enrollment"`
+}
+
+type PasskeySiteSettings struct {
+	Name          string   `json:"name"`
+	RPID          string   `json:"rp_id"`
+	RPDisplayName string   `json:"rp_display_name"`
+	Origins       []string `json:"origins"`
 }
 
 // PasskeyEnrollmentSettings controls optional passkey adoption after a
@@ -298,6 +311,42 @@ func validatePasskeySettings(setting PasskeySettings) error {
 	for _, method := range setting.Enrollment.Methods {
 		if !allowedMethods[method] {
 			return fmt.Errorf("enrollment.methods contains unsupported method %q", method)
+		}
+	}
+
+	names := make(map[string]struct{}, len(setting.Sites))
+	origins := make(map[string]string)
+	for i, site := range setting.Sites {
+		name := strings.TrimSpace(site.Name)
+		if name == "" {
+			return fmt.Errorf("sites[%d].name is required", i)
+		}
+		if _, exists := names[name]; exists {
+			return fmt.Errorf("sites contains duplicate name %q", name)
+		}
+		names[name] = struct{}{}
+
+		if strings.TrimSpace(site.RPID) == "" {
+			return fmt.Errorf("sites[%d].rp_id is required", i)
+		}
+		if len(site.Origins) == 0 {
+			return fmt.Errorf("sites[%d].origins is required", i)
+		}
+		for _, rawOrigin := range site.Origins {
+			origin := strings.TrimSuffix(strings.TrimSpace(rawOrigin), "/")
+			parsed, err := url.Parse(origin)
+			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+				return fmt.Errorf("sites[%d] contains invalid origin %q", i, rawOrigin)
+			}
+			hostname := strings.ToLower(parsed.Hostname())
+			rpID := strings.ToLower(strings.TrimSpace(site.RPID))
+			if hostname != rpID && (net.ParseIP(rpID) != nil || !strings.HasSuffix(hostname, "."+rpID)) {
+				return fmt.Errorf("sites[%d] origin %q is outside rp_id %q", i, rawOrigin, site.RPID)
+			}
+			if owner, exists := origins[origin]; exists {
+				return fmt.Errorf("origin %q is assigned to both %q and %q", origin, owner, name)
+			}
+			origins[origin] = name
 		}
 	}
 

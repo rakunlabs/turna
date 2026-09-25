@@ -60,7 +60,10 @@ URLs: omit the scheme and path. Scheme, path, query, and fragment are preserved;
 text in paths or query parameters and subdomains are not replaced. Each URL is
 rewritten once per layer; replacement rules do not chain within that layer.
 
-Host replacements run before explicit provider endpoint overrides. Full order:
+Host replacements also rewrite the host of `oauth2.base_url` when Auth builds
+the upstream code-flow callback `redirect_uri`; the canonical token issuer keeps
+the stored `oauth2.base_url`. Host replacements run before explicit provider
+endpoint overrides. Full order:
 **DB → Auth host replacements → Auth endpoint overrides → Session host
 replacements → Session endpoint overrides**. Both features also apply to groups.
 
@@ -113,7 +116,7 @@ Everything else is a settings namespace under `/auth/v1/settings/{namespace}` an
 | `cache` | `poll_interval`, `code_store` | Fallback version poll interval for the in-memory read model and OAuth2 temporary code/state store. PostgreSQL notifications normally propagate changes immediately; the poll catches changes missed during listener disconnects. `code_store.active` is `database` (default), `memory`, or `redis`. Database and Redis are shared across replicas; memory is single-instance only. |
 | `token` | `token_lifetime`, `refresh_lifetime`, `refresh_absolute_lifetime` | Access lifetime, refresh idle window and remembered-session ceiling (defaults `15m` / `24h` / `720h`). |
 | `jwt` | `kid`, `private_key` | RS256 signing key (PEM, PKCS#8 or PKCS#1); auto-generated on first start. Editable through the API/UI and applied without restart — the public JWKS key is derived from the private key. Changing or rotating the key invalidates outstanding tokens. |
-| `passkey` | `disabled`, `rp_id`, `rp_display_name`, `origins`, `user_verification`, `enrollment.*` | WebAuthn (passkey) relying party settings. Empty `rp_id` defaults to the registrable domain (eTLD+1) of the request host — e.g. `auth.example.com` becomes `example.com`, so one passkey works across all subdomains; IPs and single-label hosts (`localhost`) are used as-is. Empty `origins` derives from the forwarded scheme + host. `enrollment.enabled` lets a connected login middleware offer an optional post-login registration step. `enrollment.methods` limits it to `password`, `code`, and/or `passkey` sessions (empty means all); `prompt_when_registered` includes users who already have a credential; `snooze_duration` controls the browser-local “Not now” delay (empty defaults to `720h`, `0s` asks again next login). The user can always skip. |
+| `passkey` | `disabled`, `rp_id`, `rp_display_name`, `origins`, `sites`, `user_verification`, `enrollment.*` | WebAuthn (passkey) relying party settings. Empty `rp_id` defaults to the registrable domain (eTLD+1) of the request host — e.g. `auth.example.com` becomes `example.com`, so one passkey works across all subdomains; IPs and single-label hosts (`localhost`) are used as-is. Empty `origins` derives from the forwarded scheme + host. `sites[]` adds independent `{name,rp_id,rp_display_name,origins}` profiles for unrelated domains sharing the Auth database; an exact request-origin match selects the profile and new credentials retain its RP ID. Unmatched requests and existing credentials use the root fields as the backwards-compatible default. `enrollment.enabled` lets a connected login middleware offer an optional post-login registration step. `enrollment.methods` limits it to `password`, `code`, and/or `passkey` sessions (empty means all); `prompt_when_registered` includes users who already have a credential; `snooze_duration` controls the browser-local “Not now” delay (empty defaults to `720h`, `0s` asks again next login). The user can always skip. |
 | `password` | `disabled`, `local_disabled`, `ldap_disabled`, `ldap_register_disabled` | Password grant sources. Defaults keep the implicit behavior: local users check bcrypt, non-local users bind against LDAP, and unknown aliases are created only after a successful LDAP bind. |
 | `api_key` | `disabled`, `self_service`, `max_lifetime` | Static API key creation and validation. `self_service` (default off) lets any authenticated X-User issue and manage their own keys through `/v1/api-keys` — a "Personal access keys" panel appears on the account page. `max_lifetime` caps the expiry of new keys (duration string); empty means keys may live forever. |
 | `device` | `disabled`, `code_lifetime`, `interval`, `verification_uri` | RFC 8628 device flow. Defaults: codes live `10m`, minimum poll interval `5` seconds, verification URI `<prefix>/ui/device`. |
@@ -504,6 +507,35 @@ Config example:
 
 Passkey support uses the dependency-free engine from `github.com/rakunlabs/ada/middleware/auth/strategy/passkey`. Credentials are stored in `auth_passkey_credentials`; in-flight challenges use the OAuth2 code store (`cache.code_store`). The default database store and Redis work across instances; memory does not.
 
+One Auth database can serve unrelated WebAuthn relying parties. Add them under
+`passkey.sites`; the exact forwarded request origin selects a profile, and each
+credential is stored with its RP ID:
+
+```json
+{
+  "sites": [
+    {
+      "name": "customer",
+      "rp_id": "customer.example",
+      "rp_display_name": "Customer Portal",
+      "origins": ["https://login.customer.example"]
+    },
+    {
+      "name": "partner",
+      "rp_id": "partner.example",
+      "rp_display_name": "Partner Portal",
+      "origins": ["https://login.partner.example"]
+    }
+  ]
+}
+```
+
+An origin must equal its RP ID or be a subdomain of it. Origins cannot appear
+in more than one profile. Username-scoped login, duplicate-registration checks
+and post-login enrollment only consider credentials for the selected RP. The
+root `rp_id`, `rp_display_name` and `origins` fields remain the default profile;
+credentials created before this feature stay attached to that default.
+
 | Method | Route | Purpose |
 | --- | --- | --- |
 | `POST` | `/auth/v1/passkey/register` | Begin/finish registration (begin without `credential`, finish with `session_id` + `credential`). Without `user_id` targets the `X-User` identity (self-service); with `user_id` registers for that user and requires admin capability. |
@@ -581,6 +613,7 @@ Success returns `{"payload": {"message": "passkey registered", "id": "<base64url
       "id": "kFum-Ci0...",
       "user_id": "01J8ZP...",
       "name": "MacBook Touch ID",
+      "rp_id": "customer.example",
       "sign_count": 4,
       "created_at": "2026-08-01T09:30:00Z",
       "updated_at": "2026-08-20T14:05:00Z"
@@ -670,7 +703,7 @@ provider:
 Remote notes:
 
 - Keep `/auth/oauth2/*` publicly routable on the auth instance (no `session` in front); normally protect `/auth/v1/*` and `/auth/ui/*` with a session chain. If you intentionally remove the session chain for recovery, `admin.allow_missing_x_user=true` grants break-glass admin access to requests without `X-User`.
-- Set the `passkey` runtime settings (`rp_id`, `origins`) when login pages are served from an unrelated domain; the default derives `rp_id` as the registrable domain (eTLD+1) of the forwarded host, so auth and login pages on sibling subdomains (`auth.example.com`, `app.example.com`) already share one passkey scope without configuration.
+- Set the root `passkey` runtime settings (`rp_id`, `origins`) for one relying party, or add `sites` when unrelated domains share the Auth database. The default derives `rp_id` as the registrable domain (eTLD+1) of the forwarded host, so auth and login pages on sibling subdomains (`auth.example.com`, `app.example.com`) already share one passkey scope without configuration.
 - The session middleware fetches JWKS from `cert_url` at startup, so the auth instance must be reachable when dependent instances boot.
 
 ## Migration from iam/oauth2

@@ -108,7 +108,7 @@ func (m *Auth) PasskeyToken(ctx context.Context, orig *http.Request, body []byte
 	return rec.body.Bytes(), rec.code, nil
 }
 
-func (m *Auth) PasskeyEnrollmentStatus(ctx context.Context, userID, method string) (session.PasskeyEnrollmentStatus, error) {
+func (m *Auth) PasskeyEnrollmentStatus(ctx context.Context, orig *http.Request, userID, method string) (session.PasskeyEnrollmentStatus, error) {
 	cfg := m.cache.Snapshot().Passkey
 	if cfg.Disabled || !cfg.Enrollment.Enabled || !cfg.Enrollment.AllowsMethod(method) {
 		return session.PasskeyEnrollmentStatus{}, nil
@@ -123,12 +123,27 @@ func (m *Auth) PasskeyEnrollmentStatus(ctx context.Context, userID, method strin
 	if err != nil {
 		return session.PasskeyEnrollmentStatus{}, err
 	}
-	if len(credentials) > 0 && !cfg.Enrollment.PromptWhenRegistered {
+	relyingParty := passkeyRelyingParty{Default: true}
+	if orig != nil {
+		_, selected, err := m.passkeyEngine(orig)
+		if err != nil {
+			return session.PasskeyEnrollmentStatus{}, err
+		}
+		relyingParty = selected
+	}
+	hasCredential := false
+	for _, credential := range credentials {
+		if credential.RPID == relyingParty.RPID || (relyingParty.Default && credential.RPID == "") {
+			hasCredential = true
+			break
+		}
+	}
+	if hasCredential && !cfg.Enrollment.PromptWhenRegistered {
 		return session.PasskeyEnrollmentStatus{}, nil
 	}
 
 	policy, _ := json.Marshal(cfg.Enrollment)
-	promptID := sha256.Sum256(append([]byte(m.PrefixPath+"\x00"+userID+"\x00"), policy...))
+	promptID := sha256.Sum256(append([]byte(m.PrefixPath+"\x00"+userID+"\x00"+relyingParty.RPID+"\x00"), policy...))
 
 	return session.PasskeyEnrollmentStatus{
 		Prompt:        true,
@@ -138,7 +153,7 @@ func (m *Auth) PasskeyEnrollmentStatus(ctx context.Context, userID, method strin
 }
 
 func (m *Auth) PasskeyEnrollmentRegister(ctx context.Context, orig *http.Request, userID, method string, body []byte) ([]byte, int, error) {
-	status, err := m.PasskeyEnrollmentStatus(ctx, userID, method)
+	status, err := m.PasskeyEnrollmentStatus(ctx, orig, userID, method)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}

@@ -82,3 +82,27 @@ func TestSessionProviderEndpointOverrides(t *testing.T) {
 	}
 	check(all)
 }
+
+func TestSessionProviderHostReplacementAppliesToCodeFlowBaseURL(t *testing.T) {
+	c := NewCache(nil)
+	c.snap.Store(&Snapshot{OAuth2: OAuth2Settings{BaseURL: "https://shared.example.com"}})
+	m := &Auth{
+		PrefixPath: "/auth",
+		cache:      c,
+		SessionProvidersConfig: SessionProvidersStatic{HostReplacements: map[string]string{
+			"shared.example.com": "site.example.com",
+		}},
+	}
+
+	code, err := m.codeRuntime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	redirectURL, err := code.AuthCodeRedirectURL(httptest.NewRequest(http.MethodGet, "https://internal.example.com/start", nil), "company")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if redirectURL != "https://site.example.com/auth/oauth2/code/company" {
+		t.Fatalf("redirect URL = %q", redirectURL)
+	}
+}

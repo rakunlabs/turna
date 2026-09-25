@@ -23,11 +23,11 @@ func normalizeResources(resources []data.Resource) []data.Resource {
 
 func normalizeResource(resource data.Resource) data.Resource {
 	if resource.Path != "" {
-		if resource.Path != strings.Join(resource.Paths, " ") && !slices.Contains(resource.Paths, resource.Path) {
-			// copy instead of append in place, the backing array may be shared.
-			paths := make([]string, 0, len(resource.Paths)+1)
-			paths = append(paths, resource.Paths...)
-			resource.Paths = append(paths, resource.Path)
+		if resource.Path != strings.Join(resource.Paths, " ") {
+			// Path is the legacy singular representation. If a legacy client
+			// changes it, treat that as a replacement rather than granting both
+			// the old and new paths. An unchanged display Path keeps Paths intact.
+			resource.Paths = []string{resource.Path}
 		}
 
 		resource.Path = ""

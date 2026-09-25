@@ -15,18 +15,39 @@
     setSettingList,
     getSettingNumber,
     setSettingNumber,
-    saveSetting,
+    getSettingValue,
+    setSettingValue,
+    saveSettings,
   } from "../lib/state/settings.svelte";
   import { fieldText } from "../lib/records";
 
-  /**
-   * Everything that decides what a token is and who may ask for one. Each
-   * section commits its own namespace, because a namespace is what the API
-   * writes — a single page-wide Commit would hide four separate writes behind
-   * one button.
-   */
+  /** Everything that decides what a token is and who may ask for one. */
+  const namespaces = ["token", "oauth2", "authorize", "registration", "password", "passkey", "jwt"] as const;
   const schema = $derived(getSettingString("oauth2", ["schema"]) || "https");
   const userVerification = $derived(getSettingString("passkey", ["user_verification"]) || "preferred");
+  type PasskeySite = { name: string; rp_id: string; rp_display_name: string; origins: string[] };
+  const passkeySites = $derived((getSettingValue("passkey", ["sites"]) as PasskeySite[] | undefined) ?? []);
+
+  function updatePasskeySite(index: number, patch: Partial<PasskeySite>) {
+    const sites = passkeySites.map((site) => ({ ...site, origins: [...(site.origins ?? [])] }));
+    sites[index] = { ...sites[index], ...patch };
+    setSettingValue("passkey", ["sites"], sites);
+  }
+
+  function addPasskeySite() {
+    setSettingValue("passkey", ["sites"], [
+      ...passkeySites,
+      { name: `site-${passkeySites.length + 1}`, rp_id: "", rp_display_name: "", origins: [] },
+    ]);
+  }
+
+  function removePasskeySite(index: number) {
+    setSettingValue(
+      "passkey",
+      ["sites"],
+      passkeySites.filter((_, siteIndex) => siteIndex !== index),
+    );
+  }
 
   function enrollmentMethodEnabled(method: string) {
     const configured = getSettingList("passkey", ["enrollment", "methods"])
@@ -77,21 +98,21 @@
   }
 </script>
 
-{#snippet commit(namespace: "token" | "oauth2" | "authorize" | "registration" | "password" | "passkey" | "jwt")}
-  <button
-    type="button"
-    class="act act-primary"
-    disabled={session.busy}
-    onclick={() => void saveSetting(namespace)}
-  >
-    {session.busy ? "Committing…" : "Commit"}
-  </button>
-{/snippet}
-
 <Instrument
   title="OAuth2"
-  note="Token lifetimes, the redirect surface for upstream code flows, which credentials the token endpoint accepts, and the key everything is signed with."
+  note="Token lifetimes, the redirect surface for upstream code flows, which credentials the token endpoint accepts, and the key everything is signed with. Commit all applies every section on this page."
 >
+  {#snippet actions()}
+    <button
+      type="button"
+      class="act act-primary"
+      disabled={session.busy}
+      onclick={() => void saveSettings(namespaces)}
+    >
+      {session.busy ? "Committing…" : "Commit all"}
+    </button>
+  {/snippet}
+
   {#snippet custody()}
     <span class="stamp">
       Namespaces <span class="serial stamp-raw">token · oauth2 · authorize · registration · password · passkey · jwt</span>
@@ -100,8 +121,6 @@
   {/snippet}
 
   <Section title="Token lifetimes" note="How long an issued token stays good. Duration strings, e.g. 15m, 24h." first>
-    {#snippet aside()}{@render commit("token")}{/snippet}
-
     <div class="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
       <div class="min-w-0">
         <label class="stamp block" for="token-lifetime">Access token lifetime</label>
@@ -167,8 +186,6 @@
     title="Code flow redirects"
     note="How this instance addresses itself when it sends a browser to an upstream provider and back. The same origin is the canonical token issuer."
   >
-    {#snippet aside()}{@render commit("oauth2")}{/snippet}
-
     <div class="grid gap-6 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <div class="min-w-0">
         <label class="stamp block" for="oauth2-base-url">Base URL</label>
@@ -222,8 +239,6 @@
     title="Local authorization"
     note="The browser authorization endpoint holds a pending request, sends anonymous visitors to the login screen, then resumes at consent."
   >
-    {#snippet aside()}{@render commit("authorize")}{/snippet}
-
     <div class="grid gap-6 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <div class="min-w-0">
         <label class="stamp block" for="authorize-login-url">Anonymous login URL</label>
@@ -277,8 +292,6 @@
     title="Dynamic client registration"
     note="RFC 7591 lets remote MCP clients such as OpenCode register a public PKCE client automatically. Registration is anonymous, so keep registrations short-lived and capped."
   >
-    {#snippet aside()}{@render commit("registration")}{/snippet}
-
     <div class="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
       <div class="min-w-0">
         <label class="stamp block" for="registration-client-lifetime">Client lifetime</label>
@@ -349,8 +362,6 @@
     title="Password grant"
     note="Local users verify against the stored bcrypt password; non-local users bind against the active LDAP config. An unknown alias is created from LDAP on first login unless auto-register is off."
   >
-    {#snippet aside()}{@render commit("password")}{/snippet}
-
     <div class="grid gap-6 sm:grid-cols-2">
       <Switch
         label="Disable the password grant"
@@ -394,8 +405,6 @@
     title="Passkey"
     note="Set the relying party explicitly when the login page is served from a different domain than this auth host — otherwise both are derived from the request."
   >
-    {#snippet aside()}{@render commit("passkey")}{/snippet}
-
     <div class="grid gap-6 sm:grid-cols-2">
       <Switch
         label="Disable passkey login"
@@ -474,6 +483,81 @@
       </div>
 
       <div class="sm:col-span-2 mt-2 border-t border-rule pt-7">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h3 class="text-[13.5px] font-semibold text-ink">Site relying parties</h3>
+            <p class="mt-1 max-w-[70ch] text-[12px] leading-[1.6] text-muted">
+              Use separate RP IDs when unrelated domains share this Auth database. The request origin selects one profile; unmatched requests use the default fields above.
+            </p>
+          </div>
+          <button type="button" class="act shrink-0" onclick={addPasskeySite}>Add site</button>
+        </div>
+
+        {#if passkeySites.length > 0}
+          <div class="mt-5 border-y border-rule">
+            {#each passkeySites as site, index (`${site.name}-${index}`)}
+              <div class="border-b border-rule py-5 last:border-b-0">
+                <div class="grid gap-6 sm:grid-cols-2">
+                  <div class="min-w-0">
+                    <label class="stamp block" for="passkey-site-name-{index}">Profile name</label>
+                    <input
+                      id="passkey-site-name-{index}"
+                      class="entry serial mt-1.5"
+                      autocomplete="off"
+                      placeholder="customer-portal"
+                      value={site.name}
+                      oninput={(event) => updatePasskeySite(index, { name: event.currentTarget.value })}
+                    />
+                  </div>
+                  <div class="min-w-0">
+                    <label class="stamp block" for="passkey-site-rp-{index}">Relying party ID</label>
+                    <input
+                      id="passkey-site-rp-{index}"
+                      class="entry serial mt-1.5"
+                      autocomplete="off"
+                      placeholder="customer.example"
+                      value={site.rp_id}
+                      oninput={(event) => updatePasskeySite(index, { rp_id: event.currentTarget.value })}
+                    />
+                  </div>
+                  <div class="min-w-0">
+                    <label class="stamp block" for="passkey-site-display-{index}">Display name</label>
+                    <input
+                      id="passkey-site-display-{index}"
+                      class="entry mt-1.5"
+                      autocomplete="off"
+                      placeholder="Turna Auth"
+                      value={site.rp_display_name}
+                      oninput={(event) => updatePasskeySite(index, { rp_display_name: event.currentTarget.value })}
+                    />
+                  </div>
+                  <div class="min-w-0">
+                    <label class="stamp block" for="passkey-site-origins-{index}">Origins</label>
+                    <input
+                      id="passkey-site-origins-{index}"
+                      class="entry serial mt-1.5"
+                      autocomplete="off"
+                      placeholder="https://customer.example"
+                      value={(site.origins ?? []).join(", ")}
+                      oninput={(event) =>
+                        updatePasskeySite(index, {
+                          origins: event.currentTarget.value.split(/[\n,]/).map((value) => value.trim()).filter(Boolean),
+                        })}
+                    />
+                  </div>
+                </div>
+                <div class="mt-4 flex justify-end">
+                  <button type="button" class="act act-quiet text-seal" onclick={() => removePasskeySite(index)}>
+                    Remove site
+                  </button>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+      <div class="sm:col-span-2 mt-2 border-t border-rule pt-7">
         <h3 class="text-[15px] font-semibold text-ink">Post-login passkey suggestion</h3>
         <p class="mt-1 max-w-[70ch] text-[12px] leading-[1.6] text-muted">
           Offer an authenticated user a real WebAuthn registration before the login page continues to its destination. The user can always skip it.
@@ -546,8 +630,6 @@
     title="Signing key"
     note="The RSA key every access and refresh token is signed with. It is stored encrypted in the jwt namespace, generated on first start, and its public half is published through JWKS."
   >
-    {#snippet aside()}{@render commit("jwt")}{/snippet}
-
     <div class="flex flex-wrap items-end gap-x-12 gap-y-6 border-b border-rule pb-7">
       <div class="min-w-0">
         <Serial value={publishedKid} size="md" />

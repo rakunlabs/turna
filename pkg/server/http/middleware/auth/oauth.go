@@ -43,7 +43,7 @@ func (m *Auth) codeRuntime() (*oauth2auth.Code, error) {
 	}
 
 	code := &oauth2auth.Code{
-		BaseURL:            sn.OAuth2.BaseURL,
+		BaseURL:            session.ReplaceEndpointHost(sn.OAuth2.BaseURL, m.SessionProvidersConfig.HostReplacements),
 		Schema:             sn.OAuth2.Schema,
 		Path:               m.PrefixPath + "/oauth2/code",
 		InsecureSkipVerify: sn.OAuth2.InsecureSkipVerify,

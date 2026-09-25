@@ -386,7 +386,7 @@
         label: "Client secret",
         value: editor.getString("client_secret"),
         set: (value) => editor.setString("client_secret", value),
-        placeholder: "change-me",
+        placeholder: "optional",
       })}
       {@render line({
         label: "Scopes",
@@ -401,7 +401,7 @@
         set: (value) => editor.setList("whitelist_urls", value),
         placeholder: "https://app.example.com/callback",
         rows: 4,
-        hint: "One per line. A redirect that is not listed here is refused.",
+        hint: "One per line. Empty allows any non-empty redirect URI.",
       })}
       {@render exhibit({
         label: "Allowed resources",

@@ -31,7 +31,7 @@
     passkey_count: number;
   };
 
-  type PasskeyMeta = { id: string; name: string; created_at: string; sign_count: number };
+  type PasskeyMeta = { id: string; name: string; rp_id?: string; created_at: string; sign_count: number };
 
   let me = $state<Me | null>(null);
   let loadError = $state("");
@@ -834,7 +834,7 @@
                 <div class="min-w-0 flex-1 basis-64">
                   <p class="truncate text-[13.5px] font-medium text-ink">{passkeyName(passkey)}</p>
                   <p class="serial mt-0.5 truncate text-[12px] text-muted">
-                    Registered {formatStamp(passkey.created_at) || passkey.created_at || "—"}
+                    {passkey.rp_id || "Default relying party"} · Registered {formatStamp(passkey.created_at) || passkey.created_at || "—"}
                   </p>
                 </div>
 

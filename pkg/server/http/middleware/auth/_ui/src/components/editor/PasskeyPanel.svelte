@@ -20,6 +20,7 @@
     id: string;
     user_id: string;
     name: string;
+    rp_id?: string;
     sign_count: number;
     created_at: string;
     updated_at: string;
@@ -134,7 +135,7 @@
                 {credential.name || credential.id}
               </p>
               <p class="serial mt-0.5 truncate text-[12px] text-muted">
-                Registered {formatStamp(credential.created_at) || "—"} · signature count
+                {credential.rp_id || "Default relying party"} · Registered {formatStamp(credential.created_at) || "—"} · signature count
                 {credential.sign_count}
               </p>
             </div>

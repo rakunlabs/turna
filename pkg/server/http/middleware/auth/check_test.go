@@ -19,9 +19,9 @@ func TestNormalizeResources(t *testing.T) {
 			want:  []data.Resource{{Paths: []string{"/api/**"}, Methods: []string{"GET"}}},
 		},
 		{
-			name:  "legacy path appends to existing paths",
+			name:  "changed legacy path replaces existing paths",
 			input: []data.Resource{{Path: "/old/**", Paths: []string{"/new/**"}}},
-			want:  []data.Resource{{Paths: []string{"/new/**", "/old/**"}}},
+			want:  []data.Resource{{Paths: []string{"/old/**"}}},
 		},
 		{
 			name:  "duplicate is not appended twice",

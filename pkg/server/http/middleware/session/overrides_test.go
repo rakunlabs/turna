@@ -26,7 +26,7 @@ func TestReplaceEndpointHost(t *testing.T) {
 		{"", ""},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
-			if got := replaceEndpointHost(tc.input, replacements); got != tc.want {
+			if got := ReplaceEndpointHost(tc.input, replacements); got != tc.want {
 				t.Fatalf("got %q, want %q", got, tc.want)
 			}
 		})

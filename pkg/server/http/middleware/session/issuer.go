@@ -112,7 +112,7 @@ type PasskeyEnrollmentStatus struct {
 // middleware to offer passkey registration for its authenticated session.
 // userID must come from a token already validated against this issuer.
 type InfPasskeyEnrollment interface {
-	PasskeyEnrollmentStatus(ctx context.Context, userID, method string) (PasskeyEnrollmentStatus, error)
+	PasskeyEnrollmentStatus(ctx context.Context, orig *http.Request, userID, method string) (PasskeyEnrollmentStatus, error)
 	PasskeyEnrollmentRegister(ctx context.Context, orig *http.Request, userID, method string, body []byte) ([]byte, int, error)
 }
 

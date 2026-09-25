@@ -102,7 +102,8 @@ type LDAPStatic struct {
 
 // SessionProvidersStatic customizes the providers served by this Auth instance.
 type SessionProvidersStatic struct {
-	// HostReplacements rewrites exact endpoint hosts (including ports) before Overrides.
+	// HostReplacements rewrites exact endpoint hosts (including ports) before
+	// Overrides and rewrites oauth2.base_url for upstream code-flow callbacks.
 	HostReplacements map[string]string                           `cfg:"host_replacements"`
 	Overrides        map[string]session.ProviderEndpointOverride `cfg:"overrides"`
 }

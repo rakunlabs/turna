@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/rakunlabs/ada/middleware/auth/strategy/passkey"
@@ -23,12 +24,20 @@ const (
 	passkeyChallengeTTL = 2 * time.Minute
 )
 
-// passkeyEngine builds the WebAuthn engine from the "passkey" runtime
-// setting, deriving rp_id/origins from the request when not configured.
-func (m *Auth) passkeyEngine(r *http.Request) (*passkey.WebAuthn, error) {
+type passkeyRelyingParty struct {
+	RPID        string
+	DisplayName string
+	Origins     []string
+	Default     bool
+}
+
+// passkeyEngine builds the WebAuthn engine for the site whose configured
+// origin matches this request. The root fields remain the backwards-compatible
+// default when no site profile matches.
+func (m *Auth) passkeyEngine(r *http.Request) (*passkey.WebAuthn, passkeyRelyingParty, error) {
 	cfg := m.cache.Snapshot().Passkey
 	if cfg.Disabled {
-		return nil, errors.New("passkey is disabled")
+		return nil, passkeyRelyingParty{}, errors.New("passkey is disabled")
 	}
 
 	host := r.Header.Get("X-Forwarded-Host")
@@ -36,7 +45,30 @@ func (m *Auth) passkeyEngine(r *http.Request) (*passkey.WebAuthn, error) {
 		host = r.Host
 	}
 
-	rpID := cfg.RPID
+	scheme := r.Header.Get("X-Forwarded-Proto")
+	if scheme == "" {
+		if r.TLS != nil {
+			scheme = "https"
+		} else {
+			scheme = "http"
+		}
+	}
+	requestOrigin := scheme + "://" + host
+
+	selected := passkeyRelyingParty{RPID: cfg.RPID, DisplayName: cfg.RPDisplayName, Origins: cfg.Origins, Default: true}
+	for _, site := range cfg.Sites {
+		for _, origin := range site.Origins {
+			if strings.TrimSuffix(strings.TrimSpace(origin), "/") == requestOrigin {
+				selected = passkeyRelyingParty{RPID: site.RPID, DisplayName: site.RPDisplayName, Origins: site.Origins}
+				break
+			}
+		}
+		if !selected.Default {
+			break
+		}
+	}
+
+	rpID := selected.RPID
 	if rpID == "" {
 		rpID = host
 		if hostname, _, err := net.SplitHostPort(host); err == nil {
@@ -56,21 +88,12 @@ func (m *Auth) passkeyEngine(r *http.Request) (*passkey.WebAuthn, error) {
 		}
 	}
 
-	origins := cfg.Origins
+	origins := selected.Origins
 	if len(origins) == 0 {
-		scheme := r.Header.Get("X-Forwarded-Proto")
-		if scheme == "" {
-			if r.TLS != nil {
-				scheme = "https"
-			} else {
-				scheme = "http"
-			}
-		}
-
-		origins = []string{scheme + "://" + host}
+		origins = []string{requestOrigin}
 	}
 
-	displayName := cfg.RPDisplayName
+	displayName := selected.DisplayName
 	if displayName == "" {
 		displayName = "Turna Auth"
 	}
@@ -83,24 +106,38 @@ func (m *Auth) passkeyEngine(r *http.Request) (*passkey.WebAuthn, error) {
 		uv = passkey.UVDiscouraged
 	}
 
-	return passkey.New(&passkey.Config{
+	engine, err := passkey.New(&passkey.Config{
 		RPID:             rpID,
 		RPDisplayName:    displayName,
 		RPOrigins:        origins,
 		UserVerification: uv,
 		ChallengeTTL:     passkeyChallengeTTL,
 	})
+	if err != nil {
+		return nil, passkeyRelyingParty{}, err
+	}
+
+	selected.RPID = rpID
+	selected.DisplayName = displayName
+	selected.Origins = origins
+
+	return engine, selected, nil
 }
 
 // passkey challenge session helpers backed by the code store.
 
-func (m *Auth) passkeySessionSave(ctx context.Context, key string, session *passkey.SessionData) (string, error) {
+type storedPasskeySession struct {
+	Data passkey.SessionData `json:"data"`
+	RPID string              `json:"rp_id"`
+}
+
+func (m *Auth) passkeySessionSave(ctx context.Context, key string, session *passkey.SessionData, rpID string) (string, error) {
 	codeStore, err := m.codeStoreRuntime(ctx)
 	if err != nil {
 		return "", err
 	}
 
-	raw, err := json.Marshal(session)
+	raw, err := json.Marshal(storedPasskeySession{Data: *session, RPID: rpID})
 	if err != nil {
 		return "", err
 	}
@@ -117,31 +154,31 @@ func (m *Auth) passkeySessionSave(ctx context.Context, key string, session *pass
 	return sessionID, nil
 }
 
-func (m *Auth) passkeySessionTake(ctx context.Context, key, sessionID string) (*passkey.SessionData, error) {
+func (m *Auth) passkeySessionTake(ctx context.Context, key, sessionID string) (*passkey.SessionData, string, error) {
 	if sessionID == "" {
-		return nil, errors.New("session_id is required")
+		return nil, "", errors.New("session_id is required")
 	}
 
 	codeStore, err := m.codeStoreRuntime(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	raw, ok, err := codeStore.TakeState(ctx, key+sessionID)
 	if err != nil || !ok {
-		return nil, errors.New("passkey session not found or expired")
+		return nil, "", errors.New("passkey session not found or expired")
 	}
 
-	var session passkey.SessionData
-	if err := json.Unmarshal([]byte(raw), &session); err != nil {
-		return nil, err
+	var stored storedPasskeySession
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+		return nil, "", err
 	}
 
-	return &session, nil
+	return &stored.Data, stored.RPID, nil
 }
 
-func (m *Auth) passkeyExcludeList(ctx context.Context, userID string) []passkey.PublicKeyCredentialDescriptor {
-	descriptors, err := m.store.ListPasskeyCredentialDescriptors(ctx, userID)
+func (m *Auth) passkeyExcludeList(ctx context.Context, userID string, relyingParty passkeyRelyingParty) []passkey.PublicKeyCredentialDescriptor {
+	descriptors, err := m.store.ListPasskeyCredentialDescriptors(ctx, userID, relyingParty.RPID, relyingParty.Default)
 	if err != nil {
 		return nil
 	}
@@ -212,7 +249,7 @@ func (m *Auth) PasskeyRegisterAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	engine, err := m.passkeyEngine(r)
+	engine, relyingParty, err := m.passkeyEngine(r)
 	if err != nil {
 		httputil.HandleError(w, httputil.NewError("passkey not available", err, http.StatusServiceUnavailable))
 		return
@@ -234,13 +271,13 @@ func (m *Auth) PasskeyRegisterAPI(w http.ResponseWriter, r *http.Request) {
 			Handle:      []byte(user.ID),
 			Name:        username,
 			DisplayName: name,
-		}, m.passkeyExcludeList(r.Context(), user.ID))
+		}, m.passkeyExcludeList(r.Context(), user.ID, relyingParty))
 		if err != nil {
 			httputil.HandleError(w, httputil.NewError("cannot begin registration", err, http.StatusInternalServerError))
 			return
 		}
 
-		sessionID, err := m.passkeySessionSave(r.Context(), passkeyRegisterPrefix, session)
+		sessionID, err := m.passkeySessionSave(r.Context(), passkeyRegisterPrefix, session, relyingParty.RPID)
 		if err != nil {
 			httputil.HandleError(w, httputil.NewError("cannot save session", err, http.StatusInternalServerError))
 			return
@@ -254,9 +291,13 @@ func (m *Auth) PasskeyRegisterAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// finish
-	session, err := m.passkeySessionTake(r.Context(), passkeyRegisterPrefix, req.SessionID)
+	session, sessionRPID, err := m.passkeySessionTake(r.Context(), passkeyRegisterPrefix, req.SessionID)
 	if err != nil {
 		httputil.HandleError(w, httputil.NewError("registration session invalid", err, http.StatusBadRequest))
+		return
+	}
+	if sessionRPID != relyingParty.RPID {
+		httputil.HandleError(w, httputil.NewError("registration session relying party does not match request", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -266,7 +307,7 @@ func (m *Auth) PasskeyRegisterAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := m.store.CreatePasskeyCredential(r.Context(), user.ID, req.Name, cred); err != nil {
+	if err := m.store.CreatePasskeyCredential(r.Context(), user.ID, req.Name, sessionRPID, cred); err != nil {
 		httputil.HandleError(w, httputil.NewError("cannot save credential", err, http.StatusInternalServerError))
 		return
 	}
@@ -396,7 +437,7 @@ func (m *Auth) APIPasskeyToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	engine, err := m.passkeyEngine(r)
+	engine, relyingParty, err := m.passkeyEngine(r)
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "passkey_unavailable",
@@ -413,7 +454,7 @@ func (m *Auth) APIPasskeyToken(w http.ResponseWriter, r *http.Request) {
 		var descriptors []passkey.PublicKeyCredentialDescriptor
 		if req.Username != "" {
 			if user, err := m.cache.GetUser(data.GetUserRequest{Alias: req.Username}); err == nil {
-				list, _ := m.store.ListPasskeyCredentialDescriptors(r.Context(), user.ID)
+				list, _ := m.store.ListPasskeyCredentialDescriptors(r.Context(), user.ID, relyingParty.RPID, relyingParty.Default)
 				for _, d := range list {
 					raw, err := passkey.Base64URLDecode(d.ID)
 					if err != nil {
@@ -444,7 +485,7 @@ func (m *Auth) APIPasskeyToken(w http.ResponseWriter, r *http.Request) {
 			options.AllowCredentials = descriptors
 		}
 
-		sessionID, err := m.passkeySessionSave(r.Context(), passkeyLoginPrefix, session)
+		sessionID, err := m.passkeySessionSave(r.Context(), passkeyLoginPrefix, session, relyingParty.RPID)
 		if err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "server_error",
@@ -461,7 +502,7 @@ func (m *Auth) APIPasskeyToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// finish
-	session, err := m.passkeySessionTake(r.Context(), passkeyLoginPrefix, req.SessionID)
+	session, sessionRPID, err := m.passkeySessionTake(r.Context(), passkeyLoginPrefix, req.SessionID)
 	if err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_grant",
@@ -469,6 +510,14 @@ func (m *Auth) APIPasskeyToken(w http.ResponseWriter, r *http.Request) {
 			code:             http.StatusUnauthorized,
 		})
 
+		return
+	}
+	if sessionRPID != relyingParty.RPID {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_grant",
+			ErrorDescription: "passkey session relying party does not match request",
+			code:             http.StatusUnauthorized,
+		})
 		return
 	}
 

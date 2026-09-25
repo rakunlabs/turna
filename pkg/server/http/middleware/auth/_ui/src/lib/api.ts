@@ -142,6 +142,7 @@ export const settingTemplates = {
     rp_id: "",
     rp_display_name: "",
     origins: [],
+    sites: [],
     user_verification: "preferred",
     enrollment: {
       enabled: false,
@@ -292,9 +293,9 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     body: "config",
     canCreate: true,
     example: {
-      client_secret: "change-me",
+      client_secret: "",
       scope: ["openid", "profile"],
-      whitelist_urls: ["https://app.example.com/callback"],
+      whitelist_urls: [],
       resources: [],
       skip_consent: false,
     },

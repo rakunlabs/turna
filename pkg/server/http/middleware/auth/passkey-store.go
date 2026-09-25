@@ -16,6 +16,7 @@ type PasskeyCredentialMeta struct {
 	ID        string `json:"id"`
 	UserID    string `json:"user_id"`
 	Name      string `json:"name"`
+	RPID      string `json:"rp_id"`
 	SignCount uint32 `json:"sign_count"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
@@ -26,16 +27,16 @@ func passkeyCredentialKey(credentialID []byte) string {
 }
 
 // CreatePasskeyCredential persists a credential produced by FinishRegistration.
-func (s *Store) CreatePasskeyCredential(ctx context.Context, userID, name string, cred *passkey.Credential) error {
+func (s *Store) CreatePasskeyCredential(ctx context.Context, userID, name, rpID string, cred *passkey.Credential) error {
 	raw, err := json.Marshal(cred)
 	if err != nil {
 		return err
 	}
 
 	_, err = s.db.ExecContext(ctx, `INSERT INTO auth_passkey_credentials
-		(id, user_id, name, credential, sign_count)
-		VALUES ($1, $2, $3, $4::jsonb, $5)`,
-		passkeyCredentialKey(cred.ID), userID, name, string(raw), int64(cred.SignCount))
+		(id, user_id, name, rp_id, credential, sign_count)
+		VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
+		passkeyCredentialKey(cred.ID), userID, name, rpID, string(raw), int64(cred.SignCount))
 	if err != nil {
 		return fmt.Errorf("insert passkey credential: %w", err)
 	}
@@ -73,7 +74,7 @@ func (s *Store) GetPasskeyCredential(ctx context.Context, credentialID []byte) (
 
 // ListPasskeyCredentials returns credential metadata for a user.
 func (s *Store) ListPasskeyCredentials(ctx context.Context, userID string) ([]PasskeyCredentialMeta, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, user_id, name, sign_count,
+	rows, err := s.db.QueryContext(ctx, `SELECT id, user_id, name, rp_id, sign_count,
 		to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		FROM auth_passkey_credentials WHERE user_id = $1 ORDER BY created_at`, userID)
@@ -86,7 +87,7 @@ func (s *Store) ListPasskeyCredentials(ctx context.Context, userID string) ([]Pa
 	for rows.Next() {
 		var meta PasskeyCredentialMeta
 		var signCount int64
-		if err := rows.Scan(&meta.ID, &meta.UserID, &meta.Name, &signCount, &meta.CreatedAt, &meta.UpdatedAt); err != nil {
+		if err := rows.Scan(&meta.ID, &meta.UserID, &meta.Name, &meta.RPID, &signCount, &meta.CreatedAt, &meta.UpdatedAt); err != nil {
 			return nil, err
 		}
 
@@ -100,11 +101,11 @@ func (s *Store) ListPasskeyCredentials(ctx context.Context, userID string) ([]Pa
 func (s *Store) GetPasskeyCredentialMeta(ctx context.Context, id string) (*PasskeyCredentialMeta, error) {
 	var meta PasskeyCredentialMeta
 	var signCount int64
-	err := s.db.QueryRowContext(ctx, `SELECT id, user_id, name, sign_count,
+	err := s.db.QueryRowContext(ctx, `SELECT id, user_id, name, rp_id, sign_count,
 		to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		FROM auth_passkey_credentials WHERE id = $1`, id).
-		Scan(&meta.ID, &meta.UserID, &meta.Name, &signCount, &meta.CreatedAt, &meta.UpdatedAt)
+		Scan(&meta.ID, &meta.UserID, &meta.Name, &meta.RPID, &signCount, &meta.CreatedAt, &meta.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("passkey credential %s not found; %w", id, data.ErrNotFound)
@@ -123,9 +124,10 @@ func (s *Store) GetPasskeyCredentialMeta(ctx context.Context, id string) (*Passk
 // login and excludeCredentials in registration. Transport hints let the
 // browser route straight to the right authenticator (platform, hybrid,
 // usb) instead of falling back to the generic QR/security-key dialog.
-func (s *Store) ListPasskeyCredentialDescriptors(ctx context.Context, userID string) ([]passkey.PublicKeyCredentialDescriptor, error) {
+func (s *Store) ListPasskeyCredentialDescriptors(ctx context.Context, userID, rpID string, includeLegacy bool) ([]passkey.PublicKeyCredentialDescriptor, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, credential->'Transports' FROM auth_passkey_credentials WHERE user_id = $1 ORDER BY created_at`, userID)
+		`SELECT id, credential->'Transports' FROM auth_passkey_credentials
+		 WHERE user_id = $1 AND (rp_id = $2 OR ($3 AND rp_id = '')) ORDER BY created_at`, userID, rpID, includeLegacy)
 	if err != nil {
 		return nil, err
 	}

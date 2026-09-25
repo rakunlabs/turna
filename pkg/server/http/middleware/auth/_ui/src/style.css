@@ -17,6 +17,7 @@
   --color-raised: var(--w-raised);
   --color-ink: var(--w-ink);
   --color-muted: var(--w-muted);
+  --color-placeholder: var(--w-placeholder);
   --color-faint: var(--w-faint);
   --color-rule: var(--w-rule);
   --color-rule-strong: var(--w-rule-strong);
@@ -72,6 +73,7 @@
      the surfaces gave up. */
   --w-ink: #3d405b;
   --w-muted: #565a6e;
+  --w-placeholder: #686a78;
   --w-faint: #9a9aa2;
   --w-rule: #c3c3c3;
   --w-rule-strong: #3d405b;
@@ -112,6 +114,7 @@
   --w-raised: #1f2420;
   --w-ink: #e4e9e2;
   --w-muted: #98a199;
+  --w-placeholder: #858e87;
   --w-faint: #8a938c;
   --w-rule: #2c332d;
   --w-rule-strong: #e4e9e2;
@@ -388,10 +391,12 @@
     outline: none;
     transition: border-color 120ms var(--ease-settle);
   }
-  /* Placeholder text is body text as far as the contrast floor is concerned;
-     --w-faint exists for disabled controls and marks, which are exempt. */
+  /* Placeholders need to recede from entered values without falling into the
+     disabled tier. Both theme values keep at least 4.5:1 against the darkest
+     field surface. Explicit opacity avoids browser placeholder defaults. */
   .entry::placeholder {
-    color: var(--w-muted);
+    color: var(--w-placeholder);
+    opacity: 1;
   }
   .entry:hover:not(:disabled) {
     border-bottom-color: var(--w-faint);

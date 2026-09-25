@@ -31,7 +31,7 @@ func (i *enrollmentTestIssuer) IssueToken(*http.Request, url.Values) ([]byte, in
 	return nil, http.StatusNotImplemented, nil
 }
 
-func (i *enrollmentTestIssuer) PasskeyEnrollmentStatus(_ context.Context, userID, method string) (session.PasskeyEnrollmentStatus, error) {
+func (i *enrollmentTestIssuer) PasskeyEnrollmentStatus(_ context.Context, _ *http.Request, userID, method string) (session.PasskeyEnrollmentStatus, error) {
 	i.userID = userID
 	i.method = method
 

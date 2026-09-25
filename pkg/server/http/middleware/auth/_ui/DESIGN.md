@@ -282,7 +282,10 @@ system makes about boxes, applied to the plane itself.
   the colour of the double rule and of every `.act` border. Indigo, not black —
   it clears AAA at 9.8:1 on the sheet, so the plane costs nothing in legibility.
 - **Muted** (`#565a6e` / vault `#98a199`): secondary text — labels, hints,
-  notes, placeholders, inactive index entries.
+  notes and inactive index entries.
+- **Placeholder** (`#686a78` / vault `#858e87`): quieter than secondary text
+  but still at least 4.5:1 against the darkest field surface, so empty fields
+  do not read as already populated.
 - **Faint** (`#9a9aa2` / vault `#8a938c`): **not a text colour.** Disabled
   control text, the off-state switch knob, the void seal ring, the scrollbar
   thumb on hover.
@@ -299,8 +302,8 @@ its action is reversible, the element is wrong. Ordinary commits are carbon.
 
 **The Faint-Is-Not-Text Rule.** On the light ground no third, lighter text level
 reaches 4.5:1 against sheet — so `--w-faint` is scoped to disabled controls and
-non-text marks, which WCAG exempts. Placeholder text uses **muted**, because a
-placeholder is body text as far as the contrast floor is concerned. Never
+non-text marks, which WCAG exempts. Placeholder text uses its own accessible
+tier because a placeholder is body text as far as the contrast floor is concerned. Never
 introduce a `text-faint` for prose; the tier does not exist by design, not by
 omission.
 
@@ -501,7 +504,8 @@ A line on a form, filled in.
   13.5px, zero radius.
 - **Focus:** bottom rule goes 2px seal red with compensating padding.
 - **Hover:** rule darkens to faint.
-- **Disabled:** faint text, dashed rule. **Placeholder:** muted, never faint.
+- **Disabled:** faint text, dashed rule. **Placeholder:** its dedicated quieter
+  text tier, never faint.
 - **Invalid:** the rule and the hint text both go seal (`Entry` sets
   `aria-invalid` and wires `aria-describedby` to the hint).
 - **Mono variant:** `mono` adds `.serial` for keys, ids and paths.
@@ -605,8 +609,8 @@ message loses the only statement of why the write did not happen.
 ### Don't:
 - **Don't** use seal red for anything reversible. Not for emphasis, not for a
   primary button, not for a required-field marker.
-- **Don't** introduce a third text tier on faint. `--w-faint` is for disabled
-  controls and marks; placeholders and hints use muted.
+- **Don't** put readable text on faint. `--w-faint` is for disabled controls
+  and marks; placeholders use their accessible placeholder tier and hints use muted.
 - **Don't** add a modal, a `<dialog>`, or `window.confirm`. There are none in
   this codebase and the absence is load-bearing: `BreakSeal` carries consequence
   in place, where the change is being made.
