@@ -25,7 +25,19 @@ Turna implements the loader in `internal/loader` and then consumes the resulting
 
 ## Static Sources
 
-Static sources are loaded once at startup. Supported source types are `consul`, `vault`, `file`, `http`, and `content`.
+Static sources are loaded once at startup. Supported source types are `consul`, `vault`, `file`, `http`, `content`, `aws_secrets`, `aws_ssm`, `azure_key_vault`, `gcp_secret`, and `gcp_parameter`.
+
+Every source shares these fields:
+
+| Field | Description |
+| --- | --- |
+| `name` | Key used to expose this source's value in memory. |
+| `raw` | Keep the content as raw bytes instead of decoding it. |
+| `codec` | `YAML`, `JSON` or `TOML`. Default is YAML; `file` detects it from the extension and `http` from `Content-Type`. |
+| `inner_path` | `/` separated path to pick from the decoded value. |
+| `map` | `/` separated path to wrap the value in. |
+| `template` | Render the content as a template before decoding. |
+| `base64` | Base64 decode the resulting raw value. |
 
 ### Consul
 
@@ -46,6 +58,13 @@ loads:
 ```
 
 ### Vault
+
+Reads a KVv2 secret with chu's vault loader. `VAULT_ADDR` (or
+`VAULT_AGENT_ADDR`) is required. AppRole login is used when `VAULT_ROLE_ID`
+(and `VAULT_ROLE_SECRET`) is set, otherwise the client uses `VAULT_TOKEN`.
+`path_prefix` falls back to `VAULT_SECRET_BASE_PATH` and `app_role_base_path`
+to `VAULT_APPROLE_BASE_PATH`. The secret data is passed as JSON, so `raw: true`
+gives the JSON document.
 
 ```yaml
 loads:
@@ -126,6 +145,58 @@ loads:
           inner_path: ""
           map: ""
           base64: false
+```
+
+## Cloud Sources
+
+Cloud sources use the same clients as chu's external loaders and the default
+credential chain of each provider (AWS default config, Azure
+`DefaultAzureCredential`, GCP Application Default Credentials).
+
+Target fields are optional when the related environment variable is set, the
+same variables chu uses. A value in the config overrides the environment.
+
+| Source | Field | Environment fallback |
+| --- | --- | --- |
+| `aws_secrets` | `region` | `AWS_REGION`, `AWS_DEFAULT_REGION` |
+| `aws_secrets` | `prefix` | `AWS_SECRETS_PREFIX` |
+| `aws_ssm` | `region` | `AWS_REGION`, `AWS_DEFAULT_REGION` |
+| `aws_ssm` | `prefix` | `AWS_SSM_PREFIX` |
+| `azure_key_vault` | `vault_url` | `AZURE_KEYVAULT_URL`, `AZURE_KEYVAULT_NAME` (`https://<name>.vault.azure.net/`) |
+| `gcp_secret` | `project_id` | `GCP_PROJECT_ID` |
+| `gcp_secret` | `location` | `GCP_SECRET_LOCATION` (default `global`) |
+| `gcp_secret` | `version` | `GCP_SECRET_VERSION` (default `latest`) |
+| `gcp_parameter` | `project_id` | `GCP_PROJECT_ID` |
+| `gcp_parameter` | `location` | `GCP_PARAMETER_LOCATION` (default `global`) |
+| `gcp_parameter` | `version` | `GCP_PARAMETER_VERSION` (default `latest`) |
+
+```yaml
+loads:
+  - name: app
+    export: app.yaml
+    statics:
+      # AWS Secrets Manager, secret id becomes <prefix>/<secret_id>
+      - aws_secrets:
+          secret_id: app/config
+          region: eu-west-1
+      # AWS SSM Parameter Store, loaded with decryption as /<prefix>/<parameter>
+      - aws_ssm:
+          parameter: app/config
+          codec: JSON
+      # Azure Key Vault, "/" in secret is replaced with "-"
+      - azure_key_vault:
+          secret: app-config
+          vault_url: https://myvault.vault.azure.net/
+      # GCP Secret Manager, "/" in secret is replaced with "-"
+      - gcp_secret:
+          secret: app
+          inner_path: database
+          map: db
+      # GCP Parameter Manager, rendered payload is used
+      - gcp_parameter:
+          parameter: app
+          project_id: my-project
+          location: europe-west1
 ```
 
 ## Dynamic Sources

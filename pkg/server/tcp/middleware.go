@@ -18,6 +18,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/redirect"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/snirouter"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/socks5"
+	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/sshserver"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/telemetry"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/tlsterminate"
 	"github.com/rakunlabs/turna/pkg/server/tcp/tcpmw"
@@ -39,6 +40,7 @@ type TCPMiddleware struct {
 	LogMiddleware            *log.Log                     `cfg:"log"`
 	TelemetryMiddleware      *telemetry.Telemetry         `cfg:"telemetry"`
 	HTTPConnectMiddleware    *httpconnect.HTTPConnect     `cfg:"http_connect"`
+	SSHServerMiddleware      *sshserver.SSHServer         `cfg:"ssh_server"`
 }
 
 type middlewareFactory interface {
@@ -70,6 +72,7 @@ func (h *TCPMiddleware) factories() []struct {
 		{"log", h.LogMiddleware, h.LogMiddleware != nil},
 		{"telemetry", h.TelemetryMiddleware, h.TelemetryMiddleware != nil},
 		{"http connect", h.HTTPConnectMiddleware, h.HTTPConnectMiddleware != nil},
+		{"ssh server", h.SSHServerMiddleware, h.SSHServerMiddleware != nil},
 	}
 }
 

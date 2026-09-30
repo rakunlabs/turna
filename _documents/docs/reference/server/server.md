@@ -241,7 +241,7 @@ server:
           - docker_socket
 ```
 
-TCP middlewares form a chain for each accepted connection, in router order. Filters such as `ip_allow_list`, `rate_limit` or `conn_limit` check the connection and call the next middleware; wrappers such as `tls_terminate`, `proxy_protocol`, `idle_timeout` or `bandwidth_limit` pass a wrapped connection to the next middleware; terminal middlewares such as `redirect`, `load_balancer`, `socks5`, `http_connect` or `sni_router` consume the connection. If a middleware returns an error, the chain stops and the connection is closed. Expected rejections (deny list, limits) are logged at debug level.
+TCP middlewares form a chain for each accepted connection, in router order. Filters such as `ip_allow_list`, `rate_limit` or `conn_limit` check the connection and call the next middleware; wrappers such as `tls_terminate`, `proxy_protocol`, `idle_timeout` or `bandwidth_limit` pass a wrapped connection to the next middleware; terminal middlewares such as `redirect`, `load_balancer`, `socks5`, `http_connect`, `ssh_server` or `sni_router` consume the connection. If a middleware returns an error, the chain stops and the connection is closed. Expected rejections (deny list, limits) are logged at debug level.
 
 ```yaml
 server:
@@ -273,7 +273,7 @@ server:
           - backend
 ```
 
-TCP middlewares: [`bandwidth_limit`](./tcp/middlewares/bandwidth_limit), [`conn_limit`](./tcp/middlewares/conn_limit), [`http_connect`](./tcp/middlewares/http_connect), [`idle_timeout`](./tcp/middlewares/idle_timeout), [`ip_allow_list`](./tcp/middlewares/ip_allow_list), [`ip_deny_list`](./tcp/middlewares/ip_deny_list), [`load_balancer`](./tcp/middlewares/load_balancer), [`log`](./tcp/middlewares/log), [`proxy_protocol`](./tcp/middlewares/proxy_protocol), [`rate_limit`](./tcp/middlewares/rate_limit), [`redirect`](./tcp/middlewares/redirect), [`sni_router`](./tcp/middlewares/sni_router), [`socks5`](./tcp/middlewares/socks5), [`telemetry`](./tcp/middlewares/telemetry), [`tls_terminate`](./tcp/middlewares/tls_terminate).
+TCP middlewares: [`bandwidth_limit`](./tcp/middlewares/bandwidth_limit), [`conn_limit`](./tcp/middlewares/conn_limit), [`http_connect`](./tcp/middlewares/http_connect), [`idle_timeout`](./tcp/middlewares/idle_timeout), [`ip_allow_list`](./tcp/middlewares/ip_allow_list), [`ip_deny_list`](./tcp/middlewares/ip_deny_list), [`load_balancer`](./tcp/middlewares/load_balancer), [`log`](./tcp/middlewares/log), [`proxy_protocol`](./tcp/middlewares/proxy_protocol), [`rate_limit`](./tcp/middlewares/rate_limit), [`redirect`](./tcp/middlewares/redirect), [`sni_router`](./tcp/middlewares/sni_router), [`socks5`](./tcp/middlewares/socks5), [`ssh_server`](./tcp/middlewares/ssh_server), [`telemetry`](./tcp/middlewares/telemetry), [`tls_terminate`](./tcp/middlewares/tls_terminate).
 
 ## UDP Routers
 

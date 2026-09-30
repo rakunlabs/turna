@@ -3,10 +3,10 @@ package loader
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"path"
+	"path/filepath"
 	"sync"
 )
 
@@ -17,8 +17,9 @@ type Call func(context.Context, string, map[string]interface{})
 // clients holds the lazily-connected backends shared across a Load call.
 type clients struct {
 	consul *consulClient
-	vault  *vaultClient
+	vault  *vaultClients
 	http   *httpClient
+	cloud  *cloudClients
 }
 
 // Load loads all configs to their export location and in memory.
@@ -31,9 +32,12 @@ func (c Configs) Load(ctx context.Context, wg *sync.WaitGroup, call Call) error 
 
 	cl := &clients{
 		consul: &consulClient{},
-		vault:  &vaultClient{},
+		vault:  &vaultClients{},
 		http:   &httpClient{},
+		cloud:  &cloudClients{},
 	}
+
+	defer cl.cloud.close()
 
 	for _, config := range c {
 		if err := config.load(ctx, wg, cl, call); err != nil {
@@ -94,33 +98,71 @@ func (c Config) load(ctx context.Context, wg *sync.WaitGroup, cl *clients, call 
 	return nil
 }
 
+// source is a static source that produces raw bytes; the shared
+// post-processing (template, raw, codec, inner_path, map, base64) is applied
+// by loadSource.
+type source interface {
+	// fetch returns the raw content and an optional codec hint used when
+	// codec is not set.
+	fetch(ctx context.Context, cl *clients) ([]byte, string, error)
+	common() *ConfigCommon
+}
+
+func (c *ConfigCommon) common() *ConfigCommon { return c }
+
+func (c ConfigStatic) sources() []source {
+	var sources []source
+
+	if c.File != nil {
+		sources = append(sources, c.File)
+	}
+
+	if c.HTTP != nil {
+		sources = append(sources, c.HTTP)
+	}
+
+	if c.Content != nil {
+		sources = append(sources, c.Content)
+	}
+
+	if c.AWSSecrets != nil {
+		sources = append(sources, c.AWSSecrets)
+	}
+
+	if c.AWSSSM != nil {
+		sources = append(sources, c.AWSSSM)
+	}
+
+	if c.AzureKeyVault != nil {
+		sources = append(sources, c.AzureKeyVault)
+	}
+
+	if c.GCPSecret != nil {
+		sources = append(sources, c.GCPSecret)
+	}
+
+	if c.GCPParameter != nil {
+		sources = append(sources, c.GCPParameter)
+	}
+
+	return sources
+}
+
 func (c ConfigStatic) load(ctx context.Context, to *Data, cl *clients) error {
 	if c.Consul != nil {
-		if err := c.loadConsul(ctx, to, cl); err != nil {
+		if err := loadSource(ctx, c.Consul, to, cl); err != nil {
 			return err
 		}
 	}
 
 	if c.Vault != nil {
-		if err := c.loadVault(ctx, to, cl); err != nil {
+		if err := loadSource(ctx, c.Vault, to, cl); err != nil {
 			return err
 		}
 	}
 
-	if c.File != nil {
-		if err := c.loadFile(to); err != nil {
-			return err
-		}
-	}
-
-	if c.HTTP != nil {
-		if err := c.loadHTTP(ctx, to, cl); err != nil {
-			return err
-		}
-	}
-
-	if c.Content != nil {
-		if err := c.loadContent(to); err != nil {
+	for _, src := range c.sources() {
+		if err := loadSource(ctx, src, to, cl); err != nil {
 			return err
 		}
 	}
@@ -128,15 +170,15 @@ func (c ConfigStatic) load(ctx context.Context, to *Data, cl *clients) error {
 	return nil
 }
 
-func (c ConfigStatic) loadConsul(ctx context.Context, to *Data, cl *clients) error {
-	contentPath := path.Join(c.Consul.PathPrefix, c.Consul.Path)
-
-	data, err := cl.consul.loadRaw(ctx, contentPath)
+func loadSource(ctx context.Context, src source, to *Data, cl *clients) error {
+	data, codecHint, err := src.fetch(ctx, cl)
 	if err != nil {
 		return err
 	}
 
-	if c.Consul.Template {
+	c := src.common()
+
+	if c.Template {
 		v, err := renderTemplate(string(data), to.Hold)
 		if err != nil {
 			return err
@@ -147,9 +189,9 @@ func (c ConfigStatic) loadConsul(ctx context.Context, to *Data, cl *clients) err
 
 	var dataProcessed interface{}
 
-	if c.Consul.Raw {
-		if c.Consul.Map != "" {
-			vMap := MapPath(c.Consul.Map, data).(map[string]interface{})
+	if c.Raw {
+		if c.Map != "" {
+			vMap := MapPath(c.Map, data).(map[string]interface{})
 			to.Merge(vMap)
 			dataProcessed = vMap
 		} else {
@@ -157,169 +199,9 @@ func (c ConfigStatic) loadConsul(ctx context.Context, to *Data, cl *clients) err
 			dataProcessed = data
 		}
 	} else {
-		var vMap map[string]interface{}
-		if err := decodeContent(c.Consul.Codec, data, &vMap); err != nil {
-			return err
-		}
-
-		innerValue := MapPath(c.Consul.Map, InnerPath(c.Consul.InnerPath, vMap))
-		if m, ok := innerValue.(map[string]interface{}); ok {
-			to.Merge(m)
-			dataProcessed = innerValue
-		} else {
-			to.Raw = []byte(fmt.Sprint(innerValue))
-			dataProcessed = to.Raw
-		}
-	}
-
-	if c.Consul.Base64 && to.Raw != nil {
-		if to.Raw, err = base64.StdEncoding.DecodeString(string(to.Raw)); err != nil {
-			return fmt.Errorf("consul decode base64 error: %w", err)
-		}
-
-		dataProcessed = to.Raw
-	}
-
-	to.AddHold(c.Consul.Name, dataProcessed)
-
-	return nil
-}
-
-func (c ConfigStatic) loadVault(ctx context.Context, to *Data, cl *clients) error {
-	cl.vault.appRoleBasePath = c.Vault.AppRoleBasePath
-
-	vMap, err := cl.vault.loadMap(ctx, c.Vault.PathPrefix, c.Vault.Path)
-	if err != nil {
-		return err
-	}
-
-	if c.Vault.Template {
-		data, err := json.Marshal(vMap)
-		if err != nil {
-			return err
-		}
-
-		vRendered, err := renderTemplate(string(data), to.Hold)
-		if err != nil {
-			return err
-		}
-
-		var vX map[string]interface{}
-		if err := json.Unmarshal(vRendered, &vX); err != nil {
-			return err
-		}
-
-		vMap = vX
-	}
-
-	var dataProcessed interface{}
-	innerValue := MapPath(c.Vault.Map, InnerPath(c.Vault.InnerPath, vMap))
-	if m, ok := innerValue.(map[string]interface{}); ok {
-		to.Merge(m)
-		dataProcessed = innerValue
-	} else {
-		to.Raw = []byte(fmt.Sprint(innerValue))
-		dataProcessed = to.Raw
-	}
-
-	if c.Vault.Base64 && to.Raw != nil {
-		if to.Raw, err = base64.StdEncoding.DecodeString(string(to.Raw)); err != nil {
-			return fmt.Errorf("vault decode base64 error: %w", err)
-		}
-
-		dataProcessed = to.Raw
-	}
-
-	to.AddHold(c.Vault.Name, dataProcessed)
-
-	return nil
-}
-
-func (c ConfigStatic) loadFile(to *Data) error {
-	data, err := loadFileRaw(c.File.Path)
-	if err != nil {
-		return err
-	}
-
-	if c.File.Template {
-		v, err := renderTemplate(string(data), to.Hold)
-		if err != nil {
-			return err
-		}
-
-		data = v
-	}
-
-	var dataProcessed interface{}
-
-	if c.File.Raw {
-		if c.File.Map != "" {
-			vMap := MapPath(c.File.Map, data).(map[string]interface{})
-			to.Merge(vMap)
-			dataProcessed = vMap
-		} else {
-			to.Raw = data
-			dataProcessed = data
-		}
-	} else {
-		var vMap map[string]interface{}
-		if err := loadFileMap(c.File.Path, &vMap); err != nil {
-			return err
-		}
-
-		innerValue := MapPath(c.File.Map, InnerPath(c.File.InnerPath, vMap))
-		if m, ok := innerValue.(map[string]interface{}); ok {
-			to.Merge(m)
-			dataProcessed = innerValue
-		} else {
-			to.Raw = []byte(fmt.Sprint(innerValue))
-			dataProcessed = to.Raw
-		}
-	}
-
-	if c.File.Base64 && to.Raw != nil {
-		if to.Raw, err = base64.StdEncoding.DecodeString(string(to.Raw)); err != nil {
-			return fmt.Errorf("file decode base64 error: %w", err)
-		}
-
-		dataProcessed = to.Raw
-	}
-
-	to.AddHold(c.File.Name, dataProcessed)
-
-	return nil
-}
-
-func (c ConfigStatic) loadHTTP(ctx context.Context, to *Data, cl *clients) error {
-	data, contentType, err := cl.http.loadRaw(ctx, c.HTTP)
-	if err != nil {
-		return err
-	}
-
-	if c.HTTP.Template {
-		v, err := renderTemplate(string(data), to.Hold)
-		if err != nil {
-			return err
-		}
-
-		data = v
-	}
-
-	var dataProcessed interface{}
-
-	if c.HTTP.Raw {
-		if c.HTTP.Map != "" {
-			vMap := MapPath(c.HTTP.Map, data).(map[string]interface{})
-			to.Merge(vMap)
-			dataProcessed = vMap
-		} else {
-			to.Raw = data
-			dataProcessed = data
-		}
-	} else {
-		codecName := c.HTTP.Codec
+		codecName := c.Codec
 		if codecName == "" {
-			codecName = codecNameByContentType(contentType)
+			codecName = codecHint
 		}
 
 		var vMap map[string]interface{}
@@ -327,7 +209,7 @@ func (c ConfigStatic) loadHTTP(ctx context.Context, to *Data, cl *clients) error
 			return err
 		}
 
-		innerValue := MapPath(c.HTTP.Map, InnerPath(c.HTTP.InnerPath, vMap))
+		innerValue := MapPath(c.Map, InnerPath(c.InnerPath, vMap))
 		if m, ok := innerValue.(map[string]interface{}); ok {
 			to.Merge(m)
 			dataProcessed = innerValue
@@ -337,69 +219,45 @@ func (c ConfigStatic) loadHTTP(ctx context.Context, to *Data, cl *clients) error
 		}
 	}
 
-	if c.HTTP.Base64 && to.Raw != nil {
+	if c.Base64 && to.Raw != nil {
 		if to.Raw, err = base64.StdEncoding.DecodeString(string(to.Raw)); err != nil {
-			return fmt.Errorf("http decode base64 error: %w", err)
+			return fmt.Errorf("decode base64 error: %w", err)
 		}
 
 		dataProcessed = to.Raw
 	}
 
-	to.AddHold(c.HTTP.Name, dataProcessed)
+	to.AddHold(c.Name, dataProcessed)
 
 	return nil
 }
 
-func (c ConfigStatic) loadContent(to *Data) error {
-	content := c.Content.Content
-	if c.Content.Template {
-		v, err := renderTemplate(content, to.Hold)
-		if err != nil {
-			return err
-		}
+func (c *ConfigConsul) fetch(ctx context.Context, cl *clients) ([]byte, string, error) {
+	data, err := cl.consul.loadRaw(ctx, path.Join(c.PathPrefix, c.Path))
 
-		content = string(v)
+	return data, "", err
+}
+
+func (c *ConfigFile) fetch(_ context.Context, _ *clients) ([]byte, string, error) {
+	data, err := loadFileRaw(c.Path)
+	if err != nil {
+		return nil, "", err
 	}
 
-	var dataProcessed interface{}
+	return data, codecNameByExt(filepath.Ext(c.Path)), nil
+}
 
-	if c.Content.Raw {
-		if c.Content.Map != "" {
-			vMap := MapPath(c.Content.Map, []byte(content)).(map[string]interface{})
-			to.Merge(vMap)
-			dataProcessed = vMap
-		} else {
-			to.Raw = []byte(content)
-			dataProcessed = []byte(content)
-		}
-	} else {
-		var vMap map[string]interface{}
-		if err := decodeContent(c.Content.Codec, []byte(content), &vMap); err != nil {
-			return err
-		}
-
-		innerValue := MapPath(c.Content.Map, InnerPath(c.Content.InnerPath, vMap))
-		if m, ok := innerValue.(map[string]interface{}); ok {
-			to.Merge(m)
-			dataProcessed = innerValue
-		} else {
-			to.Raw = []byte(fmt.Sprint(innerValue))
-			dataProcessed = to.Raw
-		}
+func (c *ConfigHTTP) fetch(ctx context.Context, cl *clients) ([]byte, string, error) {
+	data, contentType, err := cl.http.loadRaw(ctx, c)
+	if err != nil {
+		return nil, "", err
 	}
 
-	if c.Content.Base64 && to.Raw != nil {
-		var err error
-		if to.Raw, err = base64.StdEncoding.DecodeString(string(to.Raw)); err != nil {
-			return fmt.Errorf("content decode base64 error: %w", err)
-		}
+	return data, codecNameByContentType(contentType), nil
+}
 
-		dataProcessed = to.Raw
-	}
-
-	to.AddHold(c.Content.Name, dataProcessed)
-
-	return nil
+func (c *ConfigContent) fetch(_ context.Context, _ *clients) ([]byte, string, error) {
+	return []byte(c.Content), "", nil
 }
 
 func (c ConfigDynamic) load(ctx context.Context, wg *sync.WaitGroup, to *Data, cl *clients, config *Config, call Call) (context.Context, error) {

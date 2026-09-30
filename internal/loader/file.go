@@ -23,26 +23,6 @@ func loadFileRaw(path string) ([]byte, error) {
 	return b, nil
 }
 
-// loadFileMap reads a file and decodes it into a map based on its extension.
-func loadFileMap(path string, v any) error {
-	c, err := codecByExt(filepath.Ext(path))
-	if err != nil {
-		return err
-	}
-
-	f, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", path, err)
-	}
-	defer f.Close()
-
-	if err := c.Decode(f, v); err != nil {
-		return fmt.Errorf("failed to decode file %s: %w", path, err)
-	}
-
-	return nil
-}
-
 // writeRaw writes raw bytes to path, creating parent folders as needed.
 func writeRaw(path string, data []byte, filePerm, folderPerm string) error {
 	f, err := openForWrite(path, filePerm, folderPerm)

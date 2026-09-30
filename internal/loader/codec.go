@@ -102,6 +102,19 @@ func codecByExt(ext string) (codec, error) {
 	}
 }
 
+// codecNameByExt maps a file extension to a codec name.
+// Unknown extensions return empty, which defaults to YAML.
+func codecNameByExt(ext string) string {
+	switch strings.ToLower(ext) {
+	case ".json":
+		return "JSON"
+	case ".toml":
+		return "TOML"
+	default:
+		return ""
+	}
+}
+
 // codecNameByContentType maps an HTTP Content-Type to a codec name.
 // Unknown or empty types default to YAML.
 func codecNameByContentType(contentType string) string {

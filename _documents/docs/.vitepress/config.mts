@@ -133,6 +133,7 @@ export default defineConfig({
                       { text: 'redirect', link: '/reference/server/tcp/middlewares/redirect' },
                       { text: 'sni_router', link: '/reference/server/tcp/middlewares/sni_router' },
                       { text: 'socks5', link: '/reference/server/tcp/middlewares/socks5' },
+                      { text: 'ssh_server', link: '/reference/server/tcp/middlewares/ssh_server' },
                       { text: 'telemetry', link: '/reference/server/tcp/middlewares/telemetry' },
                       { text: 'tls_terminate', link: '/reference/server/tcp/middlewares/tls_terminate' },
                     ],

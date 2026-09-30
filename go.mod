@@ -8,6 +8,7 @@ require (
 	github.com/ajg/form v1.9.0
 	github.com/andybalholm/brotli v1.1.1
 	github.com/bmatcuk/doublestar/v4 v4.10.2
+	github.com/creack/pty v1.1.24
 	github.com/crewjam/saml v0.5.1
 	github.com/dgraph-io/badger/v4 v4.9.6
 	github.com/dgraph-io/ristretto/v2 v2.4.2
@@ -26,6 +27,7 @@ require (
 	github.com/lib/pq v1.12.3
 	github.com/miekg/dns v1.1.73
 	github.com/oklog/ulid/v2 v2.1.2
+	github.com/pkg/sftp v1.13.11
 	github.com/rakunlabs/ada v0.5.3
 	github.com/rakunlabs/ada/handler/swagger v0.5.3
 	github.com/rakunlabs/ada/middleware/auth v0.5.3
@@ -171,6 +173,7 @@ require (
 	github.com/jhump/protoreflect v1.18.1 // indirect
 	github.com/jhump/protoreflect/v2 v2.0.0-beta.2 // indirect
 	github.com/jonboulle/clockwork v0.2.2 // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lmittmann/tint v1.1.2 // indirect
 	github.com/mattermost/xml-roundtrip-validator v0.1.0 // indirect
