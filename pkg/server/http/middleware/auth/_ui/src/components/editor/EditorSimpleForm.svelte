@@ -710,7 +710,7 @@
         value: editor.getList("alias"),
         set: (value) => editor.setList("alias", value),
         placeholder: "user@example.com, user",
-        hint: "Every alias is a working login identifier. Comma or newline separated.",
+        hint: "Every alias is a working login identifier. Comma or newline separated. Include the email address as an alias — email login and password reset look the user up by alias, not by the Email field.",
         wide: true,
       })}
       {@render line({
@@ -724,6 +724,7 @@
         value: editor.getNestedString("details", "email"),
         set: (value) => editor.setNestedString("details", "email", value),
         placeholder: "user@example.com",
+        hint: "Also add it to the aliases, otherwise it cannot be used to log in.",
       })}
       {@render line({
         label: "Uid",
@@ -742,7 +743,7 @@
           label: `Password${editor.loadedID ? "" : " *"}`,
           value: editor.getNestedString("details", "password"),
           set: (value) => editor.setNestedString("details", "password", value),
-          placeholder: "leave empty to keep the existing password",
+          placeholder: editor.loadedID ? "leave empty to keep the existing password" : "initial password",
           hint: "Stored bcrypt hashed; it is never read back.",
         })}
       {/if}
