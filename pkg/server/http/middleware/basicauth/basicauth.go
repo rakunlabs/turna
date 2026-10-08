@@ -18,7 +18,7 @@ const (
 
 // BasicAuth mostly copied from echo's BasicAuth middleware.
 type BasicAuth struct {
-	Users []string `cfg:"users"`
+	Users []string `cfg:"users" log:"-"`
 	Realm string   `cfg:"realm"`
 	// HeaderField is the name of the header field to set with the username, default X-User
 	HeaderField string `cfg:"header_field"`

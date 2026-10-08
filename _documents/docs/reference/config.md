@@ -7,6 +7,8 @@ log_level: info
 print: "turna started for {{ .APP_NAME }}"
 
 loads: []
+env: {}
+env_values: []
 preprocess: []
 server: {}
 services: []
@@ -20,10 +22,11 @@ Turna applies configuration and runtime work in this order:
 1. Load bootstrap settings from environment variables.
 2. Load Turna application config from Consul, Vault, file, and environment sources depending on `config_set`.
 3. Run `loads` and store loaded data in template memory.
-4. Run `preprocess` modules.
-5. Render and write the top-level `print` message to logs when configured.
-6. Start server entrypoints and routers.
-7. Start services.
+4. Apply top-level `env_values` and `env` to Turna's own process environment, then refresh the default HTTP transport's proxy settings.
+5. Run `preprocess` modules.
+6. Render and write the top-level `print` message to logs when configured.
+7. Initialize telemetry and start server entrypoints and routers.
+8. Start services.
 
 Dynamic `loads` can update loaded data later. When that happens, Turna refreshes template data and service filters.
 
@@ -34,10 +37,38 @@ Dynamic `loads` can update loaded data later. When that happens, Turna refreshes
 | `log_level` | string | Application log level. Default is `info`. |
 | `print` | string | Template rendered after loads and preprocess complete. |
 | `loads` | array | External data loaders. See [Loads](./loads). |
+| `env` | object | Set or overwrite Turna's process environment after loads. Values support templates. |
+| `env_values` | array | `/`-separated paths to maps in loaded data to export as process environment. Later paths override earlier ones; `env` has final precedence. Missing or non-map paths fail startup. |
 | `preprocess` | array | Pre-start file processors. See [Preprocess](./preprocess/preprocess). |
 | `server` | object | HTTP/TCP server configuration. See [Server](./server/server). |
 | `services` | array | Local commands to run. See [Services](./services). |
 | `telemetry` | object | OpenTelemetry exporter settings. See [Telemetry](#telemetry). |
+
+The debug `loaded config` log respects `log:"-"` struct tags: tagged fields are omitted, while other fields keep their `cfg` names. This does not affect configuration decoding. Process/service environment maps, inline loader content, credentials, private keys and marked authentication fields are excluded. This is not a general string scrubber: avoid putting secrets in unmarked fields such as commands or URLs, or in explicit `print` templates.
+
+## Process Environment
+
+```yaml
+loads:
+  - name: settings
+    statics:
+      - content:
+          content: |
+            environment:
+              OTEL_SERVICE_NAME: turna-proxy
+env_values:
+  - settings/environment
+env:
+  HTTPS_PROXY: http://proxy.internal:8080
+```
+
+These settings add or overwrite variables in Turna itself, not just child services. Unspecified variables are preserved; an empty value sets an empty variable rather than removing it. Values are rendered and validated before environment changes are applied. Templates see the environment from before this step, so do not rely on one entry referencing another via `env`.
+
+This runs once at startup. Dynamic loads do not reapply environment settings. It does not re-decode already-loaded application config, reinitialize clients, or change the parent shell. Child services inherit these variables according to their `inherit_env` setting and can override them with their own `env`.
+
+Only components that read the environment after this step observe the new values. In particular, `gcp_token` reads credentials, certificates and audience from its middleware config, not automatically from environment variables; setting a GCP environment variable does not replace those fields or invalidate cached tokens.
+
+After applying environment settings, Turna replaces the default HTTP transport with a clone whose proxy function reads a fresh snapshot of `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` (and their lowercase equivalents). This bypasses Go's process-wide proxy environment cache, even if loads already made HTTP requests. Middleware clients that subsequently use or clone the default transport, including `gcp_token`, use the new proxy settings. Existing clients with their own transports and clients with explicit proxy settings are unaffected. The proxy snapshot is not refreshed on dynamic reload.
 
 ## Telemetry
 

@@ -22,7 +22,7 @@ import (
 type Redis struct {
 	Address  string `cfg:"address"`
 	Username string `cfg:"username"`
-	Password string `cfg:"password"`
+	Password string `cfg:"password" log:"-"`
 	// Cluster forces Redis Cluster mode for this address. When false, cluster
 	// mode is detected automatically.
 	Cluster bool      `cfg:"cluster"`
@@ -30,7 +30,7 @@ type Redis struct {
 
 	KeyPrefix string `cfg:"key_prefix"`
 	// SessionKey signs the session ID cookie. If empty, a random key is generated.
-	SessionKey string `cfg:"session_key"`
+	SessionKey string `cfg:"session_key" log:"-"`
 	// Compat selects the storage format. Empty is the current format, "v1" is
 	// the v0.8.x format, "mixed" reads both and writes the current one.
 	Compat string `cfg:"compat"`

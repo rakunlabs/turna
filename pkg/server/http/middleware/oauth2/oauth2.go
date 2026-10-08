@@ -41,7 +41,7 @@ type Oauth2 struct {
 }
 
 type AccessClient struct {
-	ClientSecret  string   `cfg:"client_secret"`
+	ClientSecret  string   `cfg:"client_secret" log:"-"`
 	Scope         []string `cfg:"scope"`
 	WhitelistURLs []string `cfg:"whitelist_urls"`
 }

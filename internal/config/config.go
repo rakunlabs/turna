@@ -19,6 +19,8 @@ var (
 var Application = struct {
 	LogLevel   string             `cfg:"log_level"`
 	Loads      loader.Configs     `cfg:"loads"`
+	Env        map[string]any     `cfg:"env" log:"-"`
+	EnvValues  []string           `cfg:"env_values"`
 	Services   service.Services   `cfg:"services"`
 	Print      string             `cfg:"print"`
 	Server     server.Server      `cfg:"server"`

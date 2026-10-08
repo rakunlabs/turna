@@ -50,7 +50,7 @@ const (
 type GCPToken struct {
 	// Credentials is the raw "external_account" JSON content (optional).
 	// Fields below override values from it.
-	Credentials string `cfg:"credentials"`
+	Credentials string `cfg:"credentials" log:"-"`
 
 	Audience                       string `cfg:"audience"`
 	TokenURL                       string `cfg:"token_url"`
@@ -59,7 +59,7 @@ type GCPToken struct {
 	// Cert is the PEM client certificate; may contain the full chain (leaf first).
 	Cert string `cfg:"cert"`
 	// Key is the PEM private key of the client certificate.
-	Key string `cfg:"key"`
+	Key string `cfg:"key" log:"-"`
 	// CA is optional PEM root CAs for the Google endpoints; system roots are used if empty.
 	CA string `cfg:"ca"`
 
@@ -91,7 +91,7 @@ type GCPToken struct {
 
 	// ClientID / ClientSecret protect the endpoint (basic auth or form values).
 	ClientID     string `cfg:"client_id"`
-	ClientSecret string `cfg:"client_secret"`
+	ClientSecret string `cfg:"client_secret" log:"-"`
 
 	client *http.Client
 	now    func() time.Time

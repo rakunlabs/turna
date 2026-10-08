@@ -17,10 +17,10 @@ type Generic struct {
 	ClientIDExternal string `cfg:"client_id_external"`
 
 	// ClientSecret is the application's secret.
-	ClientSecret string `cfg:"client_secret" log:"false"`
+	ClientSecret string `cfg:"client_secret" log:"-"`
 
 	// ClientSecretExternal for reaching the client secret from outside.
-	ClientSecretExternal string `cfg:"client_secret_external"`
+	ClientSecretExternal string `cfg:"client_secret_external" log:"-"`
 
 	// Scope specifies optional requested permissions.
 	Scopes []string `cfg:"scopes"`

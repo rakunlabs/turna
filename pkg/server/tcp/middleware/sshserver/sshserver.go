@@ -16,7 +16,7 @@ import (
 )
 
 type SSHServer struct {
-	HostKeys []string `cfg:"host_keys"`
+	HostKeys []string `cfg:"host_keys" log:"-"`
 	Banner   string   `cfg:"banner"`
 	Users    []User   `cfg:"users"`
 }
@@ -37,7 +37,7 @@ type Shell struct {
 	Command   string   `cfg:"command"`
 	OSUser    string   `cfg:"os_user"`
 	AllowExec bool     `cfg:"allow_exec"`
-	Env       []string `cfg:"env"`
+	Env       []string `cfg:"env" log:"-"`
 }
 
 // SFTP uses Turna's OS permissions. Directory is a working directory, not a

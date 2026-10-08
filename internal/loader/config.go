@@ -91,11 +91,11 @@ type ConfigHTTP struct {
 	// Method is the HTTP method, default is GET.
 	Method string `cfg:"method"`
 	// Headers to set on the request.
-	Headers map[string]string `cfg:"headers"`
+	Headers map[string]string `cfg:"headers" log:"-"`
 	// Query parameters added to the URL.
-	Query map[string]string `cfg:"query"`
+	Query map[string]string `cfg:"query" log:"-"`
 	// Body is the optional request body.
-	Body string `cfg:"body"`
+	Body string `cfg:"body" log:"-"`
 	// Timeout for the request, default is no timeout.
 	Timeout time.Duration `cfg:"timeout"`
 	// InsecureSkipVerify disables TLS certificate verification.
@@ -104,7 +104,7 @@ type ConfigHTTP struct {
 
 type ConfigContent struct {
 	ConfigCommon `cfg:",inline"`
-	Content      string `cfg:"content"`
+	Content      string `cfg:"content" log:"-"`
 }
 
 type ConfigAWSSecrets struct {

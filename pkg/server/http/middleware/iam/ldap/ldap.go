@@ -41,7 +41,7 @@ type LdapBind struct {
 
 type Simple struct {
 	Username string `cfg:"username"`
-	Password string `cfg:"password"`
+	Password string `cfg:"password" log:"-"`
 }
 
 type Group struct {

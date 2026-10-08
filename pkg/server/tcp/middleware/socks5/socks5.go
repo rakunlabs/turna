@@ -85,7 +85,7 @@ func (d *DNSResolver) Resolve(ctx context.Context, name string) (context.Context
 }
 
 type Socks5 struct {
-	StaticCredentials   map[string]string `cfg:"static_credentials"`
+	StaticCredentials   map[string]string `cfg:"static_credentials" log:"-"`
 	NoAuthAuthenticator bool              `cfg:"no_auth_authenticator"`
 	DNS                 string            `cfg:"dns"`
 	// IPMap like {"*.google.com": "10.0.10.1"}

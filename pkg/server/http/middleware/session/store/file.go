@@ -14,7 +14,7 @@ import (
 
 type File struct {
 	// SessionKey for file store.
-	SessionKey string `cfg:"session_key"`
+	SessionKey string `cfg:"session_key" log:"-"`
 	Path       string `cfg:"path"`
 }
 

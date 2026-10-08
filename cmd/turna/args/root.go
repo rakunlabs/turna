@@ -38,7 +38,7 @@ const (
 
 var AppName = "turna"
 
-var configMapCodec = gofret.New(gofret.WithOmitNil())
+var configMapCodec = gofret.New(gofret.WithTag("log"), gofret.WithTagFallback("cfg"), gofret.WithOmitNil())
 
 func init() {
 	if v := os.Getenv(envAppName); v != "" {
@@ -164,6 +164,16 @@ func runRoot(ctx context.Context) error {
 
 	// load configurations
 	if err := config.Application.Loads.Load(ctx, wg, call); err != nil {
+		return err
+	}
+
+	// Apply process environment before preprocess, telemetry and middleware setup.
+	if err := config.ApplyEnv(config.Application.Env, config.Application.EnvValues); err != nil {
+		into.CtxCancel()
+		return err
+	}
+	if err := config.RefreshDefaultProxy(); err != nil {
+		into.CtxCancel()
 		return err
 	}
 

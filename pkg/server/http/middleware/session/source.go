@@ -49,7 +49,7 @@ type ProviderSource struct {
 	TTL time.Duration `cfg:"ttl"`
 	// Headers added to every URL request (e.g. X-API-Key of an admin
 	// principal on the remote auth).
-	Headers map[string]string `cfg:"headers"`
+	Headers map[string]string `cfg:"headers" log:"-"`
 	// InsecureSkipVerify disables TLS verification for URL fetches.
 	InsecureSkipVerify bool `cfg:"insecure_skip_verify"`
 

@@ -21,7 +21,7 @@ import (
 )
 
 type TokenPass struct {
-	SecretKey     string `cfg:"secret_key"`
+	SecretKey     string `cfg:"secret_key" log:"-"`
 	SigningMethod string `cfg:"signing_method"`
 	// Payload with go template as claims
 	Payload string `cfg:"payload"`

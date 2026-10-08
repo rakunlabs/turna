@@ -18,7 +18,7 @@ import (
 // HTTPConnect is an HTTP CONNECT (tunnel) proxy.
 type HTTPConnect struct {
 	// Users for Proxy-Authorization basic auth, user -> password.
-	Users map[string]string `cfg:"users"`
+	Users map[string]string `cfg:"users" log:"-"`
 	// AllowedHosts are host patterns ("example.com", "*.example.com") that
 	// may be tunneled; empty allows all.
 	AllowedHosts []string `cfg:"allowed_hosts"`

@@ -17,7 +17,7 @@ type Oauth2 struct {
 	// ClientID is the application's ID.
 	ClientID string `cfg:"client_id" json:"client_id"`
 	// ClientSecret is the application's secret.
-	ClientSecret string `cfg:"client_secret" json:"client_secret" log:"false"`
+	ClientSecret string `cfg:"client_secret" json:"client_secret" log:"-"`
 	// Scope specifies optional requested permissions.
 	Scopes []string `cfg:"scopes" json:"scopes,omitempty"`
 	// CertURL is the resource server's public key URL.

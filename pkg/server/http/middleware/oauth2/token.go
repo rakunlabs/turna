@@ -39,8 +39,8 @@ type Cert struct {
 }
 
 type RSAKey struct {
-	PrivateKey       string `cfg:"private_key"`
-	PrivateKeyBase64 string `cfg:"private_key_base64"`
+	PrivateKey       string `cfg:"private_key" log:"-"`
+	PrivateKeyBase64 string `cfg:"private_key_base64" log:"-"`
 	PublicKey        string `cfg:"public_key"`
 	PublicKeyBase64  string `cfg:"public_key_base64"`
 
