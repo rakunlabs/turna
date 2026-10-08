@@ -37,6 +37,8 @@ type Command struct {
 	killLock     sync.Mutex
 	killStarted  bool
 	User         string
+	TTY          bool
+	ttyCleanup   func()
 	// KillTimeout is the duration to wait after SIGTERM before sending
 	// SIGKILL. Zero means DefaultKillTimeout.
 	KillTimeout time.Duration
@@ -113,7 +115,7 @@ func (c *Command) start(ctx context.Context) (*os.Process, error) {
 		stderr = os.Stderr
 	}
 
-	if c.Filter != nil {
+	if c.Filter != nil && !c.TTY {
 		slog.Info(fmt.Sprintf("filtering [%s]", c.Name))
 		// filter for stdout
 		filteredStdout := filter.FileFilter{To: stdout, Filter: c.Filter}
@@ -150,7 +152,11 @@ func (c *Command) start(ctx context.Context) (*os.Process, error) {
 
 	var p *os.Process
 
-	p, err = os.StartProcess(cmdx, c.Command, procAttr)
+	if c.TTY {
+		p, c.ttyCleanup, err = startTTY(cmdx, c.Command, procAttr)
+	} else {
+		p, err = os.StartProcess(cmdx, c.Command, procAttr)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("process cannot run; %w", err)
 	}
@@ -205,6 +211,12 @@ func (c *Command) Run(ctx context.Context) error {
 	c.killLock.Unlock()
 	if err != nil {
 		return err
+	}
+	if c.ttyCleanup != nil {
+		defer func() {
+			c.ttyCleanup()
+			c.ttyCleanup = nil
+		}()
 	}
 
 	defer func() {

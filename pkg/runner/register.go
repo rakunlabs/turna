@@ -159,6 +159,11 @@ func (s *StoreReg) Add(command *Command) error {
 	if _, ok := s.reg[name]; ok {
 		return fmt.Errorf("command with name [%s] already exists", name)
 	}
+	for _, existing := range s.reg {
+		if command.TTY && existing.TTY {
+			return fmt.Errorf("only one tty service is allowed: [%s] and [%s]", existing.Name, name)
+		}
+	}
 
 	s.reg[name] = command
 

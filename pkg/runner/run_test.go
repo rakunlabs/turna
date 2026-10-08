@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestCommand_Run(t *testing.T) {
@@ -159,5 +160,37 @@ func TestCommand_Run(t *testing.T) {
 				}
 			}()
 		})
+	}
+}
+
+func TestCommandPipedStdin(t *testing.T) {
+	inR, inW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer inR.Close()
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer outR.Close()
+	defer outW.Close()
+	if _, err := inW.Write([]byte("hello\n")); err != nil {
+		t.Fatal(err)
+	}
+	inW.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c := &Command{Name: "stdin", Command: []string{"sh", "-c", "read value; printf '%s' \"$value\""}, stdin: inR, stdout: outW}
+	if err := c.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	outW.Close()
+	got, err := io.ReadAll(outR)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("stdin forwarding: %q", got)
 	}
 }

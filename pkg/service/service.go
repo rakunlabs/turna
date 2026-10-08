@@ -32,6 +32,8 @@ type Service struct {
 	InheritEnv bool `cfg:"inherit_env"`
 	// User is the user to run command, id:group or just id.
 	User string `cfg:"user"`
+	// TTY connects the parent's terminal to a service-owned pseudo-terminal.
+	TTY bool `cfg:"tty"`
 	// StopTimeout is the duration to wait after SIGTERM before force killing
 	// the process, default is 30s.
 	StopTimeout time.Duration `cfg:"stop_timeout"`
@@ -80,6 +82,9 @@ func (s *Service) SetFilters() {
 }
 
 func (s *Service) Register() error {
+	if s.TTY && (len(s.Filters) > 0 || len(s.FiltersValues) > 0) {
+		return fmt.Errorf("service [%s]: tty cannot be combined with filters or filters_values", s.Name)
+	}
 	filter := func(b []byte) bool {
 		// reading s.filters is not thread safe, so we need to lock it
 		s.mutex.RLock()
@@ -119,7 +124,11 @@ func (s *Service) Register() error {
 		Order:        s.Order,
 		Depends:      s.Depends,
 		User:         s.User,
+		TTY:          s.TTY,
 		KillTimeout:  s.StopTimeout,
+	}
+	if s.TTY {
+		c.Filter = nil
 	}
 
 	if err := runner.GlobalReg.Add(c); err != nil {
