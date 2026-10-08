@@ -17,6 +17,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/dnspath"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/forward"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/gcptoken"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/grpcui"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/gzip"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/headers"
@@ -110,6 +111,7 @@ type HTTPMiddleware struct {
 	Compress                   *compress.Compress                    `cfg:"compress"`
 	CSRF                       *csrf.CSRF                            `cfg:"csrf"`
 	Telemetry                  *telemetry.Telemetry                  `cfg:"telemetry"`
+	GCPToken                   *gcptoken.GCPToken                    `cfg:"gcp_token"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
@@ -236,6 +238,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	case h.URL != nil:
 		m, err := h.URL.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.GCPToken != nil:
+		m, err := h.GCPToken.Middleware()
 		return []MiddlewareFunc{m}, err
 	case h.Telemetry != nil:
 		return []MiddlewareFunc{h.Telemetry.Middleware()}, nil

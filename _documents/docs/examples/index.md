@@ -23,6 +23,7 @@ turna --config-file turna.yaml
 | [Basic Auth](/examples/basic_auth) | Protecting paths with htpasswd-style `basic_auth`. |
 | [Login](/examples/login) | Browser sessions against an external OAuth2 provider with `session`, `login`, and `role_check`. |
 | [OAuth2 With IAM](/examples/oauth2) | The legacy `iam` + `oauth2` issuer stack. |
+| [Kafka OAUTHBEARER With GCP](/examples/gcp_kafka) | `gcp_token` as a local token endpoint for Redpanda Console using X.509 workload identity federation. |
 
 ## Configuration and processes
 

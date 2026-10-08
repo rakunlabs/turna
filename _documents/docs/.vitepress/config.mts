@@ -14,6 +14,7 @@ const httpMiddlewares = [
   ['dns_path', '/reference/server/http/middlewares/dns_path'],
   ['folder', '/reference/server/http/middlewares/folder'],
   ['forward', '/reference/server/http/middlewares/forward'],
+  ['gcp_token', '/reference/server/http/middlewares/gcp_token'],
   ['grpcui', '/reference/server/http/middlewares/grpc_ui'],
   ['gzip', '/reference/server/http/middlewares/gzip'],
   ['headers', '/reference/server/http/middlewares/headers'],
@@ -187,6 +188,7 @@ export default defineConfig({
               { text: 'Basic Auth', link: '/examples/basic_auth' },
               { text: 'Login', link: '/examples/login' },
               { text: 'OAuth2 With IAM', link: '/examples/oauth2' },
+              { text: 'Kafka OAUTHBEARER With GCP', link: '/examples/gcp_kafka' },
             ],
           },
           {

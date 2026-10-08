@@ -42,6 +42,7 @@ A single named middleware can hold only one middleware type. If you need both he
 | `dns_path` | Route to DNS-resolved instances selected from the path. |
 | `folder` | Serve files and SPA assets from a directory. |
 | `forward` | Forward proxy for HTTP and CONNECT requests. |
+| `gcp_token` | Google Cloud token via X.509 workload identity federation (OAuth2 endpoint or header inject). |
 | `grpcui` | Browser UI for gRPC services. |
 | `gzip` | Compress responses. |
 | `headers` | Set or delete request/response headers. |
