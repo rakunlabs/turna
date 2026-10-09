@@ -25,10 +25,11 @@ import (
 type statusWriter struct {
 	p *Provider
 
-	mu      sync.Mutex
-	leader  bool
-	pending *statusUpdate
-	wake    chan struct{}
+	mu        sync.Mutex
+	leader    bool
+	leaderCtx context.Context
+	pending   *statusUpdate
+	wake      chan struct{}
 }
 
 type statusUpdate struct {
@@ -55,7 +56,7 @@ func (w *statusWriter) update(snap *Snapshot, res *Result, applyErr error) {
 func (w *statusWriter) run(ctx context.Context) {
 	le := w.p.cfg.Status.LeaderElection
 	if le.Disabled {
-		w.setLeader(true)
+		w.setLeader(ctx)
 		w.loop(ctx)
 
 		return
@@ -108,13 +109,13 @@ func (w *statusWriter) elect(ctx context.Context) error {
 		ReleaseOnCancel: true,
 		Name:            name,
 		Callbacks: leaderelection.LeaderCallbacks{
-			OnStartedLeading: func(context.Context) {
+			OnStartedLeading: func(leaderCtx context.Context) {
 				slog.Info("kubernetes provider: became status leader", "id", id)
-				w.setLeader(true)
+				w.setLeader(leaderCtx)
 			},
 			OnStoppedLeading: func() {
 				slog.Info("kubernetes provider: lost status leadership", "id", id)
-				w.setLeader(false)
+				w.stopLeading()
 			},
 		},
 	})
@@ -134,15 +135,27 @@ func podNamespace() string {
 	return "default"
 }
 
-func (w *statusWriter) setLeader(v bool) {
+func (w *statusWriter) setLeader(ctx context.Context) {
 	w.mu.Lock()
-	w.leader = v
+	w.leader = true
+	w.leaderCtx = ctx
 	w.mu.Unlock()
 
-	if v {
-		// write the latest status after gaining leadership
-		w.p.notify()
-	}
+	// Reconcile and write the latest status after gaining leadership.
+	w.p.notify()
+}
+
+func (w *statusWriter) stopLeading() {
+	w.mu.Lock()
+	w.leader = false
+	w.leaderCtx = nil
+	w.mu.Unlock()
+}
+
+func (w *statusWriter) leadership() (context.Context, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.leaderCtx, w.leader && w.leaderCtx != nil && w.leaderCtx.Err() == nil
 }
 
 func (w *statusWriter) loop(ctx context.Context) {
@@ -155,15 +168,15 @@ func (w *statusWriter) loop(ctx context.Context) {
 
 		w.mu.Lock()
 		u := w.pending
-		leader := w.leader
 		w.pending = nil
 		w.mu.Unlock()
 
-		if u == nil || !leader {
+		leaderCtx, leader := w.leadership()
+		if u == nil || !leader || w.p.cfg.Status.Disabled {
 			continue
 		}
 
-		w.write(ctx, u)
+		w.write(leaderCtx, u)
 	}
 }
 
@@ -190,8 +203,8 @@ func (w *statusWriter) write(ctx context.Context, u *statusUpdate) {
 			continue
 		}
 
-		if u.applyErr != nil {
-			st = withApplyError(st, u.applyErr)
+		if err := gatewayError(u.applyErr, key(gw)); err != nil {
+			st = withApplyError(st, err)
 		}
 
 		gwAddresses := addresses
@@ -235,9 +248,15 @@ func (w *statusWriter) proxyStatus(ctx context.Context, gw nsName) ([]gwv1.Gatew
 	if err != nil {
 		return nil, false
 	}
+	if !w.ownsProxy(svc, gw) {
+		return nil, false
+	}
 
 	dep, err := w.p.kube.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
+		return nil, false
+	}
+	if !w.ownsProxy(dep, gw) {
 		return nil, false
 	}
 
@@ -247,7 +266,23 @@ func (w *statusWriter) proxyStatus(ctx context.Context, gw nsName) ([]gwv1.Gatew
 		values = nil
 	}
 
-	return toAddresses(values), dep.Status.ReadyReplicas > 0 && len(values) > 0
+	return toAddresses(values), dep.Status.ObservedGeneration >= dep.Generation && dep.Status.ReadyReplicas > 0 && len(values) > 0
+}
+
+func (w *statusWriter) ownsProxy(obj metav1.Object, gw nsName) bool {
+	lbls := obj.GetLabels()
+	return lbls[labelManagedBy] == managedByValue && lbls[labelController] == w.p.controllerID() &&
+		lbls[labelGatewayName] == truncLabel(gw.Name) && lbls[labelGatewayNamespace] == truncLabel(gw.Namespace)
+}
+
+// Status is computed from informer snapshots. A newer spec or a replacement
+// object must be reconciled before any of that snapshot's status is written.
+func (w *statusWriter) currentSnapshot(source, current metav1.Object) bool {
+	if source.GetUID() != current.GetUID() || source.GetGeneration() != current.GetGeneration() {
+		w.p.notify()
+		return false
+	}
+	return true
 }
 
 func withNotReady(st *GatewayStatus) *GatewayStatus {
@@ -338,6 +373,9 @@ func (w *statusWriter) writeClass(ctx context.Context, gc *gwv1.GatewayClass, co
 		if err != nil {
 			return err
 		}
+		if !w.currentSnapshot(gc, cur) {
+			return nil
+		}
 
 		next := cur.Status.DeepCopy()
 		next.Conditions = mergeConditions(cur.Status.Conditions, conds)
@@ -362,6 +400,9 @@ func (w *statusWriter) writeGateway(ctx context.Context, gw *gwv1.Gateway, st *G
 		cur, err := w.p.gw.GatewayV1().Gateways(gw.Namespace).Get(ctx, gw.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
+		}
+		if !w.currentSnapshot(gw, cur) {
+			return nil
 		}
 
 		next := cur.Status.DeepCopy()
@@ -396,19 +437,23 @@ func (w *statusWriter) writeGateway(ctx context.Context, gw *gwv1.Gateway, st *G
 }
 
 // routeStatusClient reads and writes the parent status of one route kind.
-type routeStatusClient[T any] struct {
+type routeStatusClient[T metav1.Object] struct {
 	get    func(ctx context.Context, ns, name string) (T, error)
 	update func(ctx context.Context, obj T) error
 	status func(obj T) *gwv1.RouteStatus
 }
 
-func writeRouteStatus[T any](ctx context.Context, w *statusWriter, c routeStatusClient[T], kind gwv1.Kind, k nsName, parents []gwv1.RouteParentStatus) {
+func writeRouteStatus[T metav1.Object](ctx context.Context, w *statusWriter, c routeStatusClient[T], kind gwv1.Kind, source T, parents []gwv1.RouteParentStatus) {
 	controller := gwv1.GatewayController(w.p.cfg.controllerName())
+	k := key(source)
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		cur, err := c.get(ctx, k.Namespace, k.Name)
 		if err != nil {
 			return err
+		}
+		if !w.currentSnapshot(source, cur) {
+			return nil
 		}
 
 		st := c.status(cur)
@@ -458,7 +503,7 @@ func (w *statusWriter) writeRoutes(ctx context.Context, snap *Snapshot, res *Res
 				return err
 			},
 			status: func(o *gwv1.HTTPRoute) *gwv1.RouteStatus { return &o.Status.RouteStatus },
-		}, kindRoute, key(r), res.Routes[routeKey{Kind: kindRoute, nsName: key(r)}])
+		}, kindRoute, r, res.Routes[routeKey{Kind: kindRoute, nsName: key(r)}])
 	}
 
 	for _, r := range snap.GRPCRoutes {
@@ -472,7 +517,7 @@ func (w *statusWriter) writeRoutes(ctx context.Context, snap *Snapshot, res *Res
 				return err
 			},
 			status: func(o *gwv1.GRPCRoute) *gwv1.RouteStatus { return &o.Status.RouteStatus },
-		}, kindGRPCRoute, key(r), res.Routes[routeKey{Kind: kindGRPCRoute, nsName: key(r)}])
+		}, kindGRPCRoute, r, res.Routes[routeKey{Kind: kindGRPCRoute, nsName: key(r)}])
 	}
 
 	for _, r := range snap.TLSRoutes {
@@ -486,7 +531,7 @@ func (w *statusWriter) writeRoutes(ctx context.Context, snap *Snapshot, res *Res
 				return err
 			},
 			status: func(o *gwv1.TLSRoute) *gwv1.RouteStatus { return &o.Status.RouteStatus },
-		}, kindTLSRoute, key(r), res.Routes[routeKey{Kind: kindTLSRoute, nsName: key(r)}])
+		}, kindTLSRoute, r, res.Routes[routeKey{Kind: kindTLSRoute, nsName: key(r)}])
 	}
 
 	for _, r := range snap.TCPRoutes {
@@ -500,7 +545,7 @@ func (w *statusWriter) writeRoutes(ctx context.Context, snap *Snapshot, res *Res
 				return err
 			},
 			status: func(o *gwv1.TCPRoute) *gwv1.RouteStatus { return &o.Status.RouteStatus },
-		}, kindTCPRoute, key(r), res.Routes[routeKey{Kind: kindTCPRoute, nsName: key(r)}])
+		}, kindTCPRoute, r, res.Routes[routeKey{Kind: kindTCPRoute, nsName: key(r)}])
 	}
 
 	for _, r := range snap.UDPRoutes {
@@ -514,7 +559,7 @@ func (w *statusWriter) writeRoutes(ctx context.Context, snap *Snapshot, res *Res
 				return err
 			},
 			status: func(o *gwv1.UDPRoute) *gwv1.RouteStatus { return &o.Status.RouteStatus },
-		}, kindUDPRoute, key(r), res.Routes[routeKey{Kind: kindUDPRoute, nsName: key(r)}])
+		}, kindUDPRoute, r, res.Routes[routeKey{Kind: kindUDPRoute, nsName: key(r)}])
 	}
 }
 

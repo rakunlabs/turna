@@ -104,6 +104,11 @@ func (t *translator) streamTarget(entry string, idx int, backends []streamBacken
 			Strategy:           "random",
 			PassiveHealthCheck: &netlb.PassiveHealthCheck{MaxFails: 3},
 		}}
+		valid, invalid := invalidShare(backends)
+		if invalid > 0 {
+			t.out.Server.UDP.Middlewares[name+"-share"] = udp.UDPMiddleware{BlockMiddleware: &udpblock.Block{Percent: float64(invalid) * 100 / float64(valid+invalid)}}
+			return []string{name + "-share", name}
+		}
 
 		return []string{name}
 	}

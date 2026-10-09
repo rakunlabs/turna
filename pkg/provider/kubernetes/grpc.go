@@ -107,19 +107,9 @@ func (t *translator) grpcFilters(route *gwv1.GRPCRoute, in []gwv1.GRPCRouteFilte
 		case gwv1.GRPCRouteFilterResponseHeaderModifier:
 			out = append(out, gateway.Filter{ResponseHeaders: headerModifier(f.ResponseHeaderModifier)})
 		case gwv1.GRPCRouteFilterRequestMirror:
-			if f.RequestMirror == nil {
-				return nil, &refError{string(gwv1.RouteReasonUnsupportedValue), "requestMirror is empty"}
-			}
-
-			addrs, _, err := t.resolveAddresses(kindGRPCRoute, route.Namespace, f.RequestMirror.BackendRef, corev1.ProtocolTCP)
+			m, err := t.requestMirror(kindGRPCRoute, route.Namespace, f.RequestMirror, true)
 			if err != nil {
 				return nil, err
-			}
-
-			m := &service.Mirror{}
-			for _, a := range addrs {
-				p := 100.0 / float64(len(addrs))
-				m.Servers = append(m.Servers, service.MirrorServer{URL: "http://" + a, Percent: &p})
 			}
 
 			out = append(out, gateway.Filter{Mirror: m})
@@ -185,9 +175,6 @@ func (t *translator) serviceMiddlewareFor(urls []string, h2c bool) string {
 	}
 
 	name := sanitize(prefix, strings.Join(sorted, ","))
-	if len(name) > 200 {
-		name = name[:200]
-	}
 
 	if _, ok := t.middlewares[name]; ok {
 		return name

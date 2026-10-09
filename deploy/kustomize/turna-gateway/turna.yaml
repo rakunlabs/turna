@@ -1,0 +1,25 @@
+log_level: info
+providers:
+  kubernetes:
+    enabled: true
+    mode: controller
+    controller_name: rakunlabs.com/turna
+    controller_id: turna-kustomize
+    namespaces: []
+    port_offset: 8000
+    health_address: :9901
+    status:
+      leader_election:
+        # Namespace defaults to POD_NAMESPACE, so namespace overlays work.
+        name: turna
+    proxy:
+      # Namespace defaults to POD_NAMESPACE.
+      image: ghcr.io/rakunlabs/turna:latest
+      image_pull_policy: IfNotPresent
+      service_account: turna-proxy
+      replicas: 2
+      service_type: LoadBalancer
+      log_level: info
+      cpu_request: 100m
+      memory_request: 64Mi
+      memory_limit: 256Mi

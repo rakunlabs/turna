@@ -29,6 +29,10 @@ type Config struct {
 	Mode string `cfg:"mode"`
 	// ControllerName is matched with GatewayClass spec.controllerName.
 	ControllerName string `cfg:"controller_name"`
+	// ControllerID identifies this installation's proxy resources. Replicas
+	// must use the same ID; independent installations must use different IDs.
+	// Empty derives an ID from the controller name, scope and election lease.
+	ControllerID string `cfg:"controller_id"`
 	// Kubeconfig path, empty uses the in-cluster config.
 	Kubeconfig string `cfg:"kubeconfig"`
 	// Namespaces to watch, empty watches all namespaces.
@@ -70,7 +74,8 @@ type Status struct {
 	// standalone mode, its load balancer ingress is published in Gateway
 	// status.
 	Service string `cfg:"service"`
-	// LeaderElection makes only one replica write status.
+	// LeaderElection makes only one replica write status and, in controller
+	// mode, provision proxy resources.
 	LeaderElection LeaderElection `cfg:"leader_election"`
 }
 

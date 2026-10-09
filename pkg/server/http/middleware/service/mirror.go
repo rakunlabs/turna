@@ -19,6 +19,8 @@ import (
 // discarded and never affect the client response.
 type Mirror struct {
 	Servers []MirrorServer `cfg:"servers"`
+	// H2C uses HTTP/2 prior knowledge for plaintext mirror targets.
+	H2C bool `cfg:"h2c"`
 	// MaxBodySize is the maximum request body size in bytes to mirror,
 	// requests with larger bodies are not mirrored. Default is 1MB.
 	MaxBodySize int64 `cfg:"max_body_size"`
@@ -30,12 +32,15 @@ type Mirror struct {
 
 type MirrorServer struct {
 	URL string `cfg:"url"`
+	// Endpoints are alternative URLs for one mirror target. Exactly one is
+	// selected for a mirrored request; URL and Endpoints are mutually exclusive.
+	Endpoints []string `cfg:"endpoints"`
 	// Percent of requests to mirror, 0-100. Default is 100.
 	Percent *float64 `cfg:"percent"`
 }
 
 type mirrorTarget struct {
-	url     *url.URL
+	urls    []*url.URL
 	percent float64
 }
 
@@ -79,9 +84,23 @@ func (m *Mirror) build(transport http.RoundTripper) (*mirror, error) {
 	}
 
 	for _, s := range m.Servers {
-		u, err := url.Parse(s.URL)
-		if err != nil {
-			return nil, fmt.Errorf("cannot parse mirror url %s: %w", s.URL, err)
+		if s.URL != "" && len(s.Endpoints) > 0 {
+			return nil, fmt.Errorf("mirror URL and endpoints are mutually exclusive")
+		}
+		endpoints := s.Endpoints
+		if len(endpoints) == 0 {
+			endpoints = []string{s.URL}
+		}
+		var urls []*url.URL
+		for _, endpoint := range endpoints {
+			u, err := url.Parse(endpoint)
+			if err != nil {
+				return nil, fmt.Errorf("cannot parse mirror url %s: %w", endpoint, err)
+			}
+			if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+				return nil, fmt.Errorf("mirror url must be an absolute HTTP(S) URL: %s", endpoint)
+			}
+			urls = append(urls, u)
 		}
 
 		percent := 100.0
@@ -93,10 +112,20 @@ func (m *Mirror) build(transport http.RoundTripper) (*mirror, error) {
 			return nil, fmt.Errorf("mirror percent must be between 0 and 100: %v", percent)
 		}
 
-		mr.targets = append(mr.targets, mirrorTarget{url: u, percent: percent})
+		mr.targets = append(mr.targets, mirrorTarget{urls: urls, percent: percent})
 	}
 
 	return mr, nil
+}
+
+func (m *mirror) selectTargets() []*url.URL {
+	var selected []*url.URL
+	for _, t := range m.targets {
+		if t.percent >= 100 || rand.Float64()*100 < t.percent {
+			selected = append(selected, t.urls[rand.IntN(len(t.urls))])
+		}
+	}
+	return selected
 }
 
 func (m *mirror) Middleware(next http.Handler) http.Handler {
@@ -107,12 +136,7 @@ func (m *mirror) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		var selected []*url.URL
-		for _, t := range m.targets {
-			if t.percent >= 100 || rand.Float64()*100 < t.percent {
-				selected = append(selected, t.url)
-			}
-		}
+		selected := m.selectTargets()
 
 		if len(selected) == 0 {
 			next.ServeHTTP(w, r)
@@ -270,7 +294,14 @@ func (m *Mirror) MirrorMiddleware() (func(http.Handler) http.Handler, error) {
 		return nil, fmt.Errorf("default transport is not *http.Transport")
 	}
 
-	mr, err := m.build(transport.Clone())
+	transport = transport.Clone()
+	if m != nil && m.H2C {
+		var protocols http.Protocols
+		protocols.SetUnencryptedHTTP2(true)
+		protocols.SetHTTP2(true)
+		transport.Protocols = &protocols
+	}
+	mr, err := m.build(transport)
 	if err != nil {
 		return nil, err
 	}

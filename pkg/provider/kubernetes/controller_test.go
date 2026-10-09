@@ -133,7 +133,7 @@ func TestControllerProvisionsPerGateway(t *testing.T) {
 
 func TestProxyName(t *testing.T) {
 	short := proxyName(nsName{"ns", "gw"})
-	if short != "turna-ns-gw" {
+	if !strings.HasPrefix(short, "turna-ns-gw-") || len(short) > 63 {
 		t.Fatalf("short = %q", short)
 	}
 

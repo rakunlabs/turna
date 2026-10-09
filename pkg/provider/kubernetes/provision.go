@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -13,6 +14,7 @@ import (
 	"github.com/goccy/go-yaml"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,6 +27,7 @@ const (
 	labelManagedBy        = "app.kubernetes.io/managed-by"
 	labelGatewayName      = "gateway.networking.k8s.io/gateway-name"
 	labelGatewayNamespace = "turna.rakunlabs.com/gateway-namespace"
+	labelController       = "turna.rakunlabs.com/controller-id"
 	annotationConfigHash  = "turna.rakunlabs.com/config-hash"
 
 	managedByValue = "turna-gateway"
@@ -34,14 +37,29 @@ const (
 // proxyName is the name of the resources of a gateway, unique across
 // namespaces as resources live in the controller namespace.
 func proxyName(gw nsName) string {
-	name := "turna-" + gw.Namespace + "-" + gw.Name
-	if len(name) <= 63 {
-		return strings.TrimSuffix(name, "-")
-	}
-
+	// Gateway names are DNS subdomains, Service names must be DNS labels.
+	name := strings.ReplaceAll("turna-"+gw.Namespace+"-"+gw.Name, ".", "-")
 	sum := sha256.Sum256([]byte(gw.String()))
+	if len(name) > 52 {
+		name = name[:52]
+	}
+	return strings.TrimRight(name, "-.") + "-" + hex.EncodeToString(sum[:])[:10]
+}
 
-	return strings.TrimSuffix(name[:52], "-") + "-" + hex.EncodeToString(sum[:])[:10]
+// controllerID is safe to use as a label value and independent of ordering
+// in namespace and gateway scope configuration.
+func (p *Provider) controllerID() string {
+	id := p.cfg.ControllerID
+	if id == "" {
+		namespaces := slices.Clone(p.cfg.Namespaces)
+		gateways := slices.Clone(p.cfg.Gateways)
+		slices.Sort(namespaces)
+		slices.Sort(gateways)
+		id = fmt.Sprintf("%s\x00%q\x00%q\x00%s\x00%s", p.cfg.controllerName(), namespaces, gateways,
+			p.cfg.Status.LeaderElection.Namespace, p.cfg.Status.LeaderElection.Name)
+	}
+	sum := sha256.Sum256([]byte(id))
+	return hex.EncodeToString(sum[:])[:32]
 }
 
 func proxyLabels(gw nsName) map[string]string {
@@ -56,7 +74,7 @@ func proxyLabels(gw nsName) map[string]string {
 
 func truncLabel(v string) string {
 	if len(v) > 63 {
-		return v[:63]
+		return strings.TrimRight(v[:63], "-_.")
 	}
 
 	return v
@@ -110,11 +128,16 @@ func (lp listenerPort) name() string {
 	return "p" + strconv.Itoa(int(lp.port))
 }
 
-// listenerPorts returns unique listener ports and protocols of the gateway.
-func listenerPorts(gw *gwv1.Gateway) []listenerPort {
+// listenerPorts returns unique listener ports and protocols of the gateway,
+// skipping ports that are out of range with the port offset.
+func listenerPorts(gw *gwv1.Gateway, offset int) []listenerPort {
 	var ports []listenerPort
 
 	for _, l := range gw.Spec.Listeners {
+		if local := int(l.Port) + offset; local < 1 || local > 65535 {
+			continue
+		}
+
 		lp := listenerPort{port: int32(l.Port), protocol: corev1.ProtocolTCP}
 		if l.Protocol == gwv1.UDPProtocolType {
 			lp.protocol = corev1.ProtocolUDP
@@ -144,11 +167,43 @@ func (p *Provider) proxyNamespace() string {
 	return podNamespace()
 }
 
+// provisionError keeps the failures of each gateway apart from cleanup
+// failures, so a failing gateway does not mark the others as not programmed.
+type provisionError struct {
+	gateways map[nsName]error
+	err      error
+}
+
+func (e *provisionError) Error() string { return e.err.Error() }
+
+func (e *provisionError) Unwrap() error { return e.err }
+
+// gatewayError returns the part of err that belongs to gw; errors that are
+// not a provisionError apply to every gateway.
+func gatewayError(err error, gw nsName) error {
+	var pe *provisionError
+	if errors.As(err, &pe) {
+		return pe.gateways[gw]
+	}
+
+	return err
+}
+
 // provision creates or updates the proxy resources of the served gateways
 // and removes resources of deleted gateways.
-func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway) {
+func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway) error {
 	ns := p.proxyNamespace()
 	want := make(map[string]struct{}, len(gateways))
+	perGateway := make(map[nsName]error)
+	var errs []error
+
+	result := func() error {
+		if len(errs) == 0 {
+			return nil
+		}
+
+		return &provisionError{gateways: perGateway, err: errors.Join(errs...)}
+	}
 
 	for _, gw := range gateways {
 		k := key(gw)
@@ -156,17 +211,19 @@ func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway) {
 		want[name] = struct{}{}
 
 		if err := p.applyProxy(ctx, ns, name, gw); err != nil {
-			slog.Error("kubernetes provider: provision gateway proxy", "gateway", k.String(), "err", err.Error())
+			err = fmt.Errorf("provision gateway %s: %w", k.String(), err)
+			perGateway[k] = err
+			errs = append(errs, err)
 		}
 	}
 
-	selector := labels.SelectorFromSet(map[string]string{labelManagedBy: managedByValue}).String()
+	selector := labels.SelectorFromSet(map[string]string{labelManagedBy: managedByValue, labelController: p.controllerID()}).String()
 
 	deps, err := p.kube.AppsV1().Deployments(ns).List(ctx, metav1.ListOptions{LabelSelector: selector})
 	if err != nil {
-		slog.Error("kubernetes provider: list proxies", "err", err.Error())
+		errs = append(errs, fmt.Errorf("list proxies: %w", err))
 
-		return
+		return result()
 	}
 
 	for _, d := range deps.Items {
@@ -177,17 +234,45 @@ func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway) {
 		slog.Info("kubernetes provider: removing gateway proxy", "name", d.Name)
 
 		policy := metav1.DeletePropagationForeground
-		opts := metav1.DeleteOptions{PropagationPolicy: &policy}
-
-		_ = p.kube.AppsV1().Deployments(ns).Delete(ctx, d.Name, opts)
-		_ = p.kube.CoreV1().Services(ns).Delete(ctx, d.Name, opts)
-		_ = p.kube.CoreV1().ConfigMaps(ns).Delete(ctx, d.Name, opts)
+		opts := metav1.DeleteOptions{PropagationPolicy: &policy, Preconditions: &metav1.Preconditions{UID: &d.UID}}
+		if err := p.kube.AppsV1().Deployments(ns).Delete(ctx, d.Name, opts); err != nil && !apierrors.IsNotFound(err) {
+			errs = append(errs, fmt.Errorf("delete deployment %s: %w", d.Name, err))
+			continue
+		}
 	}
+	// List each kind independently so a failed deletion is retried even after
+	// its Deployment has already disappeared.
+	svcs, err := p.kube.CoreV1().Services(ns).List(ctx, metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		errs = append(errs, fmt.Errorf("list proxy services: %w", err))
+	} else {
+		for _, svc := range svcs.Items {
+			if _, keep := want[svc.Name]; !keep {
+				if err := deleteOwned(ctx, p.kube.CoreV1().Services(ns), svc.Name, p.controllerID()); err != nil {
+					errs = append(errs, err)
+				}
+			}
+		}
+	}
+	cms, err := p.kube.CoreV1().ConfigMaps(ns).List(ctx, metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		errs = append(errs, fmt.Errorf("list proxy configmaps: %w", err))
+	} else {
+		for _, cm := range cms.Items {
+			if _, keep := want[cm.Name]; !keep {
+				if err := deleteOwned(ctx, p.kube.CoreV1().ConfigMaps(ns), cm.Name, p.controllerID()); err != nil {
+					errs = append(errs, err)
+				}
+			}
+		}
+	}
+	return result()
 }
 
 func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gateway) error {
 	k := key(gw)
 	lbls := proxyLabels(k)
+	lbls[labelController] = p.controllerID()
 
 	config, err := p.cfg.proxyConfig(k)
 	if err != nil {
@@ -215,11 +300,11 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 		return fmt.Errorf("configmap: %w", err)
 	}
 
-	ports := listenerPorts(gw)
+	ports := listenerPorts(gw, p.cfg.PortOffset)
 
 	svc := p.proxyService(ns, name, lbls, gw, ports)
 	if err := upsert(ctx, p.kube.CoreV1().Services(ns), svc, func(cur *corev1.Service) bool {
-		if cur.Spec.Type == svc.Spec.Type && servicePortsEqual(cur.Spec.Ports, svc.Spec.Ports) &&
+		if cur.Spec.Type == svc.Spec.Type && maps(cur.Spec.Selector, svc.Spec.Selector) && servicePortsEqual(cur.Spec.Ports, svc.Spec.Ports) &&
 			maps(cur.Labels, lbls) && maps(cur.Annotations, svc.Annotations) {
 			return false
 		}
@@ -227,6 +312,21 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 		cur.Spec.Type = svc.Spec.Type
 		cur.Spec.Selector = svc.Spec.Selector
 		cur.Spec.Ports = mergeNodePorts(cur.Spec.Ports, svc.Spec.Ports)
+		if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
+			cur.Spec.HealthCheckNodePort = 0
+			cur.Spec.AllocateLoadBalancerNodePorts = nil
+			cur.Spec.LoadBalancerClass = nil
+			cur.Spec.LoadBalancerIP = ""
+			cur.Spec.LoadBalancerSourceRanges = nil
+		}
+		if svc.Spec.Type == corev1.ServiceTypeClusterIP {
+			for i := range cur.Spec.Ports {
+				cur.Spec.Ports[i].NodePort = 0
+			}
+			if len(cur.Spec.ExternalIPs) == 0 {
+				cur.Spec.ExternalTrafficPolicy = ""
+			}
+		}
 		cur.Labels = lbls
 		cur.Annotations = svc.Annotations
 
@@ -238,6 +338,7 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 	dep := p.proxyDeployment(ns, name, lbls, gw, ports, hash)
 	if err := upsert(ctx, p.kube.AppsV1().Deployments(ns), dep, func(cur *appsv1.Deployment) bool {
 		if cur.Spec.Template.Annotations[annotationConfigHash] == hash &&
+			maps(cur.Labels, lbls) && maps(cur.Spec.Template.Labels, dep.Spec.Template.Labels) &&
 			ptrOr(cur.Spec.Replicas, 1) == ptrOr(dep.Spec.Replicas, 1) &&
 			podSpecEqual(cur.Spec.Template.Spec, dep.Spec.Template.Spec) {
 			return false
@@ -245,7 +346,12 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 
 		cur.Labels = lbls
 		cur.Spec.Replicas = dep.Spec.Replicas
-		cur.Spec.Template = dep.Spec.Template
+		cur.Spec.Template.Labels = dep.Spec.Template.Labels
+		if cur.Spec.Template.Annotations == nil {
+			cur.Spec.Template.Annotations = make(map[string]string)
+		}
+		cur.Spec.Template.Annotations[annotationConfigHash] = hash
+		cur.Spec.Template.Spec = dep.Spec.Template.Spec
 
 		return true
 	}); err != nil {
@@ -311,6 +417,11 @@ func (p *Provider) proxyDeployment(ns, name string, lbls map[string]string, gw *
 
 	if gw.Spec.Infrastructure != nil {
 		for k, v := range gw.Spec.Infrastructure.Labels {
+			// Identity labels must match the immutable Deployment selector and
+			// Service selector, regardless of user infrastructure metadata.
+			if _, managed := lbls[string(k)]; managed {
+				continue
+			}
 			podLabels[string(k)] = string(v)
 		}
 	}
@@ -321,7 +432,7 @@ func (p *Provider) proxyDeployment(ns, name string, lbls map[string]string, gw *
 		ImagePullPolicy: corev1.PullPolicy(p.cfg.Proxy.ImagePullPolicy),
 		Env: []corev1.EnvVar{
 			{Name: "CONFIG_FILE", Value: "/etc/turna/turna.yaml"},
-			{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+			{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{APIVersion: "v1", FieldPath: "metadata.namespace"}}},
 		},
 		VolumeMounts: []corev1.VolumeMount{{Name: "config", MountPath: "/etc/turna", ReadOnly: true}},
 		ReadinessProbe: &corev1.Probe{
@@ -339,6 +450,13 @@ func (p *Provider) proxyDeployment(ns, name string, lbls map[string]string, gw *
 			Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
 		},
 		Resources: p.cfg.Proxy.resources(),
+	}
+	if container.ImagePullPolicy == "" {
+		container.ImagePullPolicy = corev1.PullIfNotPresent
+		image := container.Image[strings.LastIndex(container.Image, "/")+1:]
+		if !strings.Contains(image, "@") && (!strings.Contains(image, ":") || strings.HasSuffix(image, ":latest")) {
+			container.ImagePullPolicy = corev1.PullAlways
+		}
 	}
 
 	for _, lp := range ports {
@@ -427,7 +545,9 @@ func upsert[T metav1.Object](ctx context.Context, client crud[T], obj T, mutate 
 		return err
 	}
 
-	if cur.GetLabels()[labelManagedBy] != managedByValue {
+	if cur.GetLabels()[labelManagedBy] != managedByValue || cur.GetLabels()[labelController] != obj.GetLabels()[labelController] ||
+		cur.GetLabels()[labelGatewayName] != obj.GetLabels()[labelGatewayName] ||
+		cur.GetLabels()[labelGatewayNamespace] != obj.GetLabels()[labelGatewayNamespace] {
 		return fmt.Errorf("%s exists and is not managed by turna", obj.GetName())
 	}
 
@@ -446,7 +566,7 @@ func maps(a, b map[string]string) bool {
 	}
 
 	for k, v := range a {
-		if b[k] != v {
+		if value, ok := b[k]; !ok || value != v {
 			return false
 		}
 	}
@@ -490,8 +610,67 @@ func podSpecEqual(cur, want corev1.PodSpec) bool {
 
 	c, w := cur.Containers[0], want.Containers[0]
 
-	return c.Image == w.Image && cur.ServiceAccountName == want.ServiceAccountName &&
+	return c.Image == w.Image && c.ImagePullPolicy == w.ImagePullPolicy && cur.ServiceAccountName == want.ServiceAccountName &&
+		equality.Semantic.DeepEqual(c.Resources, w.Resources) &&
+		equality.Semantic.DeepEqual(c.Env, w.Env) &&
+		equality.Semantic.DeepEqual(cur.ImagePullSecrets, want.ImagePullSecrets) &&
+		equality.Semantic.DeepEqual(c.SecurityContext, w.SecurityContext) &&
+		equality.Semantic.DeepEqual(cur.SecurityContext, want.SecurityContext) &&
+		probeEqual(c.ReadinessProbe, w.ReadinessProbe) && probeEqual(c.LivenessProbe, w.LivenessProbe) &&
 		slices.EqualFunc(c.Ports, w.Ports, func(a, b corev1.ContainerPort) bool {
 			return a.Name == b.Name && a.ContainerPort == b.ContainerPort && a.Protocol == b.Protocol
 		})
+}
+
+// Probe default values are set by the API server, not by fake clients.
+func probeEqual(a, b *corev1.Probe) bool {
+	normalize := func(p *corev1.Probe) *corev1.Probe {
+		if p == nil {
+			return nil
+		}
+		p = p.DeepCopy()
+		if p.TimeoutSeconds == 0 {
+			p.TimeoutSeconds = 1
+		}
+		if p.PeriodSeconds == 0 {
+			p.PeriodSeconds = 10
+		}
+		if p.SuccessThreshold == 0 {
+			p.SuccessThreshold = 1
+		}
+		if p.FailureThreshold == 0 {
+			p.FailureThreshold = 3
+		}
+		if p.HTTPGet != nil {
+			if p.HTTPGet.Scheme == "" {
+				p.HTTPGet.Scheme = corev1.URISchemeHTTP
+			}
+		}
+		return p
+	}
+	return equality.Semantic.DeepEqual(normalize(a), normalize(b))
+}
+
+type deletable[T metav1.Object] interface {
+	Get(context.Context, string, metav1.GetOptions) (T, error)
+	Delete(context.Context, string, metav1.DeleteOptions) error
+}
+
+func deleteOwned[T metav1.Object](ctx context.Context, client deletable[T], name, controller string) error {
+	obj, err := client.Get(ctx, name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if obj.GetLabels()[labelManagedBy] != managedByValue || obj.GetLabels()[labelController] != controller {
+		return nil
+	}
+	uid := obj.GetUID()
+	err = client.Delete(ctx, name, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &uid}})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	return err
 }

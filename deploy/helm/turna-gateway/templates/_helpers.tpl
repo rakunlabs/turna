@@ -36,6 +36,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   "enabled" true
   "mode" .Values.mode
   "controller_name" .Values.controllerName
+  "controller_id" (printf "%s/%s" .Release.Namespace (include "turna-gateway.fullname" .))
   "namespaces" .Values.watchNamespaces
   "port_offset" .Values.portOffset
   "health_address" ":9901"

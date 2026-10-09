@@ -1,6 +1,8 @@
 package kubernetes
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -128,8 +130,10 @@ func (idx *index) namespaceLabels(ns string) labels.Set {
 
 func sanitize(parts ...string) string {
 	s := strings.Join(parts, "-")
-
-	return strings.Map(func(r rune) rune {
+	// Hash the unmodified parts with separators that cannot occur in these
+	// values. Sanitization and truncation must not erase identity or boundaries.
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	s = strings.Map(func(r rune) rune {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
 			return r
@@ -137,6 +141,10 @@ func sanitize(parts ...string) string {
 			return '_'
 		}
 	}, s)
+	if len(s) > 183 {
+		s = s[:183]
+	}
+	return s + "-" + hex.EncodeToString(sum[:])[:16]
 }
 
 func ptrOr[T any](p *T, def T) T {

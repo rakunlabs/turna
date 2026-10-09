@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: turna-system
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - rbac.yaml
+  - gatewayclass.yaml
+  - pdb.yaml
+
+# Keep providers.kubernetes.proxy.image in turna.yaml in sync with this image.
+images:
+  - name: ghcr.io/rakunlabs/turna
+    newTag: latest
+
+# The generated name changes when the config changes, rolling the controller.
+configMapGenerator:
+  - name: turna-config
+    files:
+      - turna.yaml

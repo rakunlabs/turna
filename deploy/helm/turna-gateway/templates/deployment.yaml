@@ -62,7 +62,7 @@ spec:
             {{- range .Values.listenerPorts }}
             - name: {{ .name }}
               containerPort: {{ add .port $.Values.portOffset }}
-              protocol: TCP
+              protocol: {{ .protocol | default "TCP" }}
             {{- end }}
             {{- end }}
           readinessProbe:
@@ -126,7 +126,7 @@ spec:
     - name: {{ .name }}
       port: {{ .port }}
       targetPort: {{ .name }}
-      protocol: TCP
+      protocol: {{ .protocol | default "TCP" }}
       {{- if .nodePort }}
       nodePort: {{ .nodePort }}
       {{- end }}

@@ -30,7 +30,8 @@ logLevel: info
 # extraConfig is merged into the turna configuration file.
 extraConfig: {}
 
-# controller (or standalone proxy) replicas, status is written by the leader
+# controller (or standalone proxy) replicas; only the leader writes status
+# and provisions proxy resources.
 replicaCount: 2
 
 resources:
@@ -54,7 +55,8 @@ proxy:
     memoryLimit: 256Mi
 
 # standalone mode only: ports exposed by the shared Service. nodePort is
-# optional for NodePort services.
+# optional for NodePort services. protocol defaults to TCP; set UDP for
+# UDPRoute listeners (e.g. {name: dns-udp, port: 53, protocol: UDP}).
 listenerPorts:
   - name: http
     port: 80

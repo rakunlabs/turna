@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -79,10 +78,10 @@ func restConfig(path string) (*rest.Config, error) {
 		if c, err := rest.InClusterConfig(); err == nil {
 			return c, nil
 		}
-
-		path = os.Getenv("KUBECONFIG")
 	}
 
+	// The default loading rules merge the KUBECONFIG path list. Only the
+	// explicitly configured single file should become ExplicitPath.
 	rules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if path != "" {
 		rules.ExplicitPath = path
@@ -304,7 +303,7 @@ func (p *Provider) Run(ctx context.Context) error {
 		return fmt.Errorf("kubernetes provider: unknown mode %q", mode)
 	}
 
-	if mode != ModeProxy && !p.cfg.Status.Disabled {
+	if mode == ModeController || mode != ModeProxy && !p.cfg.Status.Disabled {
 		p.status = newStatusWriter(p)
 		go p.status.run(ctx)
 	}
@@ -357,12 +356,25 @@ func (p *Provider) notify() {
 }
 
 func (p *Provider) loop(ctx context.Context) {
+	var retryTimer *time.Timer
+	var retryC <-chan time.Time
+	backoff := 200 * time.Millisecond
+	defer func() {
+		if retryTimer != nil {
+			retryTimer.Stop()
+		}
+	}()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-p.trigger:
+		case <-retryC:
 		}
+		if retryTimer != nil {
+			retryTimer.Stop()
+		}
+		retryC = nil
 
 		// collect bursts of events
 		timer := time.NewTimer(p.cfg.debounce())
@@ -376,6 +388,11 @@ func (p *Provider) loop(ctx context.Context) {
 
 		if err := p.sync(ctx); err != nil {
 			slog.Error("kubernetes provider: sync failed", "err", err.Error())
+			retryTimer = time.NewTimer(backoff)
+			retryC = retryTimer.C
+			backoff = min(backoff*2, 30*time.Second)
+		} else {
+			backoff = 200 * time.Millisecond
 		}
 	}
 }
@@ -435,14 +452,22 @@ func (p *Provider) sync(ctx context.Context) error {
 
 	if p.cfg.mode() == ModeController {
 		// proxies serve traffic, the controller only provisions and reports
-		p.provision(ctx, res.served)
-		p.markReady()
-
-		if p.status != nil {
-			p.status.update(snap, res, nil)
+		leaderCtx, leader := p.status.leadership()
+		if !leader {
+			// A synced standby is ready to take over but must not mutate proxies.
+			p.markReady()
+			return nil
+		}
+		provisionErr := p.provision(leaderCtx, res.served)
+		if provisionErr == nil {
+			p.markReady()
 		}
 
-		return nil
+		if p.status != nil {
+			p.status.update(snap, res, provisionErr)
+		}
+
+		return provisionErr
 	}
 
 	p.mu.Lock()

@@ -122,7 +122,7 @@ func TestTranslateBasic(t *testing.T) {
 		t.Fatalf("entrypoints = %v", res.Server.EntryPoints)
 	}
 
-	router, ok := res.Server.HTTP.Routers["k8s-k8s-80-example.com"]
+	router, ok := res.Server.HTTP.Routers[sanitize("k8s", "k8s-80", "example.com")]
 	if !ok || router.Host != "example.com" || router.TLS != nil {
 		t.Fatalf("routers = %v", res.Server.HTTP.Routers)
 	}
@@ -362,7 +362,7 @@ func TestTranslateMissingBackend(t *testing.T) {
 	}
 
 	// the route still answers, with 500
-	g := res.Server.HTTP.Middlewares["k8s-k8s-80-any"].Gateway
+	g := res.Server.HTTP.Middlewares[sanitize("k8s", "k8s-80", "")].Gateway
 	if g == nil {
 		t.Fatalf("middlewares = %v", res.Server.HTTP.Middlewares)
 	}

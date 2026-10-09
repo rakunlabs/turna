@@ -6,15 +6,35 @@ It passes all tests of the `GATEWAY-HTTP`, `GATEWAY-GRPC`, `GATEWAY-TLS`, `GATEW
 
 ## Install
 
-Install the Gateway API CRDs and the Helm chart:
+Install the Gateway API CRDs, then choose Helm or Kustomize:
 
 ```sh
 kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.3/standard-install.yaml
+```
 
+### Helm
+
+```sh
 helm install turna deploy/helm/turna-gateway -n turna-system --create-namespace
 ```
 
-The chart creates a `GatewayClass` named `turna`. Create a Gateway and route traffic to a Service:
+### Kustomize
+
+From the repository root, without Helm:
+
+```sh
+kubectl apply -k deploy/kustomize/turna-gateway
+kubectl rollout status deployment/turna -n turna-system
+```
+
+The manifests include the namespace, controller Deployment, generated ConfigMap,
+controller/proxy ServiceAccounts, RBAC, GatewayClass and PodDisruptionBudget.
+Edit `deploy/kustomize/turna-gateway/turna.yaml` for proxy and provider settings,
+and `kustomization.yaml` for the namespace and controller image tag. Keep the proxy
+image in `turna.yaml` in sync with the controller image. Config changes trigger
+a controller rollout through the generated ConfigMap's content hash.
+
+Both installations default to controller mode and create a `GatewayClass` named `turna`. They are alternatives; do not apply both with the default resource names. Create a Gateway and route traffic to a Service:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -57,11 +77,15 @@ Complete examples are in `deploy/examples`: `gateway-demo.yaml` (HTTP canary rou
 
 | Mode | Description |
 | --- | --- |
-| `controller` | Default in the chart. The controller creates a Deployment, Service and ConfigMap per Gateway in its namespace and reports status. Each Gateway gets its own address and is fully isolated. |
+| `controller` | Default in Helm and Kustomize. The controller creates a Deployment, Service and ConfigMap per Gateway in its namespace and reports status. Each Gateway gets its own address and is fully isolated. |
 | `proxy` | Runs inside the pods created by the controller and serves one Gateway. |
 | `standalone` | One Deployment serves every Gateway through one shared Service. Listeners of different Gateways on the same port share a socket and are separated by hostname only. |
 
 In controller mode, `spec.infrastructure.labels` of a Gateway are added to its proxy pods and `spec.infrastructure.annotations` to its Service, for example to configure a cloud load balancer.
+
+Only the elected leader provisions proxies and writes status. Standby controllers still watch resources and can take over when leadership changes. Disabling status updates does not disable controller-mode leader election; `status.leader_election.disabled` is intended only for single-replica installations.
+
+Proxy resources carry a controller ownership label. The chart sets `controller_id` to the release namespace and name; the Kustomize configuration uses the stable ID `turna-kustomize`. All replicas of an installation must share this ID, and independent installations must use different IDs. For other configurations, set an explicit stable `controller_id` if you plan to change the watched namespaces or Gateways. Otherwise, the ID is derived from the controller name, watch scope and election lease configuration.
 
 ## Configuration
 
@@ -73,6 +97,7 @@ providers:
     enabled: true
     mode: controller
     controller_name: rakunlabs.com/turna
+    controller_id: turna-system/turna # stable installation identity
     namespaces: []          # empty watches all namespaces
     gateways: []            # "namespace/name", empty serves all of the class
     port_offset: 8000       # listener 80 binds 8080 inside the pod
@@ -132,5 +157,11 @@ Changes are applied without restarting or dropping connections:
 - TLS certificates apply to new connections;
 - unchanged backends keep their balancing and health state;
 - an invalid configuration is rejected and the previous one keeps serving.
+
+Transient apply and provisioning failures are retried with exponential backoff (200ms up to 30s), even without another resource event. Proxy resource, label and image pull configuration changes are reconciled into the Deployment. Mirror filters sample their percentage once per Service and then choose one endpoint, rather than sampling each endpoint independently. The mirror middleware's body-size and concurrency limits still apply.
+
+### Upgrading from the initial Gateway implementation
+
+Generated proxy names now always include a hash of the complete Gateway namespace/name to avoid ambiguous names such as `a-b/c` and `a/b-c`. Existing proxies using the old unhashed names are not adopted or deleted automatically because they have no installation ownership label. Wait for the new proxy Deployment and Service to become ready, switch traffic to the new Service address, and then remove the old Deployment, Service and ConfigMap after verifying which installation owns them. This can allocate a new load balancer address.
 
 The same mechanism reloads `server.load_value` when it comes from a dynamic Consul source.

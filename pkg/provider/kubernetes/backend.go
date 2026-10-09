@@ -225,13 +225,23 @@ func rewrite(r *gwv1.HTTPURLRewriteFilter) *gateway.Rewrite {
 }
 
 func (t *translator) mirror(route *gwv1.HTTPRoute, m *gwv1.HTTPRequestMirrorFilter) (*service.Mirror, *refError) {
+	return t.requestMirror(kindRoute, route.Namespace, m, false)
+}
+
+// requestMirror keeps a Service's endpoints in one target so each sampled
+// request is sent to exactly one endpoint, regardless of the route kind.
+func (t *translator) requestMirror(kind gwv1.Kind, namespace string, m *gwv1.HTTPRequestMirrorFilter, grpc bool) (*service.Mirror, *refError) {
 	if m == nil {
 		return nil, &refError{string(gwv1.RouteReasonUnsupportedValue), "requestMirror is empty"}
 	}
 
-	urls, err := t.resolveBackend(route, m.BackendRef)
+	addrs, scheme, err := t.resolveAddresses(kind, namespace, m.BackendRef, corev1.ProtocolTCP)
 	if err != nil {
 		return nil, err
+	}
+	urls := make([]string, 0, len(addrs))
+	for _, a := range addrs {
+		urls = append(urls, scheme+"://"+a)
 	}
 
 	percent := 100.0
@@ -246,10 +256,9 @@ func (t *translator) mirror(route *gwv1.HTTPRoute, m *gwv1.HTTPRequestMirrorFilt
 		}
 	}
 
-	out := &service.Mirror{}
-	for _, u := range urls {
-		p := percent / float64(len(urls))
-		out.Servers = append(out.Servers, service.MirrorServer{URL: u, Percent: &p})
+	out := &service.Mirror{H2C: scheme == "http" && (grpc || t.backendH2C(namespace, m.BackendRef))}
+	if len(urls) > 0 {
+		out.Servers = []service.MirrorServer{{Endpoints: urls, Percent: &percent}}
 	}
 
 	return out, nil
@@ -287,10 +296,25 @@ func (t *translator) backend(route *gwv1.HTTPRoute, rule, idx int, b gwv1.HTTPBa
 		filterNames = append(filterNames, name)
 	}
 
-	name := t.serviceMiddlewareFor(urls, false)
+	name := t.serviceMiddlewareFor(urls, t.backendH2C(route.Namespace, b.BackendObjectReference))
 	out.Middlewares = append(filterNames, name)
 
 	return out, nil
+}
+
+// backendH2C is called only after resolving a permitted Service reference.
+func (t *translator) backendH2C(namespace string, ref gwv1.BackendObjectReference) bool {
+	ns := string(ptrOr(ref.Namespace, gwv1.Namespace(namespace)))
+	svc := t.idx.services[nsName{Namespace: ns, Name: string(ref.Name)}]
+	if svc == nil || ref.Port == nil {
+		return false
+	}
+	for _, p := range svc.Spec.Ports {
+		if p.Port == int32(*ref.Port) && (p.Protocol == "" || p.Protocol == corev1.ProtocolTCP) {
+			return ptrOr(p.AppProtocol, "") == "kubernetes.io/h2c"
+		}
+	}
+	return false
 }
 
 // resolveBackend returns upstream URLs of a Service reference of an HTTPRoute.

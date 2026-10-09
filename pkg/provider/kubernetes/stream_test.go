@@ -303,6 +303,38 @@ func TestStreamTLSMixed(t *testing.T) {
 	}
 }
 
+// This test uses TCP and UDP on one port and another TCP listener on port+1.
+// A single freePort does not verify the adjacent port or the UDP socket.
+func freeStreamPorts(t *testing.T) int {
+	t.Helper()
+	for range 100 {
+		first, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := first.Addr().(*net.TCPAddr).Port
+		if port == 65535 {
+			_ = first.Close()
+			continue
+		}
+		second, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port+1))
+		if err != nil {
+			_ = first.Close()
+			continue
+		}
+		packet, err := net.ListenPacket("udp", "127.0.0.1:"+strconv.Itoa(port))
+		_ = second.Close()
+		_ = first.Close()
+		if err != nil {
+			continue
+		}
+		_ = packet.Close()
+		return port
+	}
+	t.Fatal("could not find a free TCP/UDP port and adjacent TCP port")
+	return 0
+}
+
 func TestStreamTCPAndUDP(t *testing.T) {
 	tcpAddr := echoTCP(t, "tcp:")
 
@@ -360,7 +392,7 @@ func TestStreamTCPAndUDP(t *testing.T) {
 		},
 	}
 
-	local := freePort(t)
+	local := freeStreamPorts(t)
 
 	res := applyTranslate(t, &Config{Address: "127.0.0.1", PortOffset: local - 5300}, &Snapshot{
 		GatewayClasses: []*gwv1.GatewayClass{class()},

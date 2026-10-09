@@ -328,6 +328,12 @@ func (t *translator) gateway(gw *gwv1.Gateway) []*listener {
 			}
 		}
 
+		if local := li.port + t.cfg.PortOffset; li.valid && (local < 1 || local > 65535) {
+			accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonPortUnavailable),
+				fmt.Sprintf("port %d with port offset %d is out of range", li.port, t.cfg.PortOffset))
+			li.valid = false
+		}
+
 		st.Conditions = []metav1.Condition{accepted, resolved}
 		out = append(out, li)
 	}
@@ -622,8 +628,14 @@ func (t *translator) attach(route *routeInfo, ref gwv1.ParentReference, lis []*l
 
 			conflict := false
 			for _, h := range a.hosts {
-				if k, ok := a.li.httpHosts[h]; ok && k != route.kind {
-					conflict = true
+				for existing, kind := range a.li.httpHosts {
+					if kind != route.kind && (h == "" || existing == "" || hostMatches(h, existing) || hostMatches(existing, h)) {
+						conflict = true
+						break
+					}
+				}
+				if conflict {
+					break
 				}
 			}
 
@@ -849,7 +861,7 @@ func (t *translator) build() {
 		}
 
 		for host, hr := range byHost {
-			name := sanitize("k8s", entry, hostLabel(host))
+			name := sanitize("k8s", entry, host)
 
 			g := &gateway.Gateway{Rules: hr.rules, ListenerPort: entryPort(entry)}
 			if len(hr.grpc) > 0 {
@@ -882,15 +894,6 @@ func entryPort(entry string) int {
 	p, _ := strconv.Atoi(strings.TrimPrefix(strings.TrimPrefix(entry, "k8s-udp-"), "k8s-"))
 
 	return p
-}
-
-func hostLabel(host string) string {
-	switch host {
-	case "":
-		return "any"
-	default:
-		return strings.ReplaceAll(host, "*", "wildcard")
-	}
 }
 
 func readyEndpoint(ep discoveryv1.Endpoint) bool {
