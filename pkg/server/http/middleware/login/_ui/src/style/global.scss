@@ -8,19 +8,89 @@ body {
   @apply h-full w-full;
 }
 
+// Color tokens: space-separated RGB triplets consumed by the semantic colors
+// in tailwind.config.js. Light is indigo on cool grey; dark is true black
+// (OLED) with a white primary and orange links.
+:root {
+  --canvas: 249 250 251;
+  --surface: 255 255 255;
+  --field: 255 255 255;
+  --hover: 243 244 246;
+  --line: 209 213 219;
+  --divider: 229 231 235;
+  --ink: 17 24 39;
+  --muted: 107 114 128;
+  --brand: 97 95 255;
+  --brand-hover: 79 70 229;
+  --brand-on: 255 255 255;
+  --brand-link: 79 70 229;
+  --success: 22 101 52;
+  --success-bg: 240 253 244;
+  --success-line: 134 239 172;
+  --danger: 153 27 27;
+  --danger-bg: 254 242 242;
+  --danger-line: 252 165 165;
+}
+
+html.dark {
+  --canvas: 0 0 0;
+  --surface: 10 10 10;
+  --field: 0 0 0;
+  --hover: 24 24 24;
+  --line: 44 44 44;
+  --divider: 30 30 30;
+  --ink: 245 245 245;
+  --muted: 140 140 140;
+  --brand: 255 255 255;
+  --brand-hover: 230 230 230;
+  --brand-on: 0 0 0;
+  --brand-link: 255 138 76;
+  --success: 134 208 160;
+  --success-bg: 22 44 32;
+  --success-line: 50 95 70;
+  --danger: 252 165 165;
+  --danger-bg: 60 24 24;
+  --danger-line: 120 45 45;
+}
+
 html {
   color-scheme: light;
-  background-color: #f9fafb; // gray-50
+  background-color: rgb(var(--canvas));
+  accent-color: rgb(var(--brand));
+  caret-color: rgb(var(--brand));
+
+  ::selection {
+    background-color: rgb(var(--brand));
+    color: rgb(var(--brand-on));
+  }
 }
 
 html.dark {
   color-scheme: dark;
-  background-color: theme("colors.night.canvas");
-  accent-color: theme("colors.night.sage");
-  caret-color: theme("colors.night.sage");
+}
 
-  ::selection {
-    background-color: theme("colors.night.sage");
-    color: theme("colors.night.canvas");
+@layer components {
+  .field {
+    @apply mt-1 block w-full rounded-md border border-line bg-field px-3 py-2 text-ink placeholder-muted/70
+      focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25 disabled:bg-hover;
+  }
+
+  .btn {
+    @apply flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2 text-center font-semibold transition
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface
+      disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-primary {
+    @apply border-transparent bg-brand text-brand-on enabled:hover:bg-brand-hover;
+  }
+
+  .btn-secondary {
+    @apply border-line bg-surface text-ink enabled:hover:bg-hover;
+  }
+
+  .link {
+    @apply cursor-pointer rounded-sm border-0 bg-transparent p-0 text-sm font-medium text-brand-link underline-offset-4
+      hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40;
   }
 }

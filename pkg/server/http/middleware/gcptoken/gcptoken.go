@@ -79,6 +79,9 @@ type GCPToken struct {
 	RefreshBefore time.Duration `cfg:"refresh_before"`
 	// Timeout for upstream calls, default 30s.
 	Timeout time.Duration `cfg:"timeout"`
+	// Proxy is an http/https proxy URL for the STS and impersonation calls.
+	// If empty, the proxy environment variables are used.
+	Proxy string `cfg:"proxy"`
 
 	// Format of the returned token: "raw" (default) or "managed_kafka"
 	// (Google Managed Service for Apache Kafka OAUTHBEARER wrapper).
@@ -268,6 +271,12 @@ func (g *GCPToken) init() error {
 		return errors.New("gcp_token: client_id and client_secret must be set together")
 	}
 
+	if g.Proxy != "" {
+		if _, err := g.proxyURL(); err != nil {
+			return err
+		}
+	}
+
 	if g.now == nil {
 		g.now = time.Now
 	}
@@ -307,7 +316,29 @@ func (g *GCPToken) newHTTPClient() (*http.Client, error) {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.TLSClientConfig = tlsCfg
 
+	if g.Proxy != "" {
+		u, err := g.proxyURL()
+		if err != nil {
+			return nil, err
+		}
+
+		tr.Proxy = http.ProxyURL(u)
+	}
+
 	return &http.Client{Transport: tr, Timeout: g.Timeout}, nil
+}
+
+func (g *GCPToken) proxyURL() (*url.URL, error) {
+	u, err := url.Parse(g.Proxy)
+	if err != nil {
+		return nil, fmt.Errorf("gcp_token: parse proxy: %w", err)
+	}
+
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil, fmt.Errorf("gcp_token: proxy %q must be an http or https URL", g.Proxy)
+	}
+
+	return u, nil
 }
 
 // subjectToken builds the X.509 subject token: JSON array of base64 DER certs, leaf first.

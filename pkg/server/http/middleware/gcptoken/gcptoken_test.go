@@ -10,7 +10,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -298,6 +300,51 @@ func TestStaleTokenOnRefreshFailure(t *testing.T) {
 	}
 }
 
+func TestProxy(t *testing.T) {
+	var connects atomic.Int32
+
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodConnect {
+			http.Error(w, "connect only", http.StatusMethodNotAllowed)
+			return
+		}
+
+		connects.Add(1)
+
+		upstream, err := net.Dial("tcp", r.Host)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer upstream.Close()
+
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		_, _ = conn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
+
+		go func() { _, _ = io.Copy(upstream, conn) }()
+		_, _ = io.Copy(conn, upstream)
+	}))
+	t.Cleanup(proxy.Close)
+
+	_, _, h := newMiddleware(t, func(g *GCPToken) { g.Proxy = proxy.URL })
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if connects.Load() == 0 {
+		t.Fatal("expected requests through proxy")
+	}
+}
+
 func TestConfigValidation(t *testing.T) {
 	cases := map[string]*GCPToken{
 		"cert both":    {Audience: "a", Cert: "x", CertFile: "/x", Key: "y"},
@@ -308,6 +355,7 @@ func TestConfigValidation(t *testing.T) {
 		"bad subject":  {Credentials: `{"subject_token_type":"urn:ietf:params:oauth:token-type:jwt","audience":"a"}`},
 		"no cert":      {Audience: "a"},
 		"bad format":   {Audience: "a", Cert: "x", Key: "y", Format: "nope"},
+		"bad proxy":    {Audience: "a", Cert: "x", Key: "y", Proxy: "socks5://p:1080"},
 	}
 
 	for name, g := range cases {

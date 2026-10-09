@@ -6,11 +6,9 @@
   export let minlength: number | null = null;
   export let autocomplete = "current-password";
   export let placeholder = "";
+  export let describedby: string | undefined = undefined;
 
   let show = false;
-
-  const inputClass =
-    "py-1.5 pl-3 pr-10 border rounded-md border-gray-300 bg-white text-gray-900 focus:border-blue-300 focus:outline-none focus:ring focus:ring-blue-200 focus:ring-opacity-50 disabled:bg-gray-100 mt-1 block w-full dark:border-night-border dark:bg-night-canvas dark:text-night-text dark:placeholder-night-muted dark:focus:border-night-sage dark:focus:ring-night-sage dark:focus:ring-opacity-100 dark:disabled:bg-night-hover";
 </script>
 
 <div class="relative">
@@ -21,33 +19,40 @@
     {placeholder}
     {autocomplete}
     minlength={minlength ?? undefined}
+    aria-describedby={describedby}
     type={show ? "text" : "password"}
     {value}
-    class={inputClass}
+    class="field pr-11"
   />
   <button
     type="button"
-    aria-label={show ? "Hide password" : "Show password"}
+    aria-label="Show password"
+    aria-pressed={show}
+    aria-controls={id}
     on:click={() => (show = !show)}
-    class="absolute inset-y-0 end-0 flex items-center z-20 px-3 cursor-pointer text-gray-400 rounded-e-md focus:outline-none focus:text-blue-600 dark:text-night-muted dark:focus:text-night-sage"
+    class="absolute inset-y-0 end-0 flex w-11 items-center justify-center rounded-e-md text-muted transition hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
   >
     <svg
-      class="shrink-0 size-3.5"
-      width="24"
-      height="24"
+      class="shrink-0"
+      width="18"
+      height="18"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       stroke-width="2"
       stroke-linecap="round"
       stroke-linejoin="round"
+      aria-hidden="true"
     >
-      <path class={show ? "hidden" : ""} d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path>
-      <path class={show ? "hidden" : ""} d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path>
-      <path class={show ? "hidden" : ""} d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path>
-      <line class={show ? "hidden" : ""} x1="2" x2="22" y1="2" y2="22"></line>
-      <path class={show ? "block" : "hidden"} d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
-      <circle class={show ? "block" : "hidden"} cx="12" cy="12" r="3"></circle>
+      {#if show}
+        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+      {:else}
+        <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path>
+        <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path>
+        <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path>
+        <line x1="2" x2="22" y1="2" y2="22"></line>
+      {/if}
     </svg>
   </button>
 </div>

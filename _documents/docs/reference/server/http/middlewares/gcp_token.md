@@ -70,6 +70,7 @@ gcp_token:
 | `lifetime` | `1h` | Lifetime of the impersonated token. |
 | `refresh_before` | `5m` | Refresh the cached token this long before it expires. |
 | `timeout` | `30s` | Timeout for upstream calls. |
+| `proxy` | proxy env vars | `http`/`https` proxy URL used for the STS and impersonation calls, e.g. `http://user:pass@proxy.local:3128`. mTLS goes through the proxy via `CONNECT`. If empty, `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` are used. |
 | `format` | `raw` | `raw` returns the Google access token. `managed_kafka` wraps it in the JWT-like `GOOG_OAUTH2_TOKEN` format used by Google Managed Service for Apache Kafka. |
 | `mode` | `endpoint` | `endpoint` or `inject`. |
 | `header` | `Authorization` | Header used in `inject` mode. `Authorization` gets a `Bearer ` prefix. |

@@ -9,3 +9,7 @@
 __debug_bin*
 graphify-out
 /pkg/server/http/middleware/auth/docs/swagger.json
+
+# impeccable design artifacts
+/.impeccable
+/PRODUCT.md
