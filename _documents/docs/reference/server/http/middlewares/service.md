@@ -22,6 +22,7 @@ server:
 | Field | Default | Description |
 | --- | --- | --- |
 | `insecure_skip_verify` | `false` | Skip upstream TLS certificate verification. Also applies to active health checks and mirror requests. |
+| `h2c` | `false` | Use HTTP/2 without TLS for `http://` upstreams, required for plain text gRPC servers. |
 | `pass_host_header` | | When explicitly `false`, clear `r.Host` before proxying. |
 | `proxy` | | Optional HTTP or HTTPS forward proxy URL used for upstream requests. Credentials may be included in the URL. |
 | `loadbalancer.servers` | | Upstream list; each entry has `url` and optional `weight` (default `1`). |

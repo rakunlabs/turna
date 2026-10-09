@@ -206,6 +206,21 @@ func TestRetryOnUnreachable(t *testing.T) {
 	}
 }
 
+func TestRetryExhaustedReportsBadGateway(t *testing.T) {
+	dead := httptest.NewServer(http.NotFoundHandler())
+	deadURL := dead.URL
+	dead.Close()
+
+	h := newServiceHandler(t, context.Background(), &Service{
+		Retry:        2,
+		LoadBalancer: LoadBalancer{Servers: []Server{{URL: deadURL}}},
+	})
+
+	if rec := call(h); rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d body = %q", rec.Code, rec.Body.String())
+	}
+}
+
 func TestPassiveHealthCheck(t *testing.T) {
 	status := &atomic.Int32{}
 	status.Store(http.StatusBadGateway)

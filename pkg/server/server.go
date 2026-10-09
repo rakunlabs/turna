@@ -2,9 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
-	"log/slog"
-	"net"
 	"strings"
 	"sync"
 
@@ -27,60 +24,22 @@ type EntryPoint struct {
 	Network string `cfg:"network"`
 }
 
-func (e *EntryPoint) Serve(ctx context.Context, name string) error {
-	network := e.Network
-	if network == "" {
-		network = "tcp"
-	}
-
-	// UDP is connectionless, it needs a packet connection instead of a listener.
-	if strings.HasPrefix(network, "udp") {
-		conn, err := net.ListenPacket(network, e.Address)
-		if err != nil {
-			return fmt.Errorf("address cannot listen %s: %w", e.Address, err)
-		}
-
-		slog.Info(fmt.Sprintf("entrypoint %s is listening on %s with %s", name, e.Address, network))
-
-		registry.GlobalReg.AddUDPListener(name, conn)
-
-		return nil
-	}
-
-	listener, err := net.Listen(network, e.Address)
-	if err != nil {
-		return fmt.Errorf("address cannot listen %s: %w", e.Address, err)
-	}
-
-	slog.Info(fmt.Sprintf("entrypoint %s is listening on %s with %s", name, e.Address, network))
-
-	registry.GlobalReg.AddListener(name, listener)
-
-	return nil
+func isPacket(network string) bool {
+	return strings.HasPrefix(network, "udp")
 }
 
+// Run starts the server and sets GlobalManager to apply later changes.
 func (s *Server) Run(ctx context.Context, wg *sync.WaitGroup) error {
-	if len(s.EntryPoints) == 0 {
-		return nil
+	m := NewManager(ctx, wg)
+	if err := m.SetLayer(LayerStatic, s); err != nil {
+		m.Shutdown()
+
+		return err
 	}
 
-	for name, entrypoint := range s.EntryPoints {
-		if err := entrypoint.Serve(ctx, name); err != nil {
-			return fmt.Errorf("entrypoint %s cannot serve: %w", name, err)
-		}
-	}
+	registry.GlobalReg.AddShutdownFunc("server", m.Shutdown)
 
-	if err := s.HTTP.Set(ctx, wg); err != nil {
-		return fmt.Errorf("http cannot set: %w", err)
-	}
-
-	if err := s.TCP.Set(ctx, wg); err != nil {
-		return fmt.Errorf("tcp cannot set: %w", err)
-	}
-
-	if err := s.UDP.Set(ctx, wg); err != nil {
-		return fmt.Errorf("udp cannot set: %w", err)
-	}
+	GlobalManager = m
 
 	return nil
 }

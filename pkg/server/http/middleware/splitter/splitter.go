@@ -68,7 +68,7 @@ func (m *Splitter) Middleware() (func(http.Handler) http.Handler, error) {
 				m.Rules[i].once.Do(func() {
 					middlewares := make([]func(http.Handler) http.Handler, 0, len(m.Rules[i].Middlewares)+1)
 					for _, middlewareName := range m.Rules[i].Middlewares {
-						middlewareFromGlobal, err := registry.GlobalReg.GetHttpMiddleware(middlewareName)
+						middlewareFromGlobal, err := registry.GlobalReg.ActiveHttpMiddleware(middlewareName)
 						if err != nil {
 							slog.Error("middleware not found", slog.String("middleware", middlewareName), slog.String("error", err.Error()))
 

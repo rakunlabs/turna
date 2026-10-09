@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/rakunlabs/turna/pkg/server/registry"
 	"log/slog"
 	"net/http"
 	"path"
 	"strconv"
 	"strings"
 
-	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/ok"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
@@ -117,7 +117,7 @@ func (m *Login) methodsGroup(urlPath string) (string, bool) {
 }
 
 func (m *Login) Init() error {
-	m.session = session.GlobalRegistry.Get(m.SessionMiddleware)
+	m.session = session.GlobalRegistry.Resolve(m.SessionMiddleware)
 	if m.session == nil {
 		return errors.New("session middleware not found")
 	}
@@ -255,7 +255,7 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 		return nil, err
 	}
 
-	into.ShutdownAdd(storeCache.Close, "login-store")
+	registry.GlobalReg.OnStop(ctx, "login-store", storeCache.Close)
 
 	m.store = storeCache
 

@@ -20,6 +20,10 @@ type Service struct {
 	// Retry is the number of retries on other upstreams when an upstream is unreachable.
 	Retry int `cfg:"retry"`
 
+	// H2C connects to http upstreams with HTTP/2 prior knowledge, required
+	// for gRPC backends without TLS.
+	H2C bool `cfg:"h2c"`
+
 	Mirror *Mirror `cfg:"mirror"`
 }
 
@@ -167,6 +171,12 @@ func (m *Service) Middleware(ctx context.Context) ([]func(http.Handler) http.Han
 			transport.TLSClientConfig = &tls.Config{} //nolint:gosec // opt-in skip verify
 		}
 		transport.TLSClientConfig.InsecureSkipVerify = true
+	}
+	if m.H2C {
+		var protocols http.Protocols
+		protocols.SetUnencryptedHTTP2(true)
+		protocols.SetHTTP2(true)
+		transport.Protocols = &protocols
 	}
 
 	cfg.Transport = transport

@@ -88,7 +88,8 @@ func startChain(t *testing.T, middlewares ...tcpmw.Middleware) string {
 		wg.Wait()
 	})
 
-	serve(ctx, wg, "test", l, tcpmw.Chain(func(net.Conn) error { return nil }, middlewares...))
+	handler := tcpmw.Chain(func(net.Conn) error { return nil }, middlewares...)
+	serve(ctx, wg, "test", l, func() tcpmw.Handler { return handler })
 
 	return l.Addr().String()
 }

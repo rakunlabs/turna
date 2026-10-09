@@ -24,7 +24,7 @@ server:
 
 | Field | Default | Description |
 | --- | --- | --- |
-| `certificates` | self-signed | Certificate/key pairs. The certificate is selected by SNI. When empty a self-signed certificate is generated. |
+| `certificates` | self-signed | Certificate/key pairs as `cert_file`/`key_file`, or PEM content as `cert`/`key`. The certificate is selected by SNI. When empty a self-signed certificate is generated. |
 | `min_version` | `1.2` | Minimum TLS version: `1.0`, `1.1`, `1.2` or `1.3`. |
 | `alpn` | | ALPN protocols to advertise. |
 | `client_ca_file` | | Enables mutual TLS with this CA bundle. |

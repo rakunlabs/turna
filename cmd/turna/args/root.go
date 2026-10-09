@@ -160,6 +160,8 @@ func runRoot(ctx context.Context) error {
 
 		// notify
 		slog.Info("dynamic config loaded")
+
+		reloadServer(data)
 	}
 
 	// load configurations
@@ -205,10 +207,18 @@ func runRoot(ctx context.Context) error {
 		); err != nil {
 			return fmt.Errorf("unable to load server config from load_value: %w", err)
 		}
+
+		rememberLoadValue(render.Data)
 	}
 
 	http.ServerInfo = config.AppName + " [" + config.BuildVars.Version + "]"
 	if err := config.Application.Server.Run(ctx, wg); err != nil {
+		into.CtxCancel()
+
+		return err
+	}
+
+	if err := runProviders(ctx, wg); err != nil {
 		into.CtxCancel()
 
 		return err

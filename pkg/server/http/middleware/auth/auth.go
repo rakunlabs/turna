@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/rakunlabs/turna/pkg/server/registry"
 	"net/http"
 	"strings"
 	"sync"
@@ -13,7 +14,6 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/ada"
-	"github.com/rakunlabs/into"
 	oauth2store "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
@@ -198,7 +198,7 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 		_ = db.Close()
 		return nil, fmt.Errorf("init auth code store: %w", err)
 	}
-	into.ShutdownAdd(m.closeCodeStore, "auth code store")
+	registry.GlobalReg.OnStop(ctx, name+" auth code store", m.closeCodeStore)
 
 	// oauth2 code client settings live in the database ("oauth2" namespace);
 	// warm it up here to catch configuration problems early.
@@ -214,7 +214,7 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 	}
 	m.uiFS = uiMiddleware(nil).ServeHTTP
 
-	into.ShutdownAdd(db.Close, "auth db")
+	registry.GlobalReg.OnStop(ctx, name+" auth db", db.Close)
 
 	go m.cache.Watch(ctx, m.Database.DSN, CacheWatchConfig{
 		DisableNotificationListener: m.Cache.DisableNotificationListener,

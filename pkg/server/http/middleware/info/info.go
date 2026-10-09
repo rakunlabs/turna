@@ -29,7 +29,7 @@ type Info struct {
 }
 
 func (m *Info) Init() error {
-	m.session = session.GlobalRegistry.Get(m.SessionMiddleware)
+	m.session = session.GlobalRegistry.Resolve(m.SessionMiddleware)
 	if m.session == nil {
 		return errors.New("session middleware not found")
 	}

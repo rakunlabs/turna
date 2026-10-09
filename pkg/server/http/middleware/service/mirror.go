@@ -261,3 +261,23 @@ func singleJoiningSlash(a, b string) string {
 
 	return a + b
 }
+
+// MirrorMiddleware returns a middleware sending copies of requests to the
+// mirror servers, independent of a proxy.
+func (m *Mirror) MirrorMiddleware() (func(http.Handler) http.Handler, error) {
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil, fmt.Errorf("default transport is not *http.Transport")
+	}
+
+	mr, err := m.build(transport.Clone())
+	if err != nil {
+		return nil, err
+	}
+
+	if mr == nil {
+		return func(next http.Handler) http.Handler { return next }, nil
+	}
+
+	return mr.Middleware, nil
+}

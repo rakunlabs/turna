@@ -36,6 +36,17 @@ type TLSTerminate struct {
 type Certificate struct {
 	CertFile string `cfg:"cert_file"`
 	KeyFile  string `cfg:"key_file"`
+	// Cert and Key hold PEM content and take precedence over the files.
+	Cert string `cfg:"cert" log:"-"`
+	Key  string `cfg:"key"  log:"-"`
+}
+
+func (c Certificate) load() (tls.Certificate, error) {
+	if c.Cert != "" || c.Key != "" {
+		return tls.X509KeyPair([]byte(c.Cert), []byte(c.Key))
+	}
+
+	return tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
 }
 
 func (m *TLSTerminate) TLSConfig() (*tls.Config, error) {
@@ -55,7 +66,7 @@ func (m *TLSTerminate) TLSConfig() (*tls.Config, error) {
 	}
 
 	for _, c := range m.Certificates {
-		certificate, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
+		certificate, err := c.load()
 		if err != nil {
 			return nil, fmt.Errorf("cannot load certificate %s: %w", c.CertFile, err)
 		}

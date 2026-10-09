@@ -1,0 +1,95 @@
+# TLS passthrough, TCP and gRPC routes. Apply after gateway-demo.yaml.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: streams
+  namespace: demo
+spec:
+  gatewayClassName: turna
+  listeners:
+    # gRPC and HTTP share plain text listeners (h2c)
+    - name: grpc
+      port: 8080
+      protocol: HTTP
+    # TLS is forwarded encrypted to the backend selected by SNI
+    - name: tls
+      port: 443
+      protocol: TLS
+      hostname: "*.internal.example.com"
+      tls:
+        mode: Passthrough
+    - name: postgres
+      port: 5432
+      protocol: TCP
+    - name: dns
+      port: 53
+      protocol: UDP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GRPCRoute
+metadata:
+  name: users
+  namespace: demo
+spec:
+  parentRefs:
+    - name: streams
+      sectionName: grpc
+  rules:
+    - matches:
+        - method:
+            service: example.Users
+          headers:
+            - name: x-canary
+              value: "true"
+      backendRefs:
+        - name: users-v2
+          port: 9000
+    - matches:
+        - method:
+            service: example.Users
+      backendRefs:
+        - name: users
+          port: 9000
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: TLSRoute
+metadata:
+  name: vault
+  namespace: demo
+spec:
+  parentRefs:
+    - name: streams
+      sectionName: tls
+  hostnames: ["vault.internal.example.com"]
+  rules:
+    - backendRefs:
+        - name: vault
+          port: 8200
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: TCPRoute
+metadata:
+  name: postgres
+  namespace: demo
+spec:
+  parentRefs:
+    - name: streams
+      sectionName: postgres
+  rules:
+    - backendRefs:
+        - name: postgres
+          port: 5432
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: UDPRoute
+metadata:
+  name: dns
+  namespace: demo
+spec:
+  parentRefs:
+    - name: streams
+      sectionName: dns
+  rules:
+    - backendRefs:
+        - name: coredns
+          port: 53

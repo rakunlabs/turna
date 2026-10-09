@@ -14,6 +14,7 @@ const httpMiddlewares = [
   ['dns_path', '/reference/server/http/middlewares/dns_path'],
   ['folder', '/reference/server/http/middlewares/folder'],
   ['forward', '/reference/server/http/middlewares/forward'],
+  ['gateway', '/reference/server/http/middlewares/gateway'],
   ['gcp_token', '/reference/server/http/middlewares/gcp_token'],
   ['grpcui', '/reference/server/http/middlewares/grpc_ui'],
   ['gzip', '/reference/server/http/middlewares/gzip'],
@@ -122,6 +123,7 @@ export default defineConfig({
                     collapsed: true,
                     items: [
                       { text: 'bandwidth_limit', link: '/reference/server/tcp/middlewares/bandwidth_limit' },
+                      { text: 'block', link: '/reference/server/tcp/middlewares/block' },
                       { text: 'conn_limit', link: '/reference/server/tcp/middlewares/conn_limit' },
                       { text: 'http_connect', link: '/reference/server/tcp/middlewares/http_connect' },
                       { text: 'idle_timeout', link: '/reference/server/tcp/middlewares/idle_timeout' },
@@ -149,6 +151,7 @@ export default defineConfig({
                     text: 'Middlewares',
                     collapsed: true,
                     items: [
+                      { text: 'block', link: '/reference/server/udp/middlewares/block' },
                       { text: 'dns', link: '/reference/server/udp/middlewares/dns' },
                       { text: 'ip_allow_list', link: '/reference/server/udp/middlewares/ip_allow_list' },
                       { text: 'ip_deny_list', link: '/reference/server/udp/middlewares/ip_deny_list' },
@@ -165,6 +168,7 @@ export default defineConfig({
             ],
           },
           { text: 'Services', link: '/reference/services' },
+          { text: 'Kubernetes Gateway', link: '/reference/kubernetes' },
         ],
       },
       {

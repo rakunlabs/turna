@@ -201,7 +201,7 @@ loads:
 
 ## Dynamic Sources
 
-Dynamic sources are reloaded by the loader implementation. Turna updates in-memory data and service filters when dynamic data changes.
+Dynamic sources are reloaded by the loader implementation. Turna updates in-memory data and service filters when dynamic data changes, and reloads the server when `server.load_value` points to the changed data.
 
 ```yaml
 loads:
@@ -239,3 +239,5 @@ server:
     middlewares: {}
     routers: {}
 ```
+
+When the key comes from a dynamic source, a change is applied to the running server: entrypoints are opened or closed, and routers, middlewares and TLS certificates are replaced without dropping connections. Middlewares whose configuration did not change keep their state. If the new configuration is invalid, it is logged and the previous one keeps serving.

@@ -1,27 +1,32 @@
 package session
 
-import "sync"
+import "github.com/rakunlabs/turna/pkg/server/registry"
 
+// Registry holds session middleware instances by middleware name. Updates
+// made while a configuration is applied are staged until it is committed.
 type Registry struct {
-	Store map[string]*Session
-
-	m sync.RWMutex
+	named *registry.Named[*Session]
 }
 
 var GlobalRegistry = &Registry{
-	Store: make(map[string]*Session),
+	named: registry.NewNamed[*Session](registry.GroupHTTP),
 }
 
 func (r *Registry) Set(name string, store *Session) {
-	r.m.Lock()
-	defer r.m.Unlock()
-
-	r.Store[name] = store
+	r.named.Set(name, store)
 }
 
+// Get returns the active instance by name, use it while serving requests.
 func (r *Registry) Get(name string) *Session {
-	r.m.RLock()
-	defer r.m.RUnlock()
+	v, _ := r.named.Get(name)
 
-	return r.Store[name]
+	return v
+}
+
+// Resolve returns the instance by name including ones staged by a
+// configuration that is being applied, use it while building middlewares.
+func (r *Registry) Resolve(name string) *Session {
+	v, _ := r.named.Resolve(name)
+
+	return v
 }

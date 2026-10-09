@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo-v1
+  namespace: demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: echo, version: v1}
+  template:
+    metadata:
+      labels: {app: echo, version: v1}
+    spec:
+      containers:
+        - name: echo
+          image: hashicorp/http-echo:1.0
+          args: ["-listen=:5678", "-text=v1"]
+          ports: [{containerPort: 5678, name: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo-v2
+  namespace: demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: echo, version: v2}
+  template:
+    metadata:
+      labels: {app: echo, version: v2}
+    spec:
+      containers:
+        - name: echo
+          image: hashicorp/http-echo:1.0
+          args: ["-listen=:5678", "-text=v2"]
+          ports: [{containerPort: 5678, name: http}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo-v1
+  namespace: demo
+spec:
+  selector: {app: echo, version: v1}
+  ports: [{name: http, port: 80, targetPort: http}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo-v2
+  namespace: demo
+spec:
+  selector: {app: echo, version: v2}
+  ports: [{name: http, port: 80, targetPort: http}]
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: web
+  namespace: demo
+spec:
+  gatewayClassName: turna
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+    - name: https
+      port: 443
+      protocol: HTTPS
+      hostname: "*.example.com"
+      tls:
+        certificateRefs:
+          - name: example-tls
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: echo
+  namespace: demo
+spec:
+  parentRefs:
+    - name: web
+  hostnames: ["app.example.com"]
+  rules:
+    - matches:
+        - headers:
+            - name: x-canary
+              value: "true"
+      backendRefs:
+        - name: echo-v2
+          port: 80
+    - matches:
+        - path: {type: PathPrefix, value: /}
+      backendRefs:
+        - name: echo-v1
+          port: 80
+          weight: 90
+        - name: echo-v2
+          port: 80
+          weight: 10
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: redirect
+  namespace: demo
+spec:
+  parentRefs:
+    - name: web
+      sectionName: http
+  hostnames: ["secure.example.com"]
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301

@@ -43,6 +43,11 @@ func NewErrorAs(err error) Error {
 		if errors.As(err, &e) {
 			return e
 		}
+
+		var p *Error
+		if errors.As(err, &p) && p != nil {
+			return *p
+		}
 	}
 
 	return NewError("", err, http.StatusInternalServerError)

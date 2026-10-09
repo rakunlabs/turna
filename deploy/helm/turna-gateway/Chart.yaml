@@ -1,0 +1,11 @@
+apiVersion: v2
+name: turna-gateway
+description: Turna as a Kubernetes Gateway API implementation
+type: application
+version: 0.1.0
+appVersion: "latest"
+home: https://github.com/rakunlabs/turna
+keywords:
+  - gateway-api
+  - ingress
+  - proxy

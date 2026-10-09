@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/rakunlabs/turna/pkg/server/registry"
+	"github.com/rakunlabs/turna/pkg/server/udp/middleware/block"
 	"github.com/rakunlabs/turna/pkg/server/udp/middleware/dns"
 	"github.com/rakunlabs/turna/pkg/server/udp/middleware/ipallowlist"
 	"github.com/rakunlabs/turna/pkg/server/udp/middleware/ipdenylist"
@@ -26,6 +27,7 @@ type UDPMiddleware struct {
 	MirrorMiddleware       *mirror.Mirror             `cfg:"mirror"`
 	LogMiddleware          *log.Log                   `cfg:"log"`
 	TelemetryMiddleware    *telemetry.Telemetry       `cfg:"telemetry"`
+	BlockMiddleware        *block.Block               `cfg:"block"`
 }
 
 type middlewareFactory interface {
@@ -47,6 +49,7 @@ func (h *UDPMiddleware) getFirstFound(ctx context.Context, name string) ([]Handl
 		{"mirror", h.MirrorMiddleware, h.MirrorMiddleware != nil},
 		{"log", h.LogMiddleware, h.LogMiddleware != nil},
 		{"telemetry", h.TelemetryMiddleware, h.TelemetryMiddleware != nil},
+		{"block", h.BlockMiddleware, h.BlockMiddleware != nil},
 	} {
 		if !f.set {
 			continue

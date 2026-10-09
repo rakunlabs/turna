@@ -5,6 +5,7 @@ import (
 
 	"github.com/rakunlabs/turna/internal/loader"
 	"github.com/rakunlabs/turna/pkg/preprocess"
+	"github.com/rakunlabs/turna/pkg/provider/kubernetes"
 	"github.com/rakunlabs/turna/pkg/server"
 	"github.com/rakunlabs/turna/pkg/service"
 	"github.com/rakunlabs/turna/pkg/telemetry"
@@ -26,8 +27,14 @@ var Application = struct {
 	Server     server.Server      `cfg:"server"`
 	Preprocess preprocess.Configs `cfg:"preprocess"`
 	Telemetry  telemetry.Config   `cfg:"telemetry"`
+	Providers  Providers          `cfg:"providers"`
 }{
 	LogLevel: "info",
+}
+
+// Providers are dynamic configuration sources of the server.
+type Providers struct {
+	Kubernetes kubernetes.Config `cfg:"kubernetes"`
 }
 
 type GetConfig struct {

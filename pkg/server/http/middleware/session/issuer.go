@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"sync"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/rakunlabs/turna/pkg/server/registry"
 )
 
 // InfIssuer is an in-process token issuer, like the auth middleware.
@@ -143,28 +143,24 @@ type InfSignup interface {
 }
 
 type issuerRegistry struct {
-	store map[string]InfIssuer
-
-	m sync.RWMutex
+	named *registry.Named[InfIssuer]
 }
 
-// IssuerRegistry holds in-process token issuers by middleware name.
+// IssuerRegistry holds in-process token issuers by middleware name. Updates
+// made while a configuration is applied are staged until it is committed.
 var IssuerRegistry = &issuerRegistry{
-	store: make(map[string]InfIssuer),
+	named: registry.NewNamed[InfIssuer](registry.GroupHTTP),
 }
 
 func (r *issuerRegistry) Set(name string, issuer InfIssuer) {
-	r.m.Lock()
-	defer r.m.Unlock()
-
-	r.store[name] = issuer
+	r.named.Set(name, issuer)
 }
 
+// Get returns the active issuer by name, use it while serving requests.
 func (r *issuerRegistry) Get(name string) InfIssuer {
-	r.m.RLock()
-	defer r.m.RUnlock()
+	v, _ := r.named.Get(name)
 
-	return r.store[name]
+	return v
 }
 
 // issuerKeyFunc resolves issuer-backed providers lazily so that middleware

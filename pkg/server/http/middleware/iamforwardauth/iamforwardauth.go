@@ -37,7 +37,7 @@ type IamForwardAuth struct {
 
 func (m *IamForwardAuth) Init() error {
 	if m.IamMiddleware != nil {
-		m.iamInstance = iam.GlobalRegistry.Get(*m.IamMiddleware)
+		m.iamInstance = iam.GlobalRegistry.Resolve(*m.IamMiddleware)
 		if m.iamInstance == nil {
 			return fmt.Errorf("iam middleware %q not found in registry", *m.IamMiddleware)
 		}

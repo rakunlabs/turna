@@ -6,6 +6,7 @@ import (
 
 	"github.com/rakunlabs/turna/pkg/server/registry"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/bandwidth"
+	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/block"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/connlimit"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/httpconnect"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/idletimeout"
@@ -41,6 +42,7 @@ type TCPMiddleware struct {
 	TelemetryMiddleware      *telemetry.Telemetry         `cfg:"telemetry"`
 	HTTPConnectMiddleware    *httpconnect.HTTPConnect     `cfg:"http_connect"`
 	SSHServerMiddleware      *sshserver.SSHServer         `cfg:"ssh_server"`
+	BlockMiddleware          *block.Block                 `cfg:"block"`
 }
 
 type middlewareFactory interface {
@@ -73,6 +75,7 @@ func (h *TCPMiddleware) factories() []struct {
 		{"telemetry", h.TelemetryMiddleware, h.TelemetryMiddleware != nil},
 		{"http connect", h.HTTPConnectMiddleware, h.HTTPConnectMiddleware != nil},
 		{"ssh server", h.SSHServerMiddleware, h.SSHServerMiddleware != nil},
+		{"block", h.BlockMiddleware, h.BlockMiddleware != nil},
 	}
 }
 
@@ -102,4 +105,18 @@ func (h *TCPMiddleware) Set(ctx context.Context, name string) error {
 	registry.GlobalReg.AddTcpMiddleware(name, middleware)
 
 	return nil
+}
+
+// refs returns names of middlewares this middleware runs by name.
+func (h *TCPMiddleware) refs() []string {
+	if h.SNIRouterMiddleware == nil {
+		return nil
+	}
+
+	refs := append([]string{}, h.SNIRouterMiddleware.Default...)
+	for _, r := range h.SNIRouterMiddleware.Routes {
+		refs = append(refs, r.Middlewares...)
+	}
+
+	return refs
 }

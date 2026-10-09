@@ -11,12 +11,17 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/tcp/tcpmw"
 )
 
-// Build returns the handler running the named middlewares in order.
+// Build returns the handler running the named middlewares in order. It
+// resolves middlewares of a configuration that is being applied.
 func Build(names []string) (tcpmw.Handler, error) {
+	return build(names, registry.GlobalReg.GetTcpMiddleware)
+}
+
+func build(names []string, get func(string) ([]tcpmw.Middleware, error)) (tcpmw.Handler, error) {
 	middlewares := make([]tcpmw.Middleware, 0, len(names))
 
 	for _, name := range names {
-		got, err := registry.GlobalReg.GetTcpMiddleware(name)
+		got, err := get(name)
 		if err != nil {
 			return nil, fmt.Errorf("middleware '%s' not found", name)
 		}
@@ -29,8 +34,9 @@ func Build(names []string) (tcpmw.Handler, error) {
 	return tcpmw.Chain(func(net.Conn) error { return nil }, middlewares...), nil
 }
 
-// Lazy builds the chain on first use, middlewares may be registered in any
-// order during startup.
+// Lazy builds the chain on first use from the active middlewares, so
+// middlewares may be registered in any order. A middleware using Lazy is
+// rebuilt by a reload when one of the names changes.
 func Lazy(names []string) tcpmw.Handler {
 	var (
 		once    sync.Once
@@ -39,7 +45,7 @@ func Lazy(names []string) tcpmw.Handler {
 	)
 
 	return func(conn net.Conn) error {
-		once.Do(func() { handler, err = Build(names) })
+		once.Do(func() { handler, err = build(names, registry.GlobalReg.ActiveTcpMiddleware) })
 		if err != nil {
 			return err
 		}

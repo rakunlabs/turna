@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "turna-gateway.fullname" . }}
+  labels:
+    {{- include "turna-gateway.labels" . | nindent 4 }}
+---
+# read access to resources needed to translate gateways, used by the
+# controller and the proxies
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "turna-gateway.fullname" . }}-reader
+  labels:
+    {{- include "turna-gateway.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["services", "secrets", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gatewayclasses", "gateways", "httproutes", "grpcroutes", "tlsroutes", "tcproutes", "udproutes", "referencegrants"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "turna-gateway.fullname" . }}-status
+  labels:
+    {{- include "turna-gateway.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gatewayclasses/status", "gateways/status", "httproutes/status", "grpcroutes/status", "tlsroutes/status", "tcproutes/status", "udproutes/status"]
+    verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "turna-gateway.fullname" . }}-reader
+  labels:
+    {{- include "turna-gateway.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "turna-gateway.fullname" . }}-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "turna-gateway.fullname" . }}
+    namespace: {{ .Release.Namespace }}
+  {{- if ne .Values.mode "standalone" }}
+  - kind: ServiceAccount
+    name: {{ include "turna-gateway.proxyServiceAccount" . }}
+    namespace: {{ .Release.Namespace }}
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "turna-gateway.fullname" . }}-status
+  labels:
+    {{- include "turna-gateway.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "turna-gateway.fullname" . }}-status
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "turna-gateway.fullname" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "turna-gateway.fullname" . }}
+  labels:
+    {{- include "turna-gateway.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  {{- if ne .Values.mode "standalone" }}
+  # proxy resources are created in the release namespace
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "turna-gateway.fullname" . }}
+  labels:
+    {{- include "turna-gateway.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "turna-gateway.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "turna-gateway.fullname" . }}
+    namespace: {{ .Release.Namespace }}
+{{- if ne .Values.mode "standalone" }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "turna-gateway.proxyServiceAccount" . }}
+  labels:
+    {{- include "turna-gateway.labels" . | nindent 4 }}
+{{- end }}

@@ -3,11 +3,11 @@ package oauth2
 import (
 	"context"
 	"errors"
+	"github.com/rakunlabs/turna/pkg/server/registry"
 	"net/http"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
@@ -57,7 +57,7 @@ func (m *Oauth2) Middleware(ctx context.Context) (func(http.Handler) http.Handle
 		return nil, err
 	}
 
-	into.ShutdownAdd(storeCache.Close, "oauth2-store")
+	registry.GlobalReg.OnStop(ctx, "oauth2-store", storeCache.Close)
 
 	m.storeCache = storeCache
 
@@ -120,7 +120,7 @@ func (m *Oauth2) Middleware(ctx context.Context) (func(http.Handler) http.Handle
 }
 
 func (m *Oauth2) Init() error {
-	m.iam = iam.GlobalRegistry.Get(m.IamMiddleware)
+	m.iam = iam.GlobalRegistry.Resolve(m.IamMiddleware)
 	if m.iam == nil {
 		return errors.New("iam middleware not found")
 	}

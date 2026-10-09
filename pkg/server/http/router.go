@@ -30,11 +30,16 @@ type PreMiddlewares struct {
 	ServerInfo *bool `cfg:"server_info"` // default is true
 }
 
-func (r *Router) Set(_ string, ruleRouter *RuleRouter) error {
-	entrypoints := r.EntryPoints
-	if len(entrypoints) == 0 {
-		entrypoints = registry.GlobalReg.GetListenerNamesList()
+func (r *Router) entrypointsFrom(available []string) []string {
+	if len(r.EntryPoints) == 0 {
+		return available
 	}
+
+	return r.EntryPoints
+}
+
+func (r *Router) set(ruleRouter *RuleRouter, available []string) error {
+	entrypoints := r.entrypointsFrom(available)
 
 	for _, entrypoint := range entrypoints {
 		e := ruleRouter.GetMux(RuleSelection{

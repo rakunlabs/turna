@@ -64,7 +64,7 @@ server:
 
 | Field | Description |
 | --- | --- |
-| `host` | Optional host rule. The port is stripped before matching. Empty host acts as a fallback for the entrypoint. |
+| `host` | Optional host rule. The port is stripped before matching. A leading `*.` (e.g. `*.example.com`) matches any subdomain (`api.example.com`, `a.b.example.com`) but not `example.com`. Exact hosts win over wildcards, longer wildcards win over shorter ones, and an empty host acts as a fallback for the entrypoint. |
 | `path` | One or more chi route patterns. |
 | `entrypoints` | Listener names. Defaults to all listeners. |
 | `middlewares` | Ordered middleware names from `server.http.middlewares`. |
@@ -73,6 +73,8 @@ server:
 | `pre_middlewares.server_info` | Enable built-in `Server` response header. Default is true. |
 
 Each router always includes panic recovery, Turna request context setup, optional pre-middlewares, configured middlewares, and a final `204 No Content` fallback.
+
+Entrypoints without TLS accept HTTP/1.1 and HTTP/2 without TLS (h2c, used by plain text gRPC clients). TLS entrypoints negotiate HTTP/2 or HTTP/1.1 with ALPN.
 
 ## HTTP Middlewares
 

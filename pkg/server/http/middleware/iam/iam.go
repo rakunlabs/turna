@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/rakunlabs/turna/pkg/server/registry"
 	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 
-	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/logi"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data/badger"
@@ -95,7 +95,7 @@ func (m *Iam) Middleware(ctx context.Context, name string) (func(http.Handler) h
 		return nil, err
 	}
 
-	into.ShutdownAdd(db.Close, "iam db")
+	registry.GlobalReg.OnStop(ctx, name+" iam db", db.Close)
 
 	// fix datas
 	if err := db.FixData(ctx); err != nil {
@@ -128,7 +128,7 @@ func (m *Iam) Middleware(ctx context.Context, name string) (func(http.Handler) h
 		return nil, err
 	}
 
-	into.ShutdownAdd(syncClose, "iam sync")
+	registry.GlobalReg.OnStop(ctx, name+" iam sync", syncClose)
 
 	if m.Ldap.Addr != "" && m.Database.WriteAPI == "" {
 		if !m.Ldap.DisableFirstConnect {

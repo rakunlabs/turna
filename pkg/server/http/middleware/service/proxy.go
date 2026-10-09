@@ -175,6 +175,11 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 				if isTargetProvider {
 					tgt, err = provider.NextTarget(w, r)
 					if err != nil {
+						// all targets were tried, report the last upstream error
+						if retries < config.RetryCount && errHolder.Err != nil {
+							err = &errHolder
+						}
+
 						httputil2.HandleError(w, httputil2.NewErrorAs(config.ErrorHandler(w, r, err)))
 						return
 					}
@@ -236,7 +241,11 @@ const StatusCodeContextCanceled = 499
 
 func proxyHTTP(tgt *ProxyTarget, errHolder *httputil2.Error, config ProxyConfig) http.Handler {
 	proxy := httputil.NewSingleHostReverseProxy(tgt.URL)
-	proxy.FlushInterval = -1 // Flush immediately for streaming responses (SSE)
+	// Streaming responses (SSE, unknown length such as gRPC) are flushed
+	// immediately by ReverseProxy; a negative interval would also flush
+	// fixed length responses, which can drop headers of gRPC trailers-only
+	// responses on HTTP/2.
+	proxy.FlushInterval = 0
 	proxy.ErrorHandler = func(resp http.ResponseWriter, req *http.Request, err error) {
 		desc := tgt.URL.String()
 		if tgt.Name != "" {
