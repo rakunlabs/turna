@@ -507,7 +507,7 @@ func (g *GCPToken) do(req *http.Request, v any) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
 	if err != nil {

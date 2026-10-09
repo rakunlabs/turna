@@ -316,13 +316,13 @@ func TestProxy(t *testing.T) {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
-		defer upstream.Close()
+		defer upstream.Close() //nolint:errcheck
 
 		conn, _, err := w.(http.Hijacker).Hijack()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer conn.Close() //nolint:errcheck
 
 		_, _ = conn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
 
