@@ -36,7 +36,7 @@ require (
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/pkg/sftp v1.13.11
 	github.com/rakunlabs/ada v0.5.3
-	github.com/rakunlabs/ada/handler/swagger v0.5.3
+	github.com/rakunlabs/ada/handler/swagger v0.5.4-1
 	github.com/rakunlabs/ada/middleware/auth v0.5.3
 	github.com/rakunlabs/ada/middleware/encoding v0.5.3
 	github.com/rakunlabs/ada/middleware/ratelimit v0.5.3
@@ -213,8 +213,6 @@ require (
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.8.1 // indirect
-	github.com/swaggo/files/v2 v2.0.0 // indirect
-	github.com/swaggo/http-swagger/v2 v2.0.2 // indirect
 	github.com/tdewolff/minify/v2 v2.24.17 // indirect
 	github.com/tdewolff/parse/v2 v2.8.16 // indirect
 	github.com/urfave/cli/v2 v2.3.0 // indirect
