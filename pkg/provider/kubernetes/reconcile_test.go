@@ -50,7 +50,7 @@ func TestProxyDeploymentUpdates(t *testing.T) {
 			gw := gatewayObj("demo", "web", httpListener("http", 80, ""))
 			ctx := context.Background()
 			name := proxyName(key(gw))
-			if err := p.applyProxy(ctx, "system", name, gw); err != nil {
+			if err := p.applyProxy(ctx, "system", name, gw, nil); err != nil {
 				t.Fatal(err)
 			}
 			switch field {
@@ -63,7 +63,7 @@ func TestProxyDeploymentUpdates(t *testing.T) {
 			case "pull-secrets":
 				p.cfg.Proxy.ImagePullSecrets = []string{"registry"}
 			}
-			if err := p.applyProxy(ctx, "system", name, gw); err != nil {
+			if err := p.applyProxy(ctx, "system", name, gw, nil); err != nil {
 				t.Fatal(err)
 			}
 			dep, err := p.kube.AppsV1().Deployments("system").Get(ctx, name, metav1.GetOptions{})
@@ -90,7 +90,7 @@ func TestProxyDeploymentUpdates(t *testing.T) {
 				}
 			}
 			p.kube.(*kubefake.Clientset).ClearActions()
-			if err := p.applyProxy(ctx, "system", name, gw); err != nil {
+			if err := p.applyProxy(ctx, "system", name, gw, nil); err != nil {
 				t.Fatal(err)
 			}
 			for _, action := range p.kube.(*kubefake.Clientset).Actions() {
@@ -110,7 +110,7 @@ func TestProxyCleanupOwnership(t *testing.T) {
 			gw := gatewayObj("demo", "web", httpListener("http", 80, ""))
 			ctx := context.Background()
 			name := proxyName(key(gw))
-			if err := owner.applyProxy(ctx, "system", name, gw); err != nil {
+			if err := owner.applyProxy(ctx, "system", name, gw, nil); err != nil {
 				t.Fatal(err)
 			}
 			other := &Provider{kube: kube, cfg: owner.cfg}
@@ -122,7 +122,7 @@ func TestProxyCleanupOwnership(t *testing.T) {
 			case "scope":
 				other.cfg.Namespaces = []string{"other"}
 			}
-			if err := other.provision(ctx, nil); err != nil {
+			if err := other.provision(ctx, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := kube.AppsV1().Deployments("system").Get(ctx, name, metav1.GetOptions{}); err != nil {
@@ -134,10 +134,10 @@ func TestProxyCleanupOwnership(t *testing.T) {
 			if _, err := kube.CoreV1().ConfigMaps("system").Get(ctx, name, metav1.GetOptions{}); err != nil {
 				t.Fatalf("foreign configmap deleted: %v", err)
 			}
-			if err := other.applyProxy(ctx, "system", name, gw); err == nil {
+			if err := other.applyProxy(ctx, "system", name, gw, nil); err == nil {
 				t.Fatal("foreign resources adopted")
 			}
-			if err := owner.provision(ctx, nil); err != nil {
+			if err := owner.provision(ctx, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := kube.AppsV1().Deployments("system").Get(ctx, name, metav1.GetOptions{}); err == nil {
@@ -153,7 +153,7 @@ func TestProxyCleanupRetriesOrphans(t *testing.T) {
 	gw := gatewayObj("demo", "web", httpListener("http", 80, ""))
 	ctx := context.Background()
 	name := proxyName(key(gw))
-	if err := p.applyProxy(ctx, "system", name, gw); err != nil {
+	if err := p.applyProxy(ctx, "system", name, gw, nil); err != nil {
 		t.Fatal(err)
 	}
 	var deletes int
@@ -164,10 +164,10 @@ func TestProxyCleanupRetriesOrphans(t *testing.T) {
 		}
 		return false, nil, nil
 	})
-	if err := p.provision(ctx, nil); err == nil {
+	if err := p.provision(ctx, nil, nil); err == nil {
 		t.Fatal("deletion error was swallowed")
 	}
-	if err := p.provision(ctx, nil); err != nil {
+	if err := p.provision(ctx, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := kube.CoreV1().Services("system").Get(ctx, name, metav1.GetOptions{}); err == nil {
@@ -181,7 +181,7 @@ func TestProxyDeploymentIgnoresAPIDefaults(t *testing.T) {
 	ctx := context.Background()
 	gw := gatewayObj("demo", "web", httpListener("http", 80, ""))
 	name := proxyName(key(gw))
-	if err := p.applyProxy(ctx, "system", name, gw); err != nil {
+	if err := p.applyProxy(ctx, "system", name, gw, nil); err != nil {
 		t.Fatal(err)
 	}
 	dep, err := kube.AppsV1().Deployments("system").Get(ctx, name, metav1.GetOptions{})
@@ -206,7 +206,7 @@ func TestProxyDeploymentIgnoresAPIDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	kube.ClearActions()
-	if err := p.applyProxy(ctx, "system", name, gw); err != nil {
+	if err := p.applyProxy(ctx, "system", name, gw, nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, action := range kube.Actions() {
@@ -363,7 +363,7 @@ func TestProvisionErrorIsPerGateway(t *testing.T) {
 		}
 		return false, nil, nil
 	})
-	err := p.provision(context.Background(), []*gwv1.Gateway{good, bad})
+	err := p.provision(context.Background(), []*gwv1.Gateway{good, bad}, nil)
 	if err == nil {
 		t.Fatal("provision error was swallowed")
 	}
@@ -402,7 +402,7 @@ func TestListenerPortOutOfRangeWithOffset(t *testing.T) {
 	if _, ok := res.Server.EntryPoints["k8s-60000"]; ok {
 		t.Error("out of range listener got an entrypoint")
 	}
-	if ports := listenerPorts(gw, 8000); len(ports) != 1 || ports[0].port != 80 {
+	if ports := listenerPorts(gw, 8000, 9901); len(ports) != 1 || ports[0].port != 80 {
 		t.Errorf("proxy ports = %+v", ports)
 	}
 }

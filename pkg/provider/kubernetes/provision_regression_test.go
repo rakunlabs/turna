@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"maps"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -20,7 +21,7 @@ func TestProxyInfrastructureCannotOverrideIdentity(t *testing.T) {
 		gwv1.LabelKey(labelController): "other-controller",
 		"team":                         "platform",
 	}}
-	dep := p.proxyDeployment("system", proxyName(key(gw)), lbls, gw, listenerPorts(gw, 0), "hash")
+	dep := p.proxyDeployment("system", proxyName(key(gw)), lbls, gw, listenerPorts(gw, 0, 0), "hash")
 	for k, v := range lbls {
 		if dep.Spec.Template.Labels[k] != v {
 			t.Errorf("managed label %s = %q, want %q", k, dep.Spec.Template.Labels[k], v)
@@ -39,7 +40,7 @@ func TestProxyServiceTypeTransitions(t *testing.T) {
 			p := &Provider{kube: kube, cfg: Config{Proxy: Proxy{Image: "example:1", ServiceType: "LoadBalancer"}}}
 			gw := gatewayObj("demo", "web", httpListener("http", 80, ""))
 			name := proxyName(key(gw))
-			if err := p.applyProxy(ctx, "system", name, gw); err != nil {
+			if err := p.applyProxy(ctx, "system", name, gw, nil); err != nil {
 				t.Fatal(err)
 			}
 			svc, err := kube.CoreV1().Services("system").Get(ctx, name, metav1.GetOptions{})
@@ -55,7 +56,7 @@ func TestProxyServiceTypeTransitions(t *testing.T) {
 				t.Fatal(err)
 			}
 			p.cfg.Proxy.ServiceType = string(typ)
-			if err := p.applyProxy(ctx, "system", name, gw); err != nil {
+			if err := p.applyProxy(ctx, "system", name, gw, nil); err != nil {
 				t.Fatal(err)
 			}
 			svc, err = kube.CoreV1().Services("system").Get(ctx, name, metav1.GetOptions{})
@@ -73,7 +74,7 @@ func TestProxyServiceTypeTransitions(t *testing.T) {
 				t.Error("allocated NodePort lost")
 			}
 			kube.ClearActions()
-			if err := p.applyProxy(ctx, "system", name, gw); err != nil {
+			if err := p.applyProxy(ctx, "system", name, gw, nil); err != nil {
 				t.Fatal(err)
 			}
 			for _, action := range kube.Actions() {
@@ -85,8 +86,8 @@ func TestProxyServiceTypeTransitions(t *testing.T) {
 	}
 }
 
-func TestMapsDistinguishesMissingEmptyValues(t *testing.T) {
-	if maps(map[string]string{"team": ""}, map[string]string{"owner": ""}) {
+func TestLabelsDistinguishMissingEmptyValues(t *testing.T) {
+	if maps.Equal(map[string]string{"team": ""}, map[string]string{"owner": ""}) {
 		t.Fatal("different labels with empty values compare equal")
 	}
 }

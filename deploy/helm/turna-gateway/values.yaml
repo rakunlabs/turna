@@ -21,6 +21,11 @@ gatewayClass:
 # watchNamespaces limits the watched namespaces, empty watches all.
 watchNamespaces: []
 
+# allowExternalNameBackends permits routes to use ExternalName Services as
+# backends. They can point to any host, for example cloud metadata endpoints,
+# so enable this only when every route author is trusted.
+allowExternalNameBackends: false
+
 # Gateway listener ports are bound inside the pods as port + portOffset so
 # the containers run without NET_BIND_SERVICE.
 portOffset: 8000
@@ -43,11 +48,16 @@ resources:
 
 # proxy configures the Deployment and Service created per Gateway in
 # controller mode. Gateway spec.infrastructure labels are added to the pods
-# and annotations to the Service.
+# and annotations to the Service. Proxies run the controller image. With more
+# than one replica, each proxy gets a PodDisruptionBudget and its replicas are
+# spread over nodes and zones.
 proxy:
   replicas: 2
   serviceType: LoadBalancer
   logLevel: info
+  # a terminating proxy keeps serving while it is removed from load
+  # balancers (preStop sleep, Kubernetes 1.30+); "-1s" disables it
+  shutdownDelay: 5s
   resources:
     cpuRequest: 100m
     memoryRequest: 64Mi

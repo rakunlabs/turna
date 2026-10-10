@@ -378,6 +378,10 @@ func (t *translator) resolveAddresses(fromKind gwv1.Kind, fromNamespace string, 
 	}
 
 	if svc.Spec.Type == corev1.ServiceTypeExternalName {
+		if !t.cfg.Backend.AllowExternalName {
+			return nil, "", &refError{string(gwv1.RouteReasonUnsupportedValue), fmt.Sprintf("service %s/%s: ExternalName services are disabled (backend.allow_external_name)", ns, ref.Name)}
+		}
+
 		return []string{net.JoinHostPort(svc.Spec.ExternalName, strconv.Itoa(int(port.Port)))}, scheme, nil
 	}
 

@@ -13,9 +13,8 @@ providers:
         # Namespace defaults to POD_NAMESPACE, so namespace overlays work.
         name: turna
     proxy:
-      # Namespace defaults to POD_NAMESPACE.
-      image: ghcr.io/rakunlabs/turna:latest
-      image_pull_policy: IfNotPresent
+      # Namespace defaults to POD_NAMESPACE. The image defaults to the image
+      # of the controller pod, set in kustomization.yaml.
       service_account: turna-proxy
       replicas: 2
       service_type: LoadBalancer

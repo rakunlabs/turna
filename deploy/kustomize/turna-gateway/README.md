@@ -23,8 +23,11 @@ kubectl kustomize deploy/kustomize/turna-gateway
 - Two proxy replicas and a LoadBalancer Service per Gateway.
 - Listener ports are mapped with an offset of 8000 (80 → 8080).
 - Non-root containers, read-only root filesystems and dropped capabilities.
-- Separate controller and proxy ServiceAccounts; proxies have read-only RBAC.
+- Separate controller and proxy ServiceAccounts; proxies have read-only RBAC
+  and no access to Secrets outside this namespace.
 - A PodDisruptionBudget preserves one controller replica during voluntary disruptions.
+- Each Gateway proxy gets its own PodDisruptionBudget, spreads its replicas
+  over nodes and zones, and drains connections for 5s before stopping.
 
 The controller itself does not expose a traffic Service. It creates a Deployment,
 ConfigMap and Service for each Gateway. Use the same Gateway and route manifests
@@ -37,14 +40,18 @@ For a simple installation, edit the files in this directory:
 | Setting | File |
 | --- | --- |
 | Namespace | `namespace` in `kustomization.yaml` |
-| Controller image tag | `images[].newTag` in `kustomization.yaml` |
-| Proxy image tag | `providers.kubernetes.proxy.image` in `turna.yaml` |
+| Controller and proxy image tag | `images[].newTag` in `kustomization.yaml` |
 | Proxy replicas, Service type, resources, watch scope | `turna.yaml` |
 | Controller replicas and resources | `deployment.yaml` |
 
-**Keep the controller and proxy image versions in sync.** Kustomize's image
-transformer updates Deployment images, not image strings inside `turna.yaml`.
-Pin both to a released tag or digest for production instead of using `latest`.
+Proxies run the image of the controller pod unless
+`providers.kubernetes.proxy.image` is set, so an image change in an overlay
+applies to both. Pin a released tag or digest for production instead of using
+`latest`.
+
+The controller creates proxy resources in its own namespace. To use another
+`proxy.namespace`, copy the `turna` and `turna-proxy` Roles and RoleBindings
+into that namespace.
 
 When editing this base directly, Kustomize rewrites RBAC subject namespaces along with the namespace setting.
 The leader election lease and proxy resources use `POD_NAMESPACE`, so no embedded

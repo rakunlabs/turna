@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -244,7 +245,17 @@ func (w *statusWriter) proxyStatus(ctx context.Context, gw nsName) ([]gwv1.Gatew
 	ns := w.p.proxyNamespace()
 	name := proxyName(gw)
 
-	svc, err := w.p.kube.CoreV1().Services(ns).Get(ctx, name, metav1.GetOptions{})
+	var (
+		svc *corev1.Service
+		dep *appsv1.Deployment
+		err error
+	)
+
+	if pl := w.p.proxies(); pl != nil {
+		svc, err = pl.services.Services(ns).Get(name)
+	} else {
+		svc, err = w.p.kube.CoreV1().Services(ns).Get(ctx, name, metav1.GetOptions{})
+	}
 	if err != nil {
 		return nil, false
 	}
@@ -252,7 +263,11 @@ func (w *statusWriter) proxyStatus(ctx context.Context, gw nsName) ([]gwv1.Gatew
 		return nil, false
 	}
 
-	dep, err := w.p.kube.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
+	if pl := w.p.proxies(); pl != nil {
+		dep, err = pl.deployments.Deployments(ns).Get(name)
+	} else {
+		dep, err = w.p.kube.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
+	}
 	if err != nil {
 		return nil, false
 	}
@@ -367,7 +382,21 @@ func supportedFeatures() []gwv1.SupportedFeature {
 	return out
 }
 
+func classStatus(cur *gwv1.GatewayClass, conds []metav1.Condition) *gwv1.GatewayClassStatus {
+	next := cur.Status.DeepCopy()
+	next.Conditions = mergeConditions(cur.Status.Conditions, conds)
+	next.SupportedFeatures = supportedFeatures()
+
+	return next
+}
+
 func (w *statusWriter) writeClass(ctx context.Context, gc *gwv1.GatewayClass, conds []metav1.Condition) {
+	// The informer copy is current in the steady state; only a difference
+	// costs API requests.
+	if equality.Semantic.DeepEqual(gc.Status, *classStatus(gc, conds)) {
+		return
+	}
+
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		cur, err := w.p.gw.GatewayV1().GatewayClasses().Get(ctx, gc.Name, metav1.GetOptions{})
 		if err != nil {
@@ -377,9 +406,7 @@ func (w *statusWriter) writeClass(ctx context.Context, gc *gwv1.GatewayClass, co
 			return nil
 		}
 
-		next := cur.Status.DeepCopy()
-		next.Conditions = mergeConditions(cur.Status.Conditions, conds)
-		next.SupportedFeatures = supportedFeatures()
+		next := classStatus(cur, conds)
 
 		if equality.Semantic.DeepEqual(cur.Status, *next) {
 			return nil
@@ -395,7 +422,32 @@ func (w *statusWriter) writeClass(ctx context.Context, gc *gwv1.GatewayClass, co
 	}
 }
 
+func gatewayStatus(cur *gwv1.Gateway, st *GatewayStatus, addresses []gwv1.GatewayStatusAddress) *gwv1.GatewayStatus {
+	next := cur.Status.DeepCopy()
+	next.Conditions = mergeConditions(cur.Status.Conditions, st.Conditions)
+	next.Addresses = addresses
+
+	listeners := make([]gwv1.ListenerStatus, 0, len(st.Listeners))
+	for _, l := range st.Listeners {
+		for _, old := range cur.Status.Listeners {
+			if old.Name == l.Name {
+				l.Conditions = mergeConditions(old.Conditions, l.Conditions)
+			}
+		}
+
+		listeners = append(listeners, l)
+	}
+
+	next.Listeners = listeners
+
+	return next
+}
+
 func (w *statusWriter) writeGateway(ctx context.Context, gw *gwv1.Gateway, st *GatewayStatus, addresses []gwv1.GatewayStatusAddress) {
+	if equality.Semantic.DeepEqual(gw.Status, *gatewayStatus(gw, st, addresses)) {
+		return
+	}
+
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		cur, err := w.p.gw.GatewayV1().Gateways(gw.Namespace).Get(ctx, gw.Name, metav1.GetOptions{})
 		if err != nil {
@@ -405,22 +457,7 @@ func (w *statusWriter) writeGateway(ctx context.Context, gw *gwv1.Gateway, st *G
 			return nil
 		}
 
-		next := cur.Status.DeepCopy()
-		next.Conditions = mergeConditions(cur.Status.Conditions, st.Conditions)
-		next.Addresses = addresses
-
-		listeners := make([]gwv1.ListenerStatus, 0, len(st.Listeners))
-		for _, l := range st.Listeners {
-			for _, old := range cur.Status.Listeners {
-				if old.Name == l.Name {
-					l.Conditions = mergeConditions(old.Conditions, l.Conditions)
-				}
-			}
-
-			listeners = append(listeners, l)
-		}
-
-		next.Listeners = listeners
+		next := gatewayStatus(cur, st, addresses)
 
 		if equality.Semantic.DeepEqual(cur.Status, *next) {
 			return nil
@@ -443,9 +480,37 @@ type routeStatusClient[T metav1.Object] struct {
 	status func(obj T) *gwv1.RouteStatus
 }
 
+// routeParents merges the parents of this controller into the current
+// route status and keeps entries of other controllers.
+func routeParents(controller gwv1.GatewayController, st *gwv1.RouteStatus, parents []gwv1.RouteParentStatus) []gwv1.RouteParentStatus {
+	next := make([]gwv1.RouteParentStatus, 0, len(st.Parents)+len(parents))
+	for _, p := range st.Parents {
+		if p.ControllerName != controller {
+			next = append(next, p)
+		}
+	}
+
+	for _, p := range parents {
+		for _, old := range st.Parents {
+			if old.ControllerName == controller && equality.Semantic.DeepEqual(old.ParentRef, p.ParentRef) {
+				p.Conditions = mergeConditions(old.Conditions, p.Conditions)
+			}
+		}
+
+		next = append(next, p)
+	}
+
+	return next
+}
+
 func writeRouteStatus[T metav1.Object](ctx context.Context, w *statusWriter, c routeStatusClient[T], kind gwv1.Kind, source T, parents []gwv1.RouteParentStatus) {
 	controller := gwv1.GatewayController(w.p.cfg.controllerName())
 	k := key(source)
+
+	// Most routes are unchanged on a sync; skip them without a request.
+	if st := c.status(source); equality.Semantic.DeepEqual(st.Parents, routeParents(controller, st, parents)) {
+		return
+	}
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		cur, err := c.get(ctx, k.Namespace, k.Name)
@@ -457,24 +522,7 @@ func writeRouteStatus[T metav1.Object](ctx context.Context, w *statusWriter, c r
 		}
 
 		st := c.status(cur)
-
-		// keep entries of other controllers
-		next := make([]gwv1.RouteParentStatus, 0, len(st.Parents)+len(parents))
-		for _, p := range st.Parents {
-			if p.ControllerName != controller {
-				next = append(next, p)
-			}
-		}
-
-		for _, p := range parents {
-			for _, old := range st.Parents {
-				if old.ControllerName == controller && equality.Semantic.DeepEqual(old.ParentRef, p.ParentRef) {
-					p.Conditions = mergeConditions(old.Conditions, p.Conditions)
-				}
-			}
-
-			next = append(next, p)
-		}
+		next := routeParents(controller, st, parents)
 
 		if equality.Semantic.DeepEqual(st.Parents, next) {
 			return nil

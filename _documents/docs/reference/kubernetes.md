@@ -30,9 +30,9 @@ kubectl rollout status deployment/turna -n turna-system
 The manifests include the namespace, controller Deployment, generated ConfigMap,
 controller/proxy ServiceAccounts, RBAC, GatewayClass and PodDisruptionBudget.
 Edit `deploy/kustomize/turna-gateway/turna.yaml` for proxy and provider settings,
-and `kustomization.yaml` for the namespace and controller image tag. Keep the proxy
-image in `turna.yaml` in sync with the controller image. Config changes trigger
-a controller rollout through the generated ConfigMap's content hash.
+and `kustomization.yaml` for the namespace and image tag. Proxies run the image
+of the controller pod unless `proxy.image` is set. Config changes trigger a
+controller rollout through the generated ConfigMap's content hash.
 
 Both installations default to controller mode and create a `GatewayClass` named `turna`. They are alternatives; do not apply both with the default resource names. Create a Gateway and route traffic to a Service:
 
@@ -83,6 +83,10 @@ Complete examples are in `deploy/examples`: `gateway-demo.yaml` (HTTP canary rou
 
 In controller mode, `spec.infrastructure.labels` of a Gateway are added to its proxy pods and `spec.infrastructure.annotations` to its Service, for example to configure a cloud load balancer.
 
+Each proxy Deployment spreads its replicas over nodes and zones. With more than one replica it also gets a PodDisruptionBudget with `maxUnavailable: 1`, so node drains and upgrades keep the Gateway serving. A terminating proxy keeps serving for `proxy.shutdown_delay` (preStop sleep, Kubernetes 1.30 or later) while load balancers stop sending it new connections.
+
+Proxies do not read Secrets of the watched namespaces. The controller copies the certificates referenced by a Gateway's listeners, after the ReferenceGrant checks, into a Secret next to the proxy; the proxy watches only that Secret.
+
 Only the elected leader provisions proxies and writes status. Standby controllers still watch resources and can take over when leadership changes. Disabling status updates does not disable controller-mode leader election; `status.leader_election.disabled` is intended only for single-replica installations.
 
 Proxy resources carry a controller ownership label. The chart sets `controller_id` to the release namespace and name; the Kustomize configuration uses the stable ID `turna-kustomize`. All replicas of an installation must share this ID, and independent installations must use different IDs. For other configurations, set an explicit stable `controller_id` if you plan to change the watched namespaces or Gateways. Otherwise, the ID is derived from the controller name, watch scope and election lease configuration.
@@ -100,6 +104,7 @@ providers:
     controller_id: turna-system/turna # stable installation identity
     namespaces: []          # empty watches all namespaces
     gateways: []            # "namespace/name", empty serves all of the class
+    certificate_secret: ""  # proxy: "namespace/name" certificate bundle, set by the controller
     port_offset: 8000       # listener 80 binds 8080 inside the pod
     address: ""             # bind host
     health_address: ":9901" # /healthz and /ready
@@ -108,6 +113,7 @@ providers:
       retry: 2              # retries on another endpoint when unreachable
       strategy: round_robin # round_robin, random or least_conn
       use_service_ip: false # proxy to the cluster IP instead of endpoints
+      allow_external_name: false # permit ExternalName Services as backends
     status:
       disabled: false
       addresses: []         # standalone: addresses reported on Gateways
@@ -117,12 +123,16 @@ providers:
         namespace: ""
         name: turna-gateway
     proxy:                  # controller mode
-      namespace: ""
-      image: ghcr.io/rakunlabs/turna:latest
+      namespace: ""         # needs the controller and proxy Roles in that namespace
+      image: ""             # empty uses the image of the controller pod (POD_NAME)
       service_account: turna-proxy
-      replicas: 1
+      replicas: 1           # more than 1 adds a PodDisruptionBudget
       service_type: LoadBalancer
+      health_port: 9901     # listeners on port + port_offset == health_port are rejected
+      shutdown_delay: 5s    # preStop sleep, negative disables
 ```
+
+A listener whose local port (`port + port_offset`) equals the health port is not accepted (`PortUnavailable`); with the default offset of 8000 this is listener port 1901.
 
 The Kubernetes configuration is a separate layer next to the static `server` configuration. Static entrypoints, routers and middlewares keep working, but their names must not collide with generated ones (prefixed `k8s-`).
 
@@ -140,13 +150,13 @@ The Kubernetes configuration is a separate layer next to the static `server` con
 - `GRPCRoute`: service and method matches (exact and regex), header matches, header modifier and mirror filters. Plain text gRPC uses HTTP/2 without TLS (h2c) on HTTP listeners; gateway errors are returned as gRPC status codes. HTTPRoutes and GRPCRoutes can share a listener; on a hostname conflict the older route wins.
 - `TLSRoute`: routed by SNI to weighted backends; terminated connections reach the backend as plain TCP.
 - `TCPRoute` and `UDPRoute`: weighted backends. A listener without hostnames cannot tell routes apart, so the oldest attached route receives the traffic.
-- Backends: weighted `Service` references, cross-namespace with a `ReferenceGrant`, `ExternalName` Services, per-backend filters. Invalid backends answer their share of requests with an error (HTTP 500, gRPC `Internal`) or close their share of connections.
+- Backends: weighted `Service` references, cross-namespace with a `ReferenceGrant`, per-backend filters. `ExternalName` Services are rejected with `ResolvedRefs=False` unless `backend.allow_external_name` (chart: `allowExternalNameBackends`) is enabled, because they let route authors send traffic to any host, such as cloud metadata endpoints. Invalid backends answer their share of requests with an error (HTTP 500, gRPC `Internal`) or close their share of connections.
 - `allowedRoutes` with `Same`, `All` and `Selector` namespaces and route kinds; `parentRef` `sectionName` and `port`.
 - Status for GatewayClass, Gateway, listeners and route parents of all route kinds.
 
-Route kinds whose CRD is not installed are skipped.
+Route kinds whose CRD is not installed are skipped. Installed route kinds are checked every minute, so CRDs installed later are picked up without a restart.
 
-Not yet supported: `BackendTLSPolicy`, `ListenerSet`, CORS and external auth filters, backend timeouts and retries from the route, and `spec.addresses` on Gateways.
+Not yet supported: `BackendTLSPolicy`, `ListenerSet`, CORS and external auth filters, backend timeouts and retries from the route, and `spec.addresses` on Gateways. A Gateway with `spec.addresses` is not accepted and gets no proxy.
 
 ## Runtime updates
 
@@ -159,6 +169,10 @@ Changes are applied without restarting or dropping connections:
 - an invalid configuration is rejected and the previous one keeps serving.
 
 Transient apply and provisioning failures are retried with exponential backoff (200ms up to 30s), even without another resource event. Proxy resource, label and image pull configuration changes are reconciled into the Deployment. Mirror filters sample their percentage once per Service and then choose one endpoint, rather than sampling each endpoint independently. The mirror middleware's body-size and concurrency limits still apply.
+
+### Upgrading
+
+The controller now needs `get` on its own pod, write access to Secrets and PodDisruptionBudgets in its namespace, and cluster-wide read access to Secrets; proxies lose cluster-wide Secret access and read only Secrets in the controller namespace. Apply the new RBAC together with the new image. `ExternalName` backends stop working until `backend.allow_external_name` is enabled.
 
 ### Upgrading from the initial Gateway implementation
 

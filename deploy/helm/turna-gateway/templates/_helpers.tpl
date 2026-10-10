@@ -40,6 +40,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   "namespaces" .Values.watchNamespaces
   "port_offset" .Values.portOffset
   "health_address" ":9901"
+  "backend" (dict "allow_external_name" .Values.allowExternalNameBackends)
   "status" (dict
     "leader_election" (dict "namespace" .Release.Namespace "name" (include "turna-gateway.fullname" .))
   )
@@ -53,13 +54,13 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- $_ := set $k8s "proxy" (dict
   "namespace" .Release.Namespace
-  "image" (include "turna-gateway.image" .)
   "image_pull_policy" .Values.image.pullPolicy
   "image_pull_secrets" $pullSecrets
   "service_account" (include "turna-gateway.proxyServiceAccount" .)
   "replicas" .Values.proxy.replicas
   "service_type" .Values.proxy.serviceType
   "log_level" .Values.proxy.logLevel
+  "shutdown_delay" .Values.proxy.shutdownDelay
   "cpu_request" .Values.proxy.resources.cpuRequest
   "memory_request" .Values.proxy.resources.memoryRequest
   "cpu_limit" .Values.proxy.resources.cpuLimit

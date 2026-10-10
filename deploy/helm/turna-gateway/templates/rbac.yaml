@@ -15,7 +15,7 @@ metadata:
     {{- include "turna-gateway.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
-    resources: ["services", "secrets", "namespaces"]
+    resources: ["services", "namespaces"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["discovery.k8s.io"]
     resources: ["endpointslices"]
@@ -31,6 +31,11 @@ metadata:
   labels:
     {{- include "turna-gateway.labels" . | nindent 4 }}
 rules:
+  # listener certificates; proxies get the certificates of their Gateway
+  # through a Secret in the release namespace
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["gatewayclasses/status", "gateways/status", "httproutes/status", "grpcroutes/status", "tlsroutes/status", "tcproutes/status", "udproutes/status"]
     verbs: ["get", "update", "patch"]
@@ -84,12 +89,19 @@ rules:
     resources: ["events"]
     verbs: ["create", "patch"]
   {{- if ne .Values.mode "standalone" }}
+  # the controller reads its own pod for the proxy image
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
   # proxy resources are created in the release namespace
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [""]
-    resources: ["services", "configmaps"]
+    resources: ["services", "configmaps", "secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   {{- end }}
 ---
@@ -115,4 +127,31 @@ metadata:
   name: {{ include "turna-gateway.proxyServiceAccount" . }}
   labels:
     {{- include "turna-gateway.labels" . | nindent 4 }}
+---
+# proxies read only the certificate bundles written by the controller
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "turna-gateway.proxyServiceAccount" . }}
+  labels:
+    {{- include "turna-gateway.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "turna-gateway.proxyServiceAccount" . }}
+  labels:
+    {{- include "turna-gateway.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "turna-gateway.proxyServiceAccount" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "turna-gateway.proxyServiceAccount" . }}
+    namespace: {{ .Release.Namespace }}
 {{- end }}

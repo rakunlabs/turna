@@ -10,13 +10,8 @@ resources:
   - gatewayclass.yaml
   - pdb.yaml
 
-# Keep providers.kubernetes.proxy.image in turna.yaml in sync with this image.
+# Pin a released tag or digest for production. Proxies use the image of the
+# controller pod, so overlays changing it keep both in sync.
 images:
   - name: ghcr.io/rakunlabs/turna
     newTag: latest
-
-# The generated name changes when the config changes, rolling the controller.
-configMapGenerator:
-  - name: turna-config
-    files:
-      - turna.yaml

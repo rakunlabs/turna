@@ -9,14 +9,14 @@ metadata:
   name: turna-proxy
 ---
 # Both the controller and proxies need read access to Gateway API resources
-# and their Service, EndpointSlice, Secret and Namespace references.
+# and their Service, EndpointSlice and Namespace references.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: turna-reader
 rules:
   - apiGroups: [""]
-    resources: ["services", "secrets", "namespaces"]
+    resources: ["services", "namespaces"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["discovery.k8s.io"]
     resources: ["endpointslices"]
@@ -41,12 +41,16 @@ subjects:
     name: turna-proxy
     namespace: default
 ---
-# Only the controller writes status and provisions proxy resources.
+# Only the controller writes status and reads listener certificates. Proxies
+# get the certificates of their Gateway through a Secret in this namespace.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: turna-status
 rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["gatewayclasses/status", "gateways/status", "httproutes/status", "grpcroutes/status", "tlsroutes/status", "tcproutes/status", "udproutes/status"]
     verbs: ["get", "update", "patch"]
@@ -64,6 +68,8 @@ subjects:
     name: turna
     namespace: default
 ---
+# Proxy resources are created in this namespace. Set proxy.namespace only
+# together with a copy of this Role and RoleBinding in that namespace.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -75,11 +81,18 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch"]
+  # the controller reads its own pod for the default proxy image
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [""]
-    resources: ["services", "configmaps"]
+    resources: ["services", "configmaps", "secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -93,4 +106,27 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: turna
+    namespace: default
+---
+# Proxies read only the certificate bundles written by the controller.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: turna-proxy
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: turna-proxy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: turna-proxy
+subjects:
+  - kind: ServiceAccount
+    name: turna-proxy
     namespace: default

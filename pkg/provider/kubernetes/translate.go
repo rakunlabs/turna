@@ -162,6 +162,14 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 
 		t.out.served = append(t.out.served, gw)
 		listeners[key(gw)] = t.gateway(gw)
+
+		// spec.addresses is not supported, the gateway is not accepted and
+		// must not serve traffic
+		if len(gw.Spec.Addresses) > 0 {
+			for _, li := range listeners[key(gw)] {
+				li.valid = false
+			}
+		}
 	}
 
 	if cfg.mode() == ModeController {
@@ -331,6 +339,10 @@ func (t *translator) gateway(gw *gwv1.Gateway) []*listener {
 		if local := li.port + t.cfg.PortOffset; li.valid && (local < 1 || local > 65535) {
 			accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonPortUnavailable),
 				fmt.Sprintf("port %d with port offset %d is out of range", li.port, t.cfg.PortOffset))
+			li.valid = false
+		} else if li.valid && local == t.cfg.reservedPort() {
+			accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonPortUnavailable),
+				fmt.Sprintf("port %d with port offset %d is the health port", li.port, t.cfg.PortOffset))
 			li.valid = false
 		}
 
