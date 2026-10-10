@@ -1,6 +1,7 @@
 package http
 
 import (
+	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -81,12 +82,14 @@ func (s *RuleRouter) match(host, entrypoint string) RouterHandler {
 }
 
 func (s *RuleRouter) SetRule(selection RuleSelection) {
+	selection.Host = hostSanitizer(selection.Host)
 	if _, ok := s.ruleMux[selection]; !ok {
 		s.ruleMux[selection] = ada.NewMux()
 	}
 }
 
 func (s *RuleRouter) GetMux(r RuleSelection) RouterHandler {
+	r.Host = hostSanitizer(r.Host)
 	return s.ruleMux[r]
 }
 
@@ -124,6 +127,15 @@ func notFound(w http.ResponseWriter) {
 	_, _ = w.Write([]byte("404 not found - turna"))
 }
 
+// hostSanitizer returns the host without port, lower case and without a
+// trailing dot, as host names are case insensitive and "example.com." is
+// the same host as "example.com".
 func hostSanitizer(host string) string {
-	return strings.SplitN(host, ":", 2)[0]
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	} else if !strings.HasPrefix(host, "[") {
+		host = strings.SplitN(host, ":", 2)[0]
+	}
+
+	return strings.TrimSuffix(strings.ToLower(host), ".")
 }

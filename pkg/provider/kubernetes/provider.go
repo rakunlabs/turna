@@ -30,7 +30,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 	gwclient "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned"
 	gwinformers "sigs.k8s.io/gateway-api/pkg/client/informers/externalversions"
 	gwinformersv1 "sigs.k8s.io/gateway-api/pkg/client/informers/externalversions/apis/v1"
@@ -95,7 +94,7 @@ type listers struct {
 	tls       func() ([]*gwv1.TLSRoute, error)
 	tcp       func() ([]*gwv1.TCPRoute, error)
 	udp       func() ([]*gwv1.UDPRoute, error)
-	grants    func() ([]*gwv1beta1.ReferenceGrant, error)
+	grants    func() ([]*gwv1.ReferenceGrant, error)
 	services  func() ([]*corev1.Service, error)
 	slices    func() ([]*discoveryv1.EndpointSlice, error)
 	secrets   func() ([]*corev1.Secret, error)
@@ -127,6 +126,14 @@ func New(cfg Config, applier Applier) (*Provider, error) {
 	}
 
 	rc.UserAgent = "turna-gateway"
+	// Status is written per route; the client-go default of 5 requests per
+	// second throttles clusters with many routes.
+	if rc.QPS == 0 {
+		rc.QPS = 50
+	}
+	if rc.Burst == 0 {
+		rc.Burst = 100
+	}
 
 	kube, err := kubernetes.NewForConfig(rc)
 	if err != nil {
@@ -297,6 +304,10 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 		DeleteFunc: func(any) { p.notify() },
 	}
 
+	if !available[kindReferenceGrant] {
+		slog.Info("kubernetes provider: ReferenceGrant v1 is not served, using v1beta1")
+	}
+
 	for _, ns := range namespaces {
 		kf := informers.NewSharedInformerFactoryWithOptions(p.kube, 0, informers.WithNamespace(ns), informers.WithTransform(stripManagedFields))
 		gf := gwinformers.NewSharedInformerFactoryWithOptions(p.gw, 0, gwinformers.WithNamespace(ns), gwinformers.WithTransform(stripManagedFields))
@@ -304,12 +315,19 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 		l := nsListers{
 			gateways: gf.Gateway().V1().Gateways(),
 			routes:   gf.Gateway().V1().HTTPRoutes(),
-			grants:   gf.Gateway().V1beta1().ReferenceGrants(),
 			services: kf.Core().V1().Services(),
 		}
 
 		infs := []cache.SharedIndexInformer{
-			l.gateways.Informer(), l.routes.Informer(), l.grants.Informer(), l.services.Informer(),
+			l.gateways.Informer(), l.routes.Informer(), l.services.Informer(),
+		}
+
+		if available[kindReferenceGrant] {
+			l.grants = gf.Gateway().V1().ReferenceGrants()
+			infs = append(infs, l.grants.Informer())
+		} else {
+			l.grantsBeta = gf.Gateway().V1beta1().ReferenceGrants()
+			infs = append(infs, l.grantsBeta.Informer())
 		}
 
 		if watchSlices {
@@ -478,8 +496,22 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 
 			return l.udp.Lister().List(labels.Everything())
 		}),
-		grants: collect(perNS, func(l nsListers) ([]*gwv1beta1.ReferenceGrant, error) {
-			return l.grants.Lister().List(labels.Everything())
+		grants: collect(perNS, func(l nsListers) ([]*gwv1.ReferenceGrant, error) {
+			if l.grants != nil {
+				return l.grants.Lister().List(labels.Everything())
+			}
+
+			beta, err := l.grantsBeta.Lister().List(labels.Everything())
+			if err != nil {
+				return nil, err
+			}
+
+			out := make([]*gwv1.ReferenceGrant, 0, len(beta))
+			for _, g := range beta {
+				out = append(out, (*gwv1.ReferenceGrant)(g))
+			}
+
+			return out, nil
 		}),
 		services: collect(perNS, func(l nsListers) ([]*corev1.Service, error) {
 			return l.services.Lister().List(labels.Everything())
@@ -520,16 +552,17 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 }
 
 type nsListers struct {
-	gateways gwinformersv1.GatewayInformer
-	routes   gwinformersv1.HTTPRouteInformer
-	grpc     gwinformersv1.GRPCRouteInformer
-	tls      gwinformersv1.TLSRouteInformer
-	tcp      gwinformersv1.TCPRouteInformer
-	udp      gwinformersv1.UDPRouteInformer
-	grants   gwinformersv1beta1.ReferenceGrantInformer
-	services coreinformers.ServiceInformer
-	slices   discoveryinformers.EndpointSliceInformer
-	secrets  coreinformers.SecretInformer
+	gateways   gwinformersv1.GatewayInformer
+	routes     gwinformersv1.HTTPRouteInformer
+	grpc       gwinformersv1.GRPCRouteInformer
+	tls        gwinformersv1.TLSRouteInformer
+	tcp        gwinformersv1.TCPRouteInformer
+	udp        gwinformersv1.UDPRouteInformer
+	grants     gwinformersv1.ReferenceGrantInformer
+	grantsBeta gwinformersv1beta1.ReferenceGrantInformer
+	services   coreinformers.ServiceInformer
+	slices     discoveryinformers.EndpointSliceInformer
+	secrets    coreinformers.SecretInformer
 }
 
 func collect[T any](per []nsListers, fn func(nsListers) ([]T, error)) func() ([]T, error) {
@@ -700,9 +733,10 @@ func (p *Provider) sync(ctx context.Context) error {
 	return applyErr
 }
 
-// routeKinds reports which optional route CRDs are installed.
+// routeKinds reports which optional route CRDs are installed, and whether
+// ReferenceGrant is served as v1; older CRDs serve only v1beta1.
 func (p *Provider) routeKinds() (map[gwv1.Kind]bool, error) {
-	out := map[gwv1.Kind]bool{kindGRPCRoute: false, kindTLSRoute: false, kindTCPRoute: false, kindUDPRoute: false}
+	out := map[gwv1.Kind]bool{kindGRPCRoute: false, kindTLSRoute: false, kindTCPRoute: false, kindUDPRoute: false, kindReferenceGrant: false}
 
 	res, err := p.gw.Discovery().ServerResourcesForGroupVersion(gwv1.GroupVersion.String())
 	if apierrors.IsNotFound(err) {
@@ -720,7 +754,7 @@ func (p *Provider) routeKinds() (map[gwv1.Kind]bool, error) {
 	}
 
 	for kind, ok := range out {
-		if !ok {
+		if !ok && kind != kindReferenceGrant {
 			slog.Debug("kubernetes provider: route kind not installed", "kind", kind)
 		}
 	}

@@ -30,9 +30,15 @@ func (t *translator) grpcRules(route *gwv1.GRPCRoute) ([]gateway.Rule, *refError
 	for i, r := range route.Spec.Rules {
 		rule := gateway.Rule{}
 
-		for _, m := range r.Matches {
-			rule.Matches = append(rule.Matches, convertGRPCMatch(m))
+		matches, ok, err := validMatches(r.Matches, convertGRPCMatch, true)
+		if err != nil {
+			setErr(err)
 		}
+		if !ok {
+			// no valid match left; an empty list would match every request
+			continue
+		}
+		rule.Matches = matches
 
 		filters, err := t.grpcFilters(route, r.Filters)
 		if err != nil {

@@ -40,9 +40,15 @@ func (t *translator) rules(route *gwv1.HTTPRoute) ([]gateway.Rule, *refError) {
 	for i, r := range route.Spec.Rules {
 		rule := gateway.Rule{}
 
-		for _, m := range r.Matches {
-			rule.Matches = append(rule.Matches, convertMatch(m))
+		matches, ok, err := validMatches(r.Matches, convertMatch, false)
+		if err != nil {
+			setErr(err)
 		}
+		if !ok {
+			// no valid match left; an empty list would match every request
+			continue
+		}
+		rule.Matches = matches
 
 		filters, err := t.filters(route, r.Filters)
 		if err != nil {
@@ -56,11 +62,7 @@ func (t *translator) rules(route *gwv1.HTTPRoute) ([]gateway.Rule, *refError) {
 
 		rule.Filters = filters
 
-		if r.Timeouts != nil && r.Timeouts.Request != nil {
-			if d, err := time.ParseDuration(string(*r.Timeouts.Request)); err == nil && d > 0 {
-				rule.Timeout = d
-			}
-		}
+		rule.Timeout = ruleTimeout(r.Timeouts)
 
 		redirect := slices.ContainsFunc(r.Filters, func(f gwv1.HTTPRouteFilter) bool {
 			return f.Type == gwv1.HTTPRouteFilterRequestRedirect
@@ -81,6 +83,29 @@ func (t *translator) rules(route *gwv1.HTTPRoute) ([]gateway.Rule, *refError) {
 	}
 
 	return out, firstErr
+}
+
+// ruleTimeout returns the timeout of a rule, 0 disables it. Retries go only
+// to unreachable endpoints and fail fast, so the backend request timeout
+// also bounds the whole request.
+func ruleTimeout(t *gwv1.HTTPRouteTimeouts) time.Duration {
+	if t == nil {
+		return 0
+	}
+
+	var out time.Duration
+
+	for _, v := range []*gwv1.Duration{t.Request, t.BackendRequest} {
+		if v == nil {
+			continue
+		}
+
+		if d, err := time.ParseDuration(string(*v)); err == nil && d > 0 && (out == 0 || d < out) {
+			out = d
+		}
+	}
+
+	return out
 }
 
 func convertMatch(m gwv1.HTTPRouteMatch) gateway.Match {
@@ -128,6 +153,27 @@ func valueType(regex bool) string {
 	}
 
 	return gateway.ValueExact
+}
+
+// validMatches converts route matches and drops matches the gateway cannot
+// compile, such as unsupported regular expressions. One invalid match must
+// not fail the whole configuration of every route. ok is false when the rule
+// had matches and none is left.
+func validMatches[M any](in []M, convert func(M) gateway.Match, grpc bool) (out []gateway.Match, ok bool, firstErr *refError) {
+	for _, m := range in {
+		gm := convert(m)
+		if err := gateway.ValidateMatch(gm, grpc); err != nil {
+			if firstErr == nil {
+				firstErr = &refError{string(gwv1.RouteReasonUnsupportedValue), fmt.Sprintf("match is not supported: %v", err)}
+			}
+
+			continue
+		}
+
+		out = append(out, gm)
+	}
+
+	return out, len(in) == 0 || len(out) > 0, firstErr
 }
 
 func (t *translator) filters(route *gwv1.HTTPRoute, in []gwv1.HTTPRouteFilter) ([]gateway.Filter, *refError) {

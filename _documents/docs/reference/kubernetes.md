@@ -146,7 +146,7 @@ The Kubernetes configuration is a separate layer next to the static `server` con
 - `HTTPRoute`:
   - Matches: path (`Exact`, `PathPrefix`, `RegularExpression`), method, headers, query parameters.
   - Filters: request and response header modifiers, redirects (scheme, host, port, path, 301/302/303/307/308), URL rewrites, request mirrors (also several and by percentage).
-  - Request timeouts.
+  - Request timeouts; `backendRequest` timeouts also bound the whole request, the shorter of both applies.
 - `GRPCRoute`: service and method matches (exact and regex), header matches, header modifier and mirror filters. Plain text gRPC uses HTTP/2 without TLS (h2c) on HTTP listeners; gateway errors are returned as gRPC status codes. HTTPRoutes and GRPCRoutes can share a listener; on a hostname conflict the older route wins.
 - `TLSRoute`: routed by SNI to weighted backends; terminated connections reach the backend as plain TCP.
 - `TCPRoute` and `UDPRoute`: weighted backends. A listener without hostnames cannot tell routes apart, so the oldest attached route receives the traffic.
@@ -156,7 +156,14 @@ The Kubernetes configuration is a separate layer next to the static `server` con
 
 Route kinds whose CRD is not installed are skipped. Installed route kinds are checked every minute, so CRDs installed later are picked up without a restart.
 
-Not yet supported: `BackendTLSPolicy`, `ListenerSet`, CORS and external auth filters, backend timeouts and retries from the route, and `spec.addresses` on Gateways. A Gateway with `spec.addresses` is not accepted and gets no proxy.
+`ReferenceGrant` is watched as `v1`. Clusters with older CRDs that serve only `v1beta1` keep working; the watch switches to `v1` within a minute after the CRDs are upgraded.
+
+Not yet supported: `BackendTLSPolicy`, `ListenerSet`, CORS and external auth filters, retries from the route, and `spec.addresses` on Gateways.
+
+Unsupported fields that would change security or placement are rejected instead of ignored:
+
+- A Gateway with `spec.addresses`, `spec.infrastructure.parametersRef` or `spec.tls.backend.clientCertificateRef` is not accepted and gets no proxy.
+- An HTTPS listener with client certificate validation (`spec.tls.frontend`) is not accepted, so it never serves without the required mutual TLS. Other listeners of the Gateway keep serving.
 
 ## Runtime updates
 

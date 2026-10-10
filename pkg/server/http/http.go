@@ -5,7 +5,9 @@ import (
 	"crypto/x509"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -110,7 +112,11 @@ func (h *HTTP) buildTLSConfig() (*tls.Config, error) {
 	byHost := make(map[string]tls.Certificate, len(h.TLS.Store))
 	allCerts := make([]tls.Certificate, 0, len(h.TLS.Store))
 
-	for host, certList := range h.TLS.Store {
+	// sorted so the first certificate of a host and the fallback are stable
+	for _, key := range slices.Sorted(maps.Keys(h.TLS.Store)) {
+		certList := h.TLS.Store[key]
+		host := strings.TrimSuffix(strings.ToLower(key), ".")
+
 		for _, c := range certList {
 			certificate, err := c.load()
 			if err != nil {
@@ -159,11 +165,11 @@ func (h *HTTP) buildTLSConfig() (*tls.Config, error) {
 				return acmeManager.GetCertificate(hello)
 			}
 
-			if hello.ServerName != "" {
-				if certificate, ok := byHost[hello.ServerName]; ok {
+			if serverName := strings.TrimSuffix(strings.ToLower(hello.ServerName), "."); serverName != "" {
+				if certificate, ok := byHost[serverName]; ok {
 					return &certificate, nil
 				}
-				if certificate, ok := wildcardCert(byHost, hello.ServerName); ok {
+				if certificate, ok := wildcardCert(byHost, serverName); ok {
 					return certificate, nil
 				}
 			}
@@ -248,13 +254,21 @@ func (h *HTTP) buildACMEManager() *autocert.Manager {
 	return manager
 }
 
-// wildcardCert looks up a certificate for serverName by replacing its first
-// label with "*" (e.g. "api.example.com" -> "*.example.com").
+// wildcardCert looks up a certificate for serverName with the longest
+// wildcard host, like the router does: "*.example.com" matches
+// "api.example.com" and "a.b.example.com".
 func wildcardCert(byHost map[string]tls.Certificate, serverName string) (*tls.Certificate, bool) {
-	if i := strings.IndexByte(serverName, '.'); i > 0 {
+	for i := strings.IndexByte(serverName, '.'); i > 0; {
 		if certificate, ok := byHost["*"+serverName[i:]]; ok {
 			return &certificate, true
 		}
+
+		next := strings.IndexByte(serverName[i+1:], '.')
+		if next < 0 {
+			break
+		}
+
+		i += next + 1
 	}
 
 	return nil, false

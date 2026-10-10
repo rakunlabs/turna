@@ -278,4 +278,48 @@ func TestWildcardCert(t *testing.T) {
 	if _, ok := wildcardCert(byHost, "api.other.com"); ok {
 		t.Error("did not expect wildcard match for api.other.com")
 	}
+
+	// Gateway API wildcards match any number of labels.
+	if _, ok := wildcardCert(byHost, "a.b.example.com"); !ok {
+		t.Error("expected wildcard match for a.b.example.com")
+	}
+}
+
+func TestBuildTLSConfigSNINormalization(t *testing.T) {
+	h := &HTTP{
+		TLS: TLS{
+			Store: map[string][]Certificate{
+				"app.example.com":        {writeCertFiles(t, "app.example.com")},
+				"*.example.com":          {writeCertFiles(t, "wildcard.example.com")},
+				"*.internal.example.com": {writeCertFiles(t, "wildcard.internal.example.com")},
+				"default":                {writeCertFiles(t, "default.example.com")},
+			},
+		},
+	}
+
+	cfg, err := h.buildTLSConfig()
+	if err != nil {
+		t.Fatalf("buildTLSConfig: %v", err)
+	}
+
+	tests := []struct {
+		serverName string
+		wantDNS    string
+	}{
+		{"APP.Example.com", "app.example.com"},
+		{"app.example.com.", "app.example.com"},
+		{"a.b.example.com", "wildcard.example.com"},
+		{"a.b.internal.example.com", "wildcard.internal.example.com"},
+	}
+
+	for _, tt := range tests {
+		c, err := cfg.GetCertificate(&tls.ClientHelloInfo{ServerName: tt.serverName})
+		if err != nil {
+			t.Fatalf("GetCertificate(%q): %v", tt.serverName, err)
+		}
+
+		if dns := leafDNS(t, c); !slices.Contains(dns, tt.wantDNS) {
+			t.Errorf("serverName %q: expected cert with DNS %q, got %v", tt.serverName, tt.wantDNS, dns)
+		}
+	}
 }

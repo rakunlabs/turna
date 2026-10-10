@@ -164,9 +164,9 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 		t.out.served = append(t.out.served, gw)
 		listeners[key(gw)] = t.gateway(gw)
 
-		// spec.addresses is not supported, the gateway is not accepted and
-		// must not serve traffic
-		if len(gw.Spec.Addresses) > 0 {
+		// unsupported gateway fields: the gateway is not accepted and must
+		// not serve traffic
+		if _, _, _, rejected := gatewayRejection(gw); rejected {
 			for _, li := range listeners[key(gw)] {
 				li.valid = false
 			}
@@ -192,6 +192,38 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 	t.buildStreams()
 
 	return t.out
+}
+
+// gatewayRejection reports Gateway fields that are not supported and make the
+// whole gateway not accepted, with the Accepted and Programmed reasons.
+func gatewayRejection(gw *gwv1.Gateway) (accepted, programmed, msg string, rejected bool) {
+	switch {
+	case len(gw.Spec.Addresses) > 0:
+		return string(gwv1.GatewayReasonUnsupportedAddress), string(gwv1.GatewayReasonAddressNotUsable), "spec.addresses is not supported", true
+	case gw.Spec.Infrastructure != nil && gw.Spec.Infrastructure.ParametersRef != nil:
+		return string(gwv1.GatewayReasonInvalidParameters), string(gwv1.GatewayReasonInvalid), "spec.infrastructure.parametersRef is not supported", true
+	case gw.Spec.TLS != nil && gw.Spec.TLS.Backend != nil && gw.Spec.TLS.Backend.ClientCertificateRef != nil:
+		return string(gwv1.GatewayReasonInvalidClientCertificateRef), string(gwv1.GatewayReasonInvalid), "spec.tls.backend.clientCertificateRef is not supported", true
+	default:
+		return "", "", "", false
+	}
+}
+
+// requiresClientValidation reports whether the gateway asks for client
+// certificate validation on an HTTPS listener port.
+func requiresClientValidation(gw *gwv1.Gateway, port gwv1.PortNumber) bool {
+	if gw.Spec.TLS == nil || gw.Spec.TLS.Frontend == nil {
+		return false
+	}
+
+	f := gw.Spec.TLS.Frontend
+	for _, pp := range f.PerPort {
+		if pp.Port == port {
+			return pp.TLS.Validation != nil
+		}
+	}
+
+	return f.Default.Validation != nil
 }
 
 func (t *translator) servesGateway(gw *gwv1.Gateway) bool {
@@ -299,6 +331,15 @@ func (t *translator) gateway(gw *gwv1.Gateway) []*listener {
 
 			if err := t.certificates(gw, l, li); err != nil {
 				resolved = t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), false, err.reason, err.msg)
+				li.valid = false
+			}
+
+			// Client certificates are not validated; serving the listener
+			// anyway would silently drop the required mutual TLS.
+			if requiresClientValidation(gw, l.Port) {
+				const msg = "client certificate validation (spec.tls.frontend) is not supported"
+				accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonNoValidCACertificate), msg)
+				resolved = t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), false, string(gwv1.ListenerReasonInvalidCACertificateRef), msg)
 				li.valid = false
 			}
 		case gwv1.TLSProtocolType:
@@ -841,10 +882,10 @@ func (t *translator) finishGateways(list []*gwv1.Gateway, all map[nsName][]*list
 			acceptedReason = string(gwv1.GatewayReasonListenersNotValid)
 		}
 
-		if len(gw.Spec.Addresses) > 0 {
+		if acceptReason, programReason, msg, rejected := gatewayRejection(gw); rejected {
 			st.Conditions = []metav1.Condition{
-				t.condition(gw.Generation, string(gwv1.GatewayConditionAccepted), false, string(gwv1.GatewayReasonUnsupportedAddress), "spec.addresses is not supported"),
-				t.condition(gw.Generation, string(gwv1.GatewayConditionProgrammed), false, string(gwv1.GatewayReasonAddressNotUsable), "spec.addresses is not supported"),
+				t.condition(gw.Generation, string(gwv1.GatewayConditionAccepted), false, acceptReason, msg),
+				t.condition(gw.Generation, string(gwv1.GatewayConditionProgrammed), false, programReason, msg),
 			}
 		} else {
 			st.Conditions = []metav1.Condition{

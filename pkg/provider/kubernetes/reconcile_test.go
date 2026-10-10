@@ -18,7 +18,6 @@ import (
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	"github.com/rakunlabs/turna/pkg/server"
 )
@@ -255,7 +254,7 @@ func snapshotListers(s *Snapshot) listers {
 		tls:       func() ([]*gwv1.TLSRoute, error) { return nil, nil },
 		tcp:       func() ([]*gwv1.TCPRoute, error) { return nil, nil },
 		udp:       func() ([]*gwv1.UDPRoute, error) { return nil, nil },
-		grants:    func() ([]*gwv1beta1.ReferenceGrant, error) { return nil, nil },
+		grants:    func() ([]*gwv1.ReferenceGrant, error) { return nil, nil },
 		services:  func() ([]*corev1.Service, error) { return s.Services, nil },
 		slices:    func() ([]*discoveryv1.EndpointSlice, error) { return s.EndpointSlices, nil },
 		secrets:   func() ([]*corev1.Secret, error) { return nil, nil },

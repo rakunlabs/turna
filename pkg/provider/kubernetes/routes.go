@@ -14,6 +14,10 @@ const (
 	kindTLSRoute  = "TLSRoute"
 	kindTCPRoute  = "TCPRoute"
 	kindUDPRoute  = "UDPRoute"
+
+	// kindReferenceGrant is not a route; discovery reports whether it is
+	// served as v1.
+	kindReferenceGrant = "ReferenceGrant"
 )
 
 // family groups listener protocols sharing a port: http listeners (HTTP and

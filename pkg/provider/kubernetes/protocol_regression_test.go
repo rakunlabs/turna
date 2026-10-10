@@ -12,7 +12,6 @@ import (
 	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	shttp "github.com/rakunlabs/turna/pkg/server/http"
 )
@@ -121,11 +120,11 @@ func TestHTTPRouteH2CUpstream(t *testing.T) {
 
 func TestGRPCMirrorUsesGRPCReferenceGrant(t *testing.T) {
 	svc, slice := serviceObj("backend", "shadow", 80)
-	snap := &Snapshot{Services: []*corev1.Service{svc}, EndpointSlices: []*discoveryv1.EndpointSlice{slice}, ReferenceGrants: []*gwv1beta1.ReferenceGrant{{
+	snap := &Snapshot{Services: []*corev1.Service{svc}, EndpointSlices: []*discoveryv1.EndpointSlice{slice}, ReferenceGrants: []*gwv1.ReferenceGrant{{
 		ObjectMeta: objMeta("backend", "allow"),
-		Spec: gwv1beta1.ReferenceGrantSpec{
-			From: []gwv1beta1.ReferenceGrantFrom{{Group: groupGateway, Kind: kindGRPCRoute, Namespace: "app"}},
-			To:   []gwv1beta1.ReferenceGrantTo{{Group: "", Kind: kindService}},
+		Spec: gwv1.ReferenceGrantSpec{
+			From: []gwv1.ReferenceGrantFrom{{Group: groupGateway, Kind: kindGRPCRoute, Namespace: "app"}},
+			To:   []gwv1.ReferenceGrantTo{{Group: "", Kind: kindService}},
 		},
 	}}}
 	filter := &gwv1.HTTPRequestMirrorFilter{BackendRef: gwv1.BackendObjectReference{Namespace: ptr(gwv1.Namespace("backend")), Name: "shadow", Port: ptr(gwv1.PortNumber(80))}}

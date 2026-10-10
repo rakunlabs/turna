@@ -207,8 +207,8 @@ func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap
 	idx := newIndex(snap)
 
 	for _, gw := range gateways {
-		// gateways with spec.addresses are not accepted, see finishGateways
-		if len(gw.Spec.Addresses) > 0 {
+		// rejected gateways are not accepted, see finishGateways
+		if _, _, _, rejected := gatewayRejection(gw); rejected {
 			continue
 		}
 
@@ -753,10 +753,11 @@ func (p *Provider) proxyDeployment(ns, name string, lbls map[string]string, gw *
 	container.Ports = append(container.Ports, corev1.ContainerPort{Name: "health", ContainerPort: int32(health), Protocol: corev1.ProtocolTCP}) //nolint:gosec // port range
 
 	// Keep serving while load balancers and kube-proxy stop sending new
-	// connections to the terminating pod.
+	// connections to the terminating pod. A zero sleep is rejected by
+	// Kubernetes versions before 1.33.
 	delay := p.cfg.Proxy.shutdownDelay()
-	if delay > 0 {
-		container.Lifecycle = &corev1.Lifecycle{PreStop: &corev1.LifecycleHandler{Sleep: &corev1.SleepAction{Seconds: int64(delay.Round(time.Second) / time.Second)}}}
+	if secs := int64(delay.Round(time.Second) / time.Second); secs > 0 {
+		container.Lifecycle = &corev1.Lifecycle{PreStop: &corev1.LifecycleHandler{Sleep: &corev1.SleepAction{Seconds: secs}}}
 	}
 
 	selector := map[string]string{"app.kubernetes.io/instance": lbls["app.kubernetes.io/instance"]}
@@ -852,8 +853,13 @@ func upsert[T interface {
 
 	if apierrors.IsNotFound(err) {
 		_, err = client.Create(ctx, obj, metav1.CreateOptions{})
+		if cachedGet == nil || !apierrors.IsAlreadyExists(err) {
+			return err
+		}
 
-		return err
+		// The cache may lag behind or not see the object at all, as it only
+		// watches managed objects; read it from the API server instead.
+		cur, err = client.Get(ctx, obj.GetName(), metav1.GetOptions{})
 	}
 
 	if err != nil {

@@ -11,7 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	"github.com/rakunlabs/turna/pkg/server/cert"
 )
@@ -216,11 +215,11 @@ func TestTranslateCrossNamespace(t *testing.T) {
 		t.Fatalf("resolved without grant = %v", c)
 	}
 
-	snap.ReferenceGrants = []*gwv1beta1.ReferenceGrant{{
+	snap.ReferenceGrants = []*gwv1.ReferenceGrant{{
 		ObjectMeta: objMeta("backend", "allow"),
-		Spec: gwv1beta1.ReferenceGrantSpec{
-			From: []gwv1beta1.ReferenceGrantFrom{{Group: gwv1.GroupName, Kind: "HTTPRoute", Namespace: "app"}},
-			To:   []gwv1beta1.ReferenceGrantTo{{Group: "", Kind: "Service"}},
+		Spec: gwv1.ReferenceGrantSpec{
+			From: []gwv1.ReferenceGrantFrom{{Group: gwv1.GroupName, Kind: "HTTPRoute", Namespace: "app"}},
+			To:   []gwv1.ReferenceGrantTo{{Group: "", Kind: "Service"}},
 		},
 	}}
 

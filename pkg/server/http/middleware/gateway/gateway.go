@@ -316,6 +316,14 @@ func pathRank(t string) int {
 	}
 }
 
+// ValidateMatch reports whether m compiles, e.g. whether its regular
+// expressions are supported.
+func ValidateMatch(m Match, grpc bool) error {
+	_, err := compileMatch(m, grpc)
+
+	return err
+}
+
 func compileMatch(m Match, grpc bool) (compiledMatch, error) {
 	cm := compiledMatch{pathType: PathPrefix, path: "/", method: strings.ToUpper(m.Method), grpc: grpc}
 

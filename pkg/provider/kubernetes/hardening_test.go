@@ -17,7 +17,6 @@ import (
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 	gwfake "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/fake"
 
 	"github.com/rakunlabs/turna/pkg/server/cert"
@@ -184,11 +183,11 @@ func TestProxyCertificateBundle(t *testing.T) {
 	unrelated := tlsSecret(t, "demo", "unrelated", "c.example.com")
 	denied := tlsSecret(t, "other", "denied", "d.example.com")
 
-	grant := &gwv1beta1.ReferenceGrant{
+	grant := &gwv1.ReferenceGrant{
 		ObjectMeta: objMeta("certs", "allow"),
-		Spec: gwv1beta1.ReferenceGrantSpec{
-			From: []gwv1beta1.ReferenceGrantFrom{{Group: groupGateway, Kind: kindGateway, Namespace: "demo"}},
-			To:   []gwv1beta1.ReferenceGrantTo{{Kind: kindSecret}},
+		Spec: gwv1.ReferenceGrantSpec{
+			From: []gwv1.ReferenceGrantFrom{{Group: groupGateway, Kind: kindGateway, Namespace: "demo"}},
+			To:   []gwv1.ReferenceGrantTo{{Kind: kindSecret}},
 		},
 	}
 
@@ -198,7 +197,7 @@ func TestProxyCertificateBundle(t *testing.T) {
 		httpsListener("d", "d.example.com", gwv1.SecretObjectReference{Name: "denied", Namespace: ptr(gwv1.Namespace("other"))}),
 	)
 
-	snap := &Snapshot{Secrets: []*corev1.Secret{own, shared, unrelated, denied}, ReferenceGrants: []*gwv1beta1.ReferenceGrant{grant}}
+	snap := &Snapshot{Secrets: []*corev1.Secret{own, shared, unrelated, denied}, ReferenceGrants: []*gwv1.ReferenceGrant{grant}}
 	if err := p.provision(ctx, []*gwv1.Gateway{gw}, snap); err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +230,7 @@ func TestProxyCertificateBundle(t *testing.T) {
 	res := Translate(&Config{Mode: ModeProxy, Gateways: []string{"demo/web"}}, &Snapshot{
 		GatewayClasses:  []*gwv1.GatewayClass{class()},
 		Gateways:        []*gwv1.Gateway{gw},
-		ReferenceGrants: []*gwv1beta1.ReferenceGrant{grant},
+		ReferenceGrants: []*gwv1.ReferenceGrant{grant},
 		Secrets:         unbundleSecrets(bundle),
 	})
 	st := res.Gateways[key(gw)]
@@ -551,4 +550,52 @@ func TestRouteKindsDiscovery(t *testing.T) {
 	install.Store(true)
 
 	eventually(t, "TCPRoute watched after its CRD is installed", func() bool { return watched("tcproutes") })
+}
+
+// ReferenceGrant is watched as v1 when served, and as v1beta1 on clusters
+// with older CRDs.
+func TestReferenceGrantVersion(t *testing.T) {
+	for _, served := range []bool{true, false} {
+		t.Run(fmt.Sprintf("v1=%v", served), func(t *testing.T) {
+			gw := gwfake.NewSimpleClientset()
+			gw.PrependReactor("get", "resource", func(k8stesting.Action) (bool, runtime.Object, error) {
+				list := &metav1.APIResourceList{GroupVersion: gwv1.GroupVersion.String()}
+				if served {
+					list.APIResources = []metav1.APIResource{{Name: "referencegrants", Kind: kindReferenceGrant}}
+				}
+				gw.Resources = []*metav1.APIResourceList{list}
+
+				return false, nil, nil
+			})
+
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan struct{})
+
+			p := NewWithClients(Config{Debounce: time.Millisecond, Status: Status{Disabled: true}}, nopApplier{}, kubefake.NewSimpleClientset(), gw)
+			go func() { defer close(done); _ = p.Run(ctx) }()
+			t.Cleanup(func() { cancel(); <-done })
+
+			select {
+			case <-p.Ready():
+			case <-time.After(5 * time.Second):
+				t.Fatal("provider not ready")
+			}
+
+			want := "v1beta1"
+			if served {
+				want = "v1"
+			}
+
+			var versions []string
+			for _, a := range gw.Actions() {
+				if a.GetVerb() == "list" && a.GetResource().Resource == "referencegrants" {
+					versions = append(versions, a.GetResource().Version)
+				}
+			}
+
+			if len(versions) == 0 || slices.ContainsFunc(versions, func(v string) bool { return v != want }) {
+				t.Fatalf("referencegrants listed with versions %v, want %s", versions, want)
+			}
+		})
+	}
 }

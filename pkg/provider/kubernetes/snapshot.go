@@ -10,7 +10,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
 // Snapshot is a consistent view of the watched resources.
@@ -22,7 +21,7 @@ type Snapshot struct {
 	TLSRoutes       []*gwv1.TLSRoute
 	TCPRoutes       []*gwv1.TCPRoute
 	UDPRoutes       []*gwv1.UDPRoute
-	ReferenceGrants []*gwv1beta1.ReferenceGrant
+	ReferenceGrants []*gwv1.ReferenceGrant
 	Services        []*corev1.Service
 	EndpointSlices  []*discoveryv1.EndpointSlice
 	Secrets         []*corev1.Secret
@@ -48,7 +47,7 @@ type index struct {
 	slices     map[nsName][]*discoveryv1.EndpointSlice
 	secrets    map[nsName]*corev1.Secret
 	namespaces map[string]*corev1.Namespace
-	grants     map[string][]*gwv1beta1.ReferenceGrant
+	grants     map[string][]*gwv1.ReferenceGrant
 }
 
 func newIndex(s *Snapshot) *index {
@@ -57,7 +56,7 @@ func newIndex(s *Snapshot) *index {
 		slices:     make(map[nsName][]*discoveryv1.EndpointSlice),
 		secrets:    make(map[nsName]*corev1.Secret, len(s.Secrets)),
 		namespaces: make(map[string]*corev1.Namespace, len(s.Namespaces)),
-		grants:     make(map[string][]*gwv1beta1.ReferenceGrant),
+		grants:     make(map[string][]*gwv1.ReferenceGrant),
 	}
 
 	for _, o := range s.Services {

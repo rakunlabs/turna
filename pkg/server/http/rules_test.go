@@ -77,3 +77,25 @@ func TestRuleRouterRootWildcardIncludesRoot(t *testing.T) {
 		t.Fatalf("status = %d, want %d; body=%q", rec.Code, stdhttp.StatusNoContent, rec.Body.String())
 	}
 }
+
+// Host names are case insensitive and may end with a dot.
+func TestRuleRouterHostNormalization(t *testing.T) {
+	router := NewRuleRouter()
+	for _, host := range []string{"Example.com", "*.Wild.example.com"} {
+		selection := RuleSelection{Host: host, Entrypoint: "web"}
+		router.SetRule(selection)
+		router.GetMux(selection).Handle("/*", stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, _ *stdhttp.Request) {
+			w.WriteHeader(stdhttp.StatusNoContent)
+		}))
+	}
+
+	for _, host := range []string{"example.com", "EXAMPLE.COM:8080", "example.com.", "api.wild.example.com", "API.Wild.Example.com."} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(stdhttp.MethodGet, "/", nil)
+		req.Host = host
+		router.Serve("web").ServeHTTP(rec, req)
+		if rec.Code != stdhttp.StatusNoContent {
+			t.Errorf("host %q: status = %d", host, rec.Code)
+		}
+	}
+}
