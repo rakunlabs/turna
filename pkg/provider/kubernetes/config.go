@@ -4,7 +4,9 @@
 package kubernetes
 
 import (
+	"errors"
 	"net"
+	"slices"
 	"strconv"
 	"time"
 )
@@ -39,6 +41,16 @@ type Config struct {
 	Kubeconfig string `cfg:"kubeconfig"`
 	// Namespaces to watch, empty watches all namespaces.
 	Namespaces []string `cfg:"namespaces"`
+	// GatewayClass limits the served classes to the GatewayClass with this
+	// name and watches only that object; empty serves every class of the
+	// controller name.
+	GatewayClass string `cfg:"gateway_class"`
+	// NamespaceScoped runs without cluster-wide permissions besides reading
+	// GatewayClass, so it can be installed by a namespace owner. It needs
+	// Namespaces and GatewayClass, does not watch Namespace objects (a
+	// Selector in allowedRoutes sees no namespace labels) and does not write
+	// GatewayClass status.
+	NamespaceScoped bool `cfg:"namespace_scoped"`
 	// Gateways limits the served gateways as "namespace/name", empty serves
 	// every gateway of the matching classes.
 	Gateways []string `cfg:"gateways"`
@@ -189,6 +201,22 @@ func (c *Config) mode() string {
 	}
 
 	return c.Mode
+}
+
+func (c *Config) validate() error {
+	if !c.NamespaceScoped {
+		return nil
+	}
+
+	if len(c.Namespaces) == 0 || slices.Contains(c.Namespaces, "") {
+		return errors.New("namespace_scoped needs namespaces")
+	}
+
+	if c.GatewayClass == "" {
+		return errors.New("namespace_scoped needs gateway_class")
+	}
+
+	return nil
 }
 
 func (c *Config) controllerName() string {

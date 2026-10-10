@@ -1,0 +1,47 @@
+# Cluster administrator setup for a namespace scoped turna installation.
+# Replace team-a with the tenant namespace. The tenant then installs:
+#
+#   helm install turna deploy/helm/turna-gateway -n team-a \
+#     --set scope=namespace \
+#     --set gatewayClass.create=false \
+#     --set gatewayClass.name=turna-team-a \
+#     --set controllerName=rakunlabs.com/turna-team-a
+#
+# Each tenant uses its own GatewayClass and controllerName, so installations
+# never serve or report status for each other's Gateways.
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: turna-team-a
+spec:
+  controllerName: rakunlabs.com/turna-team-a
+---
+# The only cluster-wide permission of the tenant installation: read its own
+# GatewayClass.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: turna-gatewayclass-team-a
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gatewayclasses"]
+    resourceNames: ["turna-team-a"]
+    verbs: ["get", "list", "watch"]
+---
+# Subjects are the controller and proxy ServiceAccounts of the release
+# (release name "turna" here).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: turna-gatewayclass-team-a
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: turna-gatewayclass-team-a
+subjects:
+  - kind: ServiceAccount
+    name: turna
+    namespace: team-a
+  - kind: ServiceAccount
+    name: turna-proxy
+    namespace: team-a

@@ -62,6 +62,9 @@ func (p *Provider) controllerID() string {
 		slices.Sort(gateways)
 		id = fmt.Sprintf("%s\x00%q\x00%q\x00%s\x00%s", p.cfg.controllerName(), namespaces, gateways,
 			p.cfg.Status.LeaderElection.Namespace, p.cfg.Status.LeaderElection.Name)
+		if p.cfg.GatewayClass != "" {
+			id += "\x00" + p.cfg.GatewayClass
+		}
 	}
 	sum := sha256.Sum256([]byte(id))
 	return hex.EncodeToString(sum[:])[:32]
@@ -92,26 +95,34 @@ func (c *Config) proxyConfig(gw nsName, certSecret string) ([]byte, error) {
 		level = "info"
 	}
 
+	k8s := map[string]any{
+		"enabled":            true,
+		"mode":               ModeProxy,
+		"controller_name":    c.controllerName(),
+		"namespaces":         c.Namespaces,
+		"gateways":           []string{gw.String()},
+		"certificate_secret": certSecret,
+		"port_offset":        c.PortOffset,
+		"health_address":     ":" + strconv.Itoa(c.Proxy.healthPort()),
+		"backend": map[string]any{
+			"retry":               c.Backend.Retry,
+			"strategy":            c.Backend.Strategy,
+			"use_service_ip":      c.Backend.UseServiceIP,
+			"allow_external_name": c.Backend.AllowExternalName,
+		},
+	}
+
+	// set only when used, so existing proxies keep their config hash
+	if c.GatewayClass != "" {
+		k8s["gateway_class"] = c.GatewayClass
+	}
+	if c.NamespaceScoped {
+		k8s["namespace_scoped"] = true
+	}
+
 	cfg := map[string]any{
 		"log_level": level,
-		"providers": map[string]any{
-			"kubernetes": map[string]any{
-				"enabled":            true,
-				"mode":               ModeProxy,
-				"controller_name":    c.controllerName(),
-				"namespaces":         c.Namespaces,
-				"gateways":           []string{gw.String()},
-				"certificate_secret": certSecret,
-				"port_offset":        c.PortOffset,
-				"health_address":     ":" + strconv.Itoa(c.Proxy.healthPort()),
-				"backend": map[string]any{
-					"retry":               c.Backend.Retry,
-					"strategy":            c.Backend.Strategy,
-					"use_service_ip":      c.Backend.UseServiceIP,
-					"allow_external_name": c.Backend.AllowExternalName,
-				},
-			},
-		},
+		"providers": map[string]any{"kubernetes": k8s},
 	}
 
 	return yaml.Marshal(cfg)

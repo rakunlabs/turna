@@ -192,7 +192,13 @@ func (w *statusWriter) write(ctx context.Context, u *statusUpdate) {
 		addresses = w.addresses(ctx)
 	}
 
+	// GatewayClass status needs cluster-wide write access; a namespace scoped
+	// installation leaves it to the cluster administrator.
 	for _, gc := range u.snap.GatewayClasses {
+		if w.p.cfg.NamespaceScoped {
+			break
+		}
+
 		conds, ok := u.res.GatewayClasses[gc.Name]
 		if !ok {
 			continue

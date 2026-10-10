@@ -21,6 +21,15 @@ gatewayClass:
 # watchNamespaces limits the watched namespaces, empty watches all.
 watchNamespaces: []
 
+# scope is "cluster" or "namespace". With "namespace" the release serves only
+# Gateways in its own namespace and needs no cluster-wide permissions, so a
+# namespace owner can install it. A cluster administrator must first create
+# the GatewayClass named gatewayClass.name and grant read access to it, see
+# deploy/examples/namespace-scoped-admin.yaml. gatewayClass.create must be
+# false, watchNamespaces is ignored, allowedRoutes Selector namespaces match
+# nothing and GatewayClass status is not written.
+scope: cluster
+
 # allowExternalNameBackends permits routes to use ExternalName Services as
 # backends. They can point to any host, for example cloud metadata endpoints,
 # so enable this only when every route author is trusted.

@@ -91,6 +91,29 @@ Only the elected leader provisions proxies and writes status. Standby controller
 
 Proxy resources carry a controller ownership label. The chart sets `controller_id` to the release namespace and name; the Kustomize configuration uses the stable ID `turna-kustomize`. All replicas of an installation must share this ID, and independent installations must use different IDs. For other configurations, set an explicit stable `controller_id` if you plan to change the watched namespaces or Gateways. Otherwise, the ID is derived from the controller name, watch scope and election lease configuration.
 
+## Namespace scoped installation
+
+A namespace owner can run their own turna for Gateways in their namespace without cluster-wide permissions. A cluster administrator does the cluster-level part once per tenant: installs the Gateway API CRDs, creates a GatewayClass with a tenant-specific `controllerName`, and allows the tenant's ServiceAccounts to read that GatewayClass. `deploy/examples/namespace-scoped-admin.yaml` contains these resources for the namespace `team-a`.
+
+The tenant then installs the chart in their namespace:
+
+```sh
+helm install turna deploy/helm/turna-gateway -n team-a \
+  --set scope=namespace \
+  --set gatewayClass.create=false \
+  --set gatewayClass.name=turna-team-a \
+  --set controllerName=rakunlabs.com/turna-team-a
+```
+
+With `scope=namespace` the chart creates only Roles and RoleBindings and sets `namespace_scoped`, `namespaces` (the release namespace) and `gateway_class` in the configuration. The installation then:
+
+- watches only the GatewayClass named `gateway_class`, so RBAC can limit access with `resourceNames`;
+- watches Gateways, routes, Services, EndpointSlices, Secrets and ReferenceGrants only in its namespace. Routes and backends in other namespaces are not visible;
+- does not watch Namespace objects, so `allowedRoutes.namespaces.from: Selector` matches no routes; use `Same`;
+- does not write GatewayClass status, which needs cluster-wide write access. Gateway and route status are written as usual.
+
+Use a separate GatewayClass and `controllerName` for every tenant. `gateway_class` can also be set in cluster scope to serve only one class of a shared `controllerName`.
+
 ## Configuration
 
 The chart writes this configuration; it can be extended with `extraConfig`.
@@ -103,6 +126,8 @@ providers:
     controller_name: rakunlabs.com/turna
     controller_id: turna-system/turna # stable installation identity
     namespaces: []          # empty watches all namespaces
+    gateway_class: ""       # serve and watch only this GatewayClass
+    namespace_scoped: false # no cluster-wide access, needs namespaces and gateway_class
     gateways: []            # "namespace/name", empty serves all of the class
     certificate_secret: ""  # proxy: "namespace/name" certificate bundle, set by the controller
     port_offset: 8000       # listener 80 binds 8080 inside the pod

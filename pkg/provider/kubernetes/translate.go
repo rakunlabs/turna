@@ -241,6 +241,9 @@ func (t *translator) classes(list []*gwv1.GatewayClass) map[string]*gwv1.Gateway
 		if string(gc.Spec.ControllerName) != t.cfg.controllerName() {
 			continue
 		}
+		if t.cfg.GatewayClass != "" && gc.Name != t.cfg.GatewayClass {
+			continue
+		}
 
 		out[gc.Name] = gc
 

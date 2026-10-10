@@ -45,6 +45,13 @@ app.kubernetes.io/instance: {{ .Release.Name }}
     "leader_election" (dict "namespace" .Release.Namespace "name" (include "turna-gateway.fullname" .))
   )
 -}}
+{{- if eq .Values.scope "namespace" -}}
+{{- $_ := set $k8s "namespaces" (list .Release.Namespace) -}}
+{{- $_ := set $k8s "gateway_class" .Values.gatewayClass.name -}}
+{{- $_ := set $k8s "namespace_scoped" true -}}
+{{- else if ne .Values.scope "cluster" -}}
+{{- fail "scope must be cluster or namespace" -}}
+{{- end -}}
 {{- if eq .Values.mode "standalone" -}}
 {{- $_ := set $k8s.status "service" (printf "%s/%s" .Release.Namespace (include "turna-gateway.fullname" .)) -}}
 {{- else -}}

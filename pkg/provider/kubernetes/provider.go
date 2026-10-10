@@ -177,6 +177,10 @@ func (p *Provider) Run(ctx context.Context) error {
 		return fmt.Errorf("kubernetes provider: unknown mode %q", p.cfg.mode())
 	}
 
+	if err := p.cfg.validate(); err != nil {
+		return fmt.Errorf("kubernetes provider: %w", err)
+	}
+
 	if p.cfg.mode() == ModeProxy && p.cfg.CertificateSecret != "" {
 		if _, ok := splitNsName(p.cfg.CertificateSecret); !ok {
 			return fmt.Errorf("kubernetes provider: certificate_secret %q is not namespace/name", p.cfg.CertificateSecret)
@@ -370,22 +374,38 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 		starters = append(starters, kf.Start, gf.Start)
 	}
 
-	// cluster scoped resources
-	cf := informers.NewSharedInformerFactoryWithOptions(p.kube, 0, informers.WithTransform(stripManagedFields))
-	gcf := gwinformers.NewSharedInformerFactoryWithOptions(p.gw, 0, gwinformers.WithTransform(stripManagedFields))
+	// cluster scoped resources; a configured class is watched by name, which
+	// RBAC can restrict with resourceNames
+	gcOpts := []gwinformers.SharedInformerOption{gwinformers.WithTransform(stripManagedFields)}
+	if p.cfg.GatewayClass != "" {
+		gcOpts = append(gcOpts, gwinformers.WithTweakListOptions(func(o *metav1.ListOptions) {
+			o.FieldSelector = fields.OneTermEqualSelector("metadata.name", p.cfg.GatewayClass).String()
+		}))
+	}
+	gcf := gwinformers.NewSharedInformerFactoryWithOptions(p.gw, 0, gcOpts...)
 
 	classes := gcf.Gateway().V1().GatewayClasses()
-	nsInf := cf.Core().V1().Namespaces()
+	clusterInfs := []cache.SharedIndexInformer{classes.Informer()}
+	starters = append(starters, gcf.Start)
 
-	for _, inf := range []cache.SharedIndexInformer{classes.Informer(), nsInf.Informer()} {
+	// Namespace labels are only needed for allowedRoutes selectors and need
+	// cluster-wide access.
+	namespaceList := func() ([]*corev1.Namespace, error) { return nil, nil }
+	if !p.cfg.NamespaceScoped {
+		cf := informers.NewSharedInformerFactoryWithOptions(p.kube, 0, informers.WithTransform(stripManagedFields))
+		nsInf := cf.Core().V1().Namespaces()
+		clusterInfs = append(clusterInfs, nsInf.Informer())
+		starters = append(starters, cf.Start)
+		namespaceList = func() ([]*corev1.Namespace, error) { return nsInf.Lister().List(labels.Everything()) }
+	}
+
+	for _, inf := range clusterInfs {
 		if _, err := inf.AddEventHandler(handler); err != nil {
 			return err
 		}
 
 		syncs = append(syncs, inf.HasSynced)
 	}
-
-	starters = append(starters, cf.Start, gcf.Start)
 
 	secrets := collect(perNS, func(l nsListers) ([]*corev1.Secret, error) {
 		if l.secrets == nil {
@@ -461,7 +481,7 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 
 	p.listers = listers{
 		classes:   func() ([]*gwv1.GatewayClass, error) { return classes.Lister().List(labels.Everything()) },
-		namespace: func() ([]*corev1.Namespace, error) { return nsInf.Lister().List(labels.Everything()) },
+		namespace: namespaceList,
 		gateways: collect(perNS, func(l nsListers) ([]*gwv1.Gateway, error) {
 			return l.gateways.Lister().List(labels.Everything())
 		}),

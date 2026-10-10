@@ -1,3 +1,5 @@
+{{- $namespaced := eq .Values.scope "namespace" -}}
+{{- $readerKind := ternary "Role" "ClusterRole" $namespaced -}}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -6,26 +8,27 @@ metadata:
     {{- include "turna-gateway.labels" . | nindent 4 }}
 ---
 # read access to resources needed to translate gateways, used by the
-# controller and the proxies
+# controller and the proxies; with scope namespace the GatewayClass read is
+# granted by the cluster administrator
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: {{ $readerKind }}
 metadata:
   name: {{ include "turna-gateway.fullname" . }}-reader
   labels:
     {{- include "turna-gateway.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
-    resources: ["services", "namespaces"]
+    resources: {{ ternary (list "services") (list "services" "namespaces") $namespaced | toJson }}
     verbs: ["get", "list", "watch"]
   - apiGroups: ["discovery.k8s.io"]
     resources: ["endpointslices"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["gateway.networking.k8s.io"]
-    resources: ["gatewayclasses", "gateways", "httproutes", "grpcroutes", "tlsroutes", "tcproutes", "udproutes", "referencegrants"]
+    resources: {{ concat (ternary (list) (list "gatewayclasses") $namespaced) (list "gateways" "httproutes" "grpcroutes" "tlsroutes" "tcproutes" "udproutes" "referencegrants") | toJson }}
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: {{ $readerKind }}
 metadata:
   name: {{ include "turna-gateway.fullname" . }}-status
   labels:
@@ -37,18 +40,18 @@ rules:
     resources: ["secrets"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["gateway.networking.k8s.io"]
-    resources: ["gatewayclasses/status", "gateways/status", "httproutes/status", "grpcroutes/status", "tlsroutes/status", "tcproutes/status", "udproutes/status"]
+    resources: {{ concat (ternary (list) (list "gatewayclasses/status") $namespaced) (list "gateways/status" "httproutes/status" "grpcroutes/status" "tlsroutes/status" "tcproutes/status" "udproutes/status") | toJson }}
     verbs: ["get", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: {{ $readerKind }}Binding
 metadata:
   name: {{ include "turna-gateway.fullname" . }}-reader
   labels:
     {{- include "turna-gateway.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
+  kind: {{ $readerKind }}
   name: {{ include "turna-gateway.fullname" . }}-reader
 subjects:
   - kind: ServiceAccount
@@ -61,14 +64,14 @@ subjects:
   {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: {{ $readerKind }}Binding
 metadata:
   name: {{ include "turna-gateway.fullname" . }}-status
   labels:
     {{- include "turna-gateway.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
+  kind: {{ $readerKind }}
   name: {{ include "turna-gateway.fullname" . }}-status
 subjects:
   - kind: ServiceAccount
