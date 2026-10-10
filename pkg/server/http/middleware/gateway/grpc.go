@@ -18,8 +18,19 @@ const (
 	grpcUnknown       = 2
 )
 
+// isGRPC matches application/grpc and application/grpc+proto like content
+// types, gRPC-Web (application/grpc-web) is plain HTTP for the gateway.
 func isGRPC(r *http.Request) bool {
-	return strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc")
+	return isGRPCContentType(r.Header.Get("Content-Type"))
+}
+
+func isGRPCContentType(ct string) bool {
+	rest, ok := strings.CutPrefix(ct, "application/grpc")
+	if !ok {
+		return false
+	}
+
+	return rest == "" || rest[0] == '+' || rest[0] == ';'
 }
 
 func grpcCode(status int) int {
@@ -65,13 +76,21 @@ type grpcErrorWriter struct {
 }
 
 func (w *grpcErrorWriter) WriteHeader(code int) {
+	if informational(code) {
+		if !w.started {
+			w.ResponseWriter.WriteHeader(code)
+		}
+
+		return
+	}
+
 	if w.started {
 		return
 	}
 
 	w.started = true
 
-	if code >= 400 && !strings.HasPrefix(w.Header().Get("Content-Type"), "application/grpc") {
+	if code >= 400 && !isGRPCContentType(w.Header().Get("Content-Type")) {
 		w.replaced = true
 		w.Header().Del("Content-Length")
 		writeError(w.ResponseWriter, w.req, code)

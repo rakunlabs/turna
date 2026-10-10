@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"sort"
@@ -170,6 +171,9 @@ type entry struct {
 type compiledMatch struct {
 	pathType string
 	path     string
+	// explicit is set when the match has a path, filters of nested gateways
+	// without one use the explicit match of the outer gateway.
+	explicit bool
 	regex    *regexp.Regexp
 	method   string
 	headers  []compiledValue
@@ -237,6 +241,8 @@ func (m *Gateway) Middleware() (func(http.Handler) http.Handler, error) {
 
 	return func(next http.Handler) http.Handler {
 		return grpcErrors(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r = normalizePath(r)
+
 			list := entries
 			if splitGRPC && isGRPC(r) {
 				list = grpcEntries
@@ -245,7 +251,11 @@ func (m *Gateway) Middleware() (func(http.Handler) http.Handler, error) {
 			for i := range list {
 				if list[i].match.matches(r) {
 					if m.Passthrough {
-						r = withNext(r, next)
+						r = withNext(r, m, next)
+					}
+
+					if list[i].match.explicit {
+						r = withMatch(r, &list[i].match)
 					}
 
 					list[i].handler.ServeHTTP(w, r)
@@ -322,6 +332,8 @@ func compileMatch(m Match, grpc bool) (compiledMatch, error) {
 	}
 
 	if m.Path != nil {
+		cm.explicit = true
+
 		switch m.Path.Type {
 		case "", PathPrefix:
 			cm.path = normalizePrefix(m.Path.Value)
@@ -366,7 +378,7 @@ func compileValues(values []ValueMatch, name func(string) string) ([]compiledVal
 		switch v.Type {
 		case "", ValueExact:
 		case ValueRegex:
-			re, err := regexp.Compile(v.Value)
+			re, err := regexp.Compile("^(?:" + v.Value + ")$")
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", v.Name, err)
 			}
@@ -436,6 +448,11 @@ func (m *compiledMatch) matches(r *http.Request) bool {
 
 	for _, h := range m.headers {
 		values, ok := r.Header[h.name]
+		// Host is not part of r.Header in net/http.
+		if h.name == "Host" && r.Host != "" {
+			values, ok = []string{r.Host}, true
+		}
+
 		if !ok {
 			return false
 		}
@@ -497,7 +514,7 @@ func (m *Gateway) chain(rule Rule, match compiledMatch) (http.Handler, error) {
 	}
 
 	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if next := nextFrom(r); next != nil {
+		if next := nextFrom(r, m); next != nil {
 			next.ServeHTTP(w, r)
 
 			return
@@ -624,8 +641,10 @@ func (h *HeaderModifier) request() func(http.Handler) http.Handler {
 			h.apply(r.Header)
 
 			// Host is not part of r.Header in net/http.
-			if v, ok := h.Set["Host"]; ok {
-				r.Host = v
+			for k, v := range h.Set {
+				if strings.EqualFold(k, "Host") {
+					r.Host = v
+				}
 			}
 
 			next.ServeHTTP(w, r)
@@ -650,6 +669,12 @@ type headerWriter struct {
 }
 
 func (w *headerWriter) WriteHeader(code int) {
+	if informational(code) {
+		w.ResponseWriter.WriteHeader(code)
+
+		return
+	}
+
 	if !w.written {
 		w.written = true
 		w.modify.apply(w.Header())
@@ -680,25 +705,60 @@ func (w *headerWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
 
-func (p *PathModifier) apply(path string, match compiledMatch) string {
+// rewrite applies the modifier to u, keeping the escaping of the part of the
+// path after the matched prefix.
+func (p *PathModifier) rewrite(u *url.URL, match compiledMatch) {
 	switch {
 	case p == nil:
-		return path
 	case p.ReplaceFullPath != nil:
-		return *p.ReplaceFullPath
+		u.Path = *p.ReplaceFullPath
+		u.RawPath = ""
 	case p.ReplacePrefixMatch != nil && match.pathType == PathPrefix:
-		return replacePrefix(path, match.path, *p.ReplacePrefixMatch)
-	default:
-		return path
+		if !prefixMatch(match.path, u.Path) {
+			return
+		}
+
+		raw := ""
+		if u.RawPath != "" {
+			if rest, ok := escapedRest(u.EscapedPath(), match.path); ok {
+				raw = joinPrefix((&url.URL{Path: *p.ReplacePrefixMatch}).EscapedPath(), rest)
+			}
+		}
+
+		u.Path = joinPrefix(*p.ReplacePrefixMatch, trimPrefix(u.Path, match.path))
+		u.RawPath = raw
 	}
 }
 
-func replacePrefix(path, prefix, replacement string) string {
-	rest := path
-	if prefix != "/" {
-		rest = path[len(prefix):]
+// trimPrefix returns the path after a prefix that matches with prefixMatch.
+func trimPrefix(path, prefix string) string {
+	if prefix == "/" {
+		return path
 	}
 
+	return path[len(prefix):]
+}
+
+// escapedRest returns the part of the escaped path after the decoded prefix.
+func escapedRest(escaped, prefix string) (string, bool) {
+	if prefix == "/" {
+		return escaped, true
+	}
+
+	for i := 1; i <= len(escaped); i++ {
+		if i < len(escaped) && escaped[i] != '/' {
+			continue
+		}
+
+		if dec, err := url.PathUnescape(escaped[:i]); err == nil && dec == prefix {
+			return escaped[i:], true
+		}
+	}
+
+	return "", false
+}
+
+func joinPrefix(replacement, rest string) string {
 	if strings.HasSuffix(replacement, "/") && strings.HasPrefix(rest, "/") {
 		rest = rest[1:]
 	}
@@ -715,6 +775,21 @@ func replacePrefix(path, prefix, replacement string) string {
 	return out
 }
 
+// effectiveMatch returns the match used by path modifiers. Filters of a rule
+// without a path, like the per backend filters generated by the Kubernetes
+// provider, use the path match of the outer gateway.
+func effectiveMatch(r *http.Request, own compiledMatch) compiledMatch {
+	if own.explicit {
+		return own
+	}
+
+	if outer := matchFrom(r); outer != nil {
+		return *outer
+	}
+
+	return own
+}
+
 func (rw *Rewrite) middleware(match compiledMatch) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -724,8 +799,7 @@ func (rw *Rewrite) middleware(match compiledMatch) func(http.Handler) http.Handl
 
 			if rw.Path != nil {
 				u := *r.URL
-				u.Path = rw.Path.apply(r.URL.Path, match)
-				u.RawPath = ""
+				rw.Path.rewrite(&u, effectiveMatch(r, match))
 				r.URL = &u
 			}
 
@@ -772,8 +846,7 @@ func (rd *Redirect) middleware(match compiledMatch, listenerPort int) (func(http
 			u := *r.URL
 			u.Scheme = scheme
 			u.Host = host
-			u.Path = rd.Path.apply(r.URL.Path, match)
-			u.RawPath = ""
+			rd.Path.rewrite(&u, effectiveMatch(r, match))
 
 			http.Redirect(w, r, u.String(), code)
 		})
@@ -787,4 +860,67 @@ func wellKnownPort(scheme string) int {
 	default:
 		return 80
 	}
+}
+
+// normalizePath removes "." and ".." segments, also percent encoded ones, so
+// a request like "/public/../admin" can not match "/public" and reach
+// "/admin" on an upstream that normalizes the path itself.
+func normalizePath(r *http.Request) *http.Request {
+	if !hasDotSegment(r.URL.Path) {
+		return r
+	}
+
+	u := *r.URL
+	u.Path = removeDotSegments(u.Path)
+	u.RawPath = ""
+
+	r2 := new(http.Request)
+	*r2 = *r
+	r2.URL = &u
+
+	return r2
+}
+
+func hasDotSegment(p string) bool {
+	for seg := range strings.SplitSeq(p, "/") {
+		if seg == "." || seg == ".." {
+			return true
+		}
+	}
+
+	return false
+}
+
+// removeDotSegments implements RFC 3986 section 5.2.4 for absolute paths.
+func removeDotSegments(p string) string {
+	segs := strings.Split(p, "/")
+	out := make([]string, 0, len(segs))
+
+	for i, seg := range segs {
+		last := i == len(segs)-1
+
+		switch seg {
+		case ".":
+			if last {
+				out = append(out, "")
+			}
+		case "..":
+			if len(out) > 1 {
+				out = out[:len(out)-1]
+			}
+
+			if last {
+				out = append(out, "")
+			}
+		default:
+			out = append(out, seg)
+		}
+	}
+
+	res := strings.Join(out, "/")
+	if !strings.HasPrefix(res, "/") {
+		res = "/" + res
+	}
+
+	return res
 }

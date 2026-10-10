@@ -54,6 +54,8 @@ A rule matches when any of its `matches` match; an empty list matches every requ
 | `headers[]` | `name`, `value` and `type` (`exact` or `regex`). |
 | `query[]` | `name`, `value` and `type` (`exact` or `regex`). |
 
+Regular expressions must match the whole value. Dot segments (`.`, `..`, also percent encoded) are removed from the path before matching, so `/public/../admin` is routed and forwarded as `/admin`.
+
 When several rules match, the most specific wins, in this order: higher `priority`, exact path, longest prefix, method match, more header matches, more query matches, then rule order. Requests that match no rule get `404`.
 
 ## Rule

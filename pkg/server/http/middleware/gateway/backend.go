@@ -111,6 +111,14 @@ func (w *timeoutWriter) timeout() {
 }
 
 func (w *timeoutWriter) WriteHeader(code int) {
+	if informational(code) {
+		if !w.written && !w.expired() {
+			w.ResponseWriter.WriteHeader(code)
+		}
+
+		return
+	}
+
 	if w.written {
 		if !w.timedOut {
 			w.ResponseWriter.WriteHeader(code)
@@ -155,18 +163,38 @@ func (w *timeoutWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
 
-type nextKey struct{}
+// nextKey is unique per gateway so a gateway only continues with its own
+// next handler, not with the one of an enclosing passthrough gateway.
+type nextKey struct{ g *Gateway }
 
-func withNext(r *http.Request, next http.Handler) *http.Request {
+func withNext(r *http.Request, g *Gateway, next http.Handler) *http.Request {
 	if next == nil {
 		return r
 	}
 
-	return r.WithContext(context.WithValue(r.Context(), nextKey{}, next))
+	return r.WithContext(context.WithValue(r.Context(), nextKey{g}, next))
 }
 
-func nextFrom(r *http.Request) http.Handler {
-	next, _ := r.Context().Value(nextKey{}).(http.Handler)
+func nextFrom(r *http.Request, g *Gateway) http.Handler {
+	next, _ := r.Context().Value(nextKey{g}).(http.Handler)
 
 	return next
+}
+
+type matchKey struct{}
+
+func withMatch(r *http.Request, m *compiledMatch) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), matchKey{}, m))
+}
+
+func matchFrom(r *http.Request) *compiledMatch {
+	m, _ := r.Context().Value(matchKey{}).(*compiledMatch)
+
+	return m
+}
+
+// informational reports 1xx responses that are followed by the final
+// response. 101 switches protocols and is final.
+func informational(code int) bool {
+	return code >= 100 && code < 200 && code != http.StatusSwitchingProtocols
 }
