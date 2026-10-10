@@ -1,0 +1,25 @@
+log_level: info
+providers:
+  kubernetes:
+    enabled: true
+    mode: controller
+    # Must match the GatewayClass created by the cluster administrator.
+    controller_name: rakunlabs.com/turna-team-a
+    gateway_class: turna-team-a
+    controller_id: turna-team-a
+    # Watches only the pod namespace and needs no cluster-wide access besides
+    # reading gateway_class.
+    namespace_scoped: true
+    port_offset: 8000
+    health_address: :9901
+    status:
+      leader_election:
+        name: turna
+    proxy:
+      service_account: turna-proxy
+      replicas: 2
+      service_type: LoadBalancer
+      log_level: info
+      cpu_request: 100m
+      memory_request: 64Mi
+      memory_limit: 256Mi

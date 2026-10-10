@@ -47,9 +47,9 @@ type Config struct {
 	GatewayClass string `cfg:"gateway_class"`
 	// NamespaceScoped runs without cluster-wide permissions besides reading
 	// GatewayClass, so it can be installed by a namespace owner. It needs
-	// Namespaces and GatewayClass, does not watch Namespace objects (a
-	// Selector in allowedRoutes sees no namespace labels) and does not write
-	// GatewayClass status.
+	// GatewayClass; empty Namespaces watches the pod namespace. It does not
+	// watch Namespace objects (a Selector in allowedRoutes sees no namespace
+	// labels) and does not write GatewayClass status.
 	NamespaceScoped bool `cfg:"namespace_scoped"`
 	// Gateways limits the served gateways as "namespace/name", empty serves
 	// every gateway of the matching classes.

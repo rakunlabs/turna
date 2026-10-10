@@ -104,3 +104,28 @@ Helm release: the default resource names overlap. For independent installations,
 use distinct resource names, GatewayClasses, controller names, installation IDs
 and election leases. Name prefixes do not rewrite the proxy ServiceAccount string
 inside `turna.yaml`; update it explicitly if renaming the ServiceAccounts.
+
+## Namespace scoped installation
+
+`deploy/kustomize/turna-gateway-namespaced` is an overlay that a namespace owner
+can apply without cluster-wide permissions. It serves only Gateways in its own
+namespace, creates only Roles and RoleBindings, and omits the Namespace,
+GatewayClass and cluster RBAC of the base.
+
+A cluster administrator first creates the tenant's GatewayClass and allows the
+tenant ServiceAccounts to read it, see `deploy/examples/namespace-scoped-admin.yaml`.
+Then the tenant sets:
+
+| Setting | File |
+| --- | --- |
+| Tenant namespace (must exist) | `namespace-transformer.yaml` |
+| `controller_name`, `gateway_class`, `controller_id` | `turna.yaml` |
+
+```sh
+kubectl apply -k deploy/kustomize/turna-gateway-namespaced
+kubectl rollout status deployment/turna -n team-a
+```
+
+`turna.yaml` of the overlay replaces the base configuration. It sets
+`namespace_scoped: true` without `namespaces`, so the controller and its proxies
+watch the pod namespace.

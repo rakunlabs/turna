@@ -1,5 +1,7 @@
 # Cluster administrator setup for a namespace scoped turna installation.
-# Replace team-a with the tenant namespace. The tenant then installs:
+# Replace team-a with the tenant namespace. The tenant then installs with
+# Helm, or with the Kustomize overlay deploy/kustomize/turna-gateway-namespaced
+# (same ServiceAccount names):
 #
 #   helm install turna deploy/helm/turna-gateway -n team-a \
 #     --set scope=namespace \

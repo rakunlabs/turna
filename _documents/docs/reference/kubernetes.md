@@ -105,7 +105,7 @@ helm install turna deploy/helm/turna-gateway -n team-a \
   --set controllerName=rakunlabs.com/turna-team-a
 ```
 
-With `scope=namespace` the chart creates only Roles and RoleBindings and sets `namespace_scoped`, `namespaces` (the release namespace) and `gateway_class` in the configuration. The installation then:
+With `scope=namespace` the chart creates only Roles and RoleBindings and sets `namespace_scoped`, `namespaces` (the release namespace) and `gateway_class` in the configuration. Without Helm, apply the Kustomize overlay `deploy/kustomize/turna-gateway-namespaced` after setting the tenant namespace in its `namespace-transformer.yaml` and the class in its `turna.yaml`. When `namespaces` is empty, `namespace_scoped` watches the pod namespace. The installation then:
 
 - watches only the GatewayClass named `gateway_class`, so RBAC can limit access with `resourceNames`;
 - watches Gateways, routes, Services, EndpointSlices, Secrets and ReferenceGrants only in its namespace. Routes and backends in other namespaces are not visible;
@@ -127,7 +127,7 @@ providers:
     controller_id: turna-system/turna # stable installation identity
     namespaces: []          # empty watches all namespaces
     gateway_class: ""       # serve and watch only this GatewayClass
-    namespace_scoped: false # no cluster-wide access, needs namespaces and gateway_class
+    namespace_scoped: false # no cluster-wide access, needs gateway_class; empty namespaces watches the pod namespace
     gateways: []            # "namespace/name", empty serves all of the class
     certificate_secret: ""  # proxy: "namespace/name" certificate bundle, set by the controller
     port_offset: 8000       # listener 80 binds 8080 inside the pod

@@ -1,0 +1,10 @@
+# The tenant namespace. It must exist; this overlay does not create it.
+apiVersion: builtin
+kind: NamespaceTransformer
+metadata:
+  name: namespace
+  namespace: team-a
+setRoleBindingSubjects: allServiceAccounts
+fieldSpecs:
+  - path: metadata/namespace
+    create: true

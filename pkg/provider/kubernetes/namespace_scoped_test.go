@@ -144,9 +144,10 @@ func TestProviderNamespaceScoped(t *testing.T) {
 		wg.Wait()
 	})
 
+	t.Setenv("POD_NAMESPACE", "team")
+
 	p := NewWithClients(Config{
 		NamespaceScoped: true,
-		Namespaces:      []string{"team"},
 		GatewayClass:    "team",
 		Address:         "127.0.0.1",
 		PortOffset:      local - 80,

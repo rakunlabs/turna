@@ -15,3 +15,9 @@ resources:
 images:
   - name: ghcr.io/rakunlabs/turna
     newTag: latest
+
+# The generated name changes when the config changes, rolling the controller.
+configMapGenerator:
+  - name: turna-config
+    files:
+      - turna.yaml

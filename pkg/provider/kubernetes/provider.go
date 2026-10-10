@@ -177,6 +177,10 @@ func (p *Provider) Run(ctx context.Context) error {
 		return fmt.Errorf("kubernetes provider: unknown mode %q", p.cfg.mode())
 	}
 
+	if p.cfg.NamespaceScoped && len(p.cfg.Namespaces) == 0 {
+		p.cfg.Namespaces = []string{podNamespace()}
+	}
+
 	if err := p.cfg.validate(); err != nil {
 		return fmt.Errorf("kubernetes provider: %w", err)
 	}
