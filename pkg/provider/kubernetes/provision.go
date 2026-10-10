@@ -33,6 +33,7 @@ const (
 	labelGatewayNamespace = "turna.rakunlabs.com/gateway-namespace"
 	labelController       = "turna.rakunlabs.com/controller-id"
 	annotationConfigHash  = "turna.rakunlabs.com/config-hash"
+	annotationManaged     = "turna.rakunlabs.com/managed-annotations"
 
 	managedByValue = "turna-gateway"
 	proxyContainer = "turna"
@@ -450,8 +451,9 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 	if err := upsert(ctx, p.kube.CoreV1().Services(ns), cached(pl != nil, func(n string) (*corev1.Service, error) {
 		return pl.services.Services(ns).Get(n)
 	}), svc, func(cur *corev1.Service) bool {
+		annotations := mergeAnnotations(cur.Annotations, svc.Annotations)
 		if cur.Spec.Type == svc.Spec.Type && maps.Equal(cur.Spec.Selector, svc.Spec.Selector) && servicePortsEqual(cur.Spec.Ports, svc.Spec.Ports) &&
-			maps.Equal(cur.Labels, lbls) && maps.Equal(cur.Annotations, svc.Annotations) {
+			maps.Equal(cur.Labels, lbls) && maps.Equal(cur.Annotations, annotations) {
 			return false
 		}
 
@@ -474,7 +476,7 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 			}
 		}
 		cur.Labels = lbls
-		cur.Annotations = svc.Annotations
+		cur.Annotations = annotations
 
 		return true
 	}); err != nil {
@@ -660,10 +662,14 @@ func (p *Provider) proxyService(ns, name string, lbls map[string]string, gw *gwv
 	}
 
 	if gw.Spec.Infrastructure != nil && len(gw.Spec.Infrastructure.Annotations) > 0 {
-		svc.Annotations = make(map[string]string, len(gw.Spec.Infrastructure.Annotations))
+		svc.Annotations = make(map[string]string, len(gw.Spec.Infrastructure.Annotations)+1)
+		keys := make([]string, 0, len(gw.Spec.Infrastructure.Annotations))
 		for k, v := range gw.Spec.Infrastructure.Annotations {
 			svc.Annotations[string(k)] = string(v)
+			keys = append(keys, string(k))
 		}
+		slices.Sort(keys)
+		svc.Annotations[annotationManaged] = strings.Join(keys, ",")
 	}
 
 	for _, lp := range ports {
@@ -873,6 +879,27 @@ func owned(cur metav1.Object, want map[string]string) bool {
 
 	return l[labelManagedBy] == managedByValue && l[labelController] == want[labelController] &&
 		l[labelGatewayName] == want[labelGatewayName] && l[labelGatewayNamespace] == want[labelGatewayNamespace]
+}
+
+// mergeAnnotations replaces the annotations set from the gateway
+// infrastructure and keeps annotations written by others, such as cloud
+// load balancer controllers.
+func mergeAnnotations(cur, want map[string]string) map[string]string {
+	out := maps.Clone(cur)
+	if out == nil {
+		out = make(map[string]string, len(want))
+	}
+
+	if managed := cur[annotationManaged]; managed != "" {
+		for k := range strings.SplitSeq(managed, ",") {
+			delete(out, k)
+		}
+	}
+	delete(out, annotationManaged)
+
+	maps.Copy(out, want)
+
+	return out
 }
 
 func servicePortsEqual(cur, want []corev1.ServicePort) bool {

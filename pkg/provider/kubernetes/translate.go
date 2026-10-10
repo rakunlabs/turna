@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"fmt"
+	"maps"
 	"net"
 	"slices"
 	"strconv"
@@ -477,8 +478,12 @@ func (t *translator) mergePorts(all map[nsName][]*listener) {
 		}
 	}
 
-	for _, p := range ports {
-		entry := p.entry
+	// sorted so certificates are stored in a stable order, the first
+	// certificate of a host wins
+	entries := slices.Sorted(maps.Keys(ports))
+
+	for _, entry := range entries {
+		p := ports[entry]
 		port := p.listeners[0].port
 		addr := net.JoinHostPort(t.cfg.Address, strconv.Itoa(port+t.cfg.PortOffset))
 
