@@ -28,7 +28,10 @@ type passkeyRelyingParty struct {
 	RPID        string
 	DisplayName string
 	Origins     []string
-	Default     bool
+	// RelatedOrigins may use this RP ID through WebAuthn Related Origin
+	// Requests; the browser checks them against /.well-known/webauthn.
+	RelatedOrigins []string
+	Default        bool
 }
 
 // passkeyEngine builds the WebAuthn engine for the site whose configured
@@ -55,15 +58,21 @@ func (m *Auth) passkeyEngine(r *http.Request) (*passkey.WebAuthn, passkeyRelying
 	}
 	requestOrigin := scheme + "://" + host
 
-	selected := passkeyRelyingParty{RPID: cfg.RPID, DisplayName: cfg.RPDisplayName, Origins: cfg.Origins, Default: true}
+	selected := passkeyRelyingParty{
+		RPID:           cfg.RPID,
+		DisplayName:    cfg.RPDisplayName,
+		Origins:        cfg.Origins,
+		RelatedOrigins: cfg.RelatedOrigins,
+		Default:        true,
+	}
 	for _, site := range cfg.Sites {
-		for _, origin := range site.Origins {
-			if strings.TrimSuffix(strings.TrimSpace(origin), "/") == requestOrigin {
-				selected = passkeyRelyingParty{RPID: site.RPID, DisplayName: site.RPDisplayName, Origins: site.Origins}
-				break
+		if originListed(requestOrigin, site.Origins) || originListed(requestOrigin, site.RelatedOrigins) {
+			selected = passkeyRelyingParty{
+				RPID:           site.RPID,
+				DisplayName:    site.RPDisplayName,
+				Origins:        site.Origins,
+				RelatedOrigins: site.RelatedOrigins,
 			}
-		}
-		if !selected.Default {
 			break
 		}
 	}
@@ -88,9 +97,16 @@ func (m *Auth) passkeyEngine(r *http.Request) (*passkey.WebAuthn, passkeyRelying
 		}
 	}
 
-	origins := selected.Origins
+	origins := append([]string(nil), selected.Origins...)
 	if len(origins) == 0 {
 		origins = []string{requestOrigin}
+	}
+	// The browser only reports a related origin in client data after it has
+	// confirmed it against /.well-known/webauthn, so accepting it here is safe.
+	for _, related := range selected.RelatedOrigins {
+		if origin := strings.TrimSuffix(strings.TrimSpace(related), "/"); origin != "" && !originListed(origin, origins) {
+			origins = append(origins, origin)
+		}
 	}
 
 	displayName := selected.DisplayName
@@ -122,6 +138,71 @@ func (m *Auth) passkeyEngine(r *http.Request) (*passkey.WebAuthn, passkeyRelying
 	selected.Origins = origins
 
 	return engine, selected, nil
+}
+
+func originListed(origin string, list []string) bool {
+	for _, candidate := range list {
+		if strings.TrimSuffix(strings.TrimSpace(candidate), "/") == origin {
+			return true
+		}
+	}
+
+	return false
+}
+
+// WebAuthnWellKnown serves GET /.well-known/webauthn, the Related Origin
+// Requests document. A browser on a related origin fetches it from
+// https://{rp_id}/.well-known/webauthn before using a passkey bound to rp_id,
+// so the profile is selected by the requested host being exactly an RP ID.
+func (m *Auth) WebAuthnWellKnown(w http.ResponseWriter, r *http.Request) {
+	cfg := m.cache.Snapshot().Passkey
+	if cfg.Disabled {
+		http.NotFound(w, r)
+		return
+	}
+
+	host := r.Header.Get("X-Forwarded-Host")
+	if host == "" {
+		host = r.Host
+	}
+	if hostname, _, err := net.SplitHostPort(host); err == nil {
+		host = hostname
+	}
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+
+	related := relatedOriginsForRPID(cfg, host)
+	if len(related) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string][]string{"origins": related})
+}
+
+// relatedOriginsForRPID collects the related origins of every profile bound
+// to rpID. Sites may share an RP ID, so their lists are merged.
+func relatedOriginsForRPID(cfg PasskeySettings, rpID string) []string {
+	var out []string
+	add := func(profileRPID string, origins []string) {
+		if !strings.EqualFold(strings.TrimSpace(profileRPID), rpID) {
+			return
+		}
+		for _, origin := range origins {
+			origin = strings.TrimSuffix(strings.TrimSpace(origin), "/")
+			if origin != "" && !originListed(origin, out) {
+				out = append(out, origin)
+			}
+		}
+	}
+
+	add(cfg.RPID, cfg.RelatedOrigins)
+	for _, site := range cfg.Sites {
+		add(site.RPID, site.RelatedOrigins)
+	}
+
+	return out
 }
 
 // passkey challenge session helpers backed by the code store.

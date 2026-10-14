@@ -95,7 +95,7 @@ The code expires in {{.ExpiresIn}}.`;
         state: "void" as const,
         label: "Closed",
         detail:
-          "Nobody can create an account here. The signup and password-reset endpoints answer as disabled, and the login page shows neither link.",
+          "Nobody can create an account here. The signup endpoints answer as disabled and the login page shows no signup link. Password reset is governed by its own switch below.",
       };
     }
 
@@ -131,9 +131,13 @@ The code expires in {{.ExpiresIn}}.`;
       const payload = await session.request<EmailPreview>("email/preview", {
         method: "POST",
         body: JSON.stringify({
+          // A redirect URI makes the preview a link mail, which renders the
+          // magic_link_* templates; give both pairs the template being edited.
           settings: {
             subject: subject || fallbackSubject,
             body_template: body || fallbackBody,
+            magic_link_subject: subject || fallbackSubject,
+            magic_link_body_template: body || fallbackBody,
             code_lifetime: codeLifetime || "1h",
           },
           email: previewEmail.trim(),
@@ -389,7 +393,10 @@ The code expires in {{.ExpiresIn}}.`;
             type="button"
             class="act {previewKind === 'verify' ? 'act-primary' : ''}"
             aria-pressed={previewKind === "verify"}
-            onclick={() => (previewKind = "verify")}
+            onclick={() => {
+              previewKind = "verify";
+              preview = null;
+            }}
           >
             Verification
           </button>
@@ -397,7 +404,10 @@ The code expires in {{.ExpiresIn}}.`;
             type="button"
             class="act {previewKind === 'reset' ? 'act-primary' : ''}"
             aria-pressed={previewKind === "reset"}
-            onclick={() => (previewKind = "reset")}
+            onclick={() => {
+              previewKind = "reset";
+              preview = null;
+            }}
           >
             Password reset
           </button>

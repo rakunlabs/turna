@@ -27,6 +27,8 @@ class Editor {
   advanced = $state(false);
   /** Who last amended the loaded record, and when. Empty for a new draft. */
   custody = $state("");
+  /** Field-level JSON that did not parse; held here so Commit cannot drop it silently. */
+  invalidFields = $state<Record<string, string>>({});
 
   temp = $state({
     roleIDs: "",
@@ -54,6 +56,7 @@ class Editor {
     !session.busy &&
       !this.jsonError &&
       !this.requirementError &&
+      Object.keys(this.invalidFields).length === 0 &&
       this.namespaceAllowed &&
       (this.advanced || this.simpleFormAvailable) &&
       (this.spec.body === "raw" || Boolean(this.id.trim())),
@@ -166,6 +169,12 @@ class Editor {
     return joinValues(this.record()[key]);
   }
 
+  /** A list shown one per line, for the fields whose hint says so. */
+  getLines(key: string) {
+    const value = this.record()[key];
+    return Array.isArray(value) ? value.map(String).join("\n") : joinValues(value);
+  }
+
   setList(key: string, value: string) {
     this.setRecord({ ...this.record(), [key]: splitValues(value) });
   }
@@ -177,10 +186,19 @@ class Editor {
   }
 
   setJSON(key: string, value: string) {
+    const { [key]: _, ...rest } = this.invalidFields;
     try {
-      this.setRecord({ ...this.record(), [key]: JSON.parse(value.trim() || "{}") });
+      const parsed = JSON.parse(value.trim() || "{}");
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("must be a JSON object");
+      }
+      this.invalidFields = rest;
+      this.setRecord({ ...this.record(), [key]: parsed });
     } catch (err) {
-      docket.reject(err instanceof Error ? `Invalid ${key} JSON — ${err.message}` : `Invalid ${key} JSON`);
+      this.invalidFields = {
+        ...rest,
+        [key]: err instanceof Error ? `Invalid ${key} JSON — ${err.message}` : `Invalid ${key} JSON`,
+      };
     }
   }
 
@@ -251,8 +269,12 @@ class Editor {
   }
 
   setPathNumber(path: string[], value: string) {
+    if (value.trim() === "") {
+      this.setPathValue(path, undefined);
+      return;
+    }
     const parsed = Number(value);
-    this.setPathValue(path, Number.isFinite(parsed) ? parsed : 0);
+    if (Number.isFinite(parsed)) this.setPathValue(path, parsed);
   }
 
   getPathList(path: string[]) {
@@ -278,7 +300,10 @@ class Editor {
   }
 
   setNestedString(parent: string, key: string, value: string) {
-    this.setRecord({ ...this.record(), [parent]: { ...this.nested(parent), [key]: value } });
+    const nested = { ...this.nested(parent), [key]: value };
+    // An emptied password means "keep the stored one"; sending "" would replace it.
+    if (parent === "details" && key === "password" && value === "") delete nested.password;
+    this.setRecord({ ...this.record(), [parent]: nested });
   }
 
   firstOf(parent: string): AnyRecord {
@@ -485,9 +510,36 @@ class Editor {
     });
 
     if (ok) {
-      await this.load(kind, id);
+      if (this.dirty) {
+        // Keep the operator's other edits; only the grants changed on the server.
+        await this.#mergeTemporaryAccess(kind, id);
+      } else {
+        await this.load(kind, id);
+      }
+      this.resetTemp();
       docket.commit(remove ? "Temporary access withdrawn" : "Temporary access granted");
     }
+  }
+
+  async #mergeTemporaryAccess(kind: ResourceKind, id: string) {
+    await session.run(async () => {
+      const res = await session.request<Record<string, unknown>>(
+        `${kindSpecs[kind].listPath}/${encodeURIComponent(id)}`,
+      );
+      if (this.loadedID !== id) return;
+      const payload = res.payload ?? {};
+      const pick = (record: AnyRecord) => ({
+        ...record,
+        tmp_role_ids: payload.tmp_role_ids,
+        tmp_permission_ids: payload.tmp_permission_ids,
+      });
+      this.json = pretty(pick(this.record()));
+      try {
+        this.#loadedJSON = pretty(pick(JSON.parse(this.#loadedJSON) as AnyRecord));
+      } catch {
+        // the baseline is always produced by pretty(); nothing to merge into otherwise
+      }
+    });
   }
 
   /* --- lifecycle ---------------------------------------------------------- */
@@ -501,8 +553,10 @@ class Editor {
     this.advanced = false;
     this.custody = "";
     this.json = pretty(spec.example);
+    this.invalidFields = {};
     this.resetTemp();
     this.applyNamespaceExample();
+    this.#loadedJSON = this.json;
   }
 
   startCreate(kind: ResourceKind) {
@@ -518,9 +572,12 @@ class Editor {
   }
 
   setAdvanced(enabled: boolean) {
-    // Leaving raw mode with unparseable JSON would strand the form on a document
-    // it cannot read; restore the template instead of silently discarding.
-    if (!enabled && this.jsonError) this.loadTemplate();
+    // The form cannot read an unparseable document, and swapping in the
+    // template would let Commit overwrite a loaded record with the example.
+    if (!enabled && this.jsonError) {
+      docket.reject("Fix the JSON before switching back to the form — it does not parse");
+      return;
+    }
     this.advanced = enabled;
   }
 
@@ -544,6 +601,7 @@ class Editor {
     if (this.isNew && example !== undefined) {
       this.id = nextID;
       this.json = pretty(example);
+      this.#loadedJSON = this.json;
     }
   }
 
@@ -556,16 +614,25 @@ class Editor {
 
     this.advanced = false;
     this.json = pretty(preset);
+    this.#loadedJSON = this.json;
     docket.clearRejections();
   }
 
+  #loadSeq = 0;
+
   async load(kind: ResourceKind, id: string) {
     const spec = kindSpecs[kind];
+    const seq = ++this.#loadSeq;
+    let current = false;
 
     const ok = await session.run(async () => {
       const res = await session.request<Record<string, unknown>>(
         `${spec.listPath}/${encodeURIComponent(id)}`,
       );
+
+      // A later load (double click, hash change) owns the draft now.
+      if (seq !== this.#loadSeq) return;
+      current = true;
 
       const payload = res.payload as Record<string, unknown>;
 
@@ -584,9 +651,29 @@ class Editor {
       } else {
         this.json = pretty(payload);
       }
+      this.#loadedJSON = this.json;
+      this.invalidFields = {};
     });
 
-    if (ok) this.open = true;
+    if (ok && current) this.open = true;
+    // A failed load for another register must not leave the previous record's
+    // editor open under the new tab, where Commit would write the old kind.
+    if (!ok && seq === this.#loadSeq && this.kind !== kind) this.open = false;
+  }
+
+  /* --- unsaved changes ----------------------------------------------------- */
+
+  #loadedJSON = $state("");
+
+  /** True when the draft differs from what was loaded (or from the blank template). */
+  get dirty() {
+    if (!this.open) return false;
+    return this.json !== this.#loadedJSON;
+  }
+
+  /** Ask before a navigation throws an edited draft away. */
+  confirmDiscard() {
+    return !this.dirty || window.confirm("Discard the changes you have not committed?");
   }
 
   async commit(onCommitted: () => Promise<void>) {
@@ -615,6 +702,11 @@ class Editor {
       return;
     }
 
+    if (Object.keys(this.invalidFields).length) {
+      docket.reject(`Fix ${Object.keys(this.invalidFields).join(", ")} before committing`);
+      return;
+    }
+
     const created = this.isNew;
 
     const ok = await session.run(async () => {
@@ -630,14 +722,16 @@ class Editor {
           body: JSON.stringify(body),
         });
       }
-
-      await onCommitted();
     });
 
-    if (ok) {
-      this.open = false;
-      docket.commit(created ? `${spec.title} record issued` : `${spec.title} record amended`);
-    }
+    if (!ok) return;
+
+    // The write landed. Close before re-reading, so a failed reload cannot leave
+    // a "new" draft open whose second Commit would issue a duplicate record.
+    this.open = false;
+    this.#loadedJSON = this.json;
+    docket.commit(created ? `${spec.title} record issued` : `${spec.title} record amended`);
+    await session.run(onCommitted, "Committed, but the register could not be re-read");
   }
 
   async remove(kind: ResourceKind, id: string, onRemoved: () => Promise<void>) {

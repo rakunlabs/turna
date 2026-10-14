@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -17,6 +18,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 	"github.com/worldline-go/types"
 	"github.com/xhit/go-str2duration/v2"
+	"golang.org/x/net/publicsuffix"
 )
 
 var (
@@ -252,6 +254,11 @@ type PasskeySettings struct {
 	Origins []string `json:"origins"`
 	// UserVerification is required, preferred (default) or discouraged.
 	UserVerification string `json:"user_verification"`
+	// RelatedOrigins are origins on other registrable domains that may use
+	// passkeys bound to RPID (WebAuthn Related Origin Requests). They are
+	// published at https://{rp_id}/.well-known/webauthn and require an
+	// explicit RPID.
+	RelatedOrigins []string `json:"related_origins"`
 	// Sites provide origin-selected relying parties for unrelated domains that
 	// share this Auth database. The root fields above remain the default site.
 	Sites []PasskeySiteSettings `json:"sites"`
@@ -261,10 +268,11 @@ type PasskeySettings struct {
 }
 
 type PasskeySiteSettings struct {
-	Name          string   `json:"name"`
-	RPID          string   `json:"rp_id"`
-	RPDisplayName string   `json:"rp_display_name"`
-	Origins       []string `json:"origins"`
+	Name           string   `json:"name"`
+	RPID           string   `json:"rp_id"`
+	RPDisplayName  string   `json:"rp_display_name"`
+	Origins        []string `json:"origins"`
+	RelatedOrigins []string `json:"related_origins"`
 }
 
 // PasskeyEnrollmentSettings controls optional passkey adoption after a
@@ -320,6 +328,16 @@ func validatePasskeySettings(setting PasskeySettings) error {
 
 	names := make(map[string]struct{}, len(setting.Sites))
 	origins := make(map[string]string)
+
+	if len(setting.RelatedOrigins) > 0 {
+		if strings.TrimSpace(setting.RPID) == "" {
+			return errors.New("related_origins requires an explicit rp_id: the browser fetches https://{rp_id}/.well-known/webauthn")
+		}
+		if err := validateRelatedOrigins("related_origins", setting.RPID, setting.RelatedOrigins, "the default relying party", origins); err != nil {
+			return err
+		}
+	}
+
 	for i, site := range setting.Sites {
 		name := strings.TrimSpace(site.Name)
 		if name == "" {
@@ -352,9 +370,78 @@ func validatePasskeySettings(setting PasskeySettings) error {
 			}
 			origins[origin] = name
 		}
+
+		if len(site.RelatedOrigins) > 0 {
+			if err := validateRelatedOrigins(fmt.Sprintf("sites[%d].related_origins", i), site.RPID, site.RelatedOrigins, name, origins); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
+}
+
+// maxRelatedOriginLabels is the number of distinct registrable-domain labels
+// browsers accept in a /.well-known/webauthn document. The WebAuthn spec sets
+// it as a floor; no shipping client allows more.
+const maxRelatedOriginLabels = 5
+
+// validateRelatedOrigins checks one profile's Related Origin Requests list.
+// owners maps every origin already claimed by a profile, so an origin can
+// select only one relying party.
+func validateRelatedOrigins(field, rpID string, related []string, owner string, owners map[string]string) error {
+	rpID = strings.ToLower(strings.TrimSpace(rpID))
+	if net.ParseIP(rpID) != nil {
+		return fmt.Errorf("%s: rp_id %q is an IP address; related origins need a domain", field, rpID)
+	}
+
+	labels := make(map[string]struct{})
+	for _, raw := range related {
+		origin, hostname, err := parsePasskeyOrigin(raw)
+		if err != nil {
+			return fmt.Errorf("%s contains invalid origin %q", field, raw)
+		}
+		if hostname == rpID || strings.HasSuffix(hostname, "."+rpID) {
+			return fmt.Errorf("%s: %q is already inside rp_id %q; list it under origins instead", field, raw, rpID)
+		}
+		if previous, exists := owners[origin]; exists {
+			return fmt.Errorf("origin %q is assigned to both %q and %q", origin, previous, owner)
+		}
+		owners[origin] = owner
+
+		labels[relatedOriginLabel(hostname)] = struct{}{}
+	}
+
+	if len(labels) > maxRelatedOriginLabels {
+		return fmt.Errorf("%s spans %d distinct domain labels; browsers accept at most %d", field, len(labels), maxRelatedOriginLabels)
+	}
+
+	return nil
+}
+
+// parsePasskeyOrigin normalises a scheme://host[:port] origin and returns it
+// with its lower-cased hostname.
+func parsePasskeyOrigin(raw string) (string, string, error) {
+	origin := strings.TrimSuffix(strings.TrimSpace(raw), "/")
+	parsed, err := url.Parse(origin)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
+		return "", "", errors.New("invalid origin")
+	}
+
+	return origin, strings.ToLower(parsed.Hostname()), nil
+}
+
+// relatedOriginLabel is the label a browser counts against its related-origin
+// limit: the name just before the public suffix ("shop" for shop.co.uk).
+func relatedOriginLabel(hostname string) string {
+	domain, err := publicsuffix.EffectiveTLDPlusOne(hostname)
+	if err != nil {
+		return hostname
+	}
+
+	label, _, _ := strings.Cut(domain, ".")
+
+	return label
 }
 
 // APIKeySettings is the decoded "api_key" setting namespace.

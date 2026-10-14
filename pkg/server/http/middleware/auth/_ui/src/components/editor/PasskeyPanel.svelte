@@ -7,7 +7,7 @@
   import Seal from "../ui/Seal.svelte";
   import { isWebAuthnSupported, startRegistration } from "../../lib/webauthn";
   import type { ServerCreationOptions } from "../../lib/webauthn";
-  import { docket, messageOf, session } from "../../lib/state/session.svelte";
+  import { docket, errorTextOf, messageOf, session } from "../../lib/state/session.svelte";
   import { formatStamp } from "../../lib/records";
 
   /**
@@ -29,6 +29,7 @@
   let credentials = $state<CredentialMeta[]>([]);
   let working = $state(false);
   let surveyed = $state(false);
+  let loadFailed = $state(false);
   let label = $state("");
   let pendingRemoval = $state("");
 
@@ -39,13 +40,14 @@
       const res = await fetch(
         `${session.apiBase}/passkey/credentials?user_id=${encodeURIComponent(userID)}`,
       );
-      if (!res.ok) throw new Error(`list failed: ${res.status}`);
+      if (!res.ok) throw new Error(await errorTextOf(res));
       const body = await res.json();
       credentials = body.payload ?? [];
-    } catch (err) {
-      docket.reject(messageOf(err, "Cannot read this user's passkeys"));
-    } finally {
+      loadFailed = false;
       surveyed = true;
+    } catch (err) {
+      loadFailed = true;
+      docket.reject(messageOf(err, "Cannot read this user's passkeys"));
     }
   }
 
@@ -56,7 +58,7 @@
       const res = await fetch(`${session.apiBase}/passkey/credentials/${encodeURIComponent(id)}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error(`delete failed: ${res.status}`);
+      if (!res.ok) throw new Error(await errorTextOf(res));
       await load();
       docket.commit("Passkey removed");
     } catch (err) {
@@ -74,8 +76,8 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userID }),
       });
+      if (!beginRes.ok) throw new Error(await errorTextOf(beginRes));
       const beginBody = await beginRes.json();
-      if (!beginRes.ok) throw new Error(beginBody?.message ?? `begin failed: ${beginRes.status}`);
 
       const options = beginBody.payload.options as ServerCreationOptions;
       const credential = await startRegistration(options);
@@ -90,8 +92,7 @@
           credential,
         }),
       });
-      const finishBody = await finishRes.json();
-      if (!finishRes.ok) throw new Error(finishBody?.message ?? `finish failed: ${finishRes.status}`);
+      if (!finishRes.ok) throw new Error(await errorTextOf(finishRes));
 
       label = "";
       await load();
@@ -119,7 +120,12 @@
     </span>
   {/snippet}
 
-  {#if !surveyed}
+  {#if loadFailed && !surveyed}
+    <div class="border border-dashed border-seal/60 px-6 py-8 text-center" role="alert">
+      <p class="text-[13px] leading-[1.6] text-ink">This user's passkeys could not be read.</p>
+      <button type="button" class="act mt-4" disabled={working} onclick={() => void load()}>Try again</button>
+    </div>
+  {:else if !surveyed}
     <p class="text-[13px] text-muted">Reading credentials…</p>
   {:else if credentials.length === 0}
     <p class="border border-dashed border-rule px-6 py-10 text-center text-[13px] leading-[1.6] text-muted">

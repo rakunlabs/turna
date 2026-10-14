@@ -267,7 +267,8 @@ func (s *Store) PutUser(ctx context.Context, user data.User) error {
 			if user.Details == nil {
 				user.Details = map[string]any{}
 			}
-			if user.Details["password"] == nil {
+			// An emptied password field means "keep", never "store an empty password".
+			if v, ok := user.Details["password"].(string); user.Details["password"] == nil || (ok && v == "") {
 				user.Details["password"] = found.Details["password"]
 			}
 		}
@@ -304,7 +305,7 @@ func (s *Store) PatchUser(ctx context.Context, id string, patch data.UserPatch) 
 		if patch.Details != nil {
 			hashUserPassword(*patch.Details)
 
-			if user.Details != nil && user.Details["password"] != nil && (*patch.Details)["password"] == nil {
+			if v, ok := (*patch.Details)["password"].(string); user.Details != nil && user.Details["password"] != nil && ((*patch.Details)["password"] == nil || (ok && v == "")) {
 				(*patch.Details)["password"] = user.Details["password"]
 			}
 			if user.ServiceAccount && user.Details != nil && user.Details["secret"] != nil && (*patch.Details)["secret"] == nil {

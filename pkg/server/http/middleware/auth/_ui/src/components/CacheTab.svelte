@@ -1,6 +1,7 @@
 <script lang="ts">
   import Instrument from "./ui/Instrument.svelte";
   import Section from "./ui/Section.svelte";
+  import ListEntry from "./ui/ListEntry.svelte";
   import Switch from "./ui/Switch.svelte";
   import Seal from "./ui/Seal.svelte";
   import CodeStorePinned from "./CodeStorePinned.svelte";
@@ -10,8 +11,8 @@
     setSettingBool,
     getSettingString,
     setSettingString,
-    getSettingList,
-    setSettingList,
+    getSettingValue,
+    setSettingValue,
     saveSetting,
   } from "../lib/state/settings.svelte";
 
@@ -24,7 +25,6 @@
   );
   const redisTLS = $derived(getSettingBool("cache", ["code_store", "redis", "tls", "enabled"]));
   const redisCluster = $derived(getSettingBool("cache", ["code_store", "redis", "cluster"]));
-  const addresses = $derived(getSettingList("cache", ["code_store", "redis", "address"]));
 
   const shared = $derived(codeStore !== "memory");
 </script>
@@ -115,16 +115,12 @@
 
         <div class="max-w-[62ch]">
           <label class="stamp block" for="cache-redis-address">Addresses</label>
-          <input
+          <ListEntry
             id="cache-redis-address"
-            class="entry serial mt-1.5"
-            autocomplete="off"
-            spellcheck="false"
             placeholder="127.0.0.1:6379"
-            aria-describedby="cache-redis-address-hint"
-            value={addresses}
-            oninput={(e) =>
-              setSettingList("cache", ["code_store", "redis", "address"], e.currentTarget.value)}
+            describedby="cache-redis-address-hint"
+            value={getSettingValue("cache", ["code_store", "redis", "address"])}
+            onchange={(items) => setSettingValue("cache", ["code_store", "redis", "address"], items)}
           />
           <p id="cache-redis-address-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
             Comma separated bootstrap addresses. Cluster mode is detected automatically unless the
@@ -170,7 +166,8 @@
             <input
               id="cache-redis-password"
               class="entry mt-1.5"
-              autocomplete="off"
+              type="password"
+              autocomplete="new-password"
               placeholder="optional"
               value={getSettingString("cache", ["code_store", "redis", "password"])}
               oninput={(e) =>

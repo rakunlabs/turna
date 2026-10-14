@@ -17,12 +17,19 @@
   const tempPermissions = $derived(editor.temporaryItems("tmp_permission_ids"));
   const accessPath = $derived(`${session.apiBase}/${editor.spec.listPath}/${editor.loadedID}/access`);
 
+  /** The backend serialises an unset time as Go's zero value, year 1. */
+  function isZeroTime(value: string) {
+    return !value || value.startsWith("0001-01-01");
+  }
+
   function startsAt(item: AnyRecord) {
-    return formatStamp(fieldText(item.starts_at)) || "Now";
+    const value = fieldText(item.starts_at);
+    return isZeroTime(value) ? "Now" : formatStamp(value);
   }
 
   function expiresAt(item: AnyRecord) {
-    return formatStamp(fieldText(item.expires_at)) || "No expiry";
+    const value = fieldText(item.expires_at);
+    return isZeroTime(value) ? "No expiry" : formatStamp(value);
   }
 </script>
 
@@ -69,17 +76,29 @@
       />
       <Entry
         label="Expires in"
-        bind:value={editor.temp.expiresIn}
+        bind:value={
+          () => editor.temp.expiresIn,
+          (v) => {
+            editor.temp.expiresIn = v;
+            if (v.trim()) editor.temp.expiresAt = "";
+          }
+        }
         placeholder="1h, 24h, 7d"
         mono
-        hint="A duration from now. Takes precedence over an exact time."
+        hint="A duration from the start. Filling it clears an exact expiry time."
       />
       <Entry
         label="Expires at"
-        bind:value={editor.temp.expiresAt}
+        bind:value={
+          () => editor.temp.expiresAt,
+          (v) => {
+            editor.temp.expiresAt = v;
+            if (v.trim()) editor.temp.expiresIn = "";
+          }
+        }
         type="datetime-local"
         mono
-        hint="Your local time. Used only when no duration is given."
+        hint="Your local time. Filling it clears the duration."
       />
     </div>
 

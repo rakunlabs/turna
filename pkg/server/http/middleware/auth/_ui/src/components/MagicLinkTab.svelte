@@ -157,9 +157,8 @@ The link expires in {{.ExpiresIn}}.`;
 
     {#if codeHeld && magicLink}
       <p class="mt-5 max-w-[70ch] text-[13px] leading-[1.6] text-muted">
-        Code login is held on the Email page. Link mail still goes out for requests that supply a
-        redirect_uri — the link carries the same code the token endpoint would have refused on its
-        own.
+        Code login is held on the Email page, and that holds magic links too: no link mail is sent and
+        the code a link carries is refused at the token endpoint.
       </p>
     {/if}
   </Section>

@@ -147,7 +147,7 @@ Everything else is a settings namespace under `/auth/v1/settings/{namespace}` an
 | `cache` | `poll_interval`, `code_store` | Fallback version poll interval for the in-memory read model and OAuth2 temporary code/state store. PostgreSQL notifications normally propagate changes immediately; the poll catches changes missed during listener disconnects. `code_store.active` is `database` (default), `memory`, or `redis`. Database and Redis are shared across replicas; memory is single-instance only. `code_store.redis.cluster: true` explicitly selects Redis Cluster; false keeps automatic detection. `code_store.key_prefix` namespaces the Redis keys (`<prefix>code_<id>`); empty keeps the plain `code_<id>` keys. |
 | `token` | `token_lifetime`, `refresh_lifetime`, `refresh_absolute_lifetime` | Access lifetime, refresh idle window and remembered-session ceiling (defaults `15m` / `24h` / `720h`). |
 | `jwt` | `kid`, `private_key` | RS256 signing key (PEM, PKCS#8 or PKCS#1); auto-generated on first start. Editable through the API/UI and applied without restart — the public JWKS key is derived from the private key. Changing or rotating the key invalidates outstanding tokens. |
-| `passkey` | `disabled`, `rp_id`, `rp_display_name`, `origins`, `sites`, `user_verification`, `enrollment.*` | WebAuthn (passkey) relying party settings. Empty `rp_id` defaults to the registrable domain (eTLD+1) of the request host — e.g. `auth.example.com` becomes `example.com`, so one passkey works across all subdomains; IPs and single-label hosts (`localhost`) are used as-is. Empty `origins` derives from the forwarded scheme + host. `sites[]` adds independent `{name,rp_id,rp_display_name,origins}` profiles for unrelated domains sharing the Auth database; an exact request-origin match selects the profile and new credentials retain its RP ID. Unmatched requests and existing credentials use the root fields as the backwards-compatible default. `enrollment.enabled` lets a connected login middleware offer an optional post-login registration step. `enrollment.methods` limits it to `password`, `code`, and/or `passkey` sessions (empty means all); `prompt_when_registered` includes users who already have a credential; `snooze_duration` controls the browser-local “Not now” delay (empty defaults to `720h`, `0s` asks again next login). The user can always skip. |
+| `passkey` | `disabled`, `rp_id`, `rp_display_name`, `origins`, `related_origins`, `sites`, `user_verification`, `enrollment.*` | WebAuthn (passkey) relying party settings. Empty `rp_id` defaults to the registrable domain (eTLD+1) of the request host — e.g. `auth.example.com` becomes `example.com`, so one passkey works across all subdomains; IPs and single-label hosts (`localhost`) are used as-is. Empty `origins` derives from the forwarded scheme + host. `sites[]` adds independent `{name,rp_id,rp_display_name,origins}` profiles for unrelated domains sharing the Auth database; an exact request-origin match selects the profile and new credentials retain its RP ID. Unmatched requests and existing credentials use the root fields as the backwards-compatible default. `related_origins` (root or per site) lets other registrable domains use that profile's passkeys through WebAuthn Related Origin Requests, published at `/.well-known/webauthn`. `enrollment.enabled` lets a connected login middleware offer an optional post-login registration step. `enrollment.methods` limits it to `password`, `code`, and/or `passkey` sessions (empty means all); `prompt_when_registered` includes users who already have a credential; `snooze_duration` controls the browser-local “Not now” delay (empty defaults to `720h`, `0s` asks again next login). The user can always skip. |
 | `password` | `disabled`, `local_disabled`, `ldap_disabled`, `ldap_register_disabled` | Password grant sources. Defaults keep the implicit behavior: local users check bcrypt, non-local users bind against LDAP, and unknown aliases are created only after a successful LDAP bind. |
 | `api_key` | `disabled`, `self_service`, `max_lifetime` | Static API key creation and validation. `self_service` (default off) lets any authenticated X-User issue and manage their own keys through `/v1/api-keys` — a "Personal access keys" panel appears on the account page. `max_lifetime` caps the expiry of new keys (duration string); empty means keys may live forever. |
 | `device` | `disabled`, `code_lifetime`, `interval`, `verification_uri` | RFC 8628 device flow. Defaults: codes live `10m`, minimum poll interval `5` seconds, verification URI `<prefix>/ui/device`. |
@@ -566,6 +566,41 @@ in more than one profile. Username-scoped login, duplicate-registration checks
 and post-login enrollment only consider credentials for the selected RP. The
 root `rp_id`, `rp_display_name` and `origins` fields remain the default profile;
 credentials created before this feature stay attached to that default.
+
+#### One passkey across different domains (Related Origin Requests)
+
+`sites` gives each domain its own passkeys. To let **one** passkey work on
+several registrable domains instead (`example.com`, `example.co.uk`,
+`example-rewards.com`), list the other domains under `related_origins` of the
+profile that owns the RP ID. This is the WebAuthn
+[Related Origin Requests](https://passkeys.dev/docs/advanced/related-origins/)
+feature:
+
+```json
+{
+  "rp_id": "example.com",
+  "origins": ["https://login.example.com"],
+  "related_origins": ["https://example.co.uk", "https://example-rewards.com"]
+}
+```
+
+`sites[].related_origins` works the same way for a site profile.
+
+- Auth serves `GET /.well-known/webauthn` with `{"origins": [...]}` for the
+  requested host when that host is exactly a configured RP ID (404 otherwise).
+  Browsers fetch it from `https://{rp_id}/.well-known/webauthn`, so the router
+  for the RP ID host must forward `/.well-known/webauthn` to this middleware.
+  The path is part of `PublicPathPatterns`, so a session in front skips it.
+- A request from a related origin selects the profile that lists it, uses that
+  profile's RP ID, and the origin is accepted in WebAuthn client data.
+- Related origins require an explicit `rp_id`, must lie outside that RP ID
+  (subdomains go in `origins`), cannot be claimed by another profile, and may
+  span at most 5 distinct domain labels (`shop.com` and `shop.co.uk` count as
+  one label, `shop`).
+- Browser support is not universal. A browser without it rejects the ceremony
+  on the related origin with a `SecurityError`; the login page reports it and
+  the user can sign in another way. Keep a per-domain `sites` profile when
+  every browser must be covered.
 
 | Method | Route | Purpose |
 | --- | --- | --- |

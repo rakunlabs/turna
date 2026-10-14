@@ -4,6 +4,8 @@
   import Serial from "./ui/Serial.svelte";
   import Switch from "./ui/Switch.svelte";
   import BreakSeal from "./ui/BreakSeal.svelte";
+  import ListEntry from "./ui/ListEntry.svelte";
+  import HeldEntry from "./ui/HeldEntry.svelte";
   import { docket, session } from "../lib/state/session.svelte";
   import { registry } from "../lib/state/registry.svelte";
   import {
@@ -30,19 +32,32 @@
     Boolean(publishedOAuth) && editedBaseURL !== (publishedOAuth?.configured_base_url ?? "").trim(),
   );
   const userVerification = $derived(getSettingString("passkey", ["user_verification"]) || "preferred");
-  type PasskeySite = { name: string; rp_id: string; rp_display_name: string; origins: string[] };
+  type PasskeySite = {
+    name: string;
+    rp_id: string;
+    rp_display_name: string;
+    origins: string[];
+    related_origins?: string[];
+  };
   const passkeySites = $derived((getSettingValue("passkey", ["sites"]) as PasskeySite[] | undefined) ?? []);
 
   function updatePasskeySite(index: number, patch: Partial<PasskeySite>) {
-    const sites = passkeySites.map((site) => ({ ...site, origins: [...(site.origins ?? [])] }));
+    const sites = passkeySites.map((site) => ({
+      ...site,
+      origins: [...(site.origins ?? [])],
+      related_origins: [...(site.related_origins ?? [])],
+    }));
     sites[index] = { ...sites[index], ...patch };
     setSettingValue("passkey", ["sites"], sites);
   }
 
   function addPasskeySite() {
+    const taken = new Set(passkeySites.map((site) => site.name.trim()));
+    let n = passkeySites.length + 1;
+    while (taken.has(`site-${n}`)) n++;
     setSettingValue("passkey", ["sites"], [
       ...passkeySites,
-      { name: `site-${passkeySites.length + 1}`, rp_id: "", rp_display_name: "", origins: [] },
+      { name: `site-${n}`, rp_id: "", rp_display_name: "", origins: [], related_origins: [] },
     ]);
   }
 
@@ -53,6 +68,136 @@
       passkeySites.filter((_, siteIndex) => siteIndex !== index),
     );
   }
+
+  type SiteIssues = { name?: string; rp_id?: string; origins?: string; related_origins?: string };
+
+  function normalizeOrigin(origin: string) {
+    return origin.trim().replace(/\/$/, "");
+  }
+
+  function isIP(host: string) {
+    return /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(":");
+  }
+
+  /** Parse a scheme://host[:port] origin; a string is the problem with it. */
+  function parseOrigin(raw: string): { origin: string; hostname: string } | string {
+    const origin = normalizeOrigin(raw);
+    let parsed: URL;
+    try {
+      parsed = new URL(origin);
+    } catch {
+      return `"${raw}" is not a valid origin.`;
+    }
+    if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || parsed.origin !== origin) {
+      return `"${raw}" must be scheme://host[:port] with no path.`;
+    }
+    return { origin, hostname: parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase() };
+  }
+
+  /**
+   * Related origins sit on other registrable domains; anything inside the RP
+   * ID belongs under Origins. The label limit (5) needs the public suffix list,
+   * so the server checks that one.
+   */
+  function relatedOriginIssue(
+    rpIDRaw: string,
+    related: string[],
+    owner: string,
+    owners: Map<string, string>,
+  ): string | undefined {
+    if (related.length === 0) return undefined;
+    const rpID = rpIDRaw.trim().toLowerCase();
+    if (!rpID) return "Set an explicit relying party ID first — browsers fetch its /.well-known/webauthn.";
+    if (isIP(rpID)) return "Related origins need a domain relying party ID, not an IP address.";
+
+    for (const raw of related) {
+      const parsed = parseOrigin(raw);
+      if (typeof parsed === "string") return parsed;
+      if (parsed.hostname === rpID || parsed.hostname.endsWith(`.${rpID}`)) {
+        return `"${raw}" is already inside "${rpIDRaw.trim()}"; list it under origins instead.`;
+      }
+      const previous = owners.get(parsed.origin);
+      if (previous !== undefined) return `"${raw}" is already assigned to "${previous}".`;
+      owners.set(parsed.origin, owner);
+    }
+    return undefined;
+  }
+
+  const defaultRelatedOrigins = $derived(
+    (getSettingValue("passkey", ["related_origins"]) as string[] | undefined) ?? [],
+  );
+
+  // Mirrors validatePasskeySettings so a bad profile is caught here instead of
+  // failing mid-way through Commit all, after earlier namespaces were written.
+  const passkeyValidation = $derived.by(() => {
+    const issues: SiteIssues[] = passkeySites.map(() => ({}));
+    const names = new Map<string, number>();
+    const owners = new Map<string, string>();
+
+    const defaultRelated = relatedOriginIssue(
+      getSettingString("passkey", ["rp_id"]),
+      defaultRelatedOrigins,
+      "the default relying party",
+      owners,
+    );
+
+    passkeySites.forEach((site, i) => {
+      const name = (site.name ?? "").trim();
+      if (!name) issues[i].name = "Required.";
+      else if (names.has(name)) issues[i].name = `Duplicate of site ${names.get(name)! + 1}.`;
+      else names.set(name, i);
+
+      const rpID = (site.rp_id ?? "").trim().toLowerCase();
+      if (!rpID) issues[i].rp_id = "Required.";
+
+      const origins = site.origins ?? [];
+      if (origins.length === 0) {
+        issues[i].origins = "At least one origin is required.";
+      }
+
+      for (const raw of origins) {
+        const parsed = parseOrigin(raw);
+        if (typeof parsed === "string") {
+          issues[i].origins = parsed;
+          break;
+        }
+        const { origin, hostname } = parsed;
+        if (rpID && hostname !== rpID && (isIP(rpID) || !hostname.endsWith(`.${rpID}`))) {
+          issues[i].origins = `"${raw}" is outside relying party ID "${site.rp_id}". Use related origins for other domains.`;
+          break;
+        }
+        const owner = owners.get(origin);
+        if (owner !== undefined) {
+          issues[i].origins = `"${raw}" is already assigned to "${owner}".`;
+          break;
+        }
+        owners.set(origin, name || `site ${i + 1}`);
+      }
+
+      issues[i].related_origins = relatedOriginIssue(
+        site.rp_id ?? "",
+        site.related_origins ?? [],
+        name || `site ${i + 1}`,
+        owners,
+      );
+    });
+
+    return { issues, defaultRelated };
+  });
+
+  const passkeySiteIssues = $derived(passkeyValidation.issues);
+  const defaultRelatedIssue = $derived(passkeyValidation.defaultRelated);
+
+  const passkeySitesInvalid = $derived(
+    Boolean(defaultRelatedIssue) ||
+      passkeySiteIssues.some((issue) => issue.name || issue.rp_id || issue.origins || issue.related_origins),
+  );
+
+  /** Where a browser on a related origin checks that this RP ID allows it. */
+  function wellKnownURL(rpID: string) {
+    return `https://${rpID.trim() || "{rp_id}"}/.well-known/webauthn`;
+  }
+
 
   function enrollmentMethodEnabled(method: string) {
     const configured = getSettingList("passkey", ["enrollment", "methods"])
@@ -111,7 +256,8 @@
     <button
       type="button"
       class="act act-primary"
-      disabled={session.busy}
+      disabled={session.busy || passkeySitesInvalid}
+      title={passkeySitesInvalid ? "Fix the highlighted passkey site fields first" : undefined}
       onclick={() => void saveSettings(namespaces)}
     >
       {session.busy ? "Committing…" : "Commit all"}
@@ -384,15 +530,14 @@
 
       <div class="min-w-0">
         <label class="stamp block" for="registration-max-clients">Maximum clients</label>
-        <input
+        <HeldEntry
           id="registration-max-clients"
-          class="entry serial mt-1.5"
           type="number"
           min="1"
-          aria-describedby="registration-max-clients-hint"
-          value={getSettingNumber("registration", ["max_clients"], 1000)}
-          oninput={(event) =>
-            setSettingNumber("registration", ["max_clients"], event.currentTarget.value)}
+          placeholder="1000"
+          describedby="registration-max-clients-hint"
+          value={String(getSettingNumber("registration", ["max_clients"], 1000))}
+          onvalue={(v) => setSettingNumber("registration", ["max_clients"], v)}
         />
         <p id="registration-max-clients-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
           Caps stored dynamic clients. Expired registrations are pruned before the limit is enforced.
@@ -401,16 +546,13 @@
 
       <div class="min-w-0 sm:col-span-2 xl:col-span-1">
         <label class="stamp block" for="registration-default-scope">Default scopes</label>
-        <input
-          id="registration-default-scope"
-          class="entry serial mt-1.5"
-          autocomplete="off"
-          aria-describedby="registration-default-scope-hint"
-          placeholder="openid, profile"
-          value={getSettingList("registration", ["default_scope"])}
-          oninput={(event) =>
-            setSettingList("registration", ["default_scope"], event.currentTarget.value)}
-        />
+          <ListEntry
+            id="registration-default-scope"
+            placeholder="openid, profile"
+            describedby="registration-default-scope-hint"
+            value={getSettingValue("registration", ["default_scope"])}
+            onchange={(items) => setSettingValue("registration", ["default_scope"], items)}
+          />
         <p id="registration-default-scope-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
           Comma separated. Used only when a registering client does not request a scope.
         </p>
@@ -540,17 +682,39 @@
 
       <div class="min-w-0 sm:col-span-2">
         <label class="stamp block" for="passkey-origins">Origins</label>
-        <input
+        <ListEntry
           id="passkey-origins"
-          class="entry serial mt-1.5"
-          autocomplete="off"
-          aria-describedby="passkey-origins-hint"
           placeholder="https://app.example.com"
-          value={getSettingList("passkey", ["origins"])}
-          oninput={(event) => setSettingList("passkey", ["origins"], event.currentTarget.value)}
+          describedby="passkey-origins-hint"
+          value={getSettingValue("passkey", ["origins"])}
+          onchange={(items) => setSettingValue("passkey", ["origins"], items)}
         />
         <p id="passkey-origins-hint" class="mt-1.5 max-w-[70ch] text-[12px] leading-[1.5] text-muted">
           Comma separated. Empty means the origin is taken from the request.
+        </p>
+      </div>
+
+      <div class="min-w-0 sm:col-span-2">
+        <label class="stamp block" for="passkey-related-origins">Related origins</label>
+        <ListEntry
+          id="passkey-related-origins"
+          placeholder="https://example.co.uk, https://example-rewards.com"
+          describedby="passkey-related-origins-hint"
+          invalid={Boolean(defaultRelatedIssue)}
+          value={defaultRelatedOrigins}
+          onchange={(items) => setSettingValue("passkey", ["related_origins"], items)}
+        />
+        <p
+          id="passkey-related-origins-hint"
+          class="mt-1.5 max-w-[70ch] text-[12px] leading-[1.5] {defaultRelatedIssue ? 'text-seal' : 'text-muted'}"
+        >
+          {#if defaultRelatedIssue}
+            {defaultRelatedIssue}
+          {:else}
+            Other domains that may use the same passkeys (WebAuthn Related Origin Requests). Published at
+            <span class="serial">{wellKnownURL(getSettingString("passkey", ["rp_id"]))}</span>. Needs an
+            explicit relying party ID, and at most 5 distinct domain names.
+          {/if}
         </p>
       </div>
 
@@ -565,10 +729,20 @@
           <button type="button" class="act shrink-0" onclick={addPasskeySite}>Add site</button>
         </div>
 
+        {#if passkeySitesInvalid}
+          <p class="mt-4 text-[12px] leading-[1.6] text-seal" role="status">
+            Commit all is held until every site has a unique name, a relying party ID and valid origins,
+            and every related origin list is valid.
+          </p>
+        {/if}
+
         {#if passkeySites.length > 0}
           <div class="mt-5 border-y border-rule">
-            {#each passkeySites as site, index (`${site.name}-${index}`)}
+            <!-- Keyed by position: keying by an editable field remounts the row on every keystroke and drops focus. -->
+            {#each passkeySites as site, index (index)}
+              {@const issue = passkeySiteIssues[index] ?? {}}
               <div class="border-b border-rule py-5 last:border-b-0">
+                <p class="stamp mb-4">Site {index + 1}</p>
                 <div class="grid gap-6 sm:grid-cols-2">
                   <div class="min-w-0">
                     <label class="stamp block" for="passkey-site-name-{index}">Profile name</label>
@@ -576,10 +750,19 @@
                       id="passkey-site-name-{index}"
                       class="entry serial mt-1.5"
                       autocomplete="off"
+                      spellcheck="false"
                       placeholder="customer-portal"
+                      aria-invalid={issue.name ? true : undefined}
+                      aria-describedby={issue.name ? `passkey-site-name-${index}-issue` : undefined}
+                      style={issue.name ? "border-bottom-color: var(--w-seal)" : undefined}
                       value={site.name}
                       oninput={(event) => updatePasskeySite(index, { name: event.currentTarget.value })}
                     />
+                    {#if issue.name}
+                      <p id="passkey-site-name-{index}-issue" class="mt-1.5 text-[12px] leading-[1.5] text-seal">
+                        {issue.name}
+                      </p>
+                    {/if}
                   </div>
                   <div class="min-w-0">
                     <label class="stamp block" for="passkey-site-rp-{index}">Relying party ID</label>
@@ -587,10 +770,20 @@
                       id="passkey-site-rp-{index}"
                       class="entry serial mt-1.5"
                       autocomplete="off"
+                      spellcheck="false"
                       placeholder="customer.example"
+                      aria-invalid={issue.rp_id ? true : undefined}
+                      aria-describedby="passkey-site-rp-{index}-hint"
+                      style={issue.rp_id ? "border-bottom-color: var(--w-seal)" : undefined}
                       value={site.rp_id}
                       oninput={(event) => updatePasskeySite(index, { rp_id: event.currentTarget.value })}
                     />
+                    <p
+                      id="passkey-site-rp-{index}-hint"
+                      class="mt-1.5 text-[12px] leading-[1.5] {issue.rp_id ? 'text-seal' : 'text-muted'}"
+                    >
+                      {issue.rp_id ?? "Bare domain. Every origin below must be this host or a subdomain of it."}
+                    </p>
                   </div>
                   <div class="min-w-0">
                     <label class="stamp block" for="passkey-site-display-{index}">Display name</label>
@@ -605,21 +798,51 @@
                   </div>
                   <div class="min-w-0">
                     <label class="stamp block" for="passkey-site-origins-{index}">Origins</label>
-                    <input
+                    <ListEntry
                       id="passkey-site-origins-{index}"
-                      class="entry serial mt-1.5"
-                      autocomplete="off"
                       placeholder="https://customer.example"
-                      value={(site.origins ?? []).join(", ")}
-                      oninput={(event) =>
-                        updatePasskeySite(index, {
-                          origins: event.currentTarget.value.split(/[\n,]/).map((value) => value.trim()).filter(Boolean),
-                        })}
+                      describedby="passkey-site-origins-{index}-hint"
+                      invalid={Boolean(issue.origins)}
+                      value={site.origins ?? []}
+                      onchange={(origins) => updatePasskeySite(index, { origins })}
                     />
+                    <p
+                      id="passkey-site-origins-{index}-hint"
+                      class="mt-1.5 text-[12px] leading-[1.5] {issue.origins ? 'text-seal' : 'text-muted'}"
+                    >
+                      {issue.origins ?? "Comma separated, e.g. https://login.customer.example. No path."}
+                    </p>
+                  </div>
+                  <div class="min-w-0 sm:col-span-2">
+                    <label class="stamp block" for="passkey-site-related-{index}">Related origins</label>
+                    <ListEntry
+                      id="passkey-site-related-{index}"
+                      placeholder="https://customer.de, https://customer-rewards.com"
+                      describedby="passkey-site-related-{index}-hint"
+                      invalid={Boolean(issue.related_origins)}
+                      value={site.related_origins ?? []}
+                      onchange={(related_origins) => updatePasskeySite(index, { related_origins })}
+                    />
+                    <p
+                      id="passkey-site-related-{index}-hint"
+                      class="mt-1.5 text-[12px] leading-[1.5] {issue.related_origins ? 'text-seal' : 'text-muted'}"
+                    >
+                      {#if issue.related_origins}
+                        {issue.related_origins}
+                      {:else}
+                        Optional. Other domains that share this site's passkeys, published at
+                        <span class="serial">{wellKnownURL(site.rp_id ?? "")}</span>.
+                      {/if}
+                    </p>
                   </div>
                 </div>
                 <div class="mt-4 flex justify-end">
-                  <button type="button" class="act act-quiet text-seal" onclick={() => removePasskeySite(index)}>
+                  <button
+                    type="button"
+                    class="act act-quiet text-seal"
+                    aria-label="Remove site {index + 1}{site.name ? ` (${site.name})` : ''}"
+                    onclick={() => removePasskeySite(index)}
+                  >
                     Remove site
                   </button>
                 </div>
@@ -685,12 +908,12 @@
               class="entry serial mt-1.5"
               autocomplete="off"
               placeholder="720h"
-              value={getSettingString("passkey", ["enrollment", "snooze_duration"]) || "720h"}
+              value={getSettingString("passkey", ["enrollment", "snooze_duration"])}
               oninput={(event) =>
                 setSettingString("passkey", ["enrollment", "snooze_duration"], event.currentTarget.value)}
             />
             <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
-              Browser-local delay after “Not now”. Use <span class="serial">0s</span> to ask again on the next login.
+              Browser-local delay after “Not now”. Empty means 720h (30 days). Use <span class="serial">0s</span> to ask again on the next login.
             </p>
           </div>
         </div>

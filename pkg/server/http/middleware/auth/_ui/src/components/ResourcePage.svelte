@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { untrack } from "svelte";
 
   import Instrument from "./ui/Instrument.svelte";
   import Seal from "./ui/Seal.svelte";
@@ -52,10 +53,13 @@
     void kind;
     pendingRevoke = "";
     // A paginated register keeps its search term and filters across visits; show them.
-    const search = kindSpecs[kind].paginated ? registry.standing(kind).search : "";
-    filter = search;
-    appliedFilter = search;
-    extraFilters = kindSpecs[kind].paginated ? { ...registry.standing(kind).filters } : {};
+    // Read untracked: a background reload of any register must not wipe what is being typed.
+    untrack(() => {
+      const search = kindSpecs[kind].paginated ? registry.standing(kind).search : "";
+      filter = search;
+      appliedFilter = search;
+      extraFilters = kindSpecs[kind].paginated ? { ...registry.standing(kind).filters } : {};
+    });
   });
 
   async function search() {
@@ -77,8 +81,12 @@
   function openRecord(event: MouseEvent, id: string) {
     if (!plainClick(event)) return;
 
-    event.preventDefault();
-    void editor.load(kind, id);
+    // Let the link update the hash so Back and reload return to this record;
+    // the hashchange handler loads it. Same hash fires no event, so load here.
+    if (window.location.hash === `#${kind}/${encodeURIComponent(id)}`) {
+      event.preventDefault();
+      void editor.load(kind, id);
+    }
   }
 
   function recordHref(id: string) {

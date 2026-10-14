@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
 
   import Masthead from "./components/Masthead.svelte";
   import IndexRail from "./components/IndexRail.svelte";
@@ -40,6 +40,7 @@
   let menuOpen = $state(false);
   let search = $state("");
   let rail = $state<ReturnType<typeof IndexRail> | null>(null);
+  let menuRail = $state<ReturnType<typeof IndexRail> | null>(null);
 
   // Self-service visitors never learn the admin plane exists; capability
   // decides what is in the index, not what is disabled inside it.
@@ -53,6 +54,7 @@
   );
 
   function selectTab(tab: Tab) {
+    if (!editor.confirmDiscard()) return;
     route.select(tab);
     menuOpen = false;
   }
@@ -106,8 +108,13 @@
 
     if (event.key === "/" && !typing && !event.metaKey && !event.ctrlKey) {
       event.preventDefault();
-      menuOpen = true;
-      rail?.focusSearch();
+      // The desktop rail is hidden below lg; focus whichever copy is visible.
+      if (window.matchMedia("(min-width: 1024px)").matches) {
+        rail?.focusSearch();
+      } else {
+        menuOpen = true;
+        void tick().then(() => menuRail?.focusSearch());
+      }
     }
 
     if (event.key === "Escape" && menuOpen) menuOpen = false;
@@ -118,7 +125,15 @@
     session.deriveApiBase();
     void boot();
 
+    // The hash the console last settled on, so a refused navigation can be put back.
+    let settledHash = window.location.hash;
+
     const onHash = () => {
+      if (!editor.confirmDiscard()) {
+        history.pushState(history.state, "", settledHash || window.location.pathname);
+        return;
+      }
+      settledHash = window.location.hash;
       route.readLocation();
       route.enforce();
       if (route.recordID && route.isResource(route.tab)) {
@@ -128,10 +143,16 @@
       }
     };
 
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (editor.dirty) event.preventDefault();
+    };
+
     window.addEventListener("hashchange", onHash);
+    window.addEventListener("beforeunload", onBeforeUnload);
     return () => {
       teardownTheme();
       window.removeEventListener("hashchange", onHash);
+      window.removeEventListener("beforeunload", onBeforeUnload);
     };
   });
 
@@ -160,7 +181,7 @@
           onclick={() => (menuOpen = false)}
         ></button>
         <div data-theme="dark" class="absolute inset-y-0 left-0 w-[17rem] max-w-[85vw] border-r border-rule shadow-2xl">
-          <IndexRail groups={visibleGroups} active={route.tab} onselect={selectTab} bind:search />
+          <IndexRail bind:this={menuRail} groups={visibleGroups} active={route.tab} onselect={selectTab} bind:search />
         </div>
       </div>
     {/if}
@@ -231,7 +252,12 @@
           <AuthFlowGuide />
         {:else if route.isResource(route.tab)}
           {#if editor.open}
-            <RecordEditor oncommitted={reloadAfterWrite} onclose={() => route.select(route.tab)} />
+            <RecordEditor
+              oncommitted={reloadAfterWrite}
+              onclose={() => {
+                if (editor.confirmDiscard()) route.select(route.tab);
+              }}
+            />
           {:else}
             <ResourcePage kind={route.tab} oncommitted={reloadAfterWrite}>
               {#snippet extra()}

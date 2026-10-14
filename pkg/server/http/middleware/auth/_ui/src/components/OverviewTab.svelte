@@ -77,7 +77,9 @@
       detail:
         clientCount === null
           ? "Reading…"
-          : clientCount > 0
+          : clientCount < 0
+            ? "The client register could not be read"
+            : clientCount > 0
             ? `${clientCount} client${clientCount === 1 ? "" : "s"} accepted at the token endpoint`
             : "Nothing can exchange credentials for a token yet",
       tab: "clients" as Tab,
@@ -114,9 +116,16 @@
       registry.loadJWKS(),
       settings.load("email"),
       (async () => {
-        const res = await session.request<unknown[]>("oauth/clients");
-        clientCount = (res.payload ?? []).length;
+        try {
+          const res = await session.request<unknown[]>("oauth/clients");
+          clientCount = (res.payload ?? []).length;
+        } catch {
+          clientCount = -1;
+        }
       })(),
+      // Federated sources count as an identity source; read just these two registers.
+      registry.loadKind("ldap"),
+      registry.loadKind("providers"),
       (async () => {
         // The settings register carries updated_by/updated_at per namespace;
         // the most recent one is who last changed what this instance does.

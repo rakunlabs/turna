@@ -2,13 +2,15 @@
   import CheckWidget from "./CheckWidget.svelte";
   import Instrument from "./ui/Instrument.svelte";
   import Section from "./ui/Section.svelte";
+  import ListEntry from "./ui/ListEntry.svelte";
   import Switch from "./ui/Switch.svelte";
   import { session } from "../lib/state/session.svelte";
   import {
     getSettingBool,
     setSettingBool,
     getSettingList,
-    setSettingList,
+    getSettingValue,
+    setSettingValue,
     saveSetting,
   } from "../lib/state/settings.svelte";
   import { splitValues } from "../lib/records";
@@ -51,15 +53,14 @@
     <div class="grid gap-8 lg:grid-cols-2">
       <div class="min-w-0">
         <label class="stamp block" for="check-default-hosts">Default hosts</label>
-        <textarea
+        <ListEntry
           id="check-default-hosts"
-          class="exhibit mt-1.5 min-h-24"
-          spellcheck="false"
-          aria-describedby="check-default-hosts-hint"
+          multiline
+          describedby="check-default-hosts-hint"
           placeholder="api.example.com"
-          value={defaultHosts}
-          oninput={(event) => setSettingList("check", ["default_hosts"], event.currentTarget.value)}
-        ></textarea>
+          value={getSettingValue("check", ["default_hosts"])}
+          onchange={(items) => setSettingValue("check", ["default_hosts"], items)}
+        />
         <p id="check-default-hosts-hint" class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
           Used only by permissions that name no host of their own. One per line, or comma separated.
           Glob patterns are accepted.
@@ -73,7 +74,7 @@
           </p>
         {:else}
           <ul>
-            {#each hostList as host (host)}
+            {#each hostList as host, i (i)}
               <li class="serial border-b border-rule py-2 text-[13px] text-ink last:border-b-0">
                 {host}
               </li>

@@ -9,13 +9,13 @@ function d(r) {
 }
 function l(r) {
   const t = r.replace(/-/g, "+").replace(/_/g, "/").padEnd(r.length + (4 - r.length % 4) % 4, "="), e = atob(t), n = new ArrayBuffer(e.length), a = new Uint8Array(n);
-  for (let s = 0; s < e.length; s++) a[s] = e.charCodeAt(s);
+  for (let o = 0; o < e.length; o++) a[o] = e.charCodeAt(o);
   return a;
 }
 function w() {
   return typeof window < "u" && typeof window.PublicKeyCredential < "u";
 }
-async function I(r) {
+async function T(r) {
   if (!w()) throw new Error("webauthn not supported");
   const t = {
     challenge: l(r.challenge),
@@ -44,7 +44,7 @@ async function I(r) {
     authenticatorAttachment: e.authenticatorAttachment
   };
 }
-async function T(r) {
+async function I(r) {
   if (!w()) throw new Error("webauthn not supported");
   const t = {
     challenge: l(r.challenge),
@@ -78,7 +78,7 @@ async function T(r) {
     authenticatorAttachment: e.authenticatorAttachment
   };
 }
-class o extends Error {
+class s extends Error {
   constructor(e, n) {
     super(e);
     /** HTTP status when the failure came from a response. */
@@ -101,10 +101,12 @@ const N = ["password not match", "user not found", "secret not match"], L = "Inv
       t = e.error_description ?? e.message ?? e.error ?? t;
     } catch {
     }
-  return typeof t == "string" && t ? N.includes(t.toLowerCase()) ? new o(L, { status: r.status, credentials: !0 }) : new o(t, { status: r.status }) : r.status === 401 ? new o(L, { status: 401, credentials: !0 }) : new o(`Request failed with status ${r.status}`, {
+  return typeof t == "string" && t ? N.includes(t.toLowerCase()) ? new s(L, { status: r.status, credentials: !0 }) : new s(t, { status: r.status }) : r.status === 401 ? new s(L, { status: 401, credentials: !0 }) : new s(`Request failed with status ${r.status}`, {
     status: r.status
   });
-}, c = (r) => r instanceof o ? r : r instanceof Error ? r.name === "NotAllowedError" ? new o("Passkey was cancelled or timed out") : new o(r.message) : new o(String(r)), g = async (r, t) => {
+}, c = (r) => r instanceof s ? r : r instanceof Error ? r.name === "NotAllowedError" ? new s("Passkey was cancelled or timed out") : r.name === "SecurityError" ? new s(
+  "This browser cannot use this site's passkeys here. Update the browser, or sign in another way."
+) : new s(r.message) : new s(String(r)), g = async (r, t) => {
   let e;
   try {
     e = await fetch(r, { credentials: "same-origin", ...t });
@@ -132,7 +134,7 @@ const N = ["password not match", "user not found", "secret not match"], L = "Inv
 }, S = (r) => {
   document.cookie = `${r}=; Max-Age=0; path=/; SameSite=Lax`;
 }, W = () => {
-  const e = window.outerWidth || screen.width, n = window.outerHeight || screen.height, a = window.screenX ?? 0, s = window.screenY ?? 0, u = Math.max(0, Math.round(a + (e - 520) / 2)), p = Math.max(0, Math.round(s + (n - 720) / 2));
+  const e = window.outerWidth || screen.width, n = window.outerHeight || screen.height, a = window.screenX ?? 0, o = window.screenY ?? 0, u = Math.max(0, Math.round(a + (e - 520) / 2)), p = Math.max(0, Math.round(o + (n - 720) / 2));
   return `popup=yes,width=520,height=720,left=${u},top=${p}`;
 }, q = () => {
   const r = new Uint8Array(16);
@@ -214,7 +216,7 @@ class F {
    */
   async passkey(t, e) {
     if (!w())
-      throw new o("Passkeys are not supported in this browser");
+      throw new s("Passkeys are not supported in this browser");
     const n = e?.rememberMe ?? !1;
     try {
       const a = await i(
@@ -223,12 +225,12 @@ class F {
           ...e?.username ? { username: e.username } : {},
           remember_me: n
         }
-      ), s = await I(a.options);
-      if (!s)
-        throw new o("Passkey ceremony was cancelled");
+      ), o = await T(a.options);
+      if (!o)
+        throw new s("Passkey ceremony was cancelled");
       await i(t.url, {
         session_id: a.session_id,
-        assertion: s,
+        assertion: o,
         remember_me: n
       });
     } catch (a) {
@@ -263,9 +265,9 @@ class F {
    * derives the target user from the validated token; no user id is sent. */
   async enrollPasskey(t) {
     if (!w())
-      throw new o("Passkeys are not supported in this browser");
+      throw new s("Passkeys are not supported in this browser");
     try {
-      const e = await i(this.enrollmentURL(), {}), n = e?.payload ?? e, a = await T(n.options);
+      const e = await i(this.enrollmentURL(), {}), n = e?.payload ?? e, a = await I(n.options);
       await i(this.enrollmentURL(), {
         session_id: n.session_id,
         name: t?.name?.trim() ?? "",
@@ -291,10 +293,10 @@ class F {
    * it is still redirecting.
    */
   code(t, e) {
-    const n = q(), a = `${D}_${n}`, s = new URL(t.url, window.location.origin);
-    e?.rememberMe && s.searchParams.set("remember_me", "true"), s.searchParams.set(A, "1"), s.searchParams.set(O, n);
+    const n = q(), a = `${D}_${n}`, o = new URL(t.url, window.location.origin);
+    e?.rememberMe && o.searchParams.set("remember_me", "true"), o.searchParams.set(A, "1"), o.searchParams.set(O, n);
     const u = window.open(
-      s.toString(),
+      o.toString(),
       e?.target ?? "_blank",
       e?.features ?? W()
     );
@@ -313,7 +315,7 @@ class F {
       }, _ = (f) => {
         f.origin !== window.location.origin || f.source !== u || f.data !== C || b();
       }, P = () => {
-        y(), S(a), u.close(), k(new o("Sign-in was aborted"));
+        y(), S(a), u.close(), k(new s("Sign-in was aborted"));
       };
       window.addEventListener("message", _), e?.signal?.addEventListener("abort", P);
       let R = 0;
@@ -321,13 +323,13 @@ class F {
         b() || u.closed && (R += 1, R === 10 && e?.onPopupClosed?.());
       }, 500);
     }) : Promise.reject(
-      new o("The sign-in window was blocked. Allow pop-ups and try again.")
+      new s("The sign-in window was blocked. Allow pop-ups and try again.")
     );
   }
   /** Self-registration through the provider's `signup_url`. */
   async signup(t, e) {
     if (!t.signup_url)
-      throw new o("Provider does not support signup");
+      throw new s("Provider does not support signup");
     try {
       const a = (await i(t.signup_url, {
         name: e.name,
@@ -346,7 +348,7 @@ class F {
   /** Confirm an emailed signup verification code. */
   async signupVerify(t, e) {
     if (!t.signup_verify_url)
-      throw new o("Provider does not support signup verification");
+      throw new s("Provider does not support signup verification");
     try {
       return (await i(t.signup_verify_url, { code: e }))?.payload?.message ?? "Email verified";
     } catch (n) {
@@ -356,7 +358,7 @@ class F {
   /** Request a forgot-password mail through `password_reset_url`. */
   async resetRequest(t, e) {
     if (!t.password_reset_url)
-      throw new o("Provider does not support password reset");
+      throw new s("Provider does not support password reset");
     try {
       return (await i(t.password_reset_url, {
         email: e.email,
@@ -369,7 +371,7 @@ class F {
   /** Set a new password with an emailed reset code. */
   async resetConfirm(t, e, n) {
     if (!t.password_reset_confirm_url)
-      throw new o("Provider does not support password reset");
+      throw new s("Provider does not support password reset");
     try {
       return (await i(t.password_reset_confirm_url, { code: e, password: n }))?.payload?.message ?? "Password updated";
     } catch (a) {
@@ -398,7 +400,7 @@ class F {
 }
 const B = (r) => new F(r);
 export {
-  o as LoginError,
+  s as LoginError,
   F as TurnaLogin,
   B as createLogin,
   z as flowFromURL,

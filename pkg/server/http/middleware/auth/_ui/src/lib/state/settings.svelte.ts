@@ -80,6 +80,13 @@ class Settings {
         body: JSON.stringify({ value: this.record(namespace) }),
       });
 
+      // The admin gate decides what this console may show, so what it reports
+      // as enforced has to be re-read, not left at the pre-commit answer.
+      if (namespace === "admin") {
+        await session.loadCapabilities();
+        // Committed, but this session no longer administers; the admin reads would only 403.
+        if (!session.isAdmin) return;
+      }
       await this.load(namespace);
       await session.loadCore();
     });
@@ -160,8 +167,14 @@ export function getSettingNumber(namespace: SettingNamespace, path: string[], fa
 }
 
 export function setSettingNumber(namespace: SettingNamespace, path: string[], value: string) {
+  // An emptied field means "use the default", not zero; dropping the key lets
+  // the backend default apply. Unparseable text keeps the stored value.
+  if (value.trim() === "") {
+    settings.setPathValue(namespace, path, undefined);
+    return;
+  }
   const parsed = Number(value);
-  settings.setPathValue(namespace, path, Number.isFinite(parsed) ? parsed : 0);
+  if (Number.isFinite(parsed)) settings.setPathValue(namespace, path, parsed);
 }
 
 export function getSettingList(namespace: SettingNamespace, path: string[]) {

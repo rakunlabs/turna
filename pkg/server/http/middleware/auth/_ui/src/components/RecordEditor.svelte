@@ -13,7 +13,11 @@
    */
   let { oncommitted, onclose }: { oncommitted: () => Promise<void>; onclose: () => void } = $props();
 
-  const recordID = $derived(editor.loadedID || editor.id.trim());
+  // Config kinds PUT to the edited id, so show where the write will actually go.
+  const recordID = $derived(
+    editor.spec.body === "raw" ? editor.loadedID : editor.id.trim() || editor.loadedID,
+  );
+  const userNamedRaw = $derived(editor.spec.body === "raw" && editor.spec.idField !== "id");
 
   /**
    * Where this draft will be written. New records on raw kinds POST to the
@@ -79,9 +83,9 @@
         <div class="min-w-0">
           <span class="stamp block">{editor.spec.primaryLabel}</span>
           <p class="serial mt-1.5 text-[13.5px] text-ink">
-            {editor.loadedID || "Assigned by the API on commit"}
+            {editor.loadedID || (userNamedRaw ? "Taken from the field below on commit" : "Assigned by the API on commit")}
           </p>
-          {#if editor.isNew}
+          {#if editor.isNew && !userNamedRaw}
             <p class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
               This kind of record gets its identifier from the server, so there is nothing to fill in here.
             </p>

@@ -159,8 +159,9 @@ class Session {
    * cannot act on. Nested calls are safe: only the outermost one clears busy.
    */
   async run(work: () => Promise<void>, fallback = "Unknown error"): Promise<boolean> {
-    const outermost = !this.busy;
-    if (outermost) {
+    // A depth count, not "was busy when I started": overlapping (not just
+    // nested) runs must keep busy set until the last one settles.
+    if (this.#running++ === 0) {
       this.busy = true;
       docket.clearRejections();
     }
@@ -172,9 +173,11 @@ class Session {
       docket.reject(messageOf(err, fallback));
       return false;
     } finally {
-      if (outermost) this.busy = false;
+      if (--this.#running === 0) this.busy = false;
     }
   }
+
+  #running = 0;
 }
 
 export const session = new Session();

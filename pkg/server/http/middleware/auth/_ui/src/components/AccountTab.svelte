@@ -29,12 +29,16 @@
     local: boolean;
     totp_enabled: boolean;
     passkey_count: number;
+    password_min_length?: number;
   };
 
   type PasskeyMeta = { id: string; name: string; rp_id?: string; created_at: string; sign_count: number };
 
   let me = $state<Me | null>(null);
   let loadError = $state("");
+  let passkeysError = $state("");
+  let ownKeysError = $state("");
+  const passwordMinLength = $derived(me?.password_min_length || 8);
 
   // roles / permissions lists: long grants collapse behind a count so the page
   // stays readable for an account that carries hundreds of permissions.
@@ -132,8 +136,10 @@
       const res = await session.request<Me>("me");
       me = res.payload;
     } catch (err) {
-      me = null;
+      // Keep what is already on screen (recovery codes shown once live under
+      // it); only a first load with nothing to show falls back to the error.
       loadError = messageOf(err, "Cannot load account");
+      if (me) docket.reject(loadError);
     }
   }
 
@@ -141,8 +147,9 @@
     try {
       const res = await session.request<PasskeyMeta[]>("passkey/credentials");
       passkeys = res.payload ?? [];
-    } catch {
-      passkeys = [];
+      passkeysError = "";
+    } catch (err) {
+      passkeysError = messageOf(err, "Passkeys could not be read");
     }
   }
 
@@ -161,8 +168,9 @@
     try {
       const res = await session.request<OwnKeyMeta[]>("api-keys");
       ownKeys = res.payload ?? [];
-    } catch {
-      ownKeys = [];
+      ownKeysError = "";
+    } catch (err) {
+      ownKeysError = messageOf(err, "Access keys could not be read");
     }
   }
 
@@ -470,7 +478,7 @@
             <p class="mt-2 text-[13px] text-muted">No roles granted.</p>
           {:else}
             <ul class="mt-2 divide-y divide-rule border-t border-rule">
-              {#each visibleRoles as role (role)}
+              {#each visibleRoles as role, i (i)}
                 <li class="serial break-all py-1.5 text-[12.5px] text-ink">{role}</li>
               {/each}
             </ul>
@@ -493,7 +501,7 @@
             <p class="mt-2 text-[13px] text-muted">No permissions granted.</p>
           {:else}
             <ul class="mt-2 divide-y divide-rule border-t border-rule">
-              {#each visiblePermissions as permission (permission)}
+              {#each visiblePermissions as permission, i (i)}
                 <li class="serial break-all py-1.5 text-[12.5px] text-ink">{permission}</li>
               {/each}
             </ul>
@@ -623,8 +631,8 @@
             label="New password"
             type="password"
             autocomplete="new-password"
-            hint="At least 8 characters."
-            invalid={newPassword.length > 0 && newPassword.length < 8}
+            hint={`At least ${passwordMinLength} characters.`}
+            invalid={newPassword.length > 0 && newPassword.length < passwordMinLength}
             bind:value={newPassword}
           />
           <Entry
@@ -643,7 +651,7 @@
             class="act act-primary"
             disabled={session.busy ||
               !currentPassword ||
-              newPassword.length < 8 ||
+              newPassword.length < passwordMinLength ||
               newPassword !== confirmPassword}
             onclick={() => void changePassword()}
           >
@@ -677,7 +685,7 @@
             </p>
 
             <ul class="mt-5 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3 lg:grid-cols-4">
-              {#each recoveryCodes as code (code)}
+              {#each recoveryCodes as code, i (i)}
                 <li class="serial break-all border-b border-rule py-1.5 text-[13.5px] font-medium text-ink">
                   {code}
                 </li>
@@ -818,7 +826,15 @@
         <span class="stamp">{passkeys.length} registered</span>
       {/snippet}
 
-      {#if passkeys.length === 0}
+      {#if passkeysError}
+        <div class="border border-dashed border-seal/60 px-6 py-10 text-center" role="alert">
+          <p class="text-[15px] font-semibold text-ink">Your passkeys could not be read</p>
+          <p class="mx-auto mt-2 max-w-[58ch] text-[13px] leading-[1.6] text-muted">{passkeysError}</p>
+          <button type="button" class="act mt-5" disabled={session.busy} onclick={() => void loadPasskeys()}>
+            Try again
+          </button>
+        </div>
+      {:else if passkeys.length === 0}
         <div class="border border-dashed border-rule px-6 py-12 text-center">
           <p class="text-[15px] font-semibold text-ink">No passkeys registered</p>
           <p class="mx-auto mt-2 max-w-[58ch] text-[13px] leading-[1.6] text-muted">
@@ -943,7 +959,15 @@
           </div>
         {/if}
 
-        {#if ownKeys.length === 0}
+        {#if ownKeysError}
+          <div class="border border-dashed border-seal/60 px-6 py-10 text-center" role="alert">
+            <p class="text-[15px] font-semibold text-ink">Your access keys could not be read</p>
+            <p class="mx-auto mt-2 max-w-[58ch] text-[13px] leading-[1.6] text-muted">{ownKeysError}</p>
+            <button type="button" class="act mt-5" disabled={session.busy} onclick={() => void loadOwnKeys()}>
+              Try again
+            </button>
+          </div>
+        {:else if ownKeys.length === 0}
           <div class="border border-dashed border-rule px-6 py-10 text-center">
             <p class="text-[15px] font-semibold text-ink">No access keys issued</p>
             <p class="mx-auto mt-2 max-w-[58ch] text-[13px] leading-[1.6] text-muted">

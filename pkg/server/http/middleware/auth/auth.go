@@ -255,6 +255,8 @@ func (m *Auth) PublicPathPatterns() []string {
 		"/.well-known/oauth-authorization-server/**",
 		"/.well-known/openid-configuration",
 		"/.well-known/openid-configuration/**",
+		// WebAuthn Related Origin Requests, fetched from https://{rp_id}/
+		"/.well-known/webauthn",
 	}
 }
 
@@ -472,6 +474,9 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 	mux.GET("/.well-known/oauth-authorization-server/*", m.APIAuthServerMetadata)
 	mux.GET("/.well-known/openid-configuration", m.APIWellKnown)
 	mux.GET("/.well-known/openid-configuration/*", m.APIWellKnown)
+	// WebAuthn Related Origin Requests. Browsers fetch it from the RP ID's own
+	// root, so the router must forward /.well-known/webauthn on that host here.
+	mux.GET("/.well-known/webauthn", m.WebAuthnWellKnown)
 
 	// saml runtime
 	mux.GET(prefix+"/saml/{provider}/metadata", m.SAMLMetadata)

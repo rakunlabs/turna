@@ -37,7 +37,11 @@ class Route {
 
   /** Read the landing tab from the URL before any request is made. */
   readLocation() {
-    const [rawTab = "", rawRecordID = ""] = window.location.hash.replace(/^#/, "").split("/", 2);
+    // Split on the first slash only, so an unencoded id containing "/" survives.
+    const hash = window.location.hash.replace(/^#/, "");
+    const slash = hash.indexOf("/");
+    const rawTab = slash === -1 ? hash : hash.slice(0, slash);
+    const rawRecordID = slash === -1 ? "" : hash.slice(slash + 1);
     const tab = rawTab as Tab;
     if (!rawTab) {
       this.tab = "overview";
@@ -53,10 +57,20 @@ class Route {
       this.recordID = "";
     }
 
+    // The /ui/device?user_code= link is a landing URL. Consume it once and
+    // rewrite to the plain console address, otherwise every later hash change
+    // re-reads it and forces the device page again.
     const params = new URLSearchParams(window.location.search);
-    this.deviceUserCode = params.get("user_code") ?? "";
-    if (/\/ui\/device\/?$/.test(window.location.pathname) || this.deviceUserCode) {
+    const code = params.get("user_code") ?? "";
+    const devicePath = /\/ui\/device\/?$/.test(window.location.pathname);
+    if (devicePath || code) {
+      this.deviceUserCode = code;
       this.tab = "device";
+      this.recordID = "";
+      params.delete("user_code");
+      const query = params.toString();
+      const path = devicePath ? window.location.pathname.replace(/device\/?$/, "") : window.location.pathname;
+      history.replaceState(history.state, "", `${path}${query ? `?${query}` : ""}#device`);
     }
   }
 

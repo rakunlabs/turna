@@ -3,6 +3,7 @@
 
   import Instrument from "./ui/Instrument.svelte";
   import Section from "./ui/Section.svelte";
+  import ListEntry from "./ui/ListEntry.svelte";
   import Switch from "./ui/Switch.svelte";
   import Seal from "./ui/Seal.svelte";
   import { session } from "../lib/state/session.svelte";
@@ -12,7 +13,8 @@
     getSettingString,
     setSettingString,
     getSettingList,
-    setSettingList,
+    getSettingValue,
+    setSettingValue,
     saveSetting,
   } from "../lib/state/settings.svelte";
 
@@ -21,7 +23,7 @@
   const enabled = $derived(getSettingBool("mtls", ["enabled"]));
   const certHeader = $derived(getSettingString("mtls", ["cert_header"]));
   const certVerifyHeader = $derived(getSettingString("mtls", ["cert_verify_header"]));
-  const certVerifyValue = $derived(getSettingString("mtls", ["cert_verify_value"]) || "SUCCESS");
+  const certVerifyValue = $derived(getSettingString("mtls", ["cert_verify_value"]));
   const trustedProxyCIDRs = $derived(getSettingList("mtls", ["trusted_proxy_cidrs"]));
 
   /**
@@ -29,7 +31,9 @@
    * instance directly can set it. Naming that standing on the page is the whole
    * point of this control, so it is derived rather than left to the reader.
    */
-  const headerConfigured = $derived(enabled && certHeader.trim() !== "");
+  // The backend validates the proxy fields whenever a header is named, enabled
+  // or not, so they stay visible as long as one is.
+  const headerConfigured = $derived(certHeader.trim() !== "");
   const proxyReady = $derived(
     headerConfigured && certVerifyHeader.trim() !== "" && trustedProxyCIDRs.trim() !== "",
   );
@@ -114,6 +118,7 @@
               class="entry serial mt-1.5"
               autocomplete="off"
               spellcheck="false"
+              placeholder="SUCCESS"
               value={certVerifyValue}
               oninput={(e) => setSettingString("mtls", ["cert_verify_value"], e.currentTarget.value)}
             />
@@ -125,14 +130,13 @@
 
           <div class="min-w-0 sm:col-span-2">
             <label class="stamp block" for="mtls-trusted-proxies">Trusted proxy CIDRs</label>
-            <textarea
+            <ListEntry
               id="mtls-trusted-proxies"
-              class="exhibit mt-1.5 min-h-24"
-              spellcheck="false"
+              multiline
               placeholder={`192.0.2.10\n2001:db8:10::5`}
-              value={trustedProxyCIDRs}
-              oninput={(e) => setSettingList("mtls", ["trusted_proxy_cidrs"], e.currentTarget.value)}
-            ></textarea>
+              value={getSettingValue("mtls", ["trusted_proxy_cidrs"])}
+              onchange={(items) => setSettingValue("mtls", ["trusted_proxy_cidrs"], items)}
+            />
             <p class="mt-1.5 max-w-[70ch] text-[12px] leading-[1.5] text-muted">
               One immediate peer IP or narrowly dedicated CIDR per line. Forwarded address headers are deliberately ignored.
             </p>
@@ -148,7 +152,7 @@
           {#if proxyReady}
             Turna accepts <span class="serial">{certHeader}</span> only from the immediate peers above
             and only when <span class="serial">{certVerifyHeader}</span> equals
-            <span class="serial">{certVerifyValue}</span>. The proxy must strip both incoming headers,
+            <span class="serial">{certVerifyValue.trim() || "SUCCESS"}</span>. The proxy must strip both incoming headers,
             verify the client chain and private-key proof, then write both values itself. Restrict the
             same peers with firewall or network policy.
           {:else}

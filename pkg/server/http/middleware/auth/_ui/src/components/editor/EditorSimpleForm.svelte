@@ -4,6 +4,7 @@
   import PasskeyPanel from "./PasskeyPanel.svelte";
   import CodeStorePinned from "../CodeStorePinned.svelte";
   import ConfigPinned from "../ui/ConfigPinned.svelte";
+  import HeldEntry from "../ui/HeldEntry.svelte";
   import { session } from "../../lib/state/session.svelte";
   import { splitValues } from "../../lib/records";
   import { editor } from "../../lib/state/editor.svelte";
@@ -39,6 +40,8 @@
     rows?: number;
     /** JSON documents are parsed on blur, so half-typed text is never rejected. */
     lazy?: boolean;
+    /** Record key the lazy JSON is written to, for its parse error. */
+    jsonKey?: string;
   };
 
   type Toggle = {
@@ -100,23 +103,21 @@
 {#snippet line(f: Line)}
   <div class={f.wide ? "min-w-0 sm:col-span-2" : "min-w-0"}>
     <label class="stamp block" for={slug(f.label)}>{f.label}</label>
-    <input
+    <HeldEntry
       id={slug(f.label)}
-      class="entry mt-1.5 {f.mono ? 'serial' : ''}"
       type={f.type ?? "text"}
       min={f.min}
+      mono={Boolean(f.mono)}
       placeholder={f.placeholder ?? ""}
-      autocomplete="off"
-      spellcheck="false"
       value={f.value}
-      oninput={(event) => f.set(event.currentTarget.value)}
+      onvalue={(value) => f.set(value)}
     />
     {#if f.linksTo}
       {@const linkKind = f.linksTo}
       {@const ids = splitValues(f.value)}
       {#if ids.length > 0}
         <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
-          {#each ids as id (id)}
+          {#each ids as id, i (i)}
             <a
               href={`./#${linkKind}/${encodeURIComponent(id)}`}
               class="serial text-[12px] text-muted underline decoration-rule underline-offset-2 hover:text-ink hover:decoration-ink"
@@ -136,20 +137,34 @@
 {#snippet exhibit(f: Exhibit)}
   <div class="min-w-0 sm:col-span-2">
     <label class="stamp block" for={slug(f.label)}>{f.label}</label>
-    <textarea
-      id={slug(f.label)}
-      class="exhibit mt-1.5"
-      rows={f.rows ?? 6}
-      placeholder={f.placeholder ?? ""}
-      spellcheck="false"
-      value={f.value}
-      oninput={(event) => {
-        if (!f.lazy) f.set(event.currentTarget.value);
-      }}
-      onchange={(event) => {
-        if (f.lazy) f.set(event.currentTarget.value);
-      }}
-    ></textarea>
+    {#if f.lazy}
+      {@const problem = f.jsonKey ? editor.invalidFields[f.jsonKey] : ""}
+      <textarea
+        id={slug(f.label)}
+        class="exhibit mt-1.5"
+        rows={f.rows ?? 6}
+        placeholder={f.placeholder ?? ""}
+        spellcheck="false"
+        aria-invalid={problem ? true : undefined}
+        style={problem ? "border-color: var(--w-seal)" : undefined}
+        value={f.value}
+        onchange={(event) => f.set(event.currentTarget.value)}
+      ></textarea>
+      {#if problem}
+        <p class="mt-1.5 max-w-[70ch] text-[12px] leading-[1.5] text-seal" role="alert">
+          {problem} — commit is held until it parses.
+        </p>
+      {/if}
+    {:else}
+      <HeldEntry
+        id={slug(f.label)}
+        multiline
+        rows={f.rows ?? 6}
+        placeholder={f.placeholder ?? ""}
+        value={f.value}
+        onvalue={(value) => f.set(value)}
+      />
+    {/if}
     {#if f.hint}
       <p class="mt-1.5 max-w-[70ch] text-[12px] leading-[1.5] text-muted">{f.hint}</p>
     {/if}
@@ -420,7 +435,7 @@
       })}
       {@render exhibit({
         label: "Redirect / whitelist URLs",
-        value: editor.getList("whitelist_urls"),
+        value: editor.getLines("whitelist_urls"),
         set: (value) => editor.setList("whitelist_urls", value),
         placeholder: "https://app.example.com/callback",
         rows: 4,
@@ -428,7 +443,7 @@
       })}
       {@render exhibit({
         label: "Allowed resources",
-        value: editor.getList("resources"),
+        value: editor.getLines("resources"),
         set: (value) => editor.setList("resources", value),
         placeholder: "https://app.example.com/krabby/mcp",
         rows: 4,
@@ -593,12 +608,13 @@
         value: editor.getJSON("claim_mapping"),
         set: (value) => editor.setJSON("claim_mapping", value),
         lazy: true,
+        jsonKey: "claim_mapping",
         rows: 8,
         placeholder: '{\n  "roles_claim": "groups",\n  "use_lmap": true,\n  "role_map": {},\n  "register": true\n}',
         hint: "Maps SAML assertion attributes onto synced roles. role_map values are role names or IDs.",
       })}
       {@render note(
-        `Register this provider's SP metadata at /auth/saml/${editor.id || "provider"}/metadata. Less common SAML options live in the raw document.`,
+        `Register this provider's SP metadata at ${session.oauthBase}/saml/${encodeURIComponent(editor.id.trim() || "provider")}/metadata. Less common SAML options live in the raw document.`,
       )}
     </div>
   </Section>
@@ -736,7 +752,7 @@
         label: "Local user",
         on: localUser,
         set: (value) => editor.setLocalUser(value),
-        hint: "Local users carry a stored password. Turning this off clears it — the account then only authenticates upstream.",
+        hint: "Local users sign in with a stored password. Turning this off makes the account authenticate upstream only; a password already stored is kept but no longer used.",
       })}
       {#if localUser}
         {@render line({
@@ -958,6 +974,7 @@
         value: editor.getJSON("data"),
         set: (value) => editor.setJSON("data", value),
         lazy: true,
+        jsonKey: "data",
         rows: 6,
         placeholder: '{\n  "tenant": "default"\n}',
         hint: "A JSON object stored as role.data.",
@@ -1022,35 +1039,29 @@
             <div class="grid gap-6 px-4 py-4 sm:grid-cols-3">
               <div class="min-w-0">
                 <label class="stamp block" for="resource-hosts-{i}">Hosts</label>
-                <input
+                <HeldEntry
                   id="resource-hosts-{i}"
-                  class="entry serial mt-1.5"
                   placeholder="api.example.com"
-                  autocomplete="off"
                   value={editor.getResourceList(i, "hosts")}
-                  oninput={(event) => editor.setResourceList(i, "hosts", event.currentTarget.value)}
+                  onvalue={(value) => editor.setResourceList(i, "hosts", value)}
                 />
               </div>
               <div class="min-w-0">
                 <label class="stamp block" for="resource-paths-{i}">Paths</label>
-                <input
+                <HeldEntry
                   id="resource-paths-{i}"
-                  class="entry serial mt-1.5"
                   placeholder="/api/**"
-                  autocomplete="off"
                   value={editor.getResourceList(i, "paths")}
-                  oninput={(event) => editor.setResourceList(i, "paths", event.currentTarget.value)}
+                  onvalue={(value) => editor.setResourceList(i, "paths", value)}
                 />
               </div>
               <div class="min-w-0">
                 <label class="stamp block" for="resource-methods-{i}">Methods</label>
-                <input
+                <HeldEntry
                   id="resource-methods-{i}"
-                  class="entry serial mt-1.5"
                   placeholder="GET, POST"
-                  autocomplete="off"
                   value={editor.getResourceList(i, "methods")}
-                  oninput={(event) => editor.setResourceList(i, "methods", event.currentTarget.value)}
+                  onvalue={(value) => editor.setResourceList(i, "methods", value)}
                 />
               </div>
             </div>
@@ -1089,38 +1100,29 @@
                       <div class="grid gap-5 px-3 py-4 sm:grid-cols-3">
                         <div class="min-w-0">
                           <label class="stamp block" for="resource-{i}-excluded-{j}-hosts">Hosts</label>
-                          <input
+                          <HeldEntry
                             id="resource-{i}-excluded-{j}-hosts"
-                            class="entry serial mt-1.5"
                             placeholder="internal.example.com"
-                            autocomplete="off"
                             value={editor.getExcludedResourceList(i, j, "hosts")}
-                            oninput={(event) =>
-                              editor.setExcludedResourceList(i, j, "hosts", event.currentTarget.value)}
+                            onvalue={(value) => editor.setExcludedResourceList(i, j, "hosts", value)}
                           />
                         </div>
                         <div class="min-w-0">
                           <label class="stamp block" for="resource-{i}-excluded-{j}-paths">Paths</label>
-                          <input
+                          <HeldEntry
                             id="resource-{i}-excluded-{j}-paths"
-                            class="entry serial mt-1.5"
                             placeholder="/**"
-                            autocomplete="off"
                             value={editor.getExcludedResourceList(i, j, "paths")}
-                            oninput={(event) =>
-                              editor.setExcludedResourceList(i, j, "paths", event.currentTarget.value)}
+                            onvalue={(value) => editor.setExcludedResourceList(i, j, "paths", value)}
                           />
                         </div>
                         <div class="min-w-0">
                           <label class="stamp block" for="resource-{i}-excluded-{j}-methods">Methods</label>
-                          <input
+                          <HeldEntry
                             id="resource-{i}-excluded-{j}-methods"
-                            class="entry serial mt-1.5"
                             placeholder="*"
-                            autocomplete="off"
                             value={editor.getExcludedResourceList(i, j, "methods")}
-                            oninput={(event) =>
-                              editor.setExcludedResourceList(i, j, "methods", event.currentTarget.value)}
+                            onvalue={(value) => editor.setExcludedResourceList(i, j, "methods", value)}
                           />
                         </div>
                       </div>
@@ -1142,6 +1144,7 @@
         value: editor.getJSON("data"),
         set: (value) => editor.setJSON("data", value),
         lazy: true,
+        jsonKey: "data",
         rows: 6,
         placeholder: '{\n  "tenant": "default",\n  "region": "eu"\n}',
         hint: "A JSON object stored as permission.data.",
@@ -1151,6 +1154,7 @@
         value: editor.getJSON("scope"),
         set: (value) => editor.setJSON("scope", value),
         lazy: true,
+        jsonKey: "scope",
         rows: 6,
         placeholder: '{\n  "openid": ["role-id-1", "role-id-2"],\n  "admin": ["admin-role-id"]\n}',
         hint: "Each key is a scope; each value is an array of role IDs.",
@@ -1160,13 +1164,24 @@
 {:else if editor.kind === "lmaps"}
   <Section title="Group map" note="Members of this LDAP group receive the mapped roles as sync roles.">
     <div class="grid gap-6 sm:grid-cols-2">
-      {@render line({
-        label: "LDAP group name",
-        value: editor.getString("name"),
-        set: (value) => editor.setString("name", value),
-        placeholder: "ldap-group",
-        mono: true,
-      })}
+      {#if editor.loadedID}
+        <div class="min-w-0">
+          <span class="stamp block">LDAP group name</span>
+          <p class="serial mt-1.5 text-[13.5px] text-ink">{editor.loadedID}</p>
+          <p class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
+            The map is stored under this name, so it cannot be renamed. Create a new map and revoke
+            this one instead.
+          </p>
+        </div>
+      {:else}
+        {@render line({
+          label: "LDAP group name",
+          value: editor.getString("name"),
+          set: (value) => editor.setString("name", value),
+          placeholder: "ldap-group",
+          mono: true,
+        })}
+      {/if}
       {@render line({
         label: "Role IDs",
         value: editor.getList("role_ids"),

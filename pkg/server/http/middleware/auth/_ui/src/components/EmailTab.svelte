@@ -52,6 +52,7 @@ The code expires in {{.ExpiresIn}}.`;
   const host = $derived(getSettingString("email", ["smtp", "host"]).trim());
   const port = $derived(getSettingNumber("email", ["smtp", "port"], 587));
   const from = $derived(getSettingString("email", ["from"]).trim());
+  const username = $derived(getSettingString("email", ["smtp", "username"]).trim());
   const codeHeld = $derived(getSettingBool("email", ["disabled"]));
   const magicLink = $derived(getSettingBool("email", ["magic_link"], true));
   const noAuth = $derived(getSettingBool("email", ["smtp", "no_auth"]));
@@ -76,14 +77,16 @@ The code expires in {{.ExpiresIn}}.`;
       return {
         state: "held" as const,
         label: "Code login held",
-        detail: `The relay at ${host}:${port} is configured, but the token endpoint refuses grant_type=email_code. Magic link, signup and password reset mail still go out.`,
+        detail: `The relay at ${host}:${port} is configured, but email login is off: no login code or magic link mail is sent and grant_type=email_code is refused. Signup and password reset mail still go out.`,
       };
     }
 
     return {
       state: "endorsed" as const,
       label: "Delivering",
-      detail: `Codes are sent from ${from || "the relay's default sender"} through ${host}:${port}.`,
+      detail: from || username
+        ? `Codes are sent from ${from || username} through ${host}:${port}.`
+        : `No From address and no SMTP username are set, so every send to ${host}:${port} will fail. Set a From address below.`,
     };
   });
 
@@ -195,7 +198,7 @@ The code expires in {{.ExpiresIn}}.`;
         label="SMTP username"
         placeholder="optional"
         mono
-        disabled={noAuth}
+        hint={noAuth ? "Not used to authenticate while no-auth is on, but still the sender when From is empty." : ""}
         bind:value={
           () => getSettingString("email", ["smtp", "username"]),
           (v) => setSettingString("email", ["smtp", "username"], v)
@@ -258,7 +261,7 @@ The code expires in {{.ExpiresIn}}.`;
     <div class="mt-7">
       <Switch
         label="Hold code login"
-        hint="While held, the token endpoint refuses grant_type=email_code. Mail for magic link, signup and password reset is unaffected."
+        hint="While held, no login code or magic link mail is sent and the token endpoint refuses grant_type=email_code. Signup and password reset mail is unaffected."
         bind:checked={
           () => getSettingBool("email", ["disabled"]),
           (v) => setSettingBool("email", ["disabled"], v)

@@ -21,6 +21,8 @@
 
   let collapsed = $state<Record<string, boolean>>({});
   let searchEl = $state<HTMLInputElement | null>(null);
+  // The rail renders twice (desktop and the mobile menu); ids must not collide.
+  const searchID = $props.id();
 
 
   const query = $derived(search.trim().toLowerCase());
@@ -68,9 +70,9 @@
   aria-label="Console index"
 >
   <div class="shrink-0 border-b border-rule px-3 py-3">
-    <label class="stamp block" for="index-search">Find</label>
+    <label class="stamp block" for={searchID}>Find</label>
     <input
-      id="index-search"
+      id={searchID}
       bind:this={searchEl}
       bind:value={search}
       class="entry mt-1"

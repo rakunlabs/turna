@@ -229,6 +229,13 @@ const asLoginError = (reason: unknown): LoginError => {
     if (reason.name === "NotAllowedError") {
       return new LoginError("Passkey was cancelled or timed out");
     }
+    // A related-origin passkey (rp_id on another domain) is refused by
+    // browsers without WebAuthn Related Origin Requests support.
+    if (reason.name === "SecurityError") {
+      return new LoginError(
+        "This browser cannot use this site's passkeys here. Update the browser, or sign in another way.",
+      );
+    }
 
     return new LoginError(reason.message);
   }

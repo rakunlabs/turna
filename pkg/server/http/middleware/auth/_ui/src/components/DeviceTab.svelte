@@ -5,7 +5,7 @@
   import Section from "./ui/Section.svelte";
   import Seal from "./ui/Seal.svelte";
   import Serial from "./ui/Serial.svelte";
-  import { docket, messageOf, session } from "../lib/state/session.svelte";
+  import { docket, messageOf, session, statusOf } from "../lib/state/session.svelte";
   import { route } from "../lib/state/route.svelte";
 
   type DeviceInfo = { client_id: string; scope: string; status: string };
@@ -20,6 +20,8 @@
   let working = $state<"" | "lookup" | "approve" | "deny">("");
   let notFound = $state(false);
   let settled = $state<"" | "approve" | "deny">("");
+  /** The code whose request is on screen; only this one may be answered. */
+  let lookedUp = $state("");
 
   const digits = $derived(userCode.replace(/[\s-]+/g, ""));
   const complete = $derived(digits.length === 8);
@@ -46,12 +48,15 @@
     notFound = false;
     settled = "";
     info = null;
+    lookedUp = "";
 
+    const code = normalize(userCode);
     try {
-      const res = await session.request<DeviceInfo>(`device/${encodeURIComponent(normalize(userCode))}`);
+      const res = await session.request<DeviceInfo>(`device/${encodeURIComponent(code)}`);
       info = res.payload;
+      lookedUp = code;
     } catch (err) {
-      notFound = true;
+      notFound = statusOf(err) === 404;
       docket.reject(messageOf(err, "That code was not found"));
     } finally {
       working = "";
@@ -59,18 +64,19 @@
   }
 
   async function decide(action: "approve" | "deny") {
-    if (busy) return;
+    if (busy || !lookedUp) return;
 
     working = action;
 
     try {
       await session.request("device", {
         method: "POST",
-        body: JSON.stringify({ user_code: normalize(userCode), action }),
+        body: JSON.stringify({ user_code: lookedUp, action }),
       });
 
       settled = action;
       info = null;
+      lookedUp = "";
       userCode = "";
     } catch (err) {
       docket.reject(messageOf(err, "The device could not be answered"));
@@ -83,6 +89,7 @@
     settled = "";
     notFound = false;
     info = null;
+    lookedUp = "";
     userCode = "";
   }
 
@@ -90,6 +97,7 @@
     // Arriving from the device's own link: the code is already in the URL.
     if (route.deviceUserCode) {
       userCode = normalize(route.deviceUserCode);
+      route.deviceUserCode = "";
       void lookup();
     }
   });
@@ -125,7 +133,6 @@
           id="device-user-code"
           class="entry serial mt-3 text-[2.25rem] leading-[1.2] tracking-[0.18em] uppercase"
           placeholder="XXXX-XXXX"
-          maxlength="9"
           autocomplete="off"
           autocapitalize="characters"
           spellcheck="false"
@@ -133,7 +140,14 @@
           aria-invalid={notFound || undefined}
           style={notFound ? "border-bottom-color: var(--w-seal)" : undefined}
           bind:value={userCode}
-          oninput={() => (notFound = false)}
+          oninput={() => {
+            notFound = false;
+            // A different code must be looked up again before it can be answered.
+            if (lookedUp && normalize(userCode) !== lookedUp) {
+              info = null;
+              lookedUp = "";
+            }
+          }}
           onkeydown={(e) => {
             if (e.key === "Enter") void lookup();
           }}
@@ -183,7 +197,7 @@
               </p>
             {:else}
               <ul class="mt-3">
-                {#each scopes as scope (scope)}
+                {#each scopes as scope, i (i)}
                   <li class="serial border-b border-rule py-2 text-[13.5px] text-ink last:border-b-0">
                     {scope}
                   </li>

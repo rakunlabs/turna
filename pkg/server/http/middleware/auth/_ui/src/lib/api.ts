@@ -181,6 +181,7 @@ export const settingTemplates = {
     rp_id: "",
     rp_display_name: "",
     origins: [],
+    related_origins: [],
     sites: [],
     user_verification: "preferred",
     enrollment: {

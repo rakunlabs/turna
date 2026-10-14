@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
 
   import Instrument from "./ui/Instrument.svelte";
   import Section from "./ui/Section.svelte";
@@ -15,6 +15,7 @@
     getSettingString,
     setSettingString,
     saveSetting,
+    settings,
   } from "../lib/state/settings.svelte";
 
   /**
@@ -54,6 +55,7 @@
     draft_email?: string;
     draft_role_ids?: string;
     draft_permission_ids?: string;
+    draft_disabled?: boolean;
   };
 
   type View = "list" | "create" | "edit" | "settings";
@@ -96,8 +98,13 @@
 
   async function loadOwnerDetail(id: string) {
     ownerDetail = null;
-    const owner = ownerByID.get(id);
-    if (!owner) return;
+    // Only the selection drives this read; reloading the owner index after an
+    // unrelated write must not blank and refetch the detail.
+    const owner = untrack(() => ownerByID.get(id));
+    if (!owner) {
+      ownerDetailLoading = false;
+      return;
+    }
 
     const base = owner.service_account ? "service-accounts" : "users";
     ownerDetailLoading = true;
@@ -110,7 +117,7 @@
     } catch {
       // display only — a real fault surfaces when the key is issued
     } finally {
-      ownerDetailLoading = false;
+      if (selectedOwnerID === id) ownerDetailLoading = false;
     }
   }
 
@@ -140,6 +147,7 @@
       draft_email: typeof key.details?.email === "string" ? key.details.email : "",
       draft_role_ids: joinValues(key.role_ids),
       draft_permission_ids: joinValues(key.permission_ids),
+      draft_disabled: Boolean(key.disabled),
     }));
   }
 
@@ -236,17 +244,23 @@
   }
 
   async function saveKey(key: APIKeyMeta) {
+    const body: AnyRecord = {
+      name: (key.draft_name ?? "").trim(),
+      description: (key.draft_description ?? "").trim(),
+      details: { ...(key.details ?? {}), email: (key.draft_email ?? "").trim() },
+      disabled: Boolean(key.draft_disabled),
+    };
+    // Access is re-checked against the owner whenever it is sent, so only send
+    // it when it changed; a rename must not fail on access the owner lost since.
+    const roleIDs = splitValues(key.draft_role_ids ?? "");
+    const permissionIDs = splitValues(key.draft_permission_ids ?? "");
+    if (roleIDs.join("\n") !== (key.role_ids ?? []).join("\n")) body.role_ids = roleIDs;
+    if (permissionIDs.join("\n") !== (key.permission_ids ?? []).join("\n")) body.permission_ids = permissionIDs;
+
     const ok = await session.run(async () => {
       await session.request(`api-key-principals/${encodeURIComponent(key.id)}`, {
         method: "PATCH",
-        body: JSON.stringify({
-          name: (key.draft_name ?? "").trim(),
-          description: (key.draft_description ?? "").trim(),
-          details: { ...(key.details ?? {}), email: (key.draft_email ?? "").trim() },
-          role_ids: splitValues(key.draft_role_ids ?? ""),
-          permission_ids: splitValues(key.draft_permission_ids ?? ""),
-          disabled: key.disabled,
-        }),
+        body: JSON.stringify(body),
       });
 
       await fetchAll();
@@ -280,10 +294,12 @@
     key.draft_email = typeof key.details?.email === "string" ? key.details.email : "";
     key.draft_role_ids = joinValues(key.role_ids);
     key.draft_permission_ids = joinValues(key.permission_ids);
+    key.draft_disabled = Boolean(key.disabled);
   }
 
   function openCreate() {
-    createdKey = "";
+    // createdKey is the only copy of the last issued key; it is cleared only
+    // by "I have stored it", never by starting another issue.
     pendingRevoke = "";
     docket.clearRejections();
     view = "create";
@@ -304,6 +320,8 @@
 
   function backToList() {
     if (view === "edit" && editKey) resetDraft(editKey);
+    // Uncommitted settings must not change what the list says is in force.
+    if (view === "settings") void session.run(() => settings.load("api_key"));
     editKey = null;
     pendingRevoke = "";
     docket.clearRejections();
@@ -761,9 +779,9 @@
             disabled={session.busy}
             hint="A suspended key is refused at validation but stays on the register, so you can let it back in later. Takes effect when you commit."
             bind:checked={
-              () => editKey?.disabled ?? false,
+              () => editKey?.draft_disabled ?? false,
               (value: boolean) => {
-                if (editKey) editKey.disabled = value;
+                if (editKey) editKey.draft_disabled = value;
               }
             }
           />

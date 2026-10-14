@@ -12,7 +12,7 @@
     disabled = false,
     /** Set when turning this on widens what the system accepts. */
     consequential = false,
-    id = crypto.randomUUID(),
+    id: givenID,
   }: {
     label: string;
     checked?: boolean;
@@ -21,6 +21,10 @@
     consequential?: boolean;
     id?: string;
   } = $props();
+
+  // randomUUID exists only in secure contexts; $props.id() works over plain HTTP too.
+  const fallbackID = $props.id();
+  const id = $derived(givenID || fallbackID);
 
   const hintID = $derived(hint ? `${id}-hint` : undefined);
   const railOn = $derived(consequential ? "bg-seal border-seal" : "bg-carbon border-carbon");

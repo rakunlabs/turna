@@ -1,6 +1,7 @@
 <script lang="ts">
   import Instrument from "./ui/Instrument.svelte";
   import Section from "./ui/Section.svelte";
+  import HeldEntry from "./ui/HeldEntry.svelte";
   import Switch from "./ui/Switch.svelte";
   import Seal from "./ui/Seal.svelte";
   import Serial from "./ui/Serial.svelte";
@@ -79,14 +80,14 @@
 
       <div>
         <label class="stamp block" for="totp-skew">Skew periods</label>
-        <input
+        <HeldEntry
           id="totp-skew"
-          class="entry serial mt-1.5"
           type="number"
           min="0"
-          aria-describedby="totp-skew-hint"
-          value={skew}
-          oninput={(e) => setSettingNumber("totp", ["skew"], e.currentTarget.value)}
+          placeholder="1"
+          describedby="totp-skew-hint"
+          value={String(skew)}
+          onvalue={(v) => setSettingNumber("totp", ["skew"], v)}
         />
         <p id="totp-skew-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
           Adjacent 30-second periods also accepted, for phones whose clock has drifted. Each extra

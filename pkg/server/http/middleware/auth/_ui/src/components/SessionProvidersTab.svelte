@@ -47,6 +47,8 @@
     claimHeaders: ClaimHeaderRow[];
     oauth2: Oauth2Row;
     advancedOpen: boolean;
+    /** The stored provider, so fields this form does not edit survive a commit. */
+    raw: Record<string, unknown>;
   };
 
   type VisibilityOverride = "inherit" | "show" | "hide";
@@ -126,6 +128,7 @@
       claimHeaders: [],
       oauth2: emptyOauth2(),
       advancedOpen: false,
+      raw: {},
     };
   }
 
@@ -162,6 +165,7 @@
     const p = asRecord(raw);
     const oauth2Raw = asRecord(p.oauth2);
     const row = newProvider(key, group);
+    row.raw = p;
 
     row.name = str(p.name);
     row.authMiddleware = str(p.auth_middleware);
@@ -214,7 +218,23 @@
       const key = row.key.trim();
       if (!key) continue;
 
-      const provider: Record<string, unknown> = {};
+      const provider: Record<string, unknown> = { ...row.raw };
+      for (const owned of [
+        "name",
+        "auth_middleware",
+        "passkey",
+        "password_flow",
+        "api_key",
+        "api_key_header",
+        "priority",
+        "hide",
+        "email_verify_check",
+        "x_user",
+        "claim_header",
+        "oauth2",
+      ]) {
+        delete provider[owned];
+      }
       if (row.name.trim()) provider.name = row.name.trim();
       if (row.authMiddleware.trim()) provider.auth_middleware = row.authMiddleware.trim();
       if (row.passkey) provider.passkey = true;
@@ -236,7 +256,8 @@
       }
       if (Object.keys(claimHeader).length) provider.claim_header = claimHeader;
 
-      const oauth2: Record<string, unknown> = {};
+      const oauth2: Record<string, unknown> = { ...asRecord(row.raw.oauth2) };
+      for (const field of Object.keys(row.oauth2)) delete oauth2[field];
       for (const [field, value] of Object.entries(row.oauth2)) {
         if (field === "scopes") {
           const scopes = splitList(value);
@@ -278,6 +299,8 @@
 
   function addProvider() {
     providers = [...providers, newProvider()];
+    // A new row lands in Default; open it so the row is visible at once.
+    openGroups[""] = true;
   }
 
   function removeProvider(id: number) {
@@ -324,8 +347,19 @@
   }
 
   async function save() {
+    if (commitBlocked) return;
+    // Stage the draft only for the request: a rejected commit must not leave
+    // it in the shared store, where it would read as live and rebuild the form.
+    const previous = settingRecord(ns);
     setSettingRecord(ns, buildRecord());
-    await saveSetting(ns);
+    // The store wraps what it is given in a proxy; remember that object so the
+    // sync effect does not rebuild the rows from the staged draft.
+    syncedFrom = settingRecord(ns);
+    const ok = await saveSetting(ns);
+    if (!ok) {
+      syncedFrom = previous;
+      setSettingRecord(ns, previous);
+    }
   }
 
   const named = $derived(providers.filter((row) => row.key.trim()).length);
@@ -411,7 +445,29 @@
     return [...dups].sort();
   });
 
+  const invalidGroups = $derived(
+    [
+      ...new Set(
+        [...providers, ...inheritedProviders]
+          .map((row) => row.group.trim())
+          .filter((name) => /[/?#%\s]/.test(name)),
+      ),
+    ].sort(),
+  );
+
+  const commitBlocked = $derived(
+    duplicateKeys.length > 0 || inheritedProblems.length > 0 || invalidGroups.length > 0,
+  );
+
   const standing = $derived.by(() => {
+    if (invalidGroups.length) {
+      return {
+        state: "held" as const,
+        label: "Invalid group name",
+        detail: `Group names cannot contain '/', '?', '#', '%' or spaces. Check: ${invalidGroups.join(", ")}. Commit is held until this is fixed.`,
+      };
+    }
+
     if (named === 0) {
       return {
         state: "void" as const,
@@ -425,7 +481,7 @@
       return {
         state: "held" as const,
         label: "Duplicate keys",
-        detail: `Full provider definitions must have unique keys; use inheritance to reuse a Default provider across groups. Duplicated: ${duplicateKeys.join(", ")}.`,
+        detail: `Full provider definitions must have unique keys; use inheritance to reuse a Default provider across groups. Duplicated: ${duplicateKeys.join(", ")}. Commit is held — one of them would be lost.`,
       };
     }
 
@@ -433,7 +489,7 @@
       return {
         state: "held" as const,
         label: "Invalid inheritance",
-        detail: `Inherited providers must reference a provider from Default and be unique inside their group. Check: ${inheritedProblems.join(", ")}.`,
+        detail: `Inherited providers must reference a provider from Default and be unique inside their group. Check: ${inheritedProblems.join(", ")}. Commit is held until this is fixed.`,
       };
     }
 
@@ -458,7 +514,7 @@
   wide
 >
   {#snippet actions()}
-    <button type="button" class="act act-primary" disabled={session.busy} onclick={save}>
+    <button type="button" class="act act-primary" disabled={session.busy || commitBlocked} onclick={save}>
       {session.busy ? "Committing…" : "Commit"}
     </button>
   {/snippet}
@@ -797,7 +853,7 @@
           >
             <option value="">Select provider</option>
             {#each canonicalProviders as provider (provider.id)}
-              <option value={provider.key}>{provider.key}{provider.name ? ` · ${provider.name}` : ""}</option>
+              <option value={provider.key.trim()}>{provider.key}{provider.name ? ` · ${provider.name}` : ""}</option>
             {/each}
           </select>
         </div>

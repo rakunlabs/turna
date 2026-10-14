@@ -110,14 +110,54 @@
   }
 
   async function save() {
+    if (duplicates.length) return;
+    // Stage the draft only for the request; a rejected commit must not leave
+    // it in the shared store or rebuild the rows the operator is editing.
+    const previous = settingRecord(ns);
     setSettingRecord(ns, buildRecord());
-    await saveSetting(ns);
+    // The store wraps what it is given in a proxy; remember that object so the
+    // sync effect does not rebuild the rows from the staged draft.
+    syncedFrom = settingRecord(ns);
+    const ok = await saveSetting(ns);
+    if (!ok) {
+      syncedFrom = previous;
+      setSettingRecord(ns, previous);
+    }
   }
+
+  /** Names the record is keyed by; a repeat would silently drop a row. */
+  const duplicates = $derived.by(() => {
+    const out: string[] = [];
+    const setNames = new Set<string>();
+    for (const set of sets) {
+      const name = set.name.trim();
+      if (!name) continue;
+      if (setNames.has(name)) out.push(`set "${name}"`);
+      setNames.add(name);
+
+      const keys = new Set<string>();
+      for (const claim of set.claims) {
+        const key = claim.key.trim();
+        if (!key) continue;
+        if (keys.has(key)) out.push(`claim "${key}" in "${name}"`);
+        keys.add(key);
+      }
+    }
+    return [...new Set(out)];
+  });
 
   const named = $derived(sets.filter((set) => set.name.trim()).length);
   const dropped = $derived(sets.length - named);
 
   const standing = $derived.by(() => {
+    if (duplicates.length) {
+      return {
+        state: "held" as const,
+        label: "Duplicate names",
+        detail: `Only one entry per name can be stored, so commit is held: ${duplicates.join(", ")}.`,
+      };
+    }
+
     if (held) {
       return {
         state: "held" as const,
@@ -181,8 +221,9 @@
   let previewError = $state("");
   let previewBusy = $state(false);
 
+  // Commits and removals replace the rows; follow the selection to a set that exists.
   $effect(() => {
-    if (previewSetID === "" && sets.length) previewSetID = sets[0].id;
+    if (!sets.some((set) => set.id === previewSetID)) previewSetID = sets[0]?.id ?? "";
   });
 
   const previewSet = $derived(sets.find((item) => item.id === previewSetID));
@@ -230,7 +271,7 @@
 
 <Instrument title="Userinfo claim templates" note={pageNote} wide>
   {#snippet actions()}
-    <button type="button" class="act act-primary" disabled={session.busy} onclick={save}>
+    <button type="button" class="act act-primary" disabled={session.busy || duplicates.length > 0} onclick={save}>
       {session.busy ? "Committing…" : "Commit"}
     </button>
   {/snippet}

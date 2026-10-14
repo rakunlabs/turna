@@ -1,6 +1,7 @@
 <script lang="ts">
   import Instrument from "./ui/Instrument.svelte";
   import Section from "./ui/Section.svelte";
+  import HeldEntry from "./ui/HeldEntry.svelte";
   import Switch from "./ui/Switch.svelte";
   import Seal from "./ui/Seal.svelte";
   import Serial from "./ui/Serial.svelte";
@@ -75,14 +76,14 @@
 
       <div>
         <label class="stamp block" for="device-interval">Poll interval</label>
-        <input
+        <HeldEntry
           id="device-interval"
-          class="entry serial mt-1.5"
           type="number"
           min="1"
-          aria-describedby="device-interval-hint"
-          value={interval}
-          oninput={(e) => setSettingNumber("device", ["interval"], e.currentTarget.value)}
+          placeholder="5"
+          describedby="device-interval-hint"
+          value={String(interval)}
+          onvalue={(v) => setSettingNumber("device", ["interval"], v)}
         />
         <p id="device-interval-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
           Seconds the device is told to wait between polls. Asking faster is answered with

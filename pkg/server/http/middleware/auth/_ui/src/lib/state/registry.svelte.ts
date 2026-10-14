@@ -144,9 +144,14 @@ class Registry {
 
   /** Load the bulk admin data once, on demand. */
   async ensureLoaded() {
-    if (this.loaded || session.busy) return;
-    await session.run(() => this.loadAll());
+    if (this.loaded) return;
+    // Share one in-flight load instead of skipping while something else runs,
+    // which used to leave a register empty until a manual re-read.
+    this.#loading ??= session.run(() => this.loadAll()).finally(() => (this.#loading = null));
+    await this.#loading;
   }
+
+  #loading: Promise<boolean> | null = null;
 
   async rotateSigningKey() {
     const ok = await session.run(async () => {

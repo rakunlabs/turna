@@ -158,7 +158,7 @@
       </div>
 
       <ul>
-        {#each groups as group (group.name)}
+        {#each groups as group, i (`${i}:${group.name}`)}
           <li class="border-b border-rule last:border-b-0">
             <div
               class="grid gap-x-4 gap-y-1.5 px-4 py-3 md:grid-cols-[minmax(0,1fr)_6rem_minmax(0,1.2fr)] md:items-center"

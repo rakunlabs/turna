@@ -24,6 +24,9 @@ type MeResponse struct {
 	TOTPEnabled  bool `json:"totp_enabled"`
 	PasskeyCount int  `json:"passkey_count"`
 	APIKeyCount  int  `json:"api_key_count"`
+
+	// PasswordMinLength is what a password change is checked against.
+	PasswordMinLength int `json:"password_min_length"`
 }
 
 // MeAPI returns the authenticated user's profile, roles, permissions and
@@ -56,6 +59,8 @@ func (m *Auth) MeAPI(w http.ResponseWriter, r *http.Request) {
 		Permissions: permissions,
 		IsActive:    user.IsActive,
 		Local:       user.Local,
+
+		PasswordMinLength: m.cache.Snapshot().Signup.GetPasswordMinLength(),
 	}
 
 	if _, confirmed, err := m.store.GetTOTPSecret(r.Context(), user.ID); err == nil {
