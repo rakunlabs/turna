@@ -144,6 +144,7 @@ server:
 | `client_ca_files` | | PEM CA bundles used to request and verify optional client certificates. Presented certificates that do not chain to these roots fail the TLS handshake. |
 | `entrypoints.<name>.client_cas` | | PEM CA bundles for the TLS entrypoint `<name>`; replaces `client_ca_files` on that entrypoint. |
 | `entrypoints.<name>.client_auth` | `require` | `require` rejects the handshake without a client certificate signed by `client_cas`; `request` asks for a certificate but accepts any client. |
+| `entrypoints.<name>.store` | | Certificates of the TLS entrypoint `<name>`, same format as `store`; replaces the shared `store` and ACME on that entrypoint. Without `client_cas` the shared client certificate settings apply. |
 | `store.<host>` | | Certificate(s) served for the SNI host name `<host>`. |
 | `store.default` | | Fallback certificate used when no SNI host matches or the client sends no SNI. |
 | `self_signed` | | Customizes the generated certificate (see below). |

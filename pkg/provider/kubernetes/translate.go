@@ -51,6 +51,11 @@ type Result struct {
 	// ListenerSets referencing served gateways
 	ListenerSets map[nsName]*ListenerSetStatus
 
+	// ports of valid ListenerSet listeners per gateway; proxies expose
+	// only these, so a ListenerSet cannot open ports with listeners that
+	// are not accepted
+	listenerSetPorts map[nsName][]listenerPort
+
 	// BackendTLSPolicies applied to the backends of each served gateway;
 	// their CA certificates go into the proxy bundle of the gateway
 	gatewayPolicies map[nsName]map[nsName]struct{}
@@ -94,6 +99,8 @@ type listener struct {
 	passthrough bool
 	// conflict reason of a listener losing its port or hostname
 	conflict string
+	// routes attached to the listener
+	routes map[routeKey]bool
 
 	// hostnames attached by HTTPRoutes and GRPCRoutes, to resolve
 	// conflicts between both kinds
@@ -194,7 +201,8 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 			Policies:       make(map[nsName][]gwv1.PolicyAncestorStatus),
 			ListenerSets:   make(map[nsName]*ListenerSetStatus),
 
-			gatewayPolicies: make(map[nsName]map[nsName]struct{}),
+			gatewayPolicies:  make(map[nsName]map[nsName]struct{}),
+			listenerSetPorts: make(map[nsName][]listenerPort),
 		},
 		hosts:          make(map[string]map[string]*hostRules),
 		entryListeners: make(map[string][]*listener),
@@ -557,39 +565,9 @@ func (t *translator) mergePorts(all map[nsName][]*listener) {
 
 	slices.SortFunc(keys, func(a, b nsName) int { return strings.Compare(a.String(), b.String()) })
 
-	// listeners of gateways are placed before the listeners of all
-	// ListenerSets, so a ListenerSet cannot take a port or hostname from the
-	// gateway of another owner sharing the entrypoint
-	var ordered []*listener
-	for _, k := range keys {
-		for _, li := range all[k] {
-			if li.set == nil {
-				ordered = append(ordered, li)
-			}
-		}
-	}
-
-	// the listeners of a ListenerSet are served only when its gateway is
-	// accepted, which needs a valid listener of the gateway itself
-	for _, k := range keys {
-		accepted := slices.ContainsFunc(all[k], func(li *listener) bool { return li.set == nil && li.valid })
-
-		for _, li := range all[k] {
-			if li.set == nil {
-				continue
-			}
-
-			if !accepted {
-				li.valid = false
-			}
-
-			ordered = append(ordered, li)
-		}
-	}
-
-	for _, li := range ordered {
+	merge := func(li *listener) {
 		if !li.valid {
-			continue
+			return
 		}
 
 		entry := entryName(li)
@@ -604,7 +582,7 @@ func (t *translator) mergePorts(all map[nsName][]*listener) {
 			li.valid = false
 			t.setConflict(li, string(gwv1.ListenerReasonProtocolConflict), "port is used with another protocol")
 
-			continue
+			return
 		}
 
 		hostname := string(ptrOr(li.spec.Hostname, ""))
@@ -621,7 +599,7 @@ func (t *translator) mergePorts(all map[nsName][]*listener) {
 			li.valid = false
 			t.setConflict(li, string(gwv1.ListenerReasonHostnameConflict), "another listener uses the same port and hostname")
 
-			continue
+			return
 		}
 
 		// the handshake is shared, so listeners on a port must ask for the
@@ -631,10 +609,62 @@ func (t *translator) mergePorts(all map[nsName][]*listener) {
 			li.valid = false
 			t.setConflict(li, string(gwv1.ListenerReasonProtocolConflict), "another listener on the port uses another client certificate validation")
 
-			continue
+			return
 		}
 
 		p.listeners = append(p.listeners, li)
+	}
+
+	// listeners of one gateway using a port with different protocols are
+	// not distinct: none of them wins, all are conflicted
+	for _, k := range keys {
+		byEntry := make(map[string][]*listener)
+		for _, li := range all[k] {
+			if li.set == nil && li.valid {
+				byEntry[entryName(li)] = append(byEntry[entryName(li)], li)
+			}
+		}
+
+		for _, lis := range byEntry {
+			if !slices.ContainsFunc(lis, func(li *listener) bool { return portKind(li) != portKind(lis[0]) }) {
+				continue
+			}
+
+			for _, li := range lis {
+				li.valid = false
+				t.setConflict(li, string(gwv1.ListenerReasonProtocolConflict), "another listener of the gateway uses the port with another protocol")
+			}
+		}
+	}
+
+	// listeners of gateways are merged before the listeners of all
+	// ListenerSets, so a ListenerSet cannot take a port or hostname from the
+	// gateway of another owner sharing the entrypoint
+	for _, k := range keys {
+		for _, li := range all[k] {
+			if li.set == nil {
+				merge(li)
+			}
+		}
+	}
+
+	// the listeners of a ListenerSet are served only when its gateway is
+	// accepted, which needs a valid listener of the gateway itself after
+	// the gateway listeners are merged
+	for _, k := range keys {
+		accepted := slices.ContainsFunc(all[k], func(li *listener) bool { return li.set == nil && li.valid })
+
+		for _, li := range all[k] {
+			if li.set == nil {
+				continue
+			}
+
+			if !accepted {
+				li.valid = false
+			}
+
+			merge(li)
+		}
 	}
 
 	// sorted so certificates are stored in a stable order, the first
@@ -655,8 +685,12 @@ func (t *translator) mergePorts(all map[nsName][]*listener) {
 		t.families[entry] = p.listeners[0].family
 		t.secure[entry] = p.kind == "https"
 
-		if e, ok := entrypointTLS(p.listeners[0]); ok && t.secure[entry] {
-			t.out.Server.HTTP.TLS.EntryPoints[entry] = e
+		// certificates belong to the entrypoint of their listener, so a
+		// listener cannot serve its certificate on another port
+		var entryTLS shttp.EntryPointTLS
+		if t.secure[entry] {
+			entryTLS = entrypointTLS(p.listeners[0])
+			entryTLS.Store = make(map[string][]shttp.Certificate)
 		}
 
 		for _, li := range p.listeners {
@@ -674,8 +708,12 @@ func (t *translator) mergePorts(all map[nsName][]*listener) {
 					host = "default"
 				}
 
-				t.out.Server.HTTP.TLS.Store[host] = append(t.out.Server.HTTP.TLS.Store[host], c)
+				entryTLS.Store[host] = append(entryTLS.Store[host], c)
 			}
+		}
+
+		if t.secure[entry] {
+			t.out.Server.HTTP.TLS.EntryPoints[entry] = entryTLS
 		}
 	}
 }
@@ -850,6 +888,19 @@ func (t *translator) attach(route *routeInfo, ref gwv1.ParentReference, lis []*l
 	}
 
 	for _, a := range attached {
+		// a route is attached to a listener once, also when several of its
+		// parentRefs select the listener
+		if a.li.routes == nil {
+			a.li.routes = make(map[routeKey]bool)
+		}
+
+		rk := routeKey{Kind: route.kind, nsName: route.key()}
+		if a.li.routes[rk] {
+			continue
+		}
+
+		a.li.routes[rk] = true
+
 		// routes count as attached even when the listener cannot be
 		// programmed, e.g. because of a missing certificate
 		a.li.matches++

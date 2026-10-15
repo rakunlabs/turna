@@ -41,6 +41,26 @@ type Runtime struct {
 type runningServer struct {
 	server   *http.Server
 	listener net.Listener
+
+	// open TLS connections with the client certificate settings they were
+	// accepted with
+	connMu sync.Mutex
+	conns  map[net.Conn]string
+}
+
+// closeStale closes the connections accepted with other client certificate
+// settings than auth: tightened validation must not keep serving clients
+// that would be refused now.
+func (s *runningServer) closeStale(auth string) {
+	s.connMu.Lock()
+	defer s.connMu.Unlock()
+
+	for c, a := range s.conns {
+		if a != auth {
+			_ = c.Close()
+			delete(s.conns, c)
+		}
+	}
 }
 
 func NewRuntime(ctx context.Context, wg *sync.WaitGroup) *Runtime {
@@ -163,7 +183,11 @@ func (p *Prepared) Activate(listen ListenerFunc) {
 	}
 
 	for entrypoint, secure := range wanted {
-		if _, ok := rt.servers[serverKey(entrypoint, secure)]; ok {
+		if s, ok := rt.servers[serverKey(entrypoint, secure)]; ok {
+			if secure {
+				s.closeStale(rt.tls.Load().clientAuthKey(entrypoint))
+			}
+
 			continue
 		}
 
@@ -232,17 +256,43 @@ func (rt *Runtime) startServer(entrypoint string, secure bool, listener net.List
 		s.Protocols = &protocols
 	}
 
+	running := &runningServer{server: s, listener: listener, conns: make(map[net.Conn]string)}
+
 	if secure {
 		s.TLSConfig = &tls.Config{
 			// Resolve the active TLS config on every handshake so certificate
 			// changes apply to new connections without restarting the server.
-			GetConfigForClient: func(*tls.ClientHelloInfo) (*tls.Config, error) {
-				return rt.tls.Load().forEntrypoint(entrypoint), nil
+			GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+				configs := rt.tls.Load()
+
+				// remember the client certificate settings the connection
+				// is accepted with
+				if hello.Conn != nil {
+					running.connMu.Lock()
+					running.conns[hello.Conn] = configs.clientAuthKey(entrypoint)
+					running.connMu.Unlock()
+				}
+
+				return configs.forEntrypoint(entrypoint), nil
 			},
+		}
+
+		s.ConnState = func(c net.Conn, state http.ConnState) {
+			if state != http.StateClosed && state != http.StateHijacked {
+				return
+			}
+
+			if tc, ok := c.(*tls.Conn); ok {
+				c = tc.NetConn()
+			}
+
+			running.connMu.Lock()
+			delete(running.conns, c)
+			running.connMu.Unlock()
 		}
 	}
 
-	rt.servers[key] = &runningServer{server: s, listener: listener}
+	rt.servers[key] = running
 
 	rt.wg.Add(1)
 	go func() {

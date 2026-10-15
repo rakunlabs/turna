@@ -7,10 +7,12 @@ import (
 	"net"
 	stdhttp "net/http"
 	"net/http/httptest"
+	"os"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/hello"
 	"github.com/rakunlabs/turna/pkg/server/registry"
@@ -276,5 +278,82 @@ func TestRuleRouterLongestWildcard(t *testing.T) {
 		if rec.Body.String() != want {
 			t.Errorf("%s routed to %q, want %q", host, rec.Body.String(), want)
 		}
+	}
+}
+
+// Connections accepted before client certificates were required are closed
+// when the requirement is turned on; unchanged settings keep connections.
+func TestRuntimeClosesConnectionsOnClientAuthChange(t *testing.T) {
+	caFile, issue := testClientPKI(t)
+	ca, err := os.ReadFile(caFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rt, addr := newTestRuntime(t, "mtls")
+	addr = strings.Replace(addr, "http://", "https://", 1)
+
+	cfg := func(message string, entry *EntryPointTLS) *HTTP {
+		h := helloConfig("mtls", "", "/*", message)
+		r := h.Routers["r"]
+		r.TLS = &struct{}{}
+		h.Routers["r"] = r
+		h.TLS.Store = map[string][]Certificate{"default": {writeCertFiles(t, "localhost")}}
+
+		if entry != nil {
+			h.TLS.EntryPoints = map[string]EntryPointTLS{"mtls": *entry}
+		}
+
+		return h
+	}
+
+	if err := rt.apply(cfg("open", nil)); err != nil {
+		t.Fatal(err)
+	}
+
+	client := &stdhttp.Client{Transport: &stdhttp.Transport{
+		TLSClientConfig:   &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test server
+		ForceAttemptHTTP2: true,
+	}}
+
+	get := func() (string, error) {
+		res, err := client.Get(addr + "/")
+		if err != nil {
+			return "", err
+		}
+		defer func() { _ = res.Body.Close() }()
+
+		b, err := io.ReadAll(res.Body)
+
+		return string(b), err
+	}
+
+	if body, err := get(); err != nil || !strings.Contains(body, "open") {
+		t.Fatalf("before: %q %v", body, err)
+	}
+
+	// same client settings: the connection stays and sees the new routes
+	if err := rt.apply(cfg("still open", nil)); err != nil {
+		t.Fatal(err)
+	}
+
+	if body, err := get(); err != nil || !strings.Contains(body, "still open") {
+		t.Fatalf("unchanged settings: %q %v", body, err)
+	}
+
+	if err := rt.apply(cfg("secret", &EntryPointTLS{ClientCAs: []string{string(ca)}})); err != nil {
+		t.Fatal(err)
+	}
+
+	if body, err := get(); err == nil {
+		t.Fatalf("connection without a client certificate still served: %q", body)
+	}
+
+	now := time.Now()
+	c := issue(now.Add(-time.Hour), now.Add(time.Hour))
+	client.Transport.(*stdhttp.Transport).TLSClientConfig.Certificates = []tls.Certificate{c}
+
+	if body, err := get(); err != nil || !strings.Contains(body, "secret") {
+		t.Fatalf("with certificate: %q %v", body, err)
 	}
 }

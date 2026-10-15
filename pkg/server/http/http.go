@@ -106,17 +106,24 @@ func (t TLS) minVersion() (uint16, error) {
 // the client's SNI server name (exact, then wildcard), falling back to the
 // "default" host key and finally to a generated self-signed certificate.
 func (h *HTTP) buildTLSConfig() (*tls.Config, error) {
+	return h.buildStoreTLSConfig(h.TLS.Store, true)
+}
+
+// buildStoreTLSConfig builds an SNI-aware *tls.Config serving the
+// certificates of store. shared adds the settings of the shared listener
+// configuration: ACME and the optional client CAs.
+func (h *HTTP) buildStoreTLSConfig(store map[string][]Certificate, shared bool) (*tls.Config, error) {
 	minVersion, err := h.TLS.minVersion()
 	if err != nil {
 		return nil, err
 	}
 
-	byHost := make(map[string]tls.Certificate, len(h.TLS.Store))
-	allCerts := make([]tls.Certificate, 0, len(h.TLS.Store))
+	byHost := make(map[string]tls.Certificate, len(store))
+	allCerts := make([]tls.Certificate, 0, len(store))
 
 	// sorted so the first certificate of a host and the fallback are stable
-	for _, key := range slices.Sorted(maps.Keys(h.TLS.Store)) {
-		certList := h.TLS.Store[key]
+	for _, key := range slices.Sorted(maps.Keys(store)) {
+		certList := store[key]
 		host := strings.TrimSuffix(strings.ToLower(key), ".")
 
 		for _, c := range certList {
@@ -152,7 +159,7 @@ func (h *HTTP) buildTLSConfig() (*tls.Config, error) {
 	// Optionally build an ACME (e.g. Let's Encrypt) certificate manager that
 	// provisions certificates on demand via the TLS-ALPN-01 challenge.
 	var acmeManager *autocert.Manager
-	if h.TLS.ACME != nil && h.TLS.ACME.Enabled {
+	if shared && h.TLS.ACME != nil && h.TLS.ACME.Enabled {
 		acmeManager = h.buildACMEManager()
 	}
 
@@ -191,7 +198,7 @@ func (h *HTTP) buildTLSConfig() (*tls.Config, error) {
 		},
 	}
 
-	if len(h.TLS.ClientCAFiles) > 0 {
+	if shared && len(h.TLS.ClientCAFiles) > 0 {
 		clientCAs := x509.NewCertPool()
 		for _, file := range h.TLS.ClientCAFiles {
 			caPEM, err := os.ReadFile(file)

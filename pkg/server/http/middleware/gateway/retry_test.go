@@ -4,6 +4,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
+	"net/textproto"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -220,5 +222,100 @@ func TestRetryBackendTimeoutWithoutCode(t *testing.T) {
 	rec := serve(t, g, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusOK || calls.Load() != 2 {
 		t.Fatalf("status = %d calls = %d", rec.Code, calls.Load())
+	}
+}
+
+// A body of unknown length is streamed to the backend at once instead of
+// being buffered for retries.
+func TestRetryStreamingBody(t *testing.T) {
+	got := make(chan string, 1)
+
+	registry.GlobalReg.AddHttpMiddleware("retry-stream", []func(http.Handler) http.Handler{func(http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			buf := make([]byte, 5)
+			n, _ := io.ReadFull(r.Body, buf)
+			got <- string(buf[:n])
+
+			w.WriteHeader(http.StatusOK)
+		})
+	}})
+
+	g := &Gateway{Rules: []Rule{{
+		Retry:    &Retry{Codes: []int{500}, Attempts: new(3)},
+		Backends: []Backend{{Weight: 1, Middlewares: []string{"retry-stream"}}},
+	}}}
+
+	pr, pw := io.Pipe()
+	defer func() { _ = pw.Close() }()
+
+	req := httptest.NewRequest(http.MethodPost, "/", pr)
+	req.ContentLength = -1
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		serve(t, g, req)
+	}()
+
+	// the stream stays open: a buffering retry would wait for its end
+	if _, err := pw.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case b := <-got:
+		if b != "hello" {
+			t.Fatalf("body = %q", b)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("streaming body was held back")
+	}
+
+	<-done
+}
+
+// Interim responses reach the client.
+func TestRetryInformational(t *testing.T) {
+	registry.GlobalReg.AddHttpMiddleware("retry-103", []func(http.Handler) http.Handler{func(http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Link", "</a.css>; rel=preload")
+			w.WriteHeader(http.StatusEarlyHints)
+			w.WriteHeader(http.StatusOK)
+		})
+	}})
+
+	g := &Gateway{Rules: []Rule{{
+		Retry:    &Retry{Codes: []int{500}, Attempts: new(1)},
+		Backends: []Backend{{Weight: 1, Middlewares: []string{"retry-103"}}},
+	}}}
+
+	mw, err := g.Middleware()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(mw(nil))
+	defer srv.Close()
+
+	var early int
+	req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
+	req = req.WithContext(httptrace.WithClientTrace(req.Context(), &httptrace.ClientTrace{
+		Got1xxResponse: func(code int, _ textproto.MIMEHeader) error {
+			if code == http.StatusEarlyHints {
+				early++
+			}
+
+			return nil
+		},
+	}))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK || early != 1 {
+		t.Fatalf("status = %d early hints = %d", resp.StatusCode, early)
 	}
 }

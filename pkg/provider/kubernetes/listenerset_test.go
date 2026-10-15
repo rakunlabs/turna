@@ -1,6 +1,7 @@
 package kubernetes
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -164,7 +165,7 @@ func TestListenerSetRouting(t *testing.T) {
 	}
 
 	// the proxy exposes ListenerSet ports
-	ports := listenerPorts(gw, 0, 0, attachedListenerSets(gw, newIndex(&Snapshot{ListenerSets: []*gwv1.ListenerSet{ls}}))...)
+	ports := listenerPorts(gw, 0, 0, res.listenerSetPorts[key(gw)]...)
 	if len(ports) != 2 || ports[1].port != 8443 {
 		t.Fatalf("ports = %+v", ports)
 	}
@@ -324,11 +325,141 @@ func TestListenerSetPendingWithParent(t *testing.T) {
 	}}
 
 	out := listenerSetPending(st, "waiting")
-	if c := condition(t, out.Conditions, string(gwv1.ListenerSetConditionProgrammed)); c.Status != metav1.ConditionFalse || c.Reason != string(gwv1.ListenerSetReasonPending) {
+	if c := condition(t, out.Conditions, string(gwv1.ListenerSetConditionProgrammed)); c.Status != metav1.ConditionFalse || c.Reason != reasonParentNotProgrammed {
 		t.Fatalf("programmed = %+v", c)
 	}
 
 	if st.Conditions[1].Status != metav1.ConditionTrue {
 		t.Fatal("input modified")
+	}
+}
+
+// A ListenerSet listener with the hostname of a gateway listener on another
+// port cannot serve its certificate on the gateway port.
+func TestListenerSetCertificatesPerPort(t *testing.T) {
+	gw := allowListeners(gatewayObj("bank", "gw", httpsListener("https", "bank.example.com", gwv1.SecretObjectReference{Name: "real"})), gwv1.NamespacesFromAll)
+	ls := listenerSetObj("evil", "ls", "gw", time.Now(), httpsListener("https", "bank.example.com", gwv1.SecretObjectReference{Name: "fake"}))
+	ls.Spec.ParentRef.Namespace = ptr(gwv1.Namespace("bank"))
+	ls.Spec.Listeners[0].Port = 1443
+
+	real, fake := tlsSecret(t, "bank", "real", "bank.example.com"), tlsSecret(t, "evil", "fake", "bank.example.com")
+
+	res := Translate(&Config{}, &Snapshot{
+		GatewayClasses: []*gwv1.GatewayClass{class()},
+		Gateways:       []*gwv1.Gateway{gw},
+		ListenerSets:   []*gwv1.ListenerSet{ls},
+		Secrets:        []*corev1.Secret{real, fake},
+	})
+
+	if len(res.Server.HTTP.TLS.Store) != 0 {
+		t.Fatalf("shared store = %v", res.Server.HTTP.TLS.Store)
+	}
+
+	port := "k8s-" + strconv.Itoa(int(gw.Spec.Listeners[0].Port))
+	for entry, want := range map[string]*corev1.Secret{port: real, "k8s-1443": fake} {
+		certs := res.Server.HTTP.TLS.EntryPoints[entry].Store["bank.example.com"]
+		if len(certs) != 1 || certs[0].Cert != string(want.Data[corev1.TLSCertKey]) {
+			t.Errorf("%s certificates = %d, want only %s", entry, len(certs), want.Name)
+		}
+	}
+}
+
+// A gateway whose only listener loses a port conflict is not accepted, and
+// its ListenerSets serve nothing.
+func TestListenerSetParentLosesConflict(t *testing.T) {
+	a := gatewayObj("app", "a", gwv1.Listener{Name: "tcp", Port: 443, Protocol: gwv1.TCPProtocolType})
+	b := allowListeners(gatewayObj("app", "b", httpListener("http", 443, "")), gwv1.NamespacesFromSame)
+	ls := listenerSetObj("app", "ls", "b", time.Now(), httpListener("ls", 8080, "ls.example.com"))
+
+	res := Translate(&Config{}, &Snapshot{GatewayClasses: []*gwv1.GatewayClass{class()}, Gateways: []*gwv1.Gateway{a, b}, ListenerSets: []*gwv1.ListenerSet{ls}})
+
+	if meta.IsStatusConditionTrue(res.Gateways[key(b)].Conditions, string(gwv1.GatewayConditionAccepted)) {
+		t.Fatal("gateway b accepted")
+	}
+
+	if _, ok := res.Server.EntryPoints["k8s-8080"]; ok {
+		t.Fatal("ListenerSet of a not accepted gateway is served")
+	}
+
+	l := entryStatus(t, res.ListenerSets[key(ls)], "ls")
+	if c := condition(t, l.Conditions, string(gwv1.ListenerConditionProgrammed)); c.Status != metav1.ConditionFalse {
+		t.Fatalf("listener programmed = %+v", c)
+	}
+}
+
+// Listeners of a gateway sharing a port with different protocols are all
+// conflicted, none wins.
+func TestPortProtocolConflictHasNoWinner(t *testing.T) {
+	gw := gatewayObj("app", "gw", httpListener("http", 80, ""), gwv1.Listener{Name: "tcp", Port: 80, Protocol: gwv1.TCPProtocolType}, httpListener("other", 81, ""))
+
+	res := Translate(&Config{}, &Snapshot{GatewayClasses: []*gwv1.GatewayClass{class()}, Gateways: []*gwv1.Gateway{gw}})
+
+	for i, want := range []bool{false, false, true} {
+		l := res.Gateways[key(gw)].Listeners[i]
+		c := condition(t, l.Conditions, string(gwv1.ListenerConditionAccepted))
+		if (c.Status == metav1.ConditionTrue) != want {
+			t.Errorf("%s accepted = %+v", l.Name, c)
+		}
+
+		if !want && c.Reason != string(gwv1.ListenerReasonProtocolConflict) {
+			t.Errorf("%s reason = %s", l.Name, c.Reason)
+		}
+	}
+
+	if _, ok := res.Server.EntryPoints["k8s-80"]; ok {
+		t.Fatal("conflicted port is served")
+	}
+}
+
+// A route attached to a listener through two parentRefs counts once.
+func TestRouteAttachedOncePerListener(t *testing.T) {
+	gw := gatewayObj("app", "gw", httpListener("http", 80, ""))
+	svc, slice := serviceObj("app", "web", 8080)
+
+	r := routeObj("app", "r", "gw", nil, backendRule("/", "web", 8080))
+	r.Spec.ParentRefs = []gwv1.ParentReference{
+		{Name: "gw", SectionName: ptr(gwv1.SectionName("http"))},
+		{Name: "gw", Port: ptr(gwv1.PortNumber(80))},
+	}
+
+	res := Translate(&Config{}, &Snapshot{
+		GatewayClasses: []*gwv1.GatewayClass{class()},
+		Gateways:       []*gwv1.Gateway{gw},
+		HTTPRoutes:     []*gwv1.HTTPRoute{r},
+		Services:       []*corev1.Service{svc},
+		EndpointSlices: []*discoveryv1.EndpointSlice{slice},
+	})
+
+	if n := res.Gateways[key(gw)].Listeners[0].AttachedRoutes; n != 1 {
+		t.Fatalf("attached routes = %d", n)
+	}
+
+	for _, st := range res.HTTPRouteStatus(key(r)) {
+		if c := condition(t, st.Conditions, string(gwv1.RouteConditionAccepted)); c.Status != metav1.ConditionTrue {
+			t.Fatalf("parent %+v = %+v", st.ParentRef, c)
+		}
+	}
+
+	for _, m := range res.Server.HTTP.Middlewares {
+		if m.Gateway != nil && len(m.Gateway.Rules) > 1 {
+			t.Fatalf("rules added twice: %d", len(m.Gateway.Rules))
+		}
+	}
+}
+
+// Only valid ListenerSet listeners open proxy ports.
+func TestListenerSetPortsOnlyValid(t *testing.T) {
+	gw := allowListeners(gatewayObj("app", "gw", httpListener("http", 80, "gw.example.com")), gwv1.NamespacesFromAll)
+	ls := listenerSetObj("other", "ls", "gw", time.Now(),
+		httpListener("ok", 8080, "ok.example.com"),
+		gwv1.Listener{Name: "bad", Port: 9000, Protocol: "FOO"},
+		gwv1.Listener{Name: "tcp", Port: 80, Protocol: gwv1.TCPProtocolType},
+	)
+
+	res := Translate(&Config{}, &Snapshot{GatewayClasses: []*gwv1.GatewayClass{class()}, Gateways: []*gwv1.Gateway{gw}, ListenerSets: []*gwv1.ListenerSet{ls}})
+
+	ports := listenerPorts(gw, 0, 0, res.listenerSetPorts[key(gw)]...)
+	if len(ports) != 2 || ports[0].port != 80 || ports[1].port != 8080 {
+		t.Fatalf("ports = %+v", ports)
 	}
 }

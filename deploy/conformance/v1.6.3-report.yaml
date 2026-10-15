@@ -1,5 +1,5 @@
 apiVersion: gateway.networking.k8s.io/v1
-date: "2026-10-15T14:07:45Z"
+date: "2026-10-15T16:55:57Z"
 gatewayAPIChannel: experimental
 gatewayAPIVersion: v1.6.3
 implementation:
@@ -8,10 +8,63 @@ implementation:
   organization: rakunlabs
   project: turna
   url: https://github.com/rakunlabs/turna
-  version: v0.10.0-4-g6ff2e59-dirty
+  version: v0.10.0-5-g8e21e13-dirty
 kind: ConformanceReport
 mode: default
 profiles:
+- core:
+    result: success
+    statistics:
+      Failed: 0
+      Passed: 36
+      Skipped: 0
+  extended:
+    result: success
+    statistics:
+      Failed: 0
+      Passed: 58
+      Skipped: 0
+    supportedFeatures:
+    - BackendTLSPolicy
+    - BackendTLSPolicySANValidation
+    - GatewayAddressEmpty
+    - GatewayBackendClientCertificate
+    - GatewayFrontendClientCertificateValidation
+    - GatewayFrontendClientCertificateValidationInsecureFallback
+    - GatewayHTTPListenerIsolation
+    - GatewayHTTPSListenerDetectMisdirectedRequests
+    - GatewayInfrastructure
+    - GatewayPort8080
+    - GatewayStaticAddresses
+    - HTTPRoute303RedirectStatusCode
+    - HTTPRoute307RedirectStatusCode
+    - HTTPRoute308RedirectStatusCode
+    - HTTPRouteBackendProtocolH2C
+    - HTTPRouteBackendProtocolWebSocket
+    - HTTPRouteBackendRequestHeaderModification
+    - HTTPRouteBackendTimeout
+    - HTTPRouteCORS
+    - HTTPRouteDestinationPortMatching
+    - HTTPRouteHostRewrite
+    - HTTPRouteMethodMatching
+    - HTTPRouteNamedRouteRule
+    - HTTPRouteParentRefPort
+    - HTTPRoutePathRedirect
+    - HTTPRoutePathRewrite
+    - HTTPRoutePortRedirect
+    - HTTPRouteQueryParamMatching
+    - HTTPRouteRequestMirror
+    - HTTPRouteRequestMultipleMirrors
+    - HTTPRouteRequestPercentageMirror
+    - HTTPRouteRequestTimeout
+    - HTTPRouteResponseHeaderModification
+    - HTTPRouteRetry
+    - HTTPRouteRetryBackendTimeout
+    - HTTPRouteRetryConnectionError
+    - HTTPRouteSchemeRedirect
+    - ListenerSet
+  name: GATEWAY-HTTP
+  summary: Core tests succeeded. Extended tests succeeded.
 - core:
     result: success
     statistics:
@@ -115,57 +168,4 @@ profiles:
     - ListenerSet
     - UDPRoute
   name: GATEWAY-UDP
-  summary: Core tests succeeded. Extended tests succeeded.
-- core:
-    result: success
-    statistics:
-      Failed: 0
-      Passed: 36
-      Skipped: 0
-  extended:
-    result: success
-    statistics:
-      Failed: 0
-      Passed: 58
-      Skipped: 0
-    supportedFeatures:
-    - BackendTLSPolicy
-    - BackendTLSPolicySANValidation
-    - GatewayAddressEmpty
-    - GatewayBackendClientCertificate
-    - GatewayFrontendClientCertificateValidation
-    - GatewayFrontendClientCertificateValidationInsecureFallback
-    - GatewayHTTPListenerIsolation
-    - GatewayHTTPSListenerDetectMisdirectedRequests
-    - GatewayInfrastructure
-    - GatewayPort8080
-    - GatewayStaticAddresses
-    - HTTPRoute303RedirectStatusCode
-    - HTTPRoute307RedirectStatusCode
-    - HTTPRoute308RedirectStatusCode
-    - HTTPRouteBackendProtocolH2C
-    - HTTPRouteBackendProtocolWebSocket
-    - HTTPRouteBackendRequestHeaderModification
-    - HTTPRouteBackendTimeout
-    - HTTPRouteCORS
-    - HTTPRouteDestinationPortMatching
-    - HTTPRouteHostRewrite
-    - HTTPRouteMethodMatching
-    - HTTPRouteNamedRouteRule
-    - HTTPRouteParentRefPort
-    - HTTPRoutePathRedirect
-    - HTTPRoutePathRewrite
-    - HTTPRoutePortRedirect
-    - HTTPRouteQueryParamMatching
-    - HTTPRouteRequestMirror
-    - HTTPRouteRequestMultipleMirrors
-    - HTTPRouteRequestPercentageMirror
-    - HTTPRouteRequestTimeout
-    - HTTPRouteResponseHeaderModification
-    - HTTPRouteRetry
-    - HTTPRouteRetryBackendTimeout
-    - HTTPRouteRetryConnectionError
-    - HTTPRouteSchemeRedirect
-    - ListenerSet
-  name: GATEWAY-HTTP
   summary: Core tests succeeded. Extended tests succeeded.

@@ -177,6 +177,7 @@ func (t *translator) finishListenerSets() {
 
 		gwStatus := t.out.Gateways[info.gw]
 		parentAccepted := gwStatus != nil && meta.IsStatusConditionTrue(gwStatus.Conditions, string(gwv1.GatewayConditionAccepted))
+		parentProgrammed := gwStatus != nil && meta.IsStatusConditionTrue(gwStatus.Conditions, string(gwv1.GatewayConditionProgrammed))
 
 		setConditions := func(accepted bool, acceptedReason string, programmed bool, programmedReason, msg string) {
 			st.Conditions = []metav1.Condition{
@@ -209,10 +210,19 @@ func (t *translator) finishListenerSets() {
 			default:
 				setConditions(true, string(gwv1.ListenerSetReasonAccepted), true, string(gwv1.ListenerSetReasonProgrammed), "")
 			}
+
+			// e.g. a requested address is not usable
+			if !parentProgrammed && meta.IsStatusConditionTrue(st.Conditions, string(gwv1.ListenerSetConditionProgrammed)) {
+				st.Conditions[1] = t.condition(gen, string(gwv1.ListenerSetConditionProgrammed), false, reasonParentNotProgrammed, "the parent gateway is not programmed")
+			}
 		}
 
 		if info.allowed {
 			for _, li := range info.listeners {
+				if li.valid {
+					t.out.listenerSetPorts[info.gw] = append(t.out.listenerSetPorts[info.gw], portOf(li.spec))
+				}
+
 				t.finishListener(li)
 				st.Listeners = append(st.Listeners, gwv1.ListenerEntryStatus(*li.status))
 			}

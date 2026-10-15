@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -14,7 +15,7 @@ import (
 func gatewayNamespaceProvider(kube *kubefake.Clientset) *Provider {
 	return &Provider{kube: kube, cfg: Config{
 		Mode:  ModeController,
-		Proxy: Proxy{GatewayNamespace: true, ClusterRole: "turna-proxy-reader", Image: "example:1"},
+		Proxy: Proxy{GatewayNamespace: true, ClusterRole: "turna-proxy-reader", Image: "example:1", Namespace: "turna-system"},
 	}}
 }
 
@@ -79,21 +80,31 @@ func TestGatewayNamespaceProvision(t *testing.T) {
 		t.Errorf("service account = %q, want %q", dep.Spec.Template.Spec.ServiceAccountName, name)
 	}
 
-	for _, kind := range []string{"configmap", "secret"} {
-		var err error
-		if kind == "configmap" {
-			_, err = kube.CoreV1().ConfigMaps("team-a").Get(ctx, name, metav1.GetOptions{})
-		} else {
-			_, err = kube.CoreV1().Secrets("team-a").Get(ctx, name, metav1.GetOptions{})
-		}
-
-		if err != nil {
-			t.Errorf("%s: %v", kind, err)
-		}
+	if _, err := kube.CoreV1().ConfigMaps("team-a").Get(ctx, name, metav1.GetOptions{}); err != nil {
+		t.Errorf("configmap: %v", err)
 	}
 
-	// the proxy reads only its own bundle in the namespace
-	role, err := kube.RbacV1().Roles("team-a").Get(ctx, name, metav1.GetOptions{})
+	// the bundle holds private keys of other namespaces and stays in the
+	// controller namespace, where gateway owners cannot read it
+	if _, err := kube.CoreV1().Secrets("team-a").Get(ctx, name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Errorf("bundle in the gateway namespace: %v", err)
+	}
+
+	if _, err := kube.CoreV1().Secrets("turna-system").Get(ctx, name, metav1.GetOptions{}); err != nil {
+		t.Errorf("bundle: %v", err)
+	}
+
+	cm, err := kube.CoreV1().ConfigMaps("team-a").Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(cm.Data["turna.yaml"], "certificate_secret: turna-system/"+name) {
+		t.Errorf("proxy config = %s", cm.Data["turna.yaml"])
+	}
+
+	// the proxy reads only its own bundle
+	role, err := kube.RbacV1().Roles("turna-system").Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,8 +113,13 @@ func TestGatewayNamespaceProvision(t *testing.T) {
 		t.Errorf("role rules = %+v", role.Rules)
 	}
 
-	if _, err := kube.RbacV1().RoleBindings("team-a").Get(ctx, name, metav1.GetOptions{}); err != nil {
+	rb, err := kube.RbacV1().RoleBindings("turna-system").Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
 		t.Fatal(err)
+	}
+
+	if len(rb.Subjects) != 1 || rb.Subjects[0].Namespace != "team-a" || rb.Subjects[0].Name != name {
+		t.Errorf("role binding subjects = %+v", rb.Subjects)
 	}
 
 	crb, err := kube.RbacV1().ClusterRoleBindings().Get(ctx, clusterRoleBindingName(nsName{"team-a", name}), metav1.GetOptions{})
@@ -115,8 +131,8 @@ func TestGatewayNamespaceProvision(t *testing.T) {
 		t.Errorf("cluster role binding = %+v", crb)
 	}
 
-	// nothing in the controller namespace
-	if deps, _ := kube.AppsV1().Deployments(podNamespace()).List(ctx, metav1.ListOptions{}); podNamespace() != "team-a" && len(deps.Items) > 0 {
+	// no proxy in the controller namespace
+	if deps, _ := kube.AppsV1().Deployments("turna-system").List(ctx, metav1.ListOptions{}); len(deps.Items) > 0 {
 		t.Errorf("deployments in the controller namespace: %d", len(deps.Items))
 	}
 
@@ -135,11 +151,15 @@ func TestGatewayNamespaceProvision(t *testing.T) {
 			return err
 		},
 		"role": func() error {
-			_, err := kube.RbacV1().Roles("team-a").Get(ctx, name, metav1.GetOptions{})
+			_, err := kube.RbacV1().Roles("turna-system").Get(ctx, name, metav1.GetOptions{})
+			return err
+		},
+		"secret": func() error {
+			_, err := kube.CoreV1().Secrets("turna-system").Get(ctx, name, metav1.GetOptions{})
 			return err
 		},
 		"rolebinding": func() error {
-			_, err := kube.RbacV1().RoleBindings("team-a").Get(ctx, name, metav1.GetOptions{})
+			_, err := kube.RbacV1().RoleBindings("turna-system").Get(ctx, name, metav1.GetOptions{})
 			return err
 		},
 		"clusterrolebinding": func() error {
@@ -238,5 +258,24 @@ func TestGatewayNamespaceValidate(t *testing.T) {
 		if err := tt.cfg.validate(); (err == nil) != tt.ok {
 			t.Errorf("%s: err = %v", name, err)
 		}
+	}
+}
+
+// Gateway owners cannot set the labels and annotations turna tracks its
+// state with.
+func TestInfrastructureCannotSetTurnaMetadata(t *testing.T) {
+	gw := gatewayObj("app", "gw")
+	gw.Spec.Infrastructure = &gwv1.GatewayInfrastructure{
+		Labels:      map[gwv1.LabelKey]gwv1.LabelValue{"turna.rakunlabs.com/other": "x", "team": "a"},
+		Annotations: map[gwv1.AnnotationKey]gwv1.AnnotationValue{annotationConfigHash: "fixed", annotationLoadBalancerIP: "1.2.3.4", annotationManaged: "x"},
+	}
+
+	if a := infrastructureAnnotations(gw); a != nil {
+		t.Errorf("annotations = %v", a)
+	}
+
+	l := infrastructureLabels(gw, map[string]string{})
+	if _, ok := l["turna.rakunlabs.com/other"]; ok || l["team"] != "a" {
+		t.Errorf("labels = %v", l)
 	}
 }

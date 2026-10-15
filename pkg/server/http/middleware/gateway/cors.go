@@ -1,6 +1,8 @@
 package gateway
 
 import (
+	"bufio"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -40,6 +42,9 @@ func (c *CORS) middleware() func(http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// responses differ by origin, also for requests without one
+			w.Header().Add("Vary", "Origin")
+
 			origin := r.Header.Get("Origin")
 			if origin == "" {
 				next.ServeHTTP(w, r)
@@ -48,7 +53,6 @@ func (c *CORS) middleware() func(http.Handler) http.Handler {
 			}
 
 			h := w.Header()
-			h.Add("Vary", "Origin")
 
 			preflight := r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != ""
 			allowed := c.originAllowed(origin)
@@ -66,20 +70,16 @@ func (c *CORS) middleware() func(http.Handler) http.Handler {
 				return
 			}
 
-			h.Set("Access-Control-Allow-Origin", origin)
-			if c.AllowCredentials {
-				h.Set("Access-Control-Allow-Credentials", "true")
-			}
-
 			if !preflight {
-				if len(c.ExposeHeaders) > 0 {
-					h.Set("Access-Control-Expose-Headers", c.exposeHeaders())
-				}
-
-				next.ServeHTTP(w, r)
+				// set when the final response is written: interim responses
+				// clear the headers, and the filter replaces CORS headers of
+				// the backend
+				next.ServeHTTP(&corsWriter{ResponseWriter: w, set: func(h http.Header) { c.responseHeaders(h, origin) }}, r)
 
 				return
 			}
+
+			c.responseHeaders(h, origin)
 
 			h.Add("Vary", "Access-Control-Request-Method")
 			h.Add("Vary", "Access-Control-Request-Headers")
@@ -103,15 +103,78 @@ func (c *CORS) middleware() func(http.Handler) http.Handler {
 				h.Set("Access-Control-Allow-Headers", strings.Join(c.AllowHeaders, ", "))
 			}
 
-			if len(c.ExposeHeaders) > 0 {
-				h.Set("Access-Control-Expose-Headers", c.exposeHeaders())
-			}
-
 			h.Set("Access-Control-Max-Age", strconv.Itoa(maxAge))
 
 			w.WriteHeader(http.StatusNoContent)
 		})
 	}
+}
+
+// responseHeaders sets the CORS headers of a response to an allowed origin.
+func (c *CORS) responseHeaders(h http.Header, origin string) {
+	if !slices.Contains(h.Values("Vary"), "Origin") {
+		h.Add("Vary", "Origin")
+	}
+
+	h.Set("Access-Control-Allow-Origin", origin)
+
+	h.Del("Access-Control-Allow-Credentials")
+	if c.AllowCredentials {
+		h.Set("Access-Control-Allow-Credentials", "true")
+	}
+
+	h.Del("Access-Control-Expose-Headers")
+	if e := c.exposeHeaders(); e != "" {
+		h.Set("Access-Control-Expose-Headers", e)
+	}
+}
+
+// corsWriter sets the CORS headers when the final response starts.
+type corsWriter struct {
+	http.ResponseWriter
+
+	set     func(http.Header)
+	written bool
+}
+
+func (w *corsWriter) WriteHeader(code int) {
+	if !w.written && !informational(code) {
+		w.written = true
+		w.set(w.Header())
+	}
+
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *corsWriter) Write(b []byte) (int, error) {
+	if !w.written {
+		w.WriteHeader(http.StatusOK)
+	}
+
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *corsWriter) Flush() {
+	if !w.written {
+		w.WriteHeader(http.StatusOK)
+	}
+
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (w *corsWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if !w.written {
+		w.written = true
+		w.set(w.Header())
+	}
+
+	return http.NewResponseController(w.ResponseWriter).Hijack()
+}
+
+func (w *corsWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }
 
 // exposeHeaders lists the exposed headers; a wildcard is not honored by

@@ -34,7 +34,9 @@ const (
 	labelGatewayNamespace = "turna.rakunlabs.com/gateway-namespace"
 	labelController       = "turna.rakunlabs.com/controller-id"
 	annotationConfigHash  = "turna.rakunlabs.com/config-hash"
-	annotationManaged     = "turna.rakunlabs.com/managed-annotations"
+	// turnaPrefix starts the labels and annotations managed by turna
+	turnaPrefix       = "turna.rakunlabs.com/"
+	annotationManaged = "turna.rakunlabs.com/managed-annotations"
 	// annotationLoadBalancerIP is the spec.loadBalancerIP set from Gateway
 	// spec.addresses
 	annotationLoadBalancerIP = "turna.rakunlabs.com/load-balancer-ip"
@@ -145,27 +147,32 @@ func (lp listenerPort) name() string {
 	return "p" + strconv.Itoa(int(lp.port))
 }
 
-// listenerPorts returns unique listener ports and protocols of the gateway
-// and its attached ListenerSets, skipping ports that are out of range with
-// the port offset or that use the reserved health port.
-func listenerPorts(gw *gwv1.Gateway, offset, reserved int, sets ...*gwv1.ListenerSet) []listenerPort {
-	var ports []listenerPort
-
-	all := slices.Clone(gw.Spec.Listeners)
-	for _, ls := range sets {
-		for _, e := range ls.Spec.Listeners {
-			all = append(all, gwv1.Listener(e))
-		}
+// portOf returns the Service port of a listener.
+func portOf(l gwv1.Listener) listenerPort {
+	lp := listenerPort{port: int32(l.Port), protocol: corev1.ProtocolTCP}
+	if l.Protocol == gwv1.UDPProtocolType {
+		lp.protocol = corev1.ProtocolUDP
 	}
 
-	for _, l := range all {
-		if local := int(l.Port) + offset; local < 1 || local > 65535 || local == reserved {
-			continue
-		}
+	return lp
+}
 
-		lp := listenerPort{port: int32(l.Port), protocol: corev1.ProtocolTCP}
-		if l.Protocol == gwv1.UDPProtocolType {
-			lp.protocol = corev1.ProtocolUDP
+// listenerPorts returns unique listener ports and protocols of the gateway
+// and the given ports of its ListenerSets, skipping ports that are out of
+// range with the port offset or that use the reserved health port.
+func listenerPorts(gw *gwv1.Gateway, offset, reserved int, extra ...listenerPort) []listenerPort {
+	var ports []listenerPort
+
+	all := make([]listenerPort, 0, len(gw.Spec.Listeners)+len(extra))
+	for _, l := range gw.Spec.Listeners {
+		all = append(all, portOf(l))
+	}
+
+	all = append(all, extra...)
+
+	for _, lp := range all {
+		if local := int(lp.port) + offset; local < 1 || local > 65535 || local == reserved {
+			continue
 		}
 
 		if !slices.Contains(ports, lp) {
@@ -228,7 +235,7 @@ func infrastructureLabels(gw *gwv1.Gateway, own map[string]string) map[string]st
 
 	if gw.Spec.Infrastructure != nil {
 		for k, v := range gw.Spec.Infrastructure.Labels {
-			if _, managed := own[string(k)]; !managed {
+			if _, managed := own[string(k)]; !managed && !strings.HasPrefix(string(k), turnaPrefix) {
 				out[string(k)] = string(v)
 			}
 		}
@@ -248,8 +255,18 @@ func infrastructureAnnotations(gw *gwv1.Gateway) map[string]string {
 	keys := make([]string, 0, len(gw.Spec.Infrastructure.Annotations))
 
 	for k, v := range gw.Spec.Infrastructure.Annotations {
+		// annotations of turna track its own state and are not set by
+		// gateway owners
+		if strings.HasPrefix(string(k), turnaPrefix) {
+			continue
+		}
+
 		out[string(k)] = string(v)
 		keys = append(keys, string(k))
+	}
+
+	if len(keys) == 0 {
+		return nil
 	}
 
 	slices.Sort(keys)
@@ -299,8 +316,11 @@ func gatewayError(err error, gw nsName) error {
 // and removes resources of deleted gateways. Current objects are read from
 // the informer cache when available, so unchanged gateways cost no requests.
 // policies lists the BackendTLSPolicies applied per gateway.
-func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap *Snapshot, policies map[nsName]map[nsName]struct{}) error {
+func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap *Snapshot, policies map[nsName]map[nsName]struct{}, setPorts ...map[nsName][]listenerPort) error {
 	want := make(map[nsName]struct{}, len(gateways))
+	// bundle Secrets and the Roles reading them live in the controller
+	// namespace
+	wantBundle := make(map[nsName]struct{}, len(gateways))
 	perGateway := make(map[nsName]error)
 	var errs []error
 
@@ -318,11 +338,17 @@ func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap
 		k := key(gw)
 		ns, name := p.proxyNamespaceFor(k), proxyName(k)
 		want[nsName{Namespace: ns, Name: name}] = struct{}{}
+		wantBundle[nsName{Namespace: p.proxyNamespace(), Name: name}] = struct{}{}
 
 		cas := bundleCACertificates(snap.BackendTLSPolicies, policies[k], idx)
 		maps.Copy(cas, bundleClientCACertificates(gw, idx))
 
-		if err := p.applyProxy(ctx, ns, name, gw, idx, cas); err != nil {
+		var ports []listenerPort
+		if len(setPorts) > 0 {
+			ports = setPorts[0][k]
+		}
+
+		if err := p.applyProxy(ctx, ns, name, gw, idx, cas, ports...); err != nil {
 			err = fmt.Errorf("provision gateway %s: %w", k.String(), err)
 			perGateway[k] = err
 			errs = append(errs, err)
@@ -350,7 +376,7 @@ func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap
 	errs = append(errs, cleanup(ctx, "configmap", want, p.listConfigMaps(ctx, ns, selector), func(k nsName, opts metav1.DeleteOptions) error {
 		return core.ConfigMaps(k.Namespace).Delete(ctx, k.Name, opts)
 	})...)
-	errs = append(errs, cleanup(ctx, "secret", want, p.listSecrets(ctx, ns, selector), func(k nsName, opts metav1.DeleteOptions) error {
+	errs = append(errs, cleanup(ctx, "secret", wantBundle, p.listSecrets(ctx, ns, selector), func(k nsName, opts metav1.DeleteOptions) error {
 		return core.Secrets(k.Namespace).Delete(ctx, k.Name, opts)
 	})...)
 
@@ -358,10 +384,10 @@ func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap
 		errs = append(errs, cleanup(ctx, "serviceaccount", want, p.listServiceAccounts(ctx, selector), func(k nsName, opts metav1.DeleteOptions) error {
 			return core.ServiceAccounts(k.Namespace).Delete(ctx, k.Name, opts)
 		})...)
-		errs = append(errs, cleanup(ctx, "role", want, p.listRoles(ctx, selector), func(k nsName, opts metav1.DeleteOptions) error {
+		errs = append(errs, cleanup(ctx, "role", wantBundle, p.listRoles(ctx, selector), func(k nsName, opts metav1.DeleteOptions) error {
 			return rbac.Roles(k.Namespace).Delete(ctx, k.Name, opts)
 		})...)
-		errs = append(errs, cleanup(ctx, "rolebinding", want, p.listRoleBindings(ctx, selector), func(k nsName, opts metav1.DeleteOptions) error {
+		errs = append(errs, cleanup(ctx, "rolebinding", wantBundle, p.listRoleBindings(ctx, selector), func(k nsName, opts metav1.DeleteOptions) error {
 			return rbac.RoleBindings(k.Namespace).Delete(ctx, k.Name, opts)
 		})...)
 		errs = append(errs, cleanupClusterRoleBindings(ctx, want, p.listClusterRoleBindings(ctx, selector), func(name string, opts metav1.DeleteOptions) error {
@@ -515,7 +541,7 @@ func cached[T any](ok bool, get func(string) (T, error)) func(string) (T, error)
 	return get
 }
 
-func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gateway, idx *index, cas map[string][]byte) error {
+func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gateway, idx *index, cas map[string][]byte, setPorts ...listenerPort) error {
 	if p.proxyImage() == "" {
 		return errors.New("proxy image is not set")
 	}
@@ -534,8 +560,12 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 	meta := infrastructureLabels(gw, lbls)
 	annotations := infrastructureAnnotations(gw)
 
+	// The bundle stays in the controller namespace: it holds private keys of
+	// other namespaces, which gateway owners must not read.
+	bundleNS := p.proxyNamespace()
+
 	if p.cfg.Proxy.GatewayNamespace {
-		if err := p.applyProxyIdentity(ctx, ns, name, lbls, meta, annotations); err != nil {
+		if err := p.applyProxyIdentity(ctx, ns, bundleNS, name, lbls, meta, annotations); err != nil {
 			return err
 		}
 	}
@@ -543,14 +573,14 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 	// The proxy reads only the certificates of its gateway from this Secret
 	// and needs no access to Secrets of the watched namespaces.
 	bundle := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: lbls},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: bundleNS, Labels: lbls},
 		Type:       corev1.SecretTypeOpaque,
 		Data:       bundleCertificates(gw, idx),
 	}
 	maps.Copy(bundle.Data, cas)
 
-	if err := upsert(ctx, p.kube.CoreV1().Secrets(ns), cached(pl != nil, func(n string) (*corev1.Secret, error) {
-		return pl.secrets.Secrets(ns).Get(n)
+	if err := upsert(ctx, p.kube.CoreV1().Secrets(bundleNS), cached(pl != nil, func(n string) (*corev1.Secret, error) {
+		return pl.secrets.Secrets(bundleNS).Get(n)
 	}), bundle, func(cur *corev1.Secret) bool {
 		if equality.Semantic.DeepEqual(cur.Data, bundle.Data) && maps.Equal(cur.Labels, lbls) && cur.Type == bundle.Type {
 			return false
@@ -565,7 +595,7 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 		return fmt.Errorf("secret: %w", err)
 	}
 
-	config, err := p.cfg.proxyConfig(k, ns+"/"+name)
+	config, err := p.cfg.proxyConfig(k, bundleNS+"/"+name)
 	if err != nil {
 		return err
 	}
@@ -593,7 +623,7 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 		return fmt.Errorf("configmap: %w", err)
 	}
 
-	ports := listenerPorts(gw, p.cfg.PortOffset, p.cfg.Proxy.healthPort(), attachedListenerSets(gw, idx)...)
+	ports := listenerPorts(gw, p.cfg.PortOffset, p.cfg.Proxy.healthPort(), setPorts...)
 
 	svc := p.proxyService(ns, name, meta, gw, ports)
 	if err := upsert(ctx, p.kube.CoreV1().Services(ns), cached(pl != nil, func(n string) (*corev1.Service, error) {

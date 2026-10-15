@@ -119,12 +119,15 @@ func (c *Retry) middleware(backendTimeout time.Duration) func(http.Handler) http
 
 // bufferBody reads the request body when it is not larger than limit. ok is
 // false when the body is larger; r.Body then still yields the whole body.
+// A body of unknown length is a stream, such as gRPC streaming or a chunked
+// upload, which may wait for the response before it ends; it is not
+// buffered and not retried.
 func bufferBody(r *http.Request, limit int64) (body []byte, ok bool, err error) {
 	if r.Body == nil || r.Body == http.NoBody {
 		return nil, true, nil
 	}
 
-	if r.ContentLength > limit {
+	if r.ContentLength > limit || r.ContentLength < 0 {
 		return nil, false, nil
 	}
 
@@ -175,6 +178,13 @@ func (w *retryWriter) WriteHeader(code int) {
 	}
 
 	if informational(code) {
+		// interim responses such as 103 Early Hints are sent on; a later
+		// retry still sends its own final response
+		if code != http.StatusSwitchingProtocols {
+			w.copyHeader()
+			w.ResponseWriter.WriteHeader(code)
+		}
+
 		return
 	}
 
@@ -186,6 +196,12 @@ func (w *retryWriter) WriteHeader(code int) {
 		return
 	}
 
+	w.copyHeader()
+	w.ResponseWriter.WriteHeader(code)
+}
+
+// copyHeader sets the headers of the attempt on the response.
+func (w *retryWriter) copyHeader() {
 	dst := w.ResponseWriter.Header()
 	for k := range dst {
 		if _, ok := w.header[k]; !ok {
@@ -196,8 +212,6 @@ func (w *retryWriter) WriteHeader(code int) {
 	for k, v := range w.header {
 		dst[k] = v
 	}
-
-	w.ResponseWriter.WriteHeader(code)
 }
 
 func (w *retryWriter) Write(b []byte) (int, error) {
@@ -229,9 +243,12 @@ func (w *retryWriter) Flush() {
 // Hijack hands the connection over, for example for upgraded connections.
 // A hijacked attempt is final.
 func (w *retryWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	w.written = true
+	conn, rw, err := http.NewResponseController(w.ResponseWriter).Hijack()
+	if err == nil {
+		w.written = true
+	}
 
-	return http.NewResponseController(w.ResponseWriter).Hijack()
+	return conn, rw, err
 }
 
 func (w *retryWriter) Unwrap() http.ResponseWriter {

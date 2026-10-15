@@ -19,9 +19,9 @@ func clusterRoleBindingName(k nsName) string {
 }
 
 // applyProxyIdentity creates the ServiceAccount of a proxy in the gateway
-// namespace, a Role reading only its bundle Secret, and the binding to
-// proxy.cluster_role for the watched resources.
-func (p *Provider) applyProxyIdentity(ctx context.Context, ns, name string, own, meta map[string]string, annotations map[string]string) error {
+// namespace, a Role in bundleNS reading only its bundle Secret, and the
+// binding to proxy.cluster_role for the watched resources.
+func (p *Provider) applyProxyIdentity(ctx context.Context, ns, bundleNS, name string, own, meta map[string]string, annotations map[string]string) error {
 	pl := p.proxies()
 	core, rbac := p.kube.CoreV1(), p.kube.RbacV1()
 
@@ -49,9 +49,9 @@ func (p *Provider) applyProxyIdentity(ctx context.Context, ns, name string, own,
 		Verbs:         []string{"get", "list", "watch"},
 	}}
 
-	role := &rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: own}, Rules: rules}
-	if err := upsert(ctx, rbac.Roles(ns), cached(pl != nil && pl.roles != nil, func(n string) (*rbacv1.Role, error) {
-		return pl.roles.Roles(ns).Get(n)
+	role := &rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: bundleNS, Labels: own}, Rules: rules}
+	if err := upsert(ctx, rbac.Roles(bundleNS), cached(pl != nil && pl.roles != nil, func(n string) (*rbacv1.Role, error) {
+		return pl.roles.Roles(bundleNS).Get(n)
 	}), role, func(cur *rbacv1.Role) bool {
 		if maps.Equal(cur.Labels, own) && equality.Semantic.DeepEqual(cur.Rules, rules) {
 			return false
@@ -68,12 +68,12 @@ func (p *Provider) applyProxyIdentity(ctx context.Context, ns, name string, own,
 	subjects := []rbacv1.Subject{{Kind: rbacv1.ServiceAccountKind, Name: name, Namespace: ns}}
 
 	rb := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: own},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: bundleNS, Labels: own},
 		RoleRef:    rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "Role", Name: name},
 		Subjects:   subjects,
 	}
-	if err := upsert(ctx, rbac.RoleBindings(ns), cached(pl != nil && pl.roleBindings != nil, func(n string) (*rbacv1.RoleBinding, error) {
-		return pl.roleBindings.RoleBindings(ns).Get(n)
+	if err := upsert(ctx, rbac.RoleBindings(bundleNS), cached(pl != nil && pl.roleBindings != nil, func(n string) (*rbacv1.RoleBinding, error) {
+		return pl.roleBindings.RoleBindings(bundleNS).Get(n)
 	}), rb, func(cur *rbacv1.RoleBinding) bool {
 		// the role reference is immutable and never changes for a name
 		if maps.Equal(cur.Labels, own) && equality.Semantic.DeepEqual(cur.Subjects, subjects) {

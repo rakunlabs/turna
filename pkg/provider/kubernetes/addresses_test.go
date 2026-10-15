@@ -144,3 +144,12 @@ func TestUnassignedAddresses(t *testing.T) {
 		t.Fatalf("unassigned = %v", got)
 	}
 }
+
+func TestRequestedAddressesNormalized(t *testing.T) {
+	gw := gatewayObj("app", "gw")
+	gw.Spec.Addresses = []gwv1.GatewaySpecAddress{address("", "2001:db8::1"), address("", "2001:DB8:0::1")}
+
+	if ips, _ := requestedAddresses(gw); len(ips) != 1 || ips[0] != "2001:db8::1" {
+		t.Fatalf("ips = %v", ips)
+	}
+}

@@ -74,7 +74,18 @@ func (t *UpstreamTLS) config() (*tls.Config, error) {
 			}
 
 			if len(sans) == 0 {
-				return leaf.VerifyHostname(t.ServerName)
+				// without a configured name the dialed host is verified,
+				// which the transport sends as the server name
+				name := t.ServerName
+				if name == "" {
+					name = cs.ServerName
+				}
+
+				if name == "" {
+					return errors.New("upstream tls: no server name to verify")
+				}
+
+				return leaf.VerifyHostname(name)
 			}
 
 			for _, san := range sans {

@@ -106,9 +106,9 @@ func sameClientValidation(a, b *listener) bool {
 // entrypointTLS returns the client certificate settings of an HTTPS
 // entrypoint. Listeners sharing the entrypoint must ask for the same
 // validation, see mergePorts.
-func entrypointTLS(li *listener) (shttp.EntryPointTLS, bool) {
+func entrypointTLS(li *listener) shttp.EntryPointTLS {
 	if li.clientCAs == nil {
-		return shttp.EntryPointTLS{}, false
+		return shttp.EntryPointTLS{}
 	}
 
 	out := shttp.EntryPointTLS{ClientCAs: li.clientCAs, ClientAuth: shttp.ClientAuthRequire}
@@ -116,5 +116,5 @@ func entrypointTLS(li *listener) (shttp.EntryPointTLS, bool) {
 		out.ClientAuth = shttp.ClientAuthRequest
 	}
 
-	return out, true
+	return out
 }

@@ -24,12 +24,14 @@ func requestedAddresses(gw *gwv1.Gateway) (ips []string, unsupported string) {
 			continue
 		}
 
-		if net.ParseIP(a.Value) == nil {
+		ip := net.ParseIP(a.Value)
+		if ip == nil {
 			return nil, fmt.Sprintf("address %q is not an IP address", a.Value)
 		}
 
-		if !slices.Contains(ips, a.Value) {
-			ips = append(ips, a.Value)
+		// one address written in two ways is requested once
+		if v := ip.String(); !slices.Contains(ips, v) {
+			ips = append(ips, v)
 		}
 	}
 

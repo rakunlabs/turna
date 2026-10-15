@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -303,8 +304,13 @@ func TestTranslateTLS(t *testing.T) {
 		Secrets:        []*corev1.Secret{secret},
 	})
 
-	if certs := res.Server.HTTP.TLS.Store["secure.example.com"]; len(certs) != 1 || certs[0].Cert == "" {
-		t.Fatalf("tls store = %v", res.Server.HTTP.TLS.Store)
+	if len(res.Server.HTTP.TLS.Store) != 0 {
+		t.Fatalf("shared tls store = %v", res.Server.HTTP.TLS.Store)
+	}
+
+	entryTLS := res.Server.HTTP.TLS.EntryPoints["k8s-"+strconv.Itoa(int(l.Port))]
+	if certs := entryTLS.Store["secure.example.com"]; len(certs) != 1 || certs[0].Cert == "" {
+		t.Fatalf("tls store = %v", entryTLS.Store)
 	}
 
 	for _, r := range res.Server.HTTP.Routers {

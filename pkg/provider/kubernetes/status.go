@@ -17,6 +17,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/util/retry"
@@ -32,6 +33,34 @@ type statusWriter struct {
 	leaderCtx context.Context
 	pending   *statusUpdate
 	wake      chan struct{}
+
+	// Services waiting for their load balancer address with a timer that
+	// translates again
+	rechecks map[types.UID]bool
+}
+
+// recheckAt translates again after d, once per Service.
+func (w *statusWriter) recheckAt(uid types.UID, d time.Duration) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.rechecks == nil {
+		w.rechecks = make(map[types.UID]bool)
+	}
+
+	if w.rechecks[uid] {
+		return
+	}
+
+	w.rechecks[uid] = true
+
+	time.AfterFunc(d, func() {
+		w.mu.Lock()
+		delete(w.rechecks, uid)
+		w.mu.Unlock()
+
+		w.p.notify()
+	})
 }
 
 type statusUpdate struct {
@@ -262,8 +291,12 @@ func listenerSetStatus(cur *gwv1.ListenerSet, st *ListenerSetStatus) *gwv1.Liste
 	return next
 }
 
-// listenerSetPending marks a programmed ListenerSet as pending while its
-// gateway is not programmed.
+// reasonParentNotProgrammed is the ListenerSet Programmed reason while the
+// gateway is not programmed; the API defines no constant for it.
+const reasonParentNotProgrammed = "ParentNotProgrammed"
+
+// listenerSetPending marks a programmed ListenerSet as not programmed while
+// its gateway is not programmed.
 func listenerSetPending(st *ListenerSetStatus, msg string) *ListenerSetStatus {
 	out := *st
 	out.Conditions = slices.Clone(st.Conditions)
@@ -272,7 +305,7 @@ func listenerSetPending(st *ListenerSetStatus, msg string) *ListenerSetStatus {
 		c := &out.Conditions[i]
 		if c.Type == string(gwv1.ListenerSetConditionProgrammed) && c.Status == metav1.ConditionTrue {
 			c.Status = metav1.ConditionFalse
-			c.Reason = string(gwv1.ListenerSetReasonPending)
+			c.Reason = reasonParentNotProgrammed
 			c.Message = "the parent gateway is not programmed: " + msg
 		}
 	}
@@ -445,9 +478,19 @@ func (w *statusWriter) proxyStatus(ctx context.Context, source *gwv1.Gateway) ([
 
 	deployed := dep.Status.ObservedGeneration >= dep.Generation && dep.Status.ReadyReplicas > 0
 
-	// a load balancer that cannot use a requested address assigns none or
-	// another one; once the proxy runs the address is reported unusable
-	if missing := unassignedAddresses(svc, source); len(missing) > 0 && (len(values) > 0 || deployed) {
+	// a load balancer that cannot use a requested address assigns another
+	// one or none; without any address the Service gets some time first, as
+	// cloud load balancers take a while to assign one
+	missing := unassignedAddresses(svc, source)
+	waited := time.Since(svc.CreationTimestamp.Time)
+	settled := len(values) > 0 || (deployed && waited > addressGrace)
+
+	if len(missing) > 0 && !settled && deployed {
+		// no event follows the end of the grace period
+		w.recheckAt(svc.UID, addressGrace-waited+time.Second)
+	}
+
+	if len(missing) > 0 && settled {
 		return toAddresses(values), fmt.Sprintf("the load balancer did not assign the requested addresses %s", strings.Join(missing, ", "))
 	}
 
@@ -494,6 +537,10 @@ func withNotReady(st *GatewayStatus, unusable string) *GatewayStatus {
 
 	return &out
 }
+
+// addressGrace is how long a load balancer may take to assign a requested
+// address before it is reported unusable.
+var addressGrace = 30 * time.Second
 
 // pendingProxy is the not ready reason of a proxy that is still starting.
 const pendingProxy = "pending"

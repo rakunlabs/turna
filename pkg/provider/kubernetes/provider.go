@@ -822,7 +822,7 @@ func (p *Provider) sync(ctx context.Context) error {
 			p.markReady()
 			return nil
 		}
-		provisionErr := p.provision(leaderCtx, res.served, snap, res.gatewayPolicies)
+		provisionErr := p.provision(leaderCtx, res.served, snap, res.gatewayPolicies, res.listenerSetPorts)
 		if provisionErr == nil {
 			p.markReady()
 		}

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"testing"
 	"time"
 )
@@ -90,6 +91,55 @@ func TestEntryPointClientCertificatesInvalid(t *testing.T) {
 		h := &HTTP{TLS: TLS{EntryPoints: map[string]EntryPointTLS{"e": e}}}
 		if _, err := h.buildTLSConfigs(map[string]struct{}{"e": {}}); err == nil {
 			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+// An entrypoint with its own store serves only its certificates; other
+// entrypoints never see them.
+func TestEntryPointCertificateStore(t *testing.T) {
+	shared := writeCertFiles(t, "shared.example.com")
+	a := writeCertFiles(t, "a.example.com")
+	b := writeCertFiles(t, "b.example.com")
+
+	h := &HTTP{TLS: TLS{
+		Store: map[string][]Certificate{"default": {shared}},
+		EntryPoints: map[string]EntryPointTLS{
+			"a": {Store: map[string][]Certificate{"app.example.com": {a}}},
+			"b": {Store: map[string][]Certificate{"app.example.com": {b}, "default": {b}}},
+		},
+	}}
+
+	configs, err := h.buildTLSConfigs(map[string]struct{}{"a": {}, "b": {}, "plain": {}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tt := range []struct {
+		entrypoint, sni, want string
+	}{
+		{"a", "app.example.com", "a.example.com"},
+		{"b", "app.example.com", "b.example.com"},
+		{"a", "other.example.com", "a.example.com"},
+		{"b", "other.example.com", "b.example.com"},
+		{"plain", "app.example.com", "shared.example.com"},
+	} {
+		cfg := configs.forEntrypoint(tt.entrypoint)
+		c, err := cfg.GetCertificate(&tls.ClientHelloInfo{ServerName: tt.sni})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if got := leafDNS(t, c); !slices.Contains(got, tt.want) {
+			t.Errorf("%s %s = %v, want %s", tt.entrypoint, tt.sni, got, tt.want)
+		}
+
+		if tt.entrypoint != "plain" && cfg.ClientAuth != tls.NoClientCert {
+			t.Errorf("%s client auth = %v", tt.entrypoint, cfg.ClientAuth)
+		}
+
+		if len(cfg.NextProtos) == 0 {
+			t.Errorf("%s has no ALPN protocols", tt.entrypoint)
 		}
 	}
 }

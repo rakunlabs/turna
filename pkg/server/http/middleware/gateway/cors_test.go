@@ -114,9 +114,10 @@ func TestCORS(t *testing.T) {
 		},
 		{
 			name: "no origin", cors: multi,
-			req:    corsRequest(http.MethodGet, "", nil),
-			status: http.StatusOK,
-			absent: []string{"Access-Control-Allow-Origin", "Vary"},
+			req:     corsRequest(http.MethodGet, "", nil),
+			status:  http.StatusOK,
+			headers: map[string]string{"Vary": "Origin"},
+			absent:  []string{"Access-Control-Allow-Origin"},
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -142,5 +143,45 @@ func TestCORS(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// CORS headers survive interim responses and replace CORS headers of the
+// backend instead of adding a second value.
+func TestCORSBackendHeaders(t *testing.T) {
+	registry.GlobalReg.AddHttpMiddleware("cors-own", []func(http.Handler) http.Handler{func(http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			// like the reverse proxy on an upstream 103
+			clear(w.Header())
+			w.WriteHeader(http.StatusEarlyHints)
+
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Expose-Headers", "X-Backend")
+			w.WriteHeader(http.StatusOK)
+		})
+	}})
+
+	g := &Gateway{Rules: []Rule{{
+		Filters:  []Filter{{CORS: &CORS{AllowOrigins: []string{"https://a.example.com"}, ExposeHeaders: []string{"*"}, AllowCredentials: true}}},
+		Backends: []Backend{{Weight: 1, Middlewares: []string{"cors-own"}}},
+	}}}
+
+	rec := serve(t, g, corsRequest(http.MethodGet, "https://a.example.com", nil))
+
+	if v := rec.Header().Values("Access-Control-Allow-Origin"); len(v) != 1 || v[0] != "https://a.example.com" {
+		t.Fatalf("allow origin = %v", v)
+	}
+
+	if v := rec.Header().Values("Vary"); len(v) != 1 || v[0] != "Origin" {
+		t.Fatalf("vary = %v", v)
+	}
+
+	if rec.Header().Get("Access-Control-Allow-Credentials") != "true" {
+		t.Fatal("credentials header missing")
+	}
+
+	// "*" is dropped with credentials, an empty header is not sent
+	if _, ok := rec.Header()["Access-Control-Expose-Headers"]; ok {
+		t.Fatalf("expose headers = %v", rec.Header().Values("Access-Control-Expose-Headers"))
 	}
 }
