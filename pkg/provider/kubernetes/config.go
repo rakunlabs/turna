@@ -124,18 +124,32 @@ type Proxy struct {
 	// controller needs write access to Deployments, Services, ConfigMaps,
 	// Secrets and PodDisruptionBudgets in this namespace.
 	Namespace string `cfg:"namespace"`
+	// GatewayNamespace creates the proxy resources in the namespace of each
+	// Gateway instead of Namespace, with a ServiceAccount per Gateway bound
+	// to ClusterRole. The controller needs cluster-wide write access to the
+	// proxy resources, ServiceAccounts, Roles, RoleBindings and
+	// ClusterRoleBindings, and the bind verb on ClusterRole.
+	GatewayNamespace bool `cfg:"gateway_namespace"`
+	// ClusterRole grants the proxies of GatewayNamespace read access to the
+	// watched resources, bound to the ServiceAccount of each proxy.
+	ClusterRole string `cfg:"cluster_role"`
 	// Image of the proxy pods. Empty uses the image of the controller pod
 	// (POD_NAME), so both stay in sync.
 	Image            string   `cfg:"image"`
 	ImagePullPolicy  string   `cfg:"image_pull_policy"`
 	ImagePullSecrets []string `cfg:"image_pull_secrets"`
 	// ServiceAccount of the proxy pods, it needs read access to the watched
-	// resources.
+	// resources. Not used with GatewayNamespace.
 	ServiceAccount string `cfg:"service_account"`
 	// Replicas per gateway, default is 1.
 	Replicas int32 `cfg:"replicas"`
 	// ServiceType of the gateway Service, default is LoadBalancer.
 	ServiceType string `cfg:"service_type"`
+	// AddressesAnnotation is the Service annotation that requests the IP
+	// addresses of Gateway spec.addresses from the load balancer, for example
+	// "metallb.io/loadBalancerIPs". Empty requests a single address with
+	// spec.loadBalancerIP.
+	AddressesAnnotation string `cfg:"addresses_annotation"`
 	// LogLevel of the proxies, default is info.
 	LogLevel string `cfg:"log_level"`
 	// HealthPort serves the readiness endpoint, default is 9901.
@@ -204,6 +218,16 @@ func (c *Config) mode() string {
 }
 
 func (c *Config) validate() error {
+	if c.mode() == ModeController && c.Proxy.GatewayNamespace {
+		if c.NamespaceScoped {
+			return errors.New("proxy.gateway_namespace is not used with namespace_scoped, proxies are already in the gateway namespace")
+		}
+
+		if c.Proxy.ClusterRole == "" {
+			return errors.New("proxy.gateway_namespace needs proxy.cluster_role")
+		}
+	}
+
 	if !c.NamespaceScoped {
 		return nil
 	}

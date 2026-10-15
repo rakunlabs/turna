@@ -76,6 +76,11 @@ suite() {
 		features="$features,$EXTRA_FEATURES"
 	fi
 
+	# GatewayStaticAddresses: the last address of the MetalLB pool is usable,
+	# an address outside of it is not
+	subnet="$(docker network inspect kind -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' | tr ' ' '\n' | grep -m1 '\.')"
+	prefix="$(echo "$subnet" | cut -d. -f1-2)"
+
 	# the suite runs in the kind network to reach the LoadBalancer addresses
 	log "running profiles $PROFILES"
 	docker rm -f turna-conformance >/dev/null 2>&1 || true
@@ -87,6 +92,7 @@ suite() {
 		-organization=rakunlabs -project=turna -url=https://github.com/rakunlabs/turna \
 		-version="$(cd "$REPO" && git describe --tags --always --dirty)" -contact=@rakunlabs \
 		-report-output=/work/report.yaml \
+		-usable-address="${prefix}.255.250" -unusable-address="${prefix}.254.1" \
 		"${EXTRA_ARGS[@]}" >/dev/null
 	docker cp "$WORK/conformance.test" turna-conformance:/work/conformance.test
 	docker cp "$WORK/kubeconfig" turna-conformance:/work/kubeconfig

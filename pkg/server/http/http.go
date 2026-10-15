@@ -34,6 +34,8 @@ type TLS struct {
 	// certificates. When set, the listener requests a client certificate and
 	// rejects any presented certificate that does not chain to these roots.
 	ClientCAFiles []string `cfg:"client_ca_files"`
+	// EntryPoints overrides client certificate validation per entrypoint.
+	EntryPoints map[string]EntryPointTLS `cfg:"entrypoints"`
 	// SelfSigned customizes the auto-generated certificate used when no
 	// certificate is configured in Store.
 	SelfSigned SelfSigned `cfg:"self_signed"`

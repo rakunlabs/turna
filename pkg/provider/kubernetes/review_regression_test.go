@@ -194,12 +194,6 @@ func TestUnsupportedGatewayFieldsReject(t *testing.T) {
 			},
 			reason: gwv1.GatewayReasonInvalidParameters,
 		},
-		"backend client certificate": {
-			mutate: func(gw *gwv1.Gateway) {
-				gw.Spec.TLS = &gwv1.GatewayTLSConfig{Backend: &gwv1.GatewayBackendTLS{ClientCertificateRef: &gwv1.SecretObjectReference{Name: "c"}}}
-			},
-			reason: gwv1.GatewayReasonInvalidClientCertificateRef,
-		},
 	}
 
 	for name, tt := range tests {
@@ -221,8 +215,8 @@ func TestUnsupportedGatewayFieldsReject(t *testing.T) {
 	}
 }
 
-// Client certificate validation is not implemented; an HTTPS listener that
-// requires it must not serve without it, other ports keep serving.
+// An HTTPS listener whose client certificate validation cannot be resolved
+// must not serve without it; other ports keep serving.
 func TestFrontendValidationRejectsListener(t *testing.T) {
 	secret := tlsSecret(t, "app", "cert", "example.com")
 	gw := gatewayObj("app", "gw",

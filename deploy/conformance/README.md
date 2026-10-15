@@ -1,7 +1,9 @@
 # Gateway API conformance
 
 `v1.6.3-report.yaml` is the report of the Gateway API conformance suite for
-turna, run with the experimental channel CRDs.
+turna, run with the experimental channel CRDs and the proxies in the Gateway
+namespace (`proxy.gateway_namespace`), which the `GatewayInfrastructure`
+tests need.
 
 ## Running
 

@@ -27,6 +27,7 @@ import (
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	policylisters "k8s.io/client-go/listers/policy/v1"
+	rbaclisters "k8s.io/client-go/listers/rbac/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
@@ -85,6 +86,12 @@ type proxyListers struct {
 	configmaps  corelisters.ConfigMapLister
 	secrets     corelisters.SecretLister
 	pdbs        policylisters.PodDisruptionBudgetLister
+
+	// set with proxy.gateway_namespace
+	serviceAccounts     corelisters.ServiceAccountLister
+	roles               rbaclisters.RoleLister
+	roleBindings        rbaclisters.RoleBindingLister
+	clusterRoleBindings rbaclisters.ClusterRoleBindingLister
 }
 
 type listers struct {
@@ -373,20 +380,21 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 		if available[kindBackendTLSPolicy] {
 			l.policies = gf.Gateway().V1().BackendTLSPolicies()
 			infs = append(infs, l.policies.Informer())
+		}
 
-			if !bundled {
-				// every ConfigMap is watched, the cache keeps only CA bundles
-				cmf := informers.NewSharedInformerFactoryWithOptions(p.kube, 0, informers.WithNamespace(ns), informers.WithTransform(stripConfigMap))
-				l.configMaps = cmf.Core().V1().ConfigMaps()
+		// CA certificates of policies and client certificate validation
+		if available[kindConfigMap] && !bundled {
+			// every ConfigMap is watched, the cache keeps only CA bundles
+			cmf := informers.NewSharedInformerFactoryWithOptions(p.kube, 0, informers.WithNamespace(ns), informers.WithTransform(stripConfigMap))
+			l.configMaps = cmf.Core().V1().ConfigMaps()
 
-				inf := l.configMaps.Informer()
-				if _, err := inf.AddEventHandler(caHandler(p.notify)); err != nil {
-					return err
-				}
-
-				syncs = append(syncs, inf.HasSynced)
-				starters = append(starters, cmf.Start)
+			inf := l.configMaps.Informer()
+			if _, err := inf.AddEventHandler(caHandler(p.notify)); err != nil {
+				return err
 			}
+
+			syncs = append(syncs, inf.HasSynced)
+			starters = append(starters, cmf.Start)
 		}
 
 		for _, inf := range infs {
@@ -496,26 +504,42 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 		// managed proxy resources: readiness and load balancer addresses feed
 		// gateway status, and provisioning compares against the cache
 		pf := informers.NewSharedInformerFactoryWithOptions(p.kube, 0,
-			informers.WithNamespace(p.proxyNamespace()),
+			informers.WithNamespace(p.managedNamespace()),
 			informers.WithTweakListOptions(func(o *metav1.ListOptions) {
 				o.LabelSelector = labelManagedBy + "=" + managedByValue
 			}),
 			informers.WithTransform(stripManagedFields),
 		)
 
-		p.proxyCache.Store(&proxyListers{
+		pl := &proxyListers{
 			deployments: pf.Apps().V1().Deployments().Lister(),
 			services:    pf.Core().V1().Services().Lister(),
 			configmaps:  pf.Core().V1().ConfigMaps().Lister(),
 			secrets:     pf.Core().V1().Secrets().Lister(),
 			pdbs:        pf.Policy().V1().PodDisruptionBudgets().Lister(),
-		})
+		}
 
-		for _, inf := range []cache.SharedIndexInformer{
+		infs := []cache.SharedIndexInformer{
 			pf.Apps().V1().Deployments().Informer(), pf.Core().V1().Services().Informer(),
 			pf.Core().V1().ConfigMaps().Informer(), pf.Core().V1().Secrets().Informer(),
 			pf.Policy().V1().PodDisruptionBudgets().Informer(),
-		} {
+		}
+
+		if p.cfg.Proxy.GatewayNamespace {
+			pl.serviceAccounts = pf.Core().V1().ServiceAccounts().Lister()
+			pl.roles = pf.Rbac().V1().Roles().Lister()
+			pl.roleBindings = pf.Rbac().V1().RoleBindings().Lister()
+			pl.clusterRoleBindings = pf.Rbac().V1().ClusterRoleBindings().Lister()
+
+			infs = append(infs,
+				pf.Core().V1().ServiceAccounts().Informer(), pf.Rbac().V1().Roles().Informer(),
+				pf.Rbac().V1().RoleBindings().Informer(), pf.Rbac().V1().ClusterRoleBindings().Informer(),
+			)
+		}
+
+		p.proxyCache.Store(pl)
+
+		for _, inf := range infs {
 			if _, err := inf.AddEventHandler(handler); err != nil {
 				return err
 			}
@@ -842,7 +866,7 @@ func (p *Provider) routeKinds(ctx context.Context) (map[gwv1.Kind]bool, error) {
 	}
 
 	for kind, ok := range out {
-		if !ok && kind != kindReferenceGrant && kind != kindBackendTLSPolicy {
+		if !ok && kind != kindReferenceGrant && kind != kindBackendTLSPolicy && kind != kindConfigMap {
 			slog.Debug("kubernetes provider: route kind not installed", "kind", kind)
 		}
 	}
@@ -850,12 +874,24 @@ func (p *Provider) routeKinds(ctx context.Context) (map[gwv1.Kind]bool, error) {
 	// An installation upgraded without the new RBAC must keep serving; a
 	// watch without permission would block the cache sync forever.
 	if out[kindBackendTLSPolicy] {
-		ok, err := p.canWatchBackendTLS(ctx)
+		ok, err := p.canWatch(ctx, "BackendTLSPolicy", authorizationv1.ResourceAttributes{Group: gwv1.GroupName, Resource: "backendtlspolicies"})
 		if err != nil {
 			return nil, err
 		}
 
 		out[kindBackendTLSPolicy] = ok
+	}
+
+	// CA certificates of BackendTLSPolicies and of client certificate
+	// validation; proxies read them from their bundle Secret
+	out[kindConfigMap] = false
+	if p.cfg.mode() != ModeProxy || p.cfg.CertificateSecret == "" {
+		ok, err := p.canWatch(ctx, "CA certificates", authorizationv1.ResourceAttributes{Resource: "configmaps"})
+		if err != nil {
+			return nil, err
+		}
+
+		out[kindConfigMap] = ok
 	}
 
 	return out, nil
@@ -864,11 +900,16 @@ func (p *Provider) routeKinds(ctx context.Context) (map[gwv1.Kind]bool, error) {
 // accessReviewTimeout bounds the access reviews of one discovery.
 const accessReviewTimeout = 10 * time.Second
 
-// canWatchBackendTLS reports whether BackendTLSPolicies, and the ConfigMaps
-// holding their CA certificates, may be listed in the watched namespaces.
-// Proxies read the CA certificates from their bundle Secret. A failed review
-// is an error, so discovery retries instead of guessing the permission.
+// canWatchBackendTLS reports whether BackendTLSPolicies may be listed in the
+// watched namespaces.
 func (p *Provider) canWatchBackendTLS(ctx context.Context) (bool, error) {
+	return p.canWatch(ctx, "BackendTLSPolicy", authorizationv1.ResourceAttributes{Group: gwv1.GroupName, Resource: "backendtlspolicies"})
+}
+
+// canWatch reports whether the resource may be listed and watched in the
+// watched namespaces. A failed review is an error, so discovery retries
+// instead of guessing the permission.
+func (p *Provider) canWatch(ctx context.Context, feature string, c authorizationv1.ResourceAttributes) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, accessReviewTimeout)
 	defer cancel()
 
@@ -877,30 +918,23 @@ func (p *Provider) canWatchBackendTLS(ctx context.Context) (bool, error) {
 		namespaces = []string{corev1.NamespaceAll}
 	}
 
-	checks := []authorizationv1.ResourceAttributes{{Group: gwv1.GroupName, Resource: "backendtlspolicies"}}
-	if p.cfg.mode() != ModeProxy || p.cfg.CertificateSecret == "" {
-		checks = append(checks, authorizationv1.ResourceAttributes{Resource: "configmaps"})
-	}
-
 	for _, ns := range namespaces {
-		for _, c := range checks {
-			for _, verb := range []string{"list", "watch"} {
-				attrs := c
-				attrs.Namespace, attrs.Verb = ns, verb
+		for _, verb := range []string{"list", "watch"} {
+			attrs := c
+			attrs.Namespace, attrs.Verb = ns, verb
 
-				review, err := p.kube.AuthorizationV1().SelfSubjectAccessReviews().Create(ctx,
-					&authorizationv1.SelfSubjectAccessReview{Spec: authorizationv1.SelfSubjectAccessReviewSpec{ResourceAttributes: &attrs}},
-					metav1.CreateOptions{})
-				if err != nil {
-					return false, fmt.Errorf("access review %s %s in %q: %w", verb, c.Resource, ns, err)
-				}
+			review, err := p.kube.AuthorizationV1().SelfSubjectAccessReviews().Create(ctx,
+				&authorizationv1.SelfSubjectAccessReview{Spec: authorizationv1.SelfSubjectAccessReviewSpec{ResourceAttributes: &attrs}},
+				metav1.CreateOptions{})
+			if err != nil {
+				return false, fmt.Errorf("access review %s %s in %q: %w", verb, c.Resource, ns, err)
+			}
 
-				if !review.Status.Allowed {
-					slog.Warn("kubernetes provider: BackendTLSPolicy is installed but not watched, update the RBAC",
-						"resource", c.Resource, "verb", verb, "namespace", ns)
+			if !review.Status.Allowed {
+				slog.Warn("kubernetes provider: "+feature+" is not watched, update the RBAC",
+					"resource", c.Resource, "verb", verb, "namespace", ns)
 
-					return false, nil
-				}
+				return false, nil
 			}
 		}
 	}

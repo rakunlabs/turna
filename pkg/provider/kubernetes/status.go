@@ -219,11 +219,11 @@ func (w *statusWriter) write(ctx context.Context, u *statusUpdate) {
 
 		gwAddresses := addresses
 		if controller {
-			var ready bool
+			var notReady string
 
-			gwAddresses, ready = w.proxyStatus(ctx, key(gw))
-			if !ready {
-				st = withNotReady(st)
+			gwAddresses, notReady = w.proxyStatus(ctx, gw)
+			if notReady != "" {
+				st = withNotReady(st, notReady)
 			}
 		}
 
@@ -309,10 +309,12 @@ func withApplyError(st *GatewayStatus, err error) *GatewayStatus {
 	return &out
 }
 
-// proxyStatus returns the addresses of the gateway Service and whether the
-// proxy has a ready replica.
-func (w *statusWriter) proxyStatus(ctx context.Context, gw nsName) ([]gwv1.GatewayStatusAddress, bool) {
-	ns := w.p.proxyNamespace()
+// proxyStatus returns the addresses of the gateway Service and why the
+// proxy is not ready: pendingProxy while the proxy or its address is coming
+// up, a message when a requested address is not assigned, empty when ready.
+func (w *statusWriter) proxyStatus(ctx context.Context, source *gwv1.Gateway) ([]gwv1.GatewayStatusAddress, string) {
+	gw := key(source)
+	ns := w.p.proxyNamespaceFor(gw)
 	name := proxyName(gw)
 
 	var (
@@ -327,10 +329,10 @@ func (w *statusWriter) proxyStatus(ctx context.Context, gw nsName) ([]gwv1.Gatew
 		svc, err = w.p.kube.CoreV1().Services(ns).Get(ctx, name, metav1.GetOptions{})
 	}
 	if err != nil {
-		return nil, false
+		return nil, pendingProxy
 	}
 	if !w.ownsProxy(svc, gw) {
-		return nil, false
+		return nil, pendingProxy
 	}
 
 	if pl := w.p.proxies(); pl != nil {
@@ -339,10 +341,10 @@ func (w *statusWriter) proxyStatus(ctx context.Context, gw nsName) ([]gwv1.Gatew
 		dep, err = w.p.kube.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
 	}
 	if err != nil {
-		return nil, false
+		return nil, pendingProxy
 	}
 	if !w.ownsProxy(dep, gw) {
-		return nil, false
+		return nil, pendingProxy
 	}
 
 	values := serviceAddresses(svc)
@@ -351,7 +353,19 @@ func (w *statusWriter) proxyStatus(ctx context.Context, gw nsName) ([]gwv1.Gatew
 		values = nil
 	}
 
-	return toAddresses(values), dep.Status.ObservedGeneration >= dep.Generation && dep.Status.ReadyReplicas > 0 && len(values) > 0
+	deployed := dep.Status.ObservedGeneration >= dep.Generation && dep.Status.ReadyReplicas > 0
+
+	// a load balancer that cannot use a requested address assigns none or
+	// another one; once the proxy runs the address is reported unusable
+	if missing := unassignedAddresses(svc, source); len(missing) > 0 && (len(values) > 0 || deployed) {
+		return toAddresses(values), fmt.Sprintf("the load balancer did not assign the requested addresses %s", strings.Join(missing, ", "))
+	}
+
+	if !deployed || len(values) == 0 {
+		return toAddresses(values), pendingProxy
+	}
+
+	return toAddresses(values), ""
 }
 
 func (w *statusWriter) ownsProxy(obj metav1.Object, gw nsName) bool {
@@ -370,7 +384,7 @@ func (w *statusWriter) currentSnapshot(source, current metav1.Object) bool {
 	return true
 }
 
-func withNotReady(st *GatewayStatus) *GatewayStatus {
+func withNotReady(st *GatewayStatus, unusable string) *GatewayStatus {
 	out := *st
 	out.Conditions = slices.Clone(st.Conditions)
 
@@ -380,11 +394,19 @@ func withNotReady(st *GatewayStatus) *GatewayStatus {
 			c.Status = metav1.ConditionFalse
 			c.Reason = string(gwv1.GatewayReasonPending)
 			c.Message = "waiting for the proxy deployment and address"
+
+			if unusable != pendingProxy {
+				c.Reason = string(gwv1.GatewayReasonAddressNotUsable)
+				c.Message = unusable
+			}
 		}
 	}
 
 	return &out
 }
+
+// pendingProxy is the not ready reason of a proxy that is still starting.
+const pendingProxy = "pending"
 
 // mergeConditions keeps LastTransitionTime of unchanged conditions.
 func mergeConditions(existing, next []metav1.Condition) []metav1.Condition {
@@ -445,6 +467,12 @@ func supportedFeatures() []gwv1.SupportedFeature {
 		features.SupportHTTPRoute307RedirectStatusCode,
 		features.SupportHTTPRoute308RedirectStatusCode,
 		features.SupportGatewayPort8080,
+		features.SupportGatewayInfrastructure,
+		features.SupportGatewayFrontendClientCertificateValidation,
+		features.SupportGatewayFrontendClientCertificateValidationInsecureFallback,
+		features.SupportGatewayBackendClientCertificate,
+		features.SupportGatewayStaticAddresses,
+		features.SupportGatewayAddressEmpty,
 		features.SupportGatewayHTTPListenerIsolation,
 		features.SupportGatewayHTTPSListenerDetectMisdirectedRequests,
 		features.SupportGRPCRoute,

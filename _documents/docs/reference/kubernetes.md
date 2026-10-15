@@ -2,7 +2,7 @@
 
 Turna implements the [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/). It watches `GatewayClass`, `Gateway`, `HTTPRoute`, `GRPCRoute`, `TLSRoute`, `TCPRoute`, `UDPRoute`, `ReferenceGrant` and `BackendTLSPolicy` resources and routes traffic straight to pod endpoints from `EndpointSlice`s, using Turna's own load balancing, retries and passive health checks.
 
-It passes all tests of the `GATEWAY-HTTP`, `GATEWAY-GRPC`, `GATEWAY-TLS`, `GATEWAY-TCP` and `GATEWAY-UDP` conformance profiles of Gateway API v1.6.3 (core and extended, experimental channel). The report and the script to run the suite in a kind cluster are in `deploy/conformance`.
+It passes all tests of the `GATEWAY-HTTP`, `GATEWAY-GRPC`, `GATEWAY-TLS`, `GATEWAY-TCP` and `GATEWAY-UDP` conformance profiles of Gateway API v1.6.3 (core and extended, experimental channel, proxies in the Gateway namespace). The report and the script to run the suite in a kind cluster are in `deploy/conformance`.
 
 ## Install
 
@@ -81,7 +81,15 @@ Complete examples are in `deploy/examples`: `gateway-demo.yaml` (HTTP canary rou
 | `proxy` | Runs inside the pods created by the controller and serves one Gateway. |
 | `standalone` | One Deployment serves every Gateway through one shared Service. Listeners of different Gateways on the same port share a socket and are separated by hostname only. |
 
-In controller mode, `spec.infrastructure.labels` of a Gateway are added to its proxy pods and `spec.infrastructure.annotations` to its Service, for example to configure a cloud load balancer.
+In controller mode, `spec.infrastructure.labels` and `spec.infrastructure.annotations` of a Gateway are added to its proxy Service and pods (and to its ServiceAccount with gateway placement), for example to configure a cloud load balancer. They cannot replace the labels turna uses to own and select the resources.
+
+### Proxy placement
+
+By default the proxies of all Gateways are created in the controller namespace and share the ServiceAccount `proxy.service_account`.
+
+With `proxy.gateway_namespace: true` (chart: `proxy.placement=gateway`, Kustomize: `deploy/kustomize/turna-gateway-gateway-namespace`) the Deployment, Service, ConfigMap, certificate Secret and PodDisruptionBudget of a Gateway are created in the Gateway's namespace, so the Gateway owner sees and debugs the proxy next to the Gateway. Each proxy gets its own ServiceAccount, a Role that reads only its certificate Secret, and a ClusterRoleBinding to `proxy.cluster_role` for the watched resources. The controller then needs cluster-wide write access to these resource kinds and the `bind` verb on `proxy.cluster_role`; the chart and the overlay create this ClusterRole. It cannot be combined with `namespace_scoped`.
+
+Switching the placement of an existing installation creates new proxies in the new place and removes the old ones, which can change the load balancer addresses of the Gateways.
 
 Each proxy Deployment spreads its replicas over nodes and zones. With more than one replica it also gets a PodDisruptionBudget with `maxUnavailable: 1`, so node drains and upgrades keep the Gateway serving. A terminating proxy keeps serving for `proxy.shutdown_delay` (preStop sleep, Kubernetes 1.30 or later) while load balancers stop sending it new connections.
 
@@ -149,8 +157,11 @@ providers:
         name: turna-gateway
     proxy:                  # controller mode
       namespace: ""         # needs the controller and proxy Roles in that namespace
+      gateway_namespace: false # create proxies in the namespace of each Gateway
+      cluster_role: ""      # gateway_namespace: ClusterRole bound to each proxy ServiceAccount
       image: ""             # empty uses the image of the controller pod (POD_NAME)
-      service_account: turna-proxy
+      service_account: turna-proxy # not used with gateway_namespace
+      addresses_annotation: "" # Service annotation for Gateway spec.addresses, e.g. metallb.io/loadBalancerIPs
       replicas: 1           # more than 1 adds a PodDisruptionBudget
       service_type: LoadBalancer
       health_port: 9901     # listeners on port + port_offset == health_port are rejected
@@ -165,6 +176,7 @@ The Kubernetes configuration is a separate layer next to the static `server` con
 
 - Listeners:
   - `HTTP`, and `HTTPS` with `Terminate` TLS from `kubernetes.io/tls` Secrets, also across namespaces with a `ReferenceGrant`.
+  - Client certificate validation of HTTPS listeners (`spec.tls.frontend`): `default` and `perPort` validation with CA bundles in `ca.crt` of ConfigMaps, also across namespaces with a `ReferenceGrant`. `AllowValidOnly` rejects the TLS handshake without a certificate signed by one of the CAs; `AllowInsecureFallback` accepts every client and sets the Gateway condition `InsecureFrontendValidationMode`. A listener with an invalid CA reference is not served (`ResolvedRefs=False` with `InvalidCACertificateRef`, `InvalidCACertificateKind` or `RefNotPermitted`, `Accepted=False` with `NoValidCACertificate`). In standalone mode, HTTPS listeners of different Gateways on one port must use the same validation. Proxies receive the CA certificates in their bundle Secret.
   - `TLS` with `Passthrough` or `Terminate`; both modes can share a port and are selected by SNI.
   - `TCP` and `UDP`; a TCP and a UDP listener can use the same port number.
 - Hostnames: exact and wildcard on listeners and routes, with the intersection rules of the specification. Listeners sharing a port are isolated: a request is handled only by the routes of the most specific listener matching its host. On HTTPS listeners sharing a port, a request whose `Host` header selects another listener than its TLS server name (for example on a reused HTTP/2 connection) is answered `421 Misdirected Request`.
@@ -177,22 +189,23 @@ The Kubernetes configuration is a separate layer next to the static `server` con
 - `TLSRoute`: routed by SNI to weighted backends; terminated connections reach the backend as plain TCP.
 - `TCPRoute` and `UDPRoute`: weighted backends. A listener without hostnames cannot tell routes apart, so the oldest attached route receives the traffic.
 - Backends: weighted `Service` references, cross-namespace with a `ReferenceGrant`, per-backend filters. Service ports with `appProtocol: kubernetes.io/h2c` are proxied as HTTP/2 without TLS; WebSocket upgrades are proxied on every backend (`kubernetes.io/ws`, and `kubernetes.io/wss` over TLS). `ExternalName` Services are rejected with `ResolvedRefs=False` unless `backend.allow_external_name` (chart: `allowExternalNameBackends`) is enabled, because they let route authors send traffic to any host, such as cloud metadata endpoints. Invalid backends answer their share of requests with an error (HTTP 500, gRPC `Internal`) or close their share of connections.
-- `BackendTLSPolicy`: HTTPRoute and GRPCRoute backends and mirrors connect to the targeted Service, or the port named by `sectionName`, over TLS. The certificate is verified against the CA bundles in `ca.crt` of the referenced ConfigMaps (or the system roots with `wellKnownCACertificates: System`), `hostname` is sent as SNI and checked unless `subjectAltNames` (hostname and URI) are set. Policies naming a section win over policies for the whole Service, then the older policy; the losing policy gets `Accepted=False` with reason `Conflicted` for the Gateways using the conflicted target, while its other targets still apply. A policy without a usable CA certificate gets `Accepted=False` (`NoValidCACertificate`) and its backends fail instead of connecting without verification. TLSRoute and TCPRoute backends are not affected. Proxies receive only the CA certificates of the policies used by their Gateway in their bundle Secret and need no ConfigMap access. The controller caches only the `ca.crt` key of ConfigMaps. Policy status lists at most 16 Gateways, conflicted ones first.
+- `BackendTLSPolicy`: HTTPRoute and GRPCRoute backends and mirrors connect to the targeted Service, or the port named by `sectionName`, over TLS. The certificate is verified against the CA bundles in `ca.crt` of the referenced ConfigMaps (or the system roots with `wellKnownCACertificates: System`), `hostname` is sent as SNI and checked unless `subjectAltNames` (hostname and URI) are set. Policies naming a section win over policies for the whole Service, then the older policy; the losing policy gets `Accepted=False` with reason `Conflicted` for the Gateways using the conflicted target, while its other targets still apply. A policy without a usable CA certificate gets `Accepted=False` (`NoValidCACertificate`) and its backends fail instead of connecting without verification. TLSRoute and TCPRoute backends are not affected. With `spec.tls.backend.clientCertificateRef` (a `kubernetes.io/tls` Secret, across namespaces with a `ReferenceGrant`) the Gateway presents that certificate to these TLS backends. An invalid reference keeps the Gateway serving without a client certificate and sets the Gateway condition `ResolvedRefs=False` (`InvalidClientCertificateRef` or `RefNotPermitted`). A route attached to Gateways with different client certificates presents none. Proxies receive only the CA certificates of the policies used by their Gateway in their bundle Secret and need no ConfigMap access. The controller caches only the `ca.crt` key of ConfigMaps. Policy status lists at most 16 Gateways, conflicted ones first.
 - `allowedRoutes` with `Same`, `All` and `Selector` namespaces and route kinds; `parentRef` `sectionName` and `port`.
+- Gateway `spec.addresses` (controller mode with LoadBalancer proxy Services): IP addresses are requested from the load balancer with `spec.loadBalancerIP`, or with the annotation named by `proxy.addresses_annotation` (for example `metallb.io/loadBalancerIPs`), which also allows several addresses. An address without a value asks for any address. A requested address the load balancer does not assign sets `Programmed=False` with `AddressNotUsable`. A `spec.loadBalancerIP` set by others on the proxy Service is kept.
 - Status for GatewayClass, Gateway, listeners, route parents of all route kinds and BackendTLSPolicy ancestors.
 
 Route kinds and `BackendTLSPolicy` are skipped when their CRD is not installed. Installed route kinds are checked every minute, so CRDs installed later are picked up without a restart.
 
 `ReferenceGrant` is watched as `v1`. Clusters with older CRDs that serve only `v1beta1` keep working; the watch switches to `v1` within a minute after the CRDs are upgraded.
 
-Not yet supported: `ListenerSet`, external auth filters, `sessionPersistence`, client certificates towards backends and from clients, `spec.addresses` and `spec.infrastructure` propagation on Gateways.
+Not yet supported: `ListenerSet`, external auth filters, `sessionPersistence` and `spec.infrastructure.parametersRef` on Gateways.
 
 A rule with `sessionPersistence` keeps routing without it, and the route gets `ResolvedRefs=False` with reason `UnsupportedValue` so the missing behavior is visible.
 
 Unsupported fields that would change security or placement are rejected instead of ignored:
 
-- A Gateway with `spec.addresses`, `spec.infrastructure.parametersRef` or `spec.tls.backend.clientCertificateRef` is not accepted and gets no proxy.
-- An HTTPS listener with client certificate validation (`spec.tls.frontend`) is not accepted, so it never serves without the required mutual TLS. Other listeners of the Gateway keep serving.
+- A Gateway with `spec.infrastructure.parametersRef`, or with an address in `spec.addresses` that is not an IP address, is not accepted and gets no proxy.
+- An HTTPS listener whose client certificate validation (`spec.tls.frontend`) has an invalid CA reference is not accepted, so it never serves without the required mutual TLS. Other listeners of the Gateway keep serving.
 
 ## Runtime updates
 

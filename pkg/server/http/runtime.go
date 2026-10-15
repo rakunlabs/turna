@@ -30,7 +30,7 @@ type Runtime struct {
 	wg  *sync.WaitGroup
 
 	rules *RuleSwitch
-	tls   atomic.Pointer[tls.Config]
+	tls   atomic.Pointer[tlsConfigs]
 
 	components *registry.Components
 
@@ -57,7 +57,7 @@ func NewRuntime(ctx context.Context, wg *sync.WaitGroup) *Runtime {
 type Prepared struct {
 	rt     *Runtime
 	rules  *RuleRouter
-	tls    *tls.Config
+	tls    *tlsConfigs
 	stage  *registry.ComponentStage
 	plain  map[string]struct{}
 	secure map[string]struct{}
@@ -74,15 +74,9 @@ func (rt *Runtime) Prepare(h *HTTP, entrypoints []string) (*Prepared, error) {
 	p := &Prepared{rt: rt, plain: plain, secure: secure}
 
 	if len(secure) > 0 {
-		p.tls, err = h.buildTLSConfig()
+		p.tls, err = h.buildTLSConfigs(secure)
 		if err != nil {
 			return nil, err
-		}
-
-		// GetConfigForClient bypasses the HTTP/2 setup of ServeTLS, so the
-		// returned config must advertise ALPN protocols itself.
-		if len(p.tls.NextProtos) == 0 {
-			p.tls.NextProtos = []string{"h2", "http/1.1"}
 		}
 	}
 
@@ -243,7 +237,7 @@ func (rt *Runtime) startServer(entrypoint string, secure bool, listener net.List
 			// Resolve the active TLS config on every handshake so certificate
 			// changes apply to new connections without restarting the server.
 			GetConfigForClient: func(*tls.ClientHelloInfo) (*tls.Config, error) {
-				return rt.tls.Load(), nil
+				return rt.tls.Load().forEntrypoint(entrypoint), nil
 			},
 		}
 	}

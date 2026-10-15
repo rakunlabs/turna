@@ -78,6 +78,11 @@ type listener struct {
 	certs   []shttp.Certificate
 	matches int
 
+	// client certificate validation of an HTTPS listener: the CA bundles,
+	// nil without validation, and whether invalid clients are accepted
+	clientCAs      []string
+	clientFallback bool
+
 	// passthrough TLS listener
 	passthrough bool
 
@@ -114,6 +119,10 @@ type translator struct {
 	policyTargets map[policyTarget][]nsName
 	// gateways of the route being translated
 	routeGateways []nsName
+	// client certificates the gateways present to TLS backends
+	clientCerts map[nsName]*shttp.Certificate
+	// invalid backend client certificate references of gateways
+	clientCertErrs map[nsName]*refError
 }
 
 type hostRules struct {
@@ -142,7 +151,7 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 				HTTP: shttp.HTTP{
 					Routers:     make(map[string]shttp.Router),
 					Middlewares: make(map[string]shttp.HTTPMiddleware),
-					TLS:         shttp.TLS{Store: make(map[string][]shttp.Certificate)},
+					TLS:         shttp.TLS{Store: make(map[string][]shttp.Certificate), EntryPoints: make(map[string]shttp.EntryPointTLS)},
 				},
 				TCP: tcp.TCP{
 					Routers:     make(map[string]tcp.Router),
@@ -169,6 +178,8 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 		backendTLS:     make(map[policyTarget]backendTLS),
 		policies:       make(map[nsName]*policyState),
 		policyTargets:  make(map[policyTarget][]nsName),
+		clientCerts:    make(map[nsName]*shttp.Certificate),
+		clientCertErrs: make(map[nsName]*refError),
 	}
 
 	classes := t.classes(s.GatewayClasses)
@@ -187,6 +198,14 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 
 		t.out.served = append(t.out.served, gw)
 		listeners[key(gw)] = t.gateway(gw)
+
+		// an invalid client certificate is reported in the gateway status;
+		// TLS backends then get no certificate and reject the connection
+		if cert, err := t.backendClientCert(gw); err != nil {
+			t.clientCertErrs[key(gw)] = err
+		} else if cert != nil {
+			t.clientCerts[key(gw)] = cert
+		}
 
 		// unsupported gateway fields: the gateway is not accepted and must
 		// not serve traffic
@@ -222,33 +241,16 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 // gatewayRejection reports Gateway fields that are not supported and make the
 // whole gateway not accepted, with the Accepted and Programmed reasons.
 func gatewayRejection(gw *gwv1.Gateway) (accepted, programmed, msg string, rejected bool) {
+	if _, unsupported := requestedAddresses(gw); unsupported != "" {
+		return string(gwv1.GatewayReasonUnsupportedAddress), string(gwv1.GatewayReasonAddressNotUsable), unsupported, true
+	}
+
 	switch {
-	case len(gw.Spec.Addresses) > 0:
-		return string(gwv1.GatewayReasonUnsupportedAddress), string(gwv1.GatewayReasonAddressNotUsable), "spec.addresses is not supported", true
 	case gw.Spec.Infrastructure != nil && gw.Spec.Infrastructure.ParametersRef != nil:
 		return string(gwv1.GatewayReasonInvalidParameters), string(gwv1.GatewayReasonInvalid), "spec.infrastructure.parametersRef is not supported", true
-	case gw.Spec.TLS != nil && gw.Spec.TLS.Backend != nil && gw.Spec.TLS.Backend.ClientCertificateRef != nil:
-		return string(gwv1.GatewayReasonInvalidClientCertificateRef), string(gwv1.GatewayReasonInvalid), "spec.tls.backend.clientCertificateRef is not supported", true
 	default:
 		return "", "", "", false
 	}
-}
-
-// requiresClientValidation reports whether the gateway asks for client
-// certificate validation on an HTTPS listener port.
-func requiresClientValidation(gw *gwv1.Gateway, port gwv1.PortNumber) bool {
-	if gw.Spec.TLS == nil || gw.Spec.TLS.Frontend == nil {
-		return false
-	}
-
-	f := gw.Spec.TLS.Frontend
-	for _, pp := range f.PerPort {
-		if pp.Port == port {
-			return pp.TLS.Validation != nil
-		}
-	}
-
-	return f.Default.Validation != nil
 }
 
 func (t *translator) servesGateway(gw *gwv1.Gateway) bool {
@@ -362,13 +364,22 @@ func (t *translator) gateway(gw *gwv1.Gateway) []*listener {
 				li.valid = false
 			}
 
-			// Client certificates are not validated; serving the listener
-			// anyway would silently drop the required mutual TLS.
-			if requiresClientValidation(gw, l.Port) {
-				const msg = "client certificate validation (spec.tls.frontend) is not supported"
-				accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonNoValidCACertificate), msg)
-				resolved = t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), false, string(gwv1.ListenerReasonInvalidCACertificateRef), msg)
-				li.valid = false
+			// a listener requiring client certificates must never serve
+			// without them, so any invalid CA reference stops it
+			if v := frontendValidation(gw, l.Port); v != nil {
+				cas, err := t.clientValidation(gw, v)
+				if err != nil {
+					resolved = t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), false, err.reason, err.msg)
+					li.valid = false
+				}
+
+				if len(cas) == 0 {
+					accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonNoValidCACertificate), "no valid CA certificate for client certificate validation")
+					li.valid = false
+				}
+
+				li.clientCAs = cas
+				li.clientFallback = v.Mode == gwv1.AllowInsecureFallback
 			}
 		case gwv1.TLSProtocolType:
 			mode := gwv1.TLSModeTerminate
@@ -543,6 +554,16 @@ func (t *translator) mergePorts(all map[nsName][]*listener) {
 				continue
 			}
 
+			// the handshake is shared, so listeners on a port must ask for the
+			// same client certificates; only gateways of a shared standalone
+			// port can differ
+			if len(p.listeners) > 0 && !sameClientValidation(p.listeners[0], li) {
+				li.valid = false
+				t.setConflict(li, string(gwv1.ListenerReasonProtocolConflict), "another listener on the port uses another client certificate validation")
+
+				continue
+			}
+
 			p.listeners = append(p.listeners, li)
 		}
 	}
@@ -564,6 +585,10 @@ func (t *translator) mergePorts(all map[nsName][]*listener) {
 		t.out.Server.EntryPoints[entry] = server.EntryPoint{Address: addr, Network: network}
 		t.families[entry] = p.listeners[0].family
 		t.secure[entry] = p.kind == "https"
+
+		if e, ok := entrypointTLS(p.listeners[0]); ok && t.secure[entry] {
+			t.out.Server.HTTP.TLS.EntryPoints[entry] = e
+		}
 
 		for _, li := range p.listeners {
 			li.entry = entry
@@ -999,7 +1024,25 @@ func (t *translator) finishGateways(list []*gwv1.Gateway, all map[nsName][]*list
 
 			if !accepted {
 				st.Conditions[1].Reason = string(gwv1.GatewayReasonInvalid)
+			} else if problem := t.cfg.addressProblem(gw); problem != "" {
+				st.Conditions[1] = t.condition(gw.Generation, string(gwv1.GatewayConditionProgrammed), false, string(gwv1.GatewayReasonAddressNotUsable), problem)
 			}
+		}
+
+		// clients without a valid certificate are let through on purpose
+		if insecureFrontend(gw) {
+			st.Conditions = append(st.Conditions, t.condition(gw.Generation, string(gwv1.GatewayConditionInsecureFrontendValidationMode), true,
+				string(gwv1.GatewayReasonConfigurationChanged), "client certificate validation allows insecure fallback"))
+		}
+
+		// references of the gateway outside its listeners
+		if backendClientCertRef(gw) != nil {
+			resolved := t.condition(gw.Generation, string(gwv1.GatewayConditionResolvedRefs), true, string(gwv1.GatewayReasonResolvedRefs), "")
+			if err := t.clientCertErrs[key(gw)]; err != nil {
+				resolved = t.condition(gw.Generation, string(gwv1.GatewayConditionResolvedRefs), false, err.reason, err.msg)
+			}
+
+			st.Conditions = append(st.Conditions, resolved)
 		}
 
 		t.out.Gateways[key(gw)] = st

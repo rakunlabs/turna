@@ -1,5 +1,5 @@
 apiVersion: gateway.networking.k8s.io/v1
-date: "2026-10-15T09:32:45Z"
+date: "2026-10-15T12:21:23Z"
 gatewayAPIChannel: experimental
 gatewayAPIVersion: v1.6.3
 implementation:
@@ -8,7 +8,7 @@ implementation:
   organization: rakunlabs
   project: turna
   url: https://github.com/rakunlabs/turna
-  version: v0.10.0-2-g62a7163-dirty
+  version: v0.10.0-3-gc006f32-dirty
 kind: ConformanceReport
 mode: default
 profiles:
@@ -22,14 +22,20 @@ profiles:
     result: success
     statistics:
       Failed: 0
-      Passed: 36
+      Passed: 46
       Skipped: 0
     supportedFeatures:
     - BackendTLSPolicy
     - BackendTLSPolicySANValidation
+    - GatewayAddressEmpty
+    - GatewayBackendClientCertificate
+    - GatewayFrontendClientCertificateValidation
+    - GatewayFrontendClientCertificateValidationInsecureFallback
     - GatewayHTTPListenerIsolation
     - GatewayHTTPSListenerDetectMisdirectedRequests
+    - GatewayInfrastructure
     - GatewayPort8080
+    - GatewayStaticAddresses
     - HTTPRoute303RedirectStatusCode
     - HTTPRoute307RedirectStatusCode
     - HTTPRoute308RedirectStatusCode
@@ -57,12 +63,6 @@ profiles:
     - HTTPRouteRetryConnectionError
     - HTTPRouteSchemeRedirect
     unsupportedFeatures:
-    - GatewayAddressEmpty
-    - GatewayBackendClientCertificate
-    - GatewayFrontendClientCertificateValidation
-    - GatewayFrontendClientCertificateValidationInsecureFallback
-    - GatewayInfrastructure
-    - GatewayStaticAddresses
     - ListenerSet
   name: GATEWAY-HTTP
   summary: Core tests succeeded. Extended tests succeeded.
@@ -72,16 +72,81 @@ profiles:
       Failed: 0
       Passed: 14
       Skipped: 0
+  extended:
+    result: success
+    statistics:
+      Failed: 0
+      Passed: 4
+      Skipped: 0
+    supportedFeatures:
+    - GatewayAddressEmpty
+    - GatewayBackendClientCertificate
+    - GatewayFrontendClientCertificateValidation
+    - GatewayFrontendClientCertificateValidationInsecureFallback
+    - GatewayHTTPListenerIsolation
+    - GatewayHTTPSListenerDetectMisdirectedRequests
+    - GatewayInfrastructure
+    - GatewayPort8080
+    - GatewayStaticAddresses
+    unsupportedFeatures:
+    - ListenerSet
   name: GATEWAY-GRPC
-  summary: Core tests succeeded.
+  summary: Core tests succeeded. Extended tests succeeded.
 - core:
     result: success
     statistics:
       Failed: 0
       Passed: 18
       Skipped: 0
+  extended:
+    result: success
+    statistics:
+      Failed: 0
+      Passed: 4
+      Skipped: 0
+    supportedFeatures:
+    - GatewayAddressEmpty
+    - GatewayBackendClientCertificate
+    - GatewayFrontendClientCertificateValidation
+    - GatewayFrontendClientCertificateValidationInsecureFallback
+    - GatewayHTTPListenerIsolation
+    - GatewayHTTPSListenerDetectMisdirectedRequests
+    - GatewayInfrastructure
+    - GatewayPort8080
+    - GatewayStaticAddresses
+    - TCPRoute
+    unsupportedFeatures:
+    - ListenerSet
   name: GATEWAY-TCP
-  summary: Core tests succeeded.
+  summary: Core tests succeeded. Extended tests succeeded.
+- core:
+    result: success
+    statistics:
+      Failed: 0
+      Passed: 19
+      Skipped: 0
+  extended:
+    result: success
+    statistics:
+      Failed: 0
+      Passed: 8
+      Skipped: 0
+    supportedFeatures:
+    - GatewayAddressEmpty
+    - GatewayBackendClientCertificate
+    - GatewayFrontendClientCertificateValidation
+    - GatewayFrontendClientCertificateValidationInsecureFallback
+    - GatewayHTTPListenerIsolation
+    - GatewayHTTPSListenerDetectMisdirectedRequests
+    - GatewayInfrastructure
+    - GatewayPort8080
+    - GatewayStaticAddresses
+    - TLSRouteModeMixed
+    - TLSRouteModeTerminate
+    unsupportedFeatures:
+    - ListenerSet
+  name: GATEWAY-TLS
+  summary: Core tests succeeded. Extended tests succeeded.
 - core:
     result: success
     statistics:
@@ -95,26 +160,17 @@ profiles:
       Passed: 4
       Skipped: 0
     supportedFeatures:
-    - GatewayHTTPListenerIsolation
-    - GatewayHTTPSListenerDetectMisdirectedRequests
-    - GatewayPort8080
-    - TLSRouteModeMixed
-    - TLSRouteModeTerminate
-    unsupportedFeatures:
     - GatewayAddressEmpty
     - GatewayBackendClientCertificate
     - GatewayFrontendClientCertificateValidation
     - GatewayFrontendClientCertificateValidationInsecureFallback
+    - GatewayHTTPListenerIsolation
+    - GatewayHTTPSListenerDetectMisdirectedRequests
     - GatewayInfrastructure
+    - GatewayPort8080
     - GatewayStaticAddresses
+    - UDPRoute
+    unsupportedFeatures:
     - ListenerSet
-  name: GATEWAY-TLS
-  summary: Core tests succeeded. Extended tests succeeded.
-- core:
-    result: success
-    statistics:
-      Failed: 0
-      Passed: 19
-      Skipped: 0
   name: GATEWAY-UDP
-  summary: Core tests succeeded.
+  summary: Core tests succeeded. Extended tests succeeded.

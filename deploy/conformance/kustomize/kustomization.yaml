@@ -3,7 +3,7 @@ kind: Kustomization
 
 # Gateway API conformance setup, see deploy/conformance/README.md.
 resources:
-  - ../../kustomize/turna-gateway
+  - ../../kustomize/turna-gateway-gateway-namespace
 
 images:
   - name: ghcr.io/rakunlabs/turna

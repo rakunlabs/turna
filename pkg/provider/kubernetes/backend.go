@@ -522,7 +522,7 @@ func (t *translator) resolveAddresses(fromKind gwv1.Kind, fromNamespace string, 
 	// stream routes pass connections through unchanged
 	if fromKind == kindRoute || fromKind == kindGRPCRoute {
 		if cfg := t.upstreamTLS(svc, port); cfg != nil {
-			out.scheme, out.tls = "https", cfg
+			out.scheme, out.tls = "https", t.withClientCert(cfg)
 		}
 	}
 

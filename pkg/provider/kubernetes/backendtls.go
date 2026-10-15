@@ -320,7 +320,7 @@ func (t *translator) finishPolicies() {
 // tlsID identifies a TLS configuration for middleware names.
 func tlsID(c *service.UpstreamTLS) string {
 	h := sha256.New()
-	for _, v := range append([]string{c.CA, c.ServerName, strconv.FormatBool(c.Invalid)}, c.SubjectAltNames...) {
+	for _, v := range append([]string{c.CA, c.ServerName, strconv.FormatBool(c.Invalid), c.ClientCert}, c.SubjectAltNames...) {
 		h.Write([]byte(v))
 		h.Write([]byte{0})
 	}

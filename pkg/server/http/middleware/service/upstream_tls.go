@@ -38,9 +38,20 @@ func (t *UpstreamTLS) config() (*tls.Config, error) {
 
 	sans := t.SubjectAltNames
 
+	var certificates []tls.Certificate
+	if t.ClientCert != "" || t.ClientKey != "" {
+		c, err := tls.X509KeyPair([]byte(t.ClientCert), []byte(t.ClientKey))
+		if err != nil {
+			return nil, fmt.Errorf("upstream tls: client certificate: %w", err)
+		}
+
+		certificates = []tls.Certificate{c}
+	}
+
 	return &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		ServerName: t.ServerName,
+		MinVersion:   tls.VersionTLS12,
+		ServerName:   t.ServerName,
+		Certificates: certificates,
 		// the default verification uses the dialed host, which is a pod
 		// address; VerifyConnection checks the chain and names instead
 		InsecureSkipVerify: true, //nolint:gosec // verified in VerifyConnection

@@ -12,7 +12,8 @@ providers:
       leader_election:
         name: turna
     proxy:
-      service_account: turna-proxy
+      gateway_namespace: true
+      cluster_role: turna-reader
       replicas: 1
       service_type: LoadBalancer
       image_pull_policy: Never

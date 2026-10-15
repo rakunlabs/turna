@@ -90,8 +90,8 @@ func TestProxyStatusRejectsForeignResourcesAndUnobservedRollouts(t *testing.T) {
 				dep.Labels[labelController] = "other-installation"
 			}
 			p.kube = kubefake.NewSimpleClientset(svc, dep)
-			addresses, ready := newStatusWriter(p).proxyStatus(context.Background(), gw)
-			if ready != (state == "ready") {
+			addresses, notReady := newStatusWriter(p).proxyStatus(context.Background(), &gwv1.Gateway{ObjectMeta: metav1.ObjectMeta{Namespace: gw.Namespace, Name: gw.Name}})
+			if ready := notReady == ""; ready != (state == "ready") {
 				t.Errorf("ready = %v for %s", ready, state)
 			}
 			if state == "ready" && len(addresses) != 1 {

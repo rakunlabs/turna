@@ -17,6 +17,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -34,6 +35,9 @@ const (
 	labelController       = "turna.rakunlabs.com/controller-id"
 	annotationConfigHash  = "turna.rakunlabs.com/config-hash"
 	annotationManaged     = "turna.rakunlabs.com/managed-annotations"
+	// annotationLoadBalancerIP is the spec.loadBalancerIP set from Gateway
+	// spec.addresses
+	annotationLoadBalancerIP = "turna.rakunlabs.com/load-balancer-ip"
 
 	managedByValue = "turna-gateway"
 	proxyContainer = "turna"
@@ -181,6 +185,87 @@ func (p *Provider) proxyNamespace() string {
 	return podNamespace()
 }
 
+// proxyNamespaceFor returns the namespace of the proxy resources of gw.
+func (p *Provider) proxyNamespaceFor(gw nsName) string {
+	if p.cfg.Proxy.GatewayNamespace {
+		return gw.Namespace
+	}
+
+	return p.proxyNamespace()
+}
+
+// managedNamespace is the namespace listed for managed proxy resources, all
+// namespaces when proxies live next to their gateways.
+func (p *Provider) managedNamespace() string {
+	if p.cfg.Proxy.GatewayNamespace {
+		return metav1.NamespaceAll
+	}
+
+	return p.proxyNamespace()
+}
+
+// proxyServiceAccount is the ServiceAccount of the proxy pods named name.
+func (p *Provider) proxyServiceAccount(name string) string {
+	if p.cfg.Proxy.GatewayNamespace {
+		return name
+	}
+
+	return p.cfg.Proxy.ServiceAccount
+}
+
+// infrastructureLabels are the labels of the proxy resources of gw: the
+// ownership labels and the labels of spec.infrastructure, which cannot
+// replace ownership labels.
+func infrastructureLabels(gw *gwv1.Gateway, own map[string]string) map[string]string {
+	out := maps.Clone(own)
+
+	if gw.Spec.Infrastructure != nil {
+		for k, v := range gw.Spec.Infrastructure.Labels {
+			if _, managed := own[string(k)]; !managed {
+				out[string(k)] = string(v)
+			}
+		}
+	}
+
+	return out
+}
+
+// infrastructureAnnotations are the annotations of spec.infrastructure,
+// with annotationManaged listing them so they can be removed later.
+func infrastructureAnnotations(gw *gwv1.Gateway) map[string]string {
+	if gw.Spec.Infrastructure == nil || len(gw.Spec.Infrastructure.Annotations) == 0 {
+		return nil
+	}
+
+	out := make(map[string]string, len(gw.Spec.Infrastructure.Annotations)+1)
+	keys := make([]string, 0, len(gw.Spec.Infrastructure.Annotations))
+
+	for k, v := range gw.Spec.Infrastructure.Annotations {
+		out[string(k)] = string(v)
+		keys = append(keys, string(k))
+	}
+
+	slices.Sort(keys)
+	out[annotationManaged] = strings.Join(keys, ",")
+
+	return out
+}
+
+// withManaged sets annotationManaged to the keys of annotations, so they
+// are removed when they are no longer wanted.
+func withManaged(annotations map[string]string) map[string]string {
+	delete(annotations, annotationManaged)
+
+	if len(annotations) == 0 {
+		return nil
+	}
+
+	keys := slices.Sorted(maps.Keys(annotations))
+	annotations[annotationManaged] = strings.Join(keys, ",")
+
+	return annotations
+}
+
 // provisionError keeps the failures of each gateway apart from cleanup
 // failures, so a failing gateway does not mark the others as not programmed.
 type provisionError struct {
@@ -208,8 +293,7 @@ func gatewayError(err error, gw nsName) error {
 // the informer cache when available, so unchanged gateways cost no requests.
 // policies lists the BackendTLSPolicies applied per gateway.
 func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap *Snapshot, policies map[nsName]map[nsName]struct{}) error {
-	ns := p.proxyNamespace()
-	want := make(map[string]struct{}, len(gateways))
+	want := make(map[nsName]struct{}, len(gateways))
 	perGateway := make(map[nsName]error)
 	var errs []error
 
@@ -225,10 +309,11 @@ func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap
 		}
 
 		k := key(gw)
-		name := proxyName(k)
-		want[name] = struct{}{}
+		ns, name := p.proxyNamespaceFor(k), proxyName(k)
+		want[nsName{Namespace: ns, Name: name}] = struct{}{}
 
 		cas := bundleCACertificates(snap.BackendTLSPolicies, policies[k], idx)
+		maps.Copy(cas, bundleClientCACertificates(gw, idx))
 
 		if err := p.applyProxy(ctx, ns, name, gw, idx, cas); err != nil {
 			err = fmt.Errorf("provision gateway %s: %w", k.String(), err)
@@ -237,29 +322,45 @@ func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap
 		}
 	}
 
+	ns := p.managedNamespace()
 	selector := labels.SelectorFromSet(map[string]string{labelManagedBy: managedByValue, labelController: p.controllerID()})
-	core, apps, policy := p.kube.CoreV1(), p.kube.AppsV1(), p.kube.PolicyV1()
+	core, apps, policy, rbac := p.kube.CoreV1(), p.kube.AppsV1(), p.kube.PolicyV1(), p.kube.RbacV1()
 
 	// Each kind is cleaned up independently so a failed deletion is retried
 	// even after its Deployment has already disappeared.
-	errs = append(errs, cleanup(ctx, "deployment", want, p.listDeployments(ctx, ns, selector), func(name string, opts metav1.DeleteOptions) error {
+	errs = append(errs, cleanup(ctx, "deployment", want, p.listDeployments(ctx, ns, selector), func(k nsName, opts metav1.DeleteOptions) error {
 		propagation := metav1.DeletePropagationForeground
 		opts.PropagationPolicy = &propagation
 
-		return apps.Deployments(ns).Delete(ctx, name, opts)
+		return apps.Deployments(k.Namespace).Delete(ctx, k.Name, opts)
 	})...)
-	errs = append(errs, cleanup(ctx, "pdb", want, p.listPDBs(ctx, ns, selector), func(name string, opts metav1.DeleteOptions) error {
-		return policy.PodDisruptionBudgets(ns).Delete(ctx, name, opts)
+	errs = append(errs, cleanup(ctx, "pdb", want, p.listPDBs(ctx, ns, selector), func(k nsName, opts metav1.DeleteOptions) error {
+		return policy.PodDisruptionBudgets(k.Namespace).Delete(ctx, k.Name, opts)
 	})...)
-	errs = append(errs, cleanup(ctx, "service", want, p.listServices(ctx, ns, selector), func(name string, opts metav1.DeleteOptions) error {
-		return core.Services(ns).Delete(ctx, name, opts)
+	errs = append(errs, cleanup(ctx, "service", want, p.listServices(ctx, ns, selector), func(k nsName, opts metav1.DeleteOptions) error {
+		return core.Services(k.Namespace).Delete(ctx, k.Name, opts)
 	})...)
-	errs = append(errs, cleanup(ctx, "configmap", want, p.listConfigMaps(ctx, ns, selector), func(name string, opts metav1.DeleteOptions) error {
-		return core.ConfigMaps(ns).Delete(ctx, name, opts)
+	errs = append(errs, cleanup(ctx, "configmap", want, p.listConfigMaps(ctx, ns, selector), func(k nsName, opts metav1.DeleteOptions) error {
+		return core.ConfigMaps(k.Namespace).Delete(ctx, k.Name, opts)
 	})...)
-	errs = append(errs, cleanup(ctx, "secret", want, p.listSecrets(ctx, ns, selector), func(name string, opts metav1.DeleteOptions) error {
-		return core.Secrets(ns).Delete(ctx, name, opts)
+	errs = append(errs, cleanup(ctx, "secret", want, p.listSecrets(ctx, ns, selector), func(k nsName, opts metav1.DeleteOptions) error {
+		return core.Secrets(k.Namespace).Delete(ctx, k.Name, opts)
 	})...)
+
+	if p.cfg.Proxy.GatewayNamespace {
+		errs = append(errs, cleanup(ctx, "serviceaccount", want, p.listServiceAccounts(ctx, selector), func(k nsName, opts metav1.DeleteOptions) error {
+			return core.ServiceAccounts(k.Namespace).Delete(ctx, k.Name, opts)
+		})...)
+		errs = append(errs, cleanup(ctx, "role", want, p.listRoles(ctx, selector), func(k nsName, opts metav1.DeleteOptions) error {
+			return rbac.Roles(k.Namespace).Delete(ctx, k.Name, opts)
+		})...)
+		errs = append(errs, cleanup(ctx, "rolebinding", want, p.listRoleBindings(ctx, selector), func(k nsName, opts metav1.DeleteOptions) error {
+			return rbac.RoleBindings(k.Namespace).Delete(ctx, k.Name, opts)
+		})...)
+		errs = append(errs, cleanupClusterRoleBindings(ctx, want, p.listClusterRoleBindings(ctx, selector), func(name string, opts metav1.DeleteOptions) error {
+			return rbac.ClusterRoleBindings().Delete(ctx, name, opts)
+		})...)
+	}
 
 	if len(errs) == 0 {
 		return nil
@@ -288,7 +389,7 @@ func fromList[T any, P interface {
 // cleanup deletes listed objects that are not wanted. The list is already
 // filtered by the ownership labels of this controller, the UID precondition
 // protects objects recreated since the list.
-func cleanup[T metav1.Object](_ context.Context, kind string, want map[string]struct{}, l listed[T], del func(string, metav1.DeleteOptions) error) []error {
+func cleanup[T metav1.Object](_ context.Context, kind string, want map[nsName]struct{}, l listed[T], del func(nsName, metav1.DeleteOptions) error) []error {
 	if l.err != nil {
 		return []error{fmt.Errorf("list proxy %ss: %w", kind, l.err)}
 	}
@@ -296,22 +397,36 @@ func cleanup[T metav1.Object](_ context.Context, kind string, want map[string]st
 	var errs []error
 
 	for _, obj := range l.items {
-		if _, keep := want[obj.GetName()]; keep {
+		k := nsName{Namespace: obj.GetNamespace(), Name: obj.GetName()}
+		if _, keep := want[k]; keep {
 			continue
 		}
 
 		if kind == "deployment" {
-			slog.Info("kubernetes provider: removing gateway proxy", "name", obj.GetName())
+			slog.Info("kubernetes provider: removing gateway proxy", "name", k.String())
 		}
 
 		uid := obj.GetUID()
-		err := del(obj.GetName(), metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &uid}})
+		err := del(k, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &uid}})
 		if err != nil && !apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
-			errs = append(errs, fmt.Errorf("delete %s %s: %w", kind, obj.GetName(), err))
+			errs = append(errs, fmt.Errorf("delete %s %s: %w", kind, k.String(), err))
 		}
 	}
 
 	return errs
+}
+
+// cleanupClusterRoleBindings deletes the bindings of proxies that are not
+// wanted; a binding is named after the proxy namespace and name.
+func cleanupClusterRoleBindings(ctx context.Context, want map[nsName]struct{}, l listed[*rbacv1.ClusterRoleBinding], del func(string, metav1.DeleteOptions) error) []error {
+	keep := make(map[nsName]struct{}, len(want))
+	for k := range want {
+		keep[nsName{Name: clusterRoleBindingName(k)}] = struct{}{}
+	}
+
+	return cleanup(ctx, "clusterrolebinding", keep, l, func(k nsName, opts metav1.DeleteOptions) error {
+		return del(k.Name, opts)
+	})
 }
 
 func (p *Provider) listDeployments(ctx context.Context, ns string, sel labels.Selector) listed[*appsv1.Deployment] {
@@ -407,6 +522,17 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 	lbls[labelController] = p.controllerID()
 	pl := p.proxies()
 
+	// spec.infrastructure metadata is added to the generated resources the
+	// gateway owner sees; the ownership labels win
+	meta := infrastructureLabels(gw, lbls)
+	annotations := infrastructureAnnotations(gw)
+
+	if p.cfg.Proxy.GatewayNamespace {
+		if err := p.applyProxyIdentity(ctx, ns, name, lbls, meta, annotations); err != nil {
+			return err
+		}
+	}
+
 	// The proxy reads only the certificates of its gateway from this Secret
 	// and needs no access to Secrets of the watched namespaces.
 	bundle := &corev1.Secret{
@@ -462,19 +588,28 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 
 	ports := listenerPorts(gw, p.cfg.PortOffset, p.cfg.Proxy.healthPort())
 
-	svc := p.proxyService(ns, name, lbls, gw, ports)
+	svc := p.proxyService(ns, name, meta, gw, ports)
 	if err := upsert(ctx, p.kube.CoreV1().Services(ns), cached(pl != nil, func(n string) (*corev1.Service, error) {
 		return pl.services.Services(ns).Get(n)
 	}), svc, func(cur *corev1.Service) bool {
 		annotations := mergeAnnotations(cur.Annotations, svc.Annotations)
+
+		// only an address requested from spec.addresses is replaced or
+		// removed, one set by others is kept
+		lbIP := cur.Spec.LoadBalancerIP
+		if svc.Spec.LoadBalancerIP != "" || (lbIP != "" && lbIP == cur.Annotations[annotationLoadBalancerIP]) {
+			lbIP = svc.Spec.LoadBalancerIP
+		}
+
 		if cur.Spec.Type == svc.Spec.Type && maps.Equal(cur.Spec.Selector, svc.Spec.Selector) && servicePortsEqual(cur.Spec.Ports, svc.Spec.Ports) &&
-			maps.Equal(cur.Labels, lbls) && maps.Equal(cur.Annotations, annotations) {
+			maps.Equal(cur.Labels, meta) && maps.Equal(cur.Annotations, annotations) && cur.Spec.LoadBalancerIP == lbIP {
 			return false
 		}
 
 		cur.Spec.Type = svc.Spec.Type
 		cur.Spec.Selector = svc.Spec.Selector
 		cur.Spec.Ports = mergeNodePorts(cur.Spec.Ports, svc.Spec.Ports)
+		cur.Spec.LoadBalancerIP = lbIP
 		if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
 			cur.Spec.HealthCheckNodePort = 0
 			cur.Spec.AllocateLoadBalancerNodePorts = nil
@@ -490,7 +625,7 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 				cur.Spec.ExternalTrafficPolicy = ""
 			}
 		}
-		cur.Labels = lbls
+		cur.Labels = meta
 		cur.Annotations = annotations
 
 		return true
@@ -502,8 +637,11 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 	if err := upsert(ctx, p.kube.AppsV1().Deployments(ns), cached(pl != nil, func(n string) (*appsv1.Deployment, error) {
 		return pl.deployments.Deployments(ns).Get(n)
 	}), dep, func(cur *appsv1.Deployment) bool {
-		if cur.Spec.Template.Annotations[annotationConfigHash] == hash &&
-			maps.Equal(cur.Labels, lbls) && maps.Equal(cur.Spec.Template.Labels, dep.Spec.Template.Labels) &&
+		// keeps annotations of others, e.g. kubectl rollout restart
+		podAnnotations := mergeAnnotations(cur.Spec.Template.Annotations, dep.Spec.Template.Annotations)
+
+		if maps.Equal(cur.Labels, lbls) && maps.Equal(cur.Spec.Template.Labels, dep.Spec.Template.Labels) &&
+			maps.Equal(cur.Spec.Template.Annotations, podAnnotations) &&
 			ptrOr(cur.Spec.Replicas, 1) == ptrOr(dep.Spec.Replicas, 1) &&
 			podSpecEqual(cur.Spec.Template.Spec, dep.Spec.Template.Spec) {
 			return false
@@ -512,10 +650,7 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 		cur.Labels = lbls
 		cur.Spec.Replicas = dep.Spec.Replicas
 		cur.Spec.Template.Labels = dep.Spec.Template.Labels
-		if cur.Spec.Template.Annotations == nil {
-			cur.Spec.Template.Annotations = make(map[string]string)
-		}
-		cur.Spec.Template.Annotations[annotationConfigHash] = hash
+		cur.Spec.Template.Annotations = podAnnotations
 		cur.Spec.Template.Spec = dep.Spec.Template.Spec
 
 		return true
@@ -590,11 +725,32 @@ func (p *Provider) applyPDB(ctx context.Context, ns, name string, lbls map[strin
 	return nil
 }
 
-// bundleCertificates returns the certificate Secrets the listeners of gw may
-// reference, keyed "<namespace>_<name>_tls.crt" and "..._tls.key". Namespace
-// and Secret names cannot contain '_'.
+// bundleCertificates returns the certificate Secrets the listeners of gw and
+// its backend client certificate may reference, keyed
+// "<namespace>_<name>_tls.crt" and "..._tls.key". Namespace and Secret names
+// cannot contain '_'.
 func bundleCertificates(gw *gwv1.Gateway, idx *index) map[string][]byte {
 	out := map[string][]byte{}
+
+	add := func(ref gwv1.SecretObjectReference) {
+		if ptrOr(ref.Group, "") != "" || ptrOr(ref.Kind, kindSecret) != kindSecret {
+			return
+		}
+
+		ns := string(ptrOr(ref.Namespace, gwv1.Namespace(gw.Namespace)))
+		if !idx.referenceAllowed(groupGateway, kindGateway, gw.Namespace, "", kindSecret, ns, string(ref.Name)) {
+			return
+		}
+
+		s, ok := idx.secrets[nsName{Namespace: ns, Name: string(ref.Name)}]
+		if !ok {
+			return
+		}
+
+		prefix := ns + "_" + string(ref.Name) + "_"
+		out[prefix+corev1.TLSCertKey] = s.Data[corev1.TLSCertKey]
+		out[prefix+corev1.TLSPrivateKeyKey] = s.Data[corev1.TLSPrivateKeyKey]
+	}
 
 	for _, l := range gw.Spec.Listeners {
 		if l.TLS == nil {
@@ -602,32 +758,21 @@ func bundleCertificates(gw *gwv1.Gateway, idx *index) map[string][]byte {
 		}
 
 		for _, ref := range l.TLS.CertificateRefs {
-			if ptrOr(ref.Group, "") != "" || ptrOr(ref.Kind, kindSecret) != kindSecret {
-				continue
-			}
-
-			ns := string(ptrOr(ref.Namespace, gwv1.Namespace(gw.Namespace)))
-			if !idx.referenceAllowed(groupGateway, kindGateway, gw.Namespace, "", kindSecret, ns, string(ref.Name)) {
-				continue
-			}
-
-			s, ok := idx.secrets[nsName{Namespace: ns, Name: string(ref.Name)}]
-			if !ok {
-				continue
-			}
-
-			prefix := ns + "_" + string(ref.Name) + "_"
-			out[prefix+corev1.TLSCertKey] = s.Data[corev1.TLSCertKey]
-			out[prefix+corev1.TLSPrivateKeyKey] = s.Data[corev1.TLSPrivateKeyKey]
+			add(ref)
 		}
+	}
+
+	if ref := backendClientCertRef(gw); ref != nil {
+		add(*ref)
 	}
 
 	return out
 }
 
-// caBundlePrefix marks CA certificates of BackendTLSPolicies in a bundle,
-// keyed "ca.crt-<namespace>_<name>". Certificate keys start with a
-// namespace, which cannot contain '.', and names cannot contain '_'.
+// caBundlePrefix marks CA certificates of BackendTLSPolicies and of client
+// certificate validation in a bundle, keyed "ca.crt-<namespace>_<name>".
+// Certificate keys start with a namespace, which cannot contain '.', and
+// names cannot contain '_'.
 const caBundlePrefix = caCertificateKey + "-"
 
 // bundleCACertificates returns the CA certificates referenced by the given
@@ -653,6 +798,44 @@ func bundleCACertificates(policies []*gwv1.BackendTLSPolicy, used map[nsName]str
 			}
 
 			out[caBundlePrefix+p.Namespace+"_"+string(ref.Name)] = []byte(cm.Data[caCertificateKey])
+		}
+	}
+
+	return out
+}
+
+// bundleClientCACertificates returns the CA certificates of the client
+// certificate validation of gw that it may reference.
+func bundleClientCACertificates(gw *gwv1.Gateway, idx *index) map[string][]byte {
+	out := map[string][]byte{}
+
+	if gw.Spec.TLS == nil || gw.Spec.TLS.Frontend == nil {
+		return out
+	}
+
+	validations := []*gwv1.FrontendTLSValidation{gw.Spec.TLS.Frontend.Default.Validation}
+	for _, pp := range gw.Spec.TLS.Frontend.PerPort {
+		validations = append(validations, pp.TLS.Validation)
+	}
+
+	for _, v := range validations {
+		if v == nil {
+			continue
+		}
+
+		for _, ref := range v.CACertificateRefs {
+			if ref.Group != "" || ref.Kind != kindConfigMap {
+				continue
+			}
+
+			ns := string(ptrOr(ref.Namespace, gwv1.Namespace(gw.Namespace)))
+			if !idx.referenceAllowed(groupGateway, kindGateway, gw.Namespace, "", kindConfigMap, ns, string(ref.Name)) {
+				continue
+			}
+
+			if cm, ok := idx.configMaps[nsName{Namespace: ns, Name: string(ref.Name)}]; ok {
+				out[caBundlePrefix+ns+"_"+string(ref.Name)] = []byte(cm.Data[caCertificateKey])
+			}
 		}
 	}
 
@@ -731,22 +914,16 @@ func (p *Provider) proxyService(ns, name string, lbls map[string]string, gw *gwv
 	}
 
 	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: lbls},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: lbls, Annotations: infrastructureAnnotations(gw)},
 		Spec: corev1.ServiceSpec{
 			Type:     typ,
 			Selector: map[string]string{"app.kubernetes.io/instance": lbls["app.kubernetes.io/instance"]},
 		},
 	}
 
-	if gw.Spec.Infrastructure != nil && len(gw.Spec.Infrastructure.Annotations) > 0 {
-		svc.Annotations = make(map[string]string, len(gw.Spec.Infrastructure.Annotations)+1)
-		keys := make([]string, 0, len(gw.Spec.Infrastructure.Annotations))
-		for k, v := range gw.Spec.Infrastructure.Annotations {
-			svc.Annotations[string(k)] = string(v)
-			keys = append(keys, string(k))
-		}
-		slices.Sort(keys)
-		svc.Annotations[annotationManaged] = strings.Join(keys, ",")
+	if typ == corev1.ServiceTypeLoadBalancer {
+		p.cfg.requestAddresses(svc, gw)
+		svc.Annotations = withManaged(svc.Annotations)
 	}
 
 	for _, lp := range ports {
@@ -770,21 +947,10 @@ func (p *Provider) proxyDeployment(ns, name string, lbls map[string]string, gw *
 	replicas := p.cfg.Proxy.replicas()
 	health := p.cfg.Proxy.healthPort()
 
-	podLabels := map[string]string{}
-	for k, v := range lbls {
-		podLabels[k] = v
-	}
+	podLabels := infrastructureLabels(gw, lbls)
 
-	if gw.Spec.Infrastructure != nil {
-		for k, v := range gw.Spec.Infrastructure.Labels {
-			// Identity labels must match the immutable Deployment selector and
-			// Service selector, regardless of user infrastructure metadata.
-			if _, managed := lbls[string(k)]; managed {
-				continue
-			}
-			podLabels[string(k)] = string(v)
-		}
-	}
+	podAnnotations := map[string]string{annotationConfigHash: hash}
+	maps.Copy(podAnnotations, infrastructureAnnotations(gw))
 
 	container := corev1.Container{
 		Name:            proxyContainer,
@@ -840,7 +1006,7 @@ func (p *Provider) proxyDeployment(ns, name string, lbls map[string]string, gw *
 	selector := map[string]string{"app.kubernetes.io/instance": lbls["app.kubernetes.io/instance"]}
 
 	spec := corev1.PodSpec{
-		ServiceAccountName: p.cfg.Proxy.ServiceAccount,
+		ServiceAccountName: p.proxyServiceAccount(name),
 		// the delay and the graceful server shutdown must fit the grace period
 		TerminationGracePeriodSeconds: ptr(max(int64(30), int64(delay/time.Second)+15)),
 		// spread replicas so a node or zone failure does not stop the gateway
@@ -873,7 +1039,7 @@ func (p *Provider) proxyDeployment(ns, name string, lbls map[string]string, gw *
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      podLabels,
-					Annotations: map[string]string{annotationConfigHash: hash},
+					Annotations: podAnnotations,
 				},
 				Spec: spec,
 			},

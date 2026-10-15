@@ -61,8 +61,18 @@ resources:
 # than one replica, each proxy gets a PodDisruptionBudget and its replicas are
 # spread over nodes and zones.
 proxy:
+  # placement is "controller" (proxies in the release namespace with a shared
+  # ServiceAccount) or "gateway" (proxies, a ServiceAccount and RBAC per
+  # Gateway in the Gateway namespace, so Gateway owners see their proxy).
+  # "gateway" needs scope cluster and grants the controller cluster-wide write
+  # access to proxy resources and RBAC bindings.
+  placement: controller
   replicas: 2
   serviceType: LoadBalancer
+  # addressesAnnotation is the Service annotation requesting the addresses of
+  # Gateway spec.addresses, e.g. metallb.io/loadBalancerIPs; empty uses
+  # spec.loadBalancerIP and supports one address
+  addressesAnnotation: ""
   logLevel: info
   # a terminating proxy keeps serving while it is removed from load
   # balancers (preStop sleep, Kubernetes 1.30+); "-1s" disables it

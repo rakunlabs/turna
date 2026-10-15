@@ -1,0 +1,46 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Proxies are created in the namespace of each Gateway, with a ServiceAccount
+# per Gateway bound to the turna-reader ClusterRole. Gateway owners see their
+# proxy Deployment, Service and pods next to the Gateway.
+resources:
+  - ../turna-gateway
+  - rbac.yaml
+
+configMapGenerator:
+  - name: turna-config
+    behavior: replace
+    files:
+      - turna.yaml
+
+# The shared proxy ServiceAccount and the proxy Role of the base are not used.
+patches:
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: turna-proxy
+  - patch: |-
+      $patch: delete
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        name: turna-proxy
+  - patch: |-
+      $patch: delete
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: turna-proxy
+  - target:
+      kind: ClusterRoleBinding
+      name: turna-reader
+    patch: |-
+      - op: replace
+        path: /subjects
+        value:
+          - kind: ServiceAccount
+            name: turna
+            namespace: turna-system

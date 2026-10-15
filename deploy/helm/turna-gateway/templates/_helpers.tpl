@@ -31,6 +31,18 @@ app.kubernetes.io/name: {{ include "turna-gateway.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
+{{/* "true" when proxies are created in the namespace of their Gateway */}}
+{{- define "turna-gateway.gatewayPlacement" -}}
+{{- $placement := .Values.proxy.placement | default "controller" -}}
+{{- if not (has $placement (list "controller" "gateway")) -}}
+{{- fail "proxy.placement must be controller or gateway" -}}
+{{- end -}}
+{{- if and (eq $placement "gateway") (eq .Values.scope "namespace") -}}
+{{- fail "proxy.placement gateway needs scope cluster" -}}
+{{- end -}}
+{{- and (eq $placement "gateway") (ne .Values.mode "standalone") -}}
+{{- end -}}
+
 {{- define "turna-gateway.config" -}}
 {{- $k8s := dict
   "enabled" true
@@ -66,6 +78,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   "service_account" (include "turna-gateway.proxyServiceAccount" .)
   "replicas" .Values.proxy.replicas
   "service_type" .Values.proxy.serviceType
+  "addresses_annotation" (.Values.proxy.addressesAnnotation | default "")
   "log_level" .Values.proxy.logLevel
   "shutdown_delay" .Values.proxy.shutdownDelay
   "cpu_request" .Values.proxy.resources.cpuRequest
@@ -73,6 +86,11 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   "cpu_limit" .Values.proxy.resources.cpuLimit
   "memory_limit" .Values.proxy.resources.memoryLimit
 ) -}}
+{{- if eq (include "turna-gateway.gatewayPlacement" .) "true" -}}
+{{- $_ := set $k8s.proxy "gateway_namespace" true -}}
+{{- $_ := set $k8s.proxy "cluster_role" (printf "%s-reader" (include "turna-gateway.fullname" .)) -}}
+{{- $_ := unset $k8s.proxy "service_account" -}}
+{{- end -}}
 {{- end -}}
 {{- $config := dict "log_level" .Values.logLevel "providers" (dict "kubernetes" $k8s) -}}
 {{- mustMergeOverwrite $config .Values.extraConfig | toYaml -}}

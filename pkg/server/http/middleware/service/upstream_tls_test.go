@@ -122,7 +122,7 @@ func TestUpstreamTLS(t *testing.T) {
 			}
 
 			if err == nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 
 				if sni := resp.Header.Get("X-SNI"); sni != tt.tls.ServerName {
 					t.Fatalf("sni = %q, want %q", sni, tt.tls.ServerName)
@@ -133,5 +133,80 @@ func TestUpstreamTLS(t *testing.T) {
 
 	if _, err := (&UpstreamTLS{CA: "not a certificate"}).config(); err == nil {
 		t.Fatal("ca without certificates accepted")
+	}
+}
+
+// issue returns a PEM client certificate and key signed by ca.
+func (ca testCA) issue(t *testing.T) (string, string) {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(3),
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.cert, &key.PublicKey, ca.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
+		string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))
+}
+
+// The client certificate is presented to upstreams requiring one.
+func TestUpstreamTLSClientCertificate(t *testing.T) {
+	ca := newTestCA(t)
+	clients := newTestCA(t)
+
+	srv := ca.server(t, []string{"abc.example.com"}, nil)
+	pool := x509.NewCertPool()
+	pool.AddCert(clients.cert)
+	srv.TLS.ClientAuth = tls.RequireAndVerifyClientCert
+	srv.TLS.ClientCAs = pool
+
+	cert, key := clients.issue(t)
+	other, otherKey := newTestCA(t).issue(t)
+
+	for _, tt := range []struct {
+		name      string
+		cert, key string
+		ok        bool
+	}{
+		{"trusted", cert, key, true},
+		{"none", "", "", false},
+		{"untrusted", other, otherKey, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := (&UpstreamTLS{CA: ca.pem, ServerName: "abc.example.com", ClientCert: tt.cert, ClientKey: tt.key}).config()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			resp, err := (&http.Client{Transport: &http.Transport{TLSClientConfig: cfg}}).Get(srv.URL)
+			if err == nil {
+				_ = resp.Body.Close()
+			}
+
+			if (err == nil) != tt.ok {
+				t.Fatalf("err = %v, want ok %v", err, tt.ok)
+			}
+		})
+	}
+
+	if _, err := (&UpstreamTLS{CA: ca.pem, ClientCert: cert, ClientKey: otherKey}).config(); err == nil {
+		t.Fatal("mismatched client key accepted")
 	}
 }

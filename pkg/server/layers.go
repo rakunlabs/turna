@@ -36,9 +36,11 @@ func mergeLayers(layers map[string]*Server) (*Server, error) {
 		out.LoadValue = static.LoadValue
 		out.HTTP.TLS = static.HTTP.TLS
 		out.HTTP.TLS.Store = nil
+		out.HTTP.TLS.EntryPoints = nil
 	}
 
 	out.HTTP.TLS.Store = make(map[string][]http.Certificate)
+	out.HTTP.TLS.EntryPoints = make(map[string]http.EntryPointTLS)
 
 	// stable order: static first, then by name
 	names := slices.Sorted(maps.Keys(layers))
@@ -68,6 +70,9 @@ func mergeLayers(layers map[string]*Server) (*Server, error) {
 			return nil, err
 		}
 		if err := mergeMap(out.UDP.Middlewares, l.UDP.Middlewares, name, "udp middleware"); err != nil {
+			return nil, err
+		}
+		if err := mergeMap(out.HTTP.TLS.EntryPoints, l.HTTP.TLS.EntryPoints, name, "tls entrypoint"); err != nil {
 			return nil, err
 		}
 

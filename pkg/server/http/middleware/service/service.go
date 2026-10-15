@@ -46,6 +46,10 @@ type UpstreamTLS struct {
 	// Invalid makes every connection fail, used when the configured trust
 	// anchors cannot be loaded.
 	Invalid bool `cfg:"invalid"`
+	// ClientCert and ClientKey are a PEM certificate and key presented to the
+	// upstream when it asks for a client certificate.
+	ClientCert string `cfg:"client_cert" log:"-"`
+	ClientKey  string `cfg:"client_key"  log:"-"`
 }
 
 type LoadBalancer struct {

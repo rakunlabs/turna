@@ -129,3 +129,20 @@ kubectl rollout status deployment/turna -n team-a
 `turna.yaml` of the overlay replaces the base configuration. It sets
 `namespace_scoped: true` without `namespaces`, so the controller and its proxies
 watch the pod namespace.
+
+## Proxies in the Gateway namespace
+
+`deploy/kustomize/turna-gateway-gateway-namespace` creates the proxy of each
+Gateway in the Gateway's namespace instead of `turna-system`, with its own
+ServiceAccount bound to the `turna-reader` ClusterRole. Gateway owners see their
+proxy Deployment, Service and pods next to the Gateway.
+
+```sh
+kubectl apply -k deploy/kustomize/turna-gateway-gateway-namespace
+```
+
+The controller gets the `turna-gateway-namespace` ClusterRole: cluster-wide
+write access to Deployments, Services, ConfigMaps, Secrets,
+PodDisruptionBudgets, ServiceAccounts, Roles, RoleBindings and
+ClusterRoleBindings, and `bind` on `turna-reader`. Each proxy can read only its
+own certificate Secret.

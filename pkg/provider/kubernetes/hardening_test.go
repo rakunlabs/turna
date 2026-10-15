@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -420,9 +421,10 @@ func TestListenerOnHealthPort(t *testing.T) {
 	}
 }
 
-func TestGatewayWithAddressesIsNotProvisioned(t *testing.T) {
+// Addresses of an unsupported type reject the Gateway, it gets no proxy.
+func TestGatewayWithUnsupportedAddressIsNotProvisioned(t *testing.T) {
 	gw := gatewayObj("app", "gw", httpListener("http", 80, ""))
-	gw.Spec.Addresses = []gwv1.GatewaySpecAddress{{Value: "192.0.2.10"}}
+	gw.Spec.Addresses = []gwv1.GatewaySpecAddress{{Type: ptr(gwv1.HostnameAddressType), Value: "gw.example.com"}}
 
 	res := Translate(&Config{}, &Snapshot{GatewayClasses: []*gwv1.GatewayClass{class()}, Gateways: []*gwv1.Gateway{gw}})
 	if len(res.Server.EntryPoints) != 0 {
@@ -519,6 +521,10 @@ func TestRouteKindsDiscovery(t *testing.T) {
 	})
 
 	kube := kubefake.NewSimpleClientset()
+	// the fake stores access reviews by name, so a second review would fail
+	kube.PrependReactor("create", "selfsubjectaccessreviews", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, &authorizationv1.SelfSubjectAccessReview{Status: authorizationv1.SubjectAccessReviewStatus{Allowed: true}}, nil
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

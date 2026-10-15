@@ -1,5 +1,6 @@
 {{- $namespaced := eq .Values.scope "namespace" -}}
 {{- $readerKind := ternary "Role" "ClusterRole" $namespaced -}}
+{{- $gatewayPlacement := eq (include "turna-gateway.gatewayPlacement" .) "true" -}}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -57,7 +58,7 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "turna-gateway.fullname" . }}
     namespace: {{ .Release.Namespace }}
-  {{- if ne .Values.mode "standalone" }}
+  {{- if and (ne .Values.mode "standalone") (not $gatewayPlacement) }}
   - kind: ServiceAccount
     name: {{ include "turna-gateway.proxyServiceAccount" . }}
     namespace: {{ .Release.Namespace }}
@@ -122,7 +123,50 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "turna-gateway.fullname" . }}
     namespace: {{ .Release.Namespace }}
-{{- if ne .Values.mode "standalone" }}
+{{- if $gatewayPlacement }}
+---
+# proxies, their ServiceAccounts and RBAC are created in the namespace of
+# each Gateway; proxies are bound to the reader ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "turna-gateway.fullname" . }}-gateway-namespace
+  labels:
+    {{- include "turna-gateway.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps", "secrets", "serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings", "clusterrolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles"]
+    resourceNames: [{{ printf "%s-reader" (include "turna-gateway.fullname" .) | quote }}]
+    verbs: ["bind"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "turna-gateway.fullname" . }}-gateway-namespace
+  labels:
+    {{- include "turna-gateway.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "turna-gateway.fullname" . }}-gateway-namespace
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "turna-gateway.fullname" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- if and (ne .Values.mode "standalone") (not $gatewayPlacement) }}
 ---
 apiVersion: v1
 kind: ServiceAccount
