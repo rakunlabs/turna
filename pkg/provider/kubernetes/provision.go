@@ -145,13 +145,20 @@ func (lp listenerPort) name() string {
 	return "p" + strconv.Itoa(int(lp.port))
 }
 
-// listenerPorts returns unique listener ports and protocols of the gateway,
-// skipping ports that are out of range with the port offset or that use the
-// reserved health port.
-func listenerPorts(gw *gwv1.Gateway, offset, reserved int) []listenerPort {
+// listenerPorts returns unique listener ports and protocols of the gateway
+// and its attached ListenerSets, skipping ports that are out of range with
+// the port offset or that use the reserved health port.
+func listenerPorts(gw *gwv1.Gateway, offset, reserved int, sets ...*gwv1.ListenerSet) []listenerPort {
 	var ports []listenerPort
 
-	for _, l := range gw.Spec.Listeners {
+	all := slices.Clone(gw.Spec.Listeners)
+	for _, ls := range sets {
+		for _, e := range ls.Spec.Listeners {
+			all = append(all, gwv1.Listener(e))
+		}
+	}
+
+	for _, l := range all {
 		if local := int(l.Port) + offset; local < 1 || local > 65535 || local == reserved {
 			continue
 		}
@@ -586,7 +593,7 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 		return fmt.Errorf("configmap: %w", err)
 	}
 
-	ports := listenerPorts(gw, p.cfg.PortOffset, p.cfg.Proxy.healthPort())
+	ports := listenerPorts(gw, p.cfg.PortOffset, p.cfg.Proxy.healthPort(), attachedListenerSets(gw, idx)...)
 
 	svc := p.proxyService(ns, name, meta, gw, ports)
 	if err := upsert(ctx, p.kube.CoreV1().Services(ns), cached(pl != nil, func(n string) (*corev1.Service, error) {
@@ -725,20 +732,20 @@ func (p *Provider) applyPDB(ctx context.Context, ns, name string, lbls map[strin
 	return nil
 }
 
-// bundleCertificates returns the certificate Secrets the listeners of gw and
-// its backend client certificate may reference, keyed
-// "<namespace>_<name>_tls.crt" and "..._tls.key". Namespace and Secret names
-// cannot contain '_'.
+// bundleCertificates returns the certificate Secrets the listeners of gw,
+// of its attached ListenerSets and its backend client certificate may
+// reference, keyed "<namespace>_<name>_tls.crt" and "..._tls.key". Namespace
+// and Secret names cannot contain '_'.
 func bundleCertificates(gw *gwv1.Gateway, idx *index) map[string][]byte {
 	out := map[string][]byte{}
 
-	add := func(ref gwv1.SecretObjectReference) {
+	addFrom := func(kind, from string, ref gwv1.SecretObjectReference) {
 		if ptrOr(ref.Group, "") != "" || ptrOr(ref.Kind, kindSecret) != kindSecret {
 			return
 		}
 
-		ns := string(ptrOr(ref.Namespace, gwv1.Namespace(gw.Namespace)))
-		if !idx.referenceAllowed(groupGateway, kindGateway, gw.Namespace, "", kindSecret, ns, string(ref.Name)) {
+		ns := string(ptrOr(ref.Namespace, gwv1.Namespace(from)))
+		if !idx.referenceAllowed(groupGateway, kind, from, "", kindSecret, ns, string(ref.Name)) {
 			return
 		}
 
@@ -752,6 +759,8 @@ func bundleCertificates(gw *gwv1.Gateway, idx *index) map[string][]byte {
 		out[prefix+corev1.TLSPrivateKeyKey] = s.Data[corev1.TLSPrivateKeyKey]
 	}
 
+	add := func(ref gwv1.SecretObjectReference) { addFrom(kindGateway, gw.Namespace, ref) }
+
 	for _, l := range gw.Spec.Listeners {
 		if l.TLS == nil {
 			continue
@@ -759,6 +768,18 @@ func bundleCertificates(gw *gwv1.Gateway, idx *index) map[string][]byte {
 
 		for _, ref := range l.TLS.CertificateRefs {
 			add(ref)
+		}
+	}
+
+	for _, ls := range attachedListenerSets(gw, idx) {
+		for _, l := range ls.Spec.Listeners {
+			if l.TLS == nil {
+				continue
+			}
+
+			for _, ref := range l.TLS.CertificateRefs {
+				addFrom(kindListenerSet, ls.Namespace, ref)
+			}
 		}
 	}
 

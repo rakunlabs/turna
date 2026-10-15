@@ -207,6 +207,9 @@ func (w *statusWriter) write(ctx context.Context, u *statusUpdate) {
 		w.writeClass(ctx, gc, conds)
 	}
 
+	// gateways whose proxy is not programmed yet, their ListenerSets wait too
+	notProgrammed := make(map[nsName]string)
+
 	for _, gw := range u.snap.Gateways {
 		st, ok := u.res.Gateways[key(gw)]
 		if !ok {
@@ -227,11 +230,98 @@ func (w *statusWriter) write(ctx context.Context, u *statusUpdate) {
 			}
 		}
 
+		if c := meta.FindStatusCondition(st.Conditions, string(gwv1.GatewayConditionProgrammed)); c != nil && c.Status != metav1.ConditionTrue {
+			notProgrammed[key(gw)] = c.Message
+		}
+
 		w.writeGateway(ctx, gw, st, gwAddresses)
 	}
 
+	w.writeListenerSets(ctx, u.snap, u.res, notProgrammed)
 	w.writeRoutes(ctx, u.snap, u.res)
 	w.writePolicies(ctx, u.snap, u.res)
+}
+
+func listenerSetStatus(cur *gwv1.ListenerSet, st *ListenerSetStatus) *gwv1.ListenerSetStatus {
+	next := cur.Status.DeepCopy()
+	next.Conditions = mergeConditions(cur.Status.Conditions, st.Conditions)
+
+	listeners := make([]gwv1.ListenerEntryStatus, 0, len(st.Listeners))
+	for _, l := range st.Listeners {
+		for _, old := range cur.Status.Listeners {
+			if old.Name == l.Name {
+				l.Conditions = mergeConditions(old.Conditions, l.Conditions)
+			}
+		}
+
+		listeners = append(listeners, l)
+	}
+
+	next.Listeners = listeners
+
+	return next
+}
+
+// listenerSetPending marks a programmed ListenerSet as pending while its
+// gateway is not programmed.
+func listenerSetPending(st *ListenerSetStatus, msg string) *ListenerSetStatus {
+	out := *st
+	out.Conditions = slices.Clone(st.Conditions)
+
+	for i := range out.Conditions {
+		c := &out.Conditions[i]
+		if c.Type == string(gwv1.ListenerSetConditionProgrammed) && c.Status == metav1.ConditionTrue {
+			c.Status = metav1.ConditionFalse
+			c.Reason = string(gwv1.ListenerSetReasonPending)
+			c.Message = "the parent gateway is not programmed: " + msg
+		}
+	}
+
+	return &out
+}
+
+func (w *statusWriter) writeListenerSets(ctx context.Context, snap *Snapshot, res *Result, notProgrammed map[nsName]string) {
+	api := w.p.gw.GatewayV1()
+
+	for _, ls := range snap.ListenerSets {
+		st, ok := res.ListenerSets[key(ls)]
+		if !ok {
+			continue
+		}
+
+		if parent, ok := listenerSetParent(ls); ok {
+			if msg, pending := notProgrammed[parent]; pending {
+				st = listenerSetPending(st, msg)
+			}
+		}
+
+		if equality.Semantic.DeepEqual(ls.Status, *listenerSetStatus(ls, st)) {
+			continue
+		}
+
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			cur, err := api.ListenerSets(ls.Namespace).Get(ctx, ls.Name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			if !w.currentSnapshot(ls, cur) {
+				return nil
+			}
+
+			next := listenerSetStatus(cur, st)
+			if equality.Semantic.DeepEqual(cur.Status, *next) {
+				return nil
+			}
+
+			cur.Status = *next
+			_, err = api.ListenerSets(ls.Namespace).UpdateStatus(ctx, cur, metav1.UpdateOptions{})
+
+			return err
+		})
+		if err != nil && !apierrors.IsNotFound(err) {
+			slog.Warn("kubernetes provider: listenerset status", "listenerset", key(ls).String(), "err", err.Error())
+		}
+	}
 }
 
 // policyAncestors merges the ancestors of this controller into the current
@@ -475,6 +565,7 @@ func supportedFeatures() []gwv1.SupportedFeature {
 		features.SupportGatewayAddressEmpty,
 		features.SupportGatewayHTTPListenerIsolation,
 		features.SupportGatewayHTTPSListenerDetectMisdirectedRequests,
+		features.SupportListenerSet,
 		features.SupportGRPCRoute,
 		features.SupportGRPCRouteNamedRouteRule,
 		features.SupportHTTPRouteNamedRouteRule,
@@ -549,6 +640,7 @@ func gatewayStatus(cur *gwv1.Gateway, st *GatewayStatus, addresses []gwv1.Gatewa
 	next := cur.Status.DeepCopy()
 	next.Conditions = mergeConditions(cur.Status.Conditions, st.Conditions)
 	next.Addresses = addresses
+	next.AttachedListenerSets = st.AttachedListenerSets
 
 	listeners := make([]gwv1.ListenerStatus, 0, len(st.Listeners))
 	for _, l := range st.Listeners {

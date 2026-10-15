@@ -97,6 +97,7 @@ type proxyListers struct {
 type listers struct {
 	classes   func() ([]*gwv1.GatewayClass, error)
 	gateways  func() ([]*gwv1.Gateway, error)
+	sets      func() ([]*gwv1.ListenerSet, error)
 	routes    func() ([]*gwv1.HTTPRoute, error)
 	grpc      func() ([]*gwv1.GRPCRoute, error)
 	tls       func() ([]*gwv1.TLSRoute, error)
@@ -376,6 +377,10 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 			l.udp = gf.Gateway().V1().UDPRoutes()
 			infs = append(infs, l.udp.Informer())
 		}
+		if available[kindListenerSet] {
+			l.sets = gf.Gateway().V1().ListenerSets()
+			infs = append(infs, l.sets.Informer())
+		}
 		// proxies get the CA certificates of their policies in the bundle
 		if available[kindBackendTLSPolicy] {
 			l.policies = gf.Gateway().V1().BackendTLSPolicies()
@@ -556,6 +561,13 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 		gateways: collect(perNS, func(l nsListers) ([]*gwv1.Gateway, error) {
 			return l.gateways.Lister().List(labels.Everything())
 		}),
+		sets: collect(perNS, func(l nsListers) ([]*gwv1.ListenerSet, error) {
+			if l.sets == nil {
+				return nil, nil
+			}
+
+			return l.sets.Lister().List(labels.Everything())
+		}),
 		routes: collect(perNS, func(l nsListers) ([]*gwv1.HTTPRoute, error) {
 			return l.routes.Lister().List(labels.Everything())
 		}),
@@ -652,6 +664,7 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 
 type nsListers struct {
 	gateways   gwinformersv1.GatewayInformer
+	sets       gwinformersv1.ListenerSetInformer
 	routes     gwinformersv1.HTTPRouteInformer
 	grpc       gwinformersv1.GRPCRouteInformer
 	tls        gwinformersv1.TLSRouteInformer
@@ -742,6 +755,11 @@ func (p *Provider) snapshot() (*Snapshot, error) {
 	}
 	if s.Gateways, err = p.listers.gateways(); err != nil {
 		return nil, err
+	}
+	if p.listers.sets != nil {
+		if s.ListenerSets, err = p.listers.sets(); err != nil {
+			return nil, err
+		}
 	}
 	if s.HTTPRoutes, err = p.listers.routes(); err != nil {
 		return nil, err
@@ -848,7 +866,7 @@ func (p *Provider) sync(ctx context.Context) error {
 // routeKinds reports which optional route CRDs are installed, and whether
 // ReferenceGrant is served as v1; older CRDs serve only v1beta1.
 func (p *Provider) routeKinds(ctx context.Context) (map[gwv1.Kind]bool, error) {
-	out := map[gwv1.Kind]bool{kindGRPCRoute: false, kindTLSRoute: false, kindTCPRoute: false, kindUDPRoute: false, kindReferenceGrant: false, kindBackendTLSPolicy: false}
+	out := map[gwv1.Kind]bool{kindGRPCRoute: false, kindTLSRoute: false, kindTCPRoute: false, kindUDPRoute: false, kindReferenceGrant: false, kindBackendTLSPolicy: false, kindListenerSet: false}
 
 	res, err := p.gw.Discovery().ServerResourcesForGroupVersion(gwv1.GroupVersion.String())
 	if apierrors.IsNotFound(err) {
@@ -866,7 +884,7 @@ func (p *Provider) routeKinds(ctx context.Context) (map[gwv1.Kind]bool, error) {
 	}
 
 	for kind, ok := range out {
-		if !ok && kind != kindReferenceGrant && kind != kindBackendTLSPolicy && kind != kindConfigMap {
+		if !ok && kind != kindReferenceGrant && kind != kindBackendTLSPolicy && kind != kindConfigMap && kind != kindListenerSet {
 			slog.Debug("kubernetes provider: route kind not installed", "kind", kind)
 		}
 	}
@@ -880,6 +898,15 @@ func (p *Provider) routeKinds(ctx context.Context) (map[gwv1.Kind]bool, error) {
 		}
 
 		out[kindBackendTLSPolicy] = ok
+	}
+
+	if out[kindListenerSet] {
+		ok, err := p.canWatch(ctx, "ListenerSet", authorizationv1.ResourceAttributes{Group: gwv1.GroupName, Resource: "listenersets"})
+		if err != nil {
+			return nil, err
+		}
+
+		out[kindListenerSet] = ok
 	}
 
 	// CA certificates of BackendTLSPolicies and of client certificate

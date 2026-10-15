@@ -16,6 +16,7 @@ import (
 type Snapshot struct {
 	GatewayClasses  []*gwv1.GatewayClass
 	Gateways        []*gwv1.Gateway
+	ListenerSets    []*gwv1.ListenerSet
 	HTTPRoutes      []*gwv1.HTTPRoute
 	GRPCRoutes      []*gwv1.GRPCRoute
 	TLSRoutes       []*gwv1.TLSRoute
@@ -53,6 +54,8 @@ type index struct {
 	configMaps map[nsName]*corev1.ConfigMap
 	namespaces map[string]*corev1.Namespace
 	grants     map[string][]*gwv1.ReferenceGrant
+
+	listenerSets []*gwv1.ListenerSet
 }
 
 func newIndex(s *Snapshot) *index {
@@ -63,6 +66,8 @@ func newIndex(s *Snapshot) *index {
 		configMaps: make(map[nsName]*corev1.ConfigMap, len(s.ConfigMaps)),
 		namespaces: make(map[string]*corev1.Namespace, len(s.Namespaces)),
 		grants:     make(map[string][]*gwv1.ReferenceGrant),
+
+		listenerSets: s.ListenerSets,
 	}
 
 	for _, o := range s.Services {

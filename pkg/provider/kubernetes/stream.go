@@ -207,6 +207,9 @@ func (t *translator) buildTLS(entry string) {
 
 		if !r.li.passthrough {
 			name := sanitize("k8s", entry, "terminate", r.li.gw.Namespace, r.li.gw.Name, string(r.li.spec.Name))
+			if r.li.set != nil {
+				name = sanitize("k8s", entry, "terminate", kindListenerSet, r.li.set.Namespace, r.li.set.Name, string(r.li.spec.Name))
+			}
 			term := &tlsterminate.TLSTerminate{}
 
 			for _, c := range r.li.certs {

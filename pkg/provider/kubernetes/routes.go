@@ -80,17 +80,13 @@ func (r *routeInfo) key() nsName {
 	return nsName{Namespace: r.meta.Namespace, Name: r.meta.Name}
 }
 
-// gateways returns the served gateways the route references.
-func (r *routeInfo) gateways(served map[nsName][]*listener) []nsName {
+// routeParents returns the served gateways the route references directly
+// or through ListenerSets they allow.
+func (t *translator) routeParents(r *routeInfo, served map[nsName][]*listener) []nsName {
 	var out []nsName
 
 	for _, ref := range r.parentRefs {
-		if ptrOr(ref.Group, gwv1.Group(groupGateway)) != groupGateway || ptrOr(ref.Kind, kindGateway) != kindGateway {
-			continue
-		}
-
-		gk := nsName{Namespace: string(ptrOr(ref.Namespace, gwv1.Namespace(r.meta.Namespace))), Name: string(ref.Name)}
-		if _, ok := served[gk]; ok && !slices.Contains(out, gk) {
+		if gk, _, parentErr, ok := t.parentListeners(ref, r.meta.Namespace, served); ok && parentErr == "" && !slices.Contains(out, gk) {
 			out = append(out, gk)
 		}
 	}

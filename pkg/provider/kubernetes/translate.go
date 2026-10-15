@@ -48,6 +48,8 @@ type Result struct {
 	Routes         map[routeKey][]gwv1.RouteParentStatus
 	// BackendTLSPolicy status per policy
 	Policies map[nsName][]gwv1.PolicyAncestorStatus
+	// ListenerSets referencing served gateways
+	ListenerSets map[nsName]*ListenerSetStatus
 
 	// BackendTLSPolicies applied to the backends of each served gateway;
 	// their CA certificates go into the proxy bundle of the gateway
@@ -63,11 +65,16 @@ type GatewayStatus struct {
 	Generation int64
 	Conditions []metav1.Condition
 	Listeners  []gwv1.ListenerStatus
+	// AttachedListenerSets is set when the gateway allows ListenerSets
+	AttachedListenerSets *int32
 }
 
-// listener is a listener of a served gateway.
+// listener is a listener of a served gateway, defined by the gateway or by
+// one of its ListenerSets.
 type listener struct {
-	gw      *gwv1.Gateway
+	gw *gwv1.Gateway
+	// ListenerSet defining the listener, nil for gateway listeners
+	set     *gwv1.ListenerSet
 	spec    gwv1.Listener
 	status  *gwv1.ListenerStatus
 	family  family
@@ -85,10 +92,27 @@ type listener struct {
 
 	// passthrough TLS listener
 	passthrough bool
+	// conflict reason of a listener losing its port or hostname
+	conflict string
 
 	// hostnames attached by HTTPRoutes and GRPCRoutes, to resolve
 	// conflicts between both kinds
 	httpHosts map[string]gwv1.Kind
+}
+
+// owner returns the object defining the listener: its kind and metadata.
+func (li *listener) owner() (string, *metav1.ObjectMeta) {
+	if li.set != nil {
+		return kindListenerSet, &li.set.ObjectMeta
+	}
+
+	return kindGateway, &li.gw.ObjectMeta
+}
+
+func (li *listener) generation() int64 {
+	_, m := li.owner()
+
+	return m.Generation
 }
 
 type translator struct {
@@ -123,6 +147,8 @@ type translator struct {
 	clientCerts map[nsName]*shttp.Certificate
 	// invalid backend client certificate references of gateways
 	clientCertErrs map[nsName]*refError
+	// ListenerSets referencing served gateways
+	sets map[nsName]*setInfo
 }
 
 type hostRules struct {
@@ -166,6 +192,7 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 			Gateways:       make(map[nsName]*GatewayStatus),
 			Routes:         make(map[routeKey][]gwv1.RouteParentStatus),
 			Policies:       make(map[nsName][]gwv1.PolicyAncestorStatus),
+			ListenerSets:   make(map[nsName]*ListenerSetStatus),
 
 			gatewayPolicies: make(map[nsName]map[nsName]struct{}),
 		},
@@ -180,6 +207,7 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 		policyTargets:  make(map[policyTarget][]nsName),
 		clientCerts:    make(map[nsName]*shttp.Certificate),
 		clientCertErrs: make(map[nsName]*refError),
+		sets:           make(map[nsName]*setInfo),
 	}
 
 	classes := t.classes(s.GatewayClasses)
@@ -197,7 +225,7 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 		}
 
 		t.out.served = append(t.out.served, gw)
-		listeners[key(gw)] = t.gateway(gw)
+		listeners[key(gw)] = t.listenerSets(gw, t.gateway(gw))
 
 		// an invalid client certificate is reported in the gateway status;
 		// TLS backends then get no certificate and reject the connection
@@ -231,6 +259,7 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 	}
 
 	t.finishGateways(s.Gateways, listeners)
+	t.finishListenerSets()
 	t.finishPolicies()
 	t.build()
 	t.buildStreams()
@@ -335,103 +364,110 @@ func supportedKinds(l gwv1.Listener) ([]gwv1.RouteGroupKind, bool) {
 
 func (t *translator) gateway(gw *gwv1.Gateway) []*listener {
 	out := make([]*listener, 0, len(gw.Spec.Listeners))
-	gen := gw.Generation
 
 	for _, l := range gw.Spec.Listeners {
-		st := &gwv1.ListenerStatus{Name: l.Name}
-		li := &listener{gw: gw, spec: l, status: st, port: int(l.Port), valid: true, family: protocolFamily(l.Protocol)}
-
-		kinds, kindsOK := supportedKinds(l)
-		st.SupportedKinds = kinds
-
-		accepted := t.condition(gen, string(gwv1.ListenerConditionAccepted), true, string(gwv1.ListenerReasonAccepted), "")
-		resolved := t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), true, string(gwv1.ListenerReasonResolvedRefs), "")
-
-		switch l.Protocol {
-		case gwv1.HTTPProtocolType, gwv1.TCPProtocolType, gwv1.UDPProtocolType:
-		case gwv1.HTTPSProtocolType:
-			li.secure = true
-
-			if l.TLS == nil || ptrOr(l.TLS.Mode, gwv1.TLSModeTerminate) != gwv1.TLSModeTerminate {
-				accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonUnsupportedValue), "HTTPS listeners support tls mode Terminate only")
-				li.valid = false
-
-				break
-			}
-
-			if err := t.certificates(gw, l, li); err != nil {
-				resolved = t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), false, err.reason, err.msg)
-				li.valid = false
-			}
-
-			// a listener requiring client certificates must never serve
-			// without them, so any invalid CA reference stops it
-			if v := frontendValidation(gw, l.Port); v != nil {
-				cas, err := t.clientValidation(gw, v)
-				if err != nil {
-					resolved = t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), false, err.reason, err.msg)
-					li.valid = false
-				}
-
-				if len(cas) == 0 {
-					accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonNoValidCACertificate), "no valid CA certificate for client certificate validation")
-					li.valid = false
-				}
-
-				li.clientCAs = cas
-				li.clientFallback = v.Mode == gwv1.AllowInsecureFallback
-			}
-		case gwv1.TLSProtocolType:
-			mode := gwv1.TLSModeTerminate
-			if l.TLS != nil {
-				mode = ptrOr(l.TLS.Mode, gwv1.TLSModeTerminate)
-			}
-
-			if mode == gwv1.TLSModePassthrough {
-				li.passthrough = true
-
-				break
-			}
-
-			if l.TLS == nil {
-				resolved = t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), false, string(gwv1.ListenerReasonInvalidCertificateRef), "tls is required")
-				li.valid = false
-
-				break
-			}
-
-			if err := t.certificates(gw, l, li); err != nil {
-				resolved = t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), false, err.reason, err.msg)
-				li.valid = false
-			}
-		default:
-			accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonUnsupportedProtocol), fmt.Sprintf("protocol %s is not supported", l.Protocol))
-			li.valid = false
-			st.SupportedKinds = []gwv1.RouteGroupKind{}
-		}
-
-		if !kindsOK {
-			resolved = t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), false, string(gwv1.ListenerReasonInvalidRouteKinds), "route kind is not supported by the listener protocol")
-			if len(kinds) == 0 {
-				li.valid = false
-			}
-		}
-
-		if local := li.port + t.cfg.PortOffset; li.valid && (local < 1 || local > 65535) {
-			accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonPortUnavailable),
-				fmt.Sprintf("port %d with port offset %d is out of range", li.port, t.cfg.PortOffset))
-			li.valid = false
-		} else if li.valid && local == t.cfg.reservedPort() {
-			accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonPortUnavailable),
-				fmt.Sprintf("port %d with port offset %d is the health port", li.port, t.cfg.PortOffset))
-			li.valid = false
-		}
-
-		st.Conditions = []metav1.Condition{accepted, resolved}
-		out = append(out, li)
+		out = append(out, t.listener(gw, nil, l))
 	}
 
 	return out
+}
+
+// listener validates a listener of gw, defined by gw or by the ListenerSet
+// set.
+func (t *translator) listener(gw *gwv1.Gateway, set *gwv1.ListenerSet, l gwv1.Listener) *listener {
+	st := &gwv1.ListenerStatus{Name: l.Name}
+	li := &listener{gw: gw, set: set, spec: l, status: st, port: int(l.Port), valid: true, family: protocolFamily(l.Protocol)}
+	gen := li.generation()
+
+	kinds, kindsOK := supportedKinds(l)
+	st.SupportedKinds = kinds
+
+	accepted := t.condition(gen, string(gwv1.ListenerConditionAccepted), true, string(gwv1.ListenerReasonAccepted), "")
+	resolved := t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), true, string(gwv1.ListenerReasonResolvedRefs), "")
+
+	switch l.Protocol {
+	case gwv1.HTTPProtocolType, gwv1.TCPProtocolType, gwv1.UDPProtocolType:
+	case gwv1.HTTPSProtocolType:
+		li.secure = true
+
+		if l.TLS == nil || ptrOr(l.TLS.Mode, gwv1.TLSModeTerminate) != gwv1.TLSModeTerminate {
+			accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonUnsupportedValue), "HTTPS listeners support tls mode Terminate only")
+			li.valid = false
+
+			break
+		}
+
+		if err := t.certificates(li); err != nil {
+			resolved = t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), false, err.reason, err.msg)
+			li.valid = false
+		}
+
+		// a listener requiring client certificates must never serve
+		// without them, so any invalid CA reference stops it
+		if v := frontendValidation(gw, l.Port); v != nil {
+			cas, err := t.clientValidation(gw, v)
+			if err != nil {
+				resolved = t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), false, err.reason, err.msg)
+				li.valid = false
+			}
+
+			if len(cas) == 0 {
+				accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonNoValidCACertificate), "no valid CA certificate for client certificate validation")
+				li.valid = false
+			}
+
+			li.clientCAs = cas
+			li.clientFallback = v.Mode == gwv1.AllowInsecureFallback
+		}
+	case gwv1.TLSProtocolType:
+		mode := gwv1.TLSModeTerminate
+		if l.TLS != nil {
+			mode = ptrOr(l.TLS.Mode, gwv1.TLSModeTerminate)
+		}
+
+		if mode == gwv1.TLSModePassthrough {
+			li.passthrough = true
+
+			break
+		}
+
+		if l.TLS == nil {
+			resolved = t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), false, string(gwv1.ListenerReasonInvalidCertificateRef), "tls is required")
+			li.valid = false
+
+			break
+		}
+
+		if err := t.certificates(li); err != nil {
+			resolved = t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), false, err.reason, err.msg)
+			li.valid = false
+		}
+	default:
+		accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonUnsupportedProtocol), fmt.Sprintf("protocol %s is not supported", l.Protocol))
+		li.valid = false
+		st.SupportedKinds = []gwv1.RouteGroupKind{}
+	}
+
+	if !kindsOK {
+		resolved = t.condition(gen, string(gwv1.ListenerConditionResolvedRefs), false, string(gwv1.ListenerReasonInvalidRouteKinds), "route kind is not supported by the listener protocol")
+		if len(kinds) == 0 {
+			li.valid = false
+		}
+	}
+
+	if local := li.port + t.cfg.PortOffset; li.valid && (local < 1 || local > 65535) {
+		accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonPortUnavailable),
+			fmt.Sprintf("port %d with port offset %d is out of range", li.port, t.cfg.PortOffset))
+		li.valid = false
+	} else if li.valid && local == t.cfg.reservedPort() {
+		accepted = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, string(gwv1.ListenerReasonPortUnavailable),
+			fmt.Sprintf("port %d with port offset %d is the health port", li.port, t.cfg.PortOffset))
+		li.valid = false
+	}
+
+	st.Conditions = []metav1.Condition{accepted, resolved}
+
+	return li
 }
 
 type refError struct {
@@ -439,7 +475,12 @@ type refError struct {
 	msg    string
 }
 
-func (t *translator) certificates(gw *gwv1.Gateway, l gwv1.Listener, li *listener) *refError {
+// certificates resolves the certificates of li; references are made by the
+// object defining the listener.
+func (t *translator) certificates(li *listener) *refError {
+	l := li.spec
+	kind, owner := li.owner()
+
 	if len(l.TLS.CertificateRefs) == 0 {
 		return &refError{string(gwv1.ListenerReasonInvalidCertificateRef), "certificateRefs is empty"}
 	}
@@ -449,8 +490,8 @@ func (t *translator) certificates(gw *gwv1.Gateway, l gwv1.Listener, li *listene
 			return &refError{string(gwv1.ListenerReasonInvalidCertificateRef), fmt.Sprintf("unsupported certificate kind %s", ptrOr(ref.Kind, ""))}
 		}
 
-		ns := string(ptrOr(ref.Namespace, gwv1.Namespace(gw.Namespace)))
-		if !t.idx.referenceAllowed(groupGateway, kindGateway, gw.Namespace, "", kindSecret, ns, string(ref.Name)) {
+		ns := string(ptrOr(ref.Namespace, gwv1.Namespace(owner.Namespace)))
+		if !t.idx.referenceAllowed(groupGateway, kind, owner.Namespace, "", kindSecret, ns, string(ref.Name)) {
 			return &refError{string(gwv1.ListenerReasonRefNotPermitted), fmt.Sprintf("secret %s/%s is not permitted by a ReferenceGrant", ns, ref.Name)}
 		}
 
@@ -516,56 +557,84 @@ func (t *translator) mergePorts(all map[nsName][]*listener) {
 
 	slices.SortFunc(keys, func(a, b nsName) int { return strings.Compare(a.String(), b.String()) })
 
+	// listeners of gateways are placed before the listeners of all
+	// ListenerSets, so a ListenerSet cannot take a port or hostname from the
+	// gateway of another owner sharing the entrypoint
+	var ordered []*listener
 	for _, k := range keys {
 		for _, li := range all[k] {
-			if !li.valid {
-				continue
+			if li.set == nil {
+				ordered = append(ordered, li)
 			}
-
-			entry := entryName(li)
-
-			p, ok := ports[entry]
-			if !ok {
-				p = &portInfo{kind: portKind(li), entry: entry}
-				ports[entry] = p
-			}
-
-			if p.kind != portKind(li) {
-				li.valid = false
-				t.setConflict(li, string(gwv1.ListenerReasonProtocolConflict), "port is used with another protocol")
-
-				continue
-			}
-
-			hostname := string(ptrOr(li.spec.Hostname, ""))
-			conflict := false
-			for _, other := range p.listeners {
-				if string(ptrOr(other.spec.Hostname, "")) == hostname && (other.gw == li.gw || li.family != familyHTTP) {
-					conflict = true
-
-					break
-				}
-			}
-
-			if conflict {
-				li.valid = false
-				t.setConflict(li, string(gwv1.ListenerReasonHostnameConflict), "another listener uses the same port and hostname")
-
-				continue
-			}
-
-			// the handshake is shared, so listeners on a port must ask for the
-			// same client certificates; only gateways of a shared standalone
-			// port can differ
-			if len(p.listeners) > 0 && !sameClientValidation(p.listeners[0], li) {
-				li.valid = false
-				t.setConflict(li, string(gwv1.ListenerReasonProtocolConflict), "another listener on the port uses another client certificate validation")
-
-				continue
-			}
-
-			p.listeners = append(p.listeners, li)
 		}
+	}
+
+	// the listeners of a ListenerSet are served only when its gateway is
+	// accepted, which needs a valid listener of the gateway itself
+	for _, k := range keys {
+		accepted := slices.ContainsFunc(all[k], func(li *listener) bool { return li.set == nil && li.valid })
+
+		for _, li := range all[k] {
+			if li.set == nil {
+				continue
+			}
+
+			if !accepted {
+				li.valid = false
+			}
+
+			ordered = append(ordered, li)
+		}
+	}
+
+	for _, li := range ordered {
+		if !li.valid {
+			continue
+		}
+
+		entry := entryName(li)
+
+		p, ok := ports[entry]
+		if !ok {
+			p = &portInfo{kind: portKind(li), entry: entry}
+			ports[entry] = p
+		}
+
+		if p.kind != portKind(li) {
+			li.valid = false
+			t.setConflict(li, string(gwv1.ListenerReasonProtocolConflict), "port is used with another protocol")
+
+			continue
+		}
+
+		hostname := string(ptrOr(li.spec.Hostname, ""))
+		conflict := false
+		for _, other := range p.listeners {
+			if string(ptrOr(other.spec.Hostname, "")) == hostname && (other.gw == li.gw || li.family != familyHTTP) {
+				conflict = true
+
+				break
+			}
+		}
+
+		if conflict {
+			li.valid = false
+			t.setConflict(li, string(gwv1.ListenerReasonHostnameConflict), "another listener uses the same port and hostname")
+
+			continue
+		}
+
+		// the handshake is shared, so listeners on a port must ask for the
+		// same client certificates; only gateways of a shared standalone
+		// port can differ
+		if len(p.listeners) > 0 && !sameClientValidation(p.listeners[0], li) {
+			li.valid = false
+			t.setConflict(li, string(gwv1.ListenerReasonProtocolConflict), "another listener on the port uses another client certificate validation")
+
+			continue
+		}
+
+		p.listeners = append(p.listeners, li)
 	}
 
 	// sorted so certificates are stored in a stable order, the first
@@ -611,14 +680,17 @@ func (t *translator) mergePorts(all map[nsName][]*listener) {
 	}
 }
 
+// setConflict marks li as conflicted; it is neither accepted nor programmed.
 func (t *translator) setConflict(li *listener, reason, msg string) {
-	gen := li.gw.Generation
+	gen := li.generation()
 
 	for i, c := range li.status.Conditions {
-		if c.Type == string(gwv1.ListenerConditionAccepted) && reason == string(gwv1.ListenerReasonProtocolConflict) {
+		if c.Type == string(gwv1.ListenerConditionAccepted) {
 			li.status.Conditions[i] = t.condition(gen, string(gwv1.ListenerConditionAccepted), false, reason, msg)
 		}
 	}
+
+	li.conflict = reason
 
 	li.status.Conditions = append(li.status.Conditions,
 		t.condition(gen, string(gwv1.ListenerConditionConflicted), true, reason, msg),
@@ -638,7 +710,7 @@ func (t *translator) route(route *routeInfo, gateways map[nsName][]*listener) {
 
 	translate := func() (any, *refError) {
 		if !translated {
-			t.routeGateways = route.gateways(gateways)
+			t.routeGateways = t.routeParents(route, gateways)
 			data, refErr = route.translate()
 			t.routeGateways = nil
 			translated = true
@@ -648,15 +720,9 @@ func (t *translator) route(route *routeInfo, gateways map[nsName][]*listener) {
 	}
 
 	for _, ref := range route.parentRefs {
-		if ptrOr(ref.Group, gwv1.Group(groupGateway)) != groupGateway || ptrOr(ref.Kind, kindGateway) != kindGateway {
-			continue
-		}
-
-		gk := nsName{Namespace: string(ptrOr(ref.Namespace, gwv1.Namespace(route.meta.Namespace))), Name: string(ref.Name)}
-
-		lis, ok := gateways[gk]
+		_, lis, parentErr, ok := t.parentListeners(ref, route.meta.Namespace, gateways)
 		if !ok {
-			// not a gateway of this controller
+			// not a parent of this controller
 			continue
 		}
 
@@ -666,6 +732,10 @@ func (t *translator) route(route *routeInfo, gateways map[nsName][]*listener) {
 		}
 
 		accepted, resolved := t.attach(route, ref, lis, translate)
+		if parentErr != "" {
+			accepted = t.condition(route.meta.Generation, string(gwv1.RouteConditionAccepted), false, string(gwv1.RouteReasonNotAllowedByListeners), parentErr)
+		}
+
 		status.Conditions = []metav1.Condition{accepted, resolved}
 
 		t.out.Routes[rk] = append(t.out.Routes[rk], status)
@@ -823,7 +893,9 @@ func (t *translator) routeAllowed(route *routeInfo, li *listener) bool {
 	case gwv1.NamespacesFromAll:
 		return true
 	case gwv1.NamespacesFromSame:
-		return route.meta.Namespace == li.gw.Namespace
+		_, owner := li.owner()
+
+		return route.meta.Namespace == owner.Namespace
 	case gwv1.NamespacesFromSelector:
 		if selector == nil {
 			return false
@@ -982,26 +1054,20 @@ func (t *translator) finishGateways(list []*gwv1.Gateway, all map[nsName][]*list
 		}
 
 		st := &GatewayStatus{Generation: gw.Generation}
+		if gw.Spec.AllowedListeners != nil {
+			st.AttachedListenerSets = new(int32(0))
+		}
+
+		// listeners of ListenerSets are reported by their ListenerSet
+		lis = slices.DeleteFunc(slices.Clone(lis), func(li *listener) bool { return li.set != nil })
 
 		validCount := 0
 		for _, li := range lis {
-			programmed := t.condition(gw.Generation, string(gwv1.ListenerConditionProgrammed), li.valid, string(gwv1.ListenerReasonProgrammed), "")
-			if !li.valid {
-				programmed.Reason = string(gwv1.ListenerReasonInvalid)
-			} else {
+			if li.valid {
 				validCount++
 			}
 
-			li.status.Conditions = append(li.status.Conditions, programmed)
-			li.status.AttachedRoutes = int32(li.matches) //nolint:gosec // bounded by routes
-
-			if !slices.ContainsFunc(li.status.Conditions, func(c metav1.Condition) bool {
-				return c.Type == string(gwv1.ListenerConditionConflicted)
-			}) {
-				li.status.Conditions = append(li.status.Conditions,
-					t.condition(gw.Generation, string(gwv1.ListenerConditionConflicted), false, string(gwv1.ListenerReasonNoConflicts), ""))
-			}
-
+			t.finishListener(li)
 			st.Listeners = append(st.Listeners, *li.status)
 		}
 
@@ -1046,6 +1112,27 @@ func (t *translator) finishGateways(list []*gwv1.Gateway, all map[nsName][]*list
 		}
 
 		t.out.Gateways[key(gw)] = st
+	}
+}
+
+// finishListener completes the conditions and route count of li.
+func (t *translator) finishListener(li *listener) {
+	gen := li.generation()
+
+	programmed := t.condition(gen, string(gwv1.ListenerConditionProgrammed), li.valid, string(gwv1.ListenerReasonProgrammed), "")
+	if !li.valid {
+		programmed.Reason = string(gwv1.ListenerReasonInvalid)
+		if li.conflict != "" {
+			programmed.Reason = li.conflict
+		}
+	}
+
+	li.status.Conditions = append(li.status.Conditions, programmed)
+	li.status.AttachedRoutes = int32(li.matches) //nolint:gosec // bounded by routes
+
+	if li.conflict == "" {
+		li.status.Conditions = append(li.status.Conditions,
+			t.condition(gen, string(gwv1.ListenerConditionConflicted), false, string(gwv1.ListenerReasonNoConflicts), ""))
 	}
 }
 
