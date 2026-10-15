@@ -401,6 +401,17 @@ func mergeConditions(existing, next []metav1.Condition) []metav1.Condition {
 	return out
 }
 
+// SupportedFeatures lists the Gateway API features reported in the
+// GatewayClass status and used for conformance runs.
+func SupportedFeatures() []string {
+	out := make([]string, 0)
+	for _, f := range supportedFeatures() {
+		out = append(out, string(f.Name))
+	}
+
+	return out
+}
+
 func supportedFeatures() []gwv1.SupportedFeature {
 	names := []features.FeatureName{
 		features.SupportGateway,
@@ -424,11 +435,18 @@ func supportedFeatures() []gwv1.SupportedFeature {
 		features.SupportHTTPRouteBackendRequestHeaderModification,
 		features.SupportHTTPRouteBackendProtocolH2C,
 		features.SupportHTTPRouteBackendProtocolWebSocket,
+		features.SupportHTTPRouteRetry,
+		features.SupportHTTPRouteRetryBackendTimeout,
+		features.SupportHTTPRouteRetryConnectionError,
 		features.SupportHTTPRouteParentRefPort,
+		features.SupportHTTPRouteDestinationPortMatching,
+		features.SupportHTTPRouteCORS,
 		features.SupportHTTPRoute303RedirectStatusCode,
 		features.SupportHTTPRoute307RedirectStatusCode,
 		features.SupportHTTPRoute308RedirectStatusCode,
 		features.SupportGatewayPort8080,
+		features.SupportGatewayHTTPListenerIsolation,
+		features.SupportGatewayHTTPSListenerDetectMisdirectedRequests,
 		features.SupportGRPCRoute,
 		features.SupportGRPCRouteNamedRouteRule,
 		features.SupportHTTPRouteNamedRouteRule,

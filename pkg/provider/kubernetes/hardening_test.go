@@ -122,7 +122,7 @@ func TestProxyAvailability(t *testing.T) {
 	gw := gatewayObj("demo", "web", httpListener("http", 80, ""))
 	name := proxyName(key(gw))
 
-	if err := p.provision(ctx, []*gwv1.Gateway{gw}, nil); err != nil {
+	if err := p.provision(ctx, []*gwv1.Gateway{gw}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -152,7 +152,7 @@ func TestProxyAvailability(t *testing.T) {
 
 	// a single replica must not block node drains
 	p.cfg.Proxy.Replicas = 1
-	if err := p.provision(ctx, []*gwv1.Gateway{gw}, nil); err != nil {
+	if err := p.provision(ctx, []*gwv1.Gateway{gw}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := kube.PolicyV1().PodDisruptionBudgets("system").Get(ctx, name, metav1.GetOptions{}); err == nil {
@@ -161,10 +161,10 @@ func TestProxyAvailability(t *testing.T) {
 
 	// removing the gateway removes its budget
 	p.cfg.Proxy.Replicas = 2
-	if err := p.provision(ctx, []*gwv1.Gateway{gw}, nil); err != nil {
+	if err := p.provision(ctx, []*gwv1.Gateway{gw}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.provision(ctx, nil, nil); err != nil {
+	if err := p.provision(ctx, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := kube.PolicyV1().PodDisruptionBudgets("system").Get(ctx, name, metav1.GetOptions{}); err == nil {
@@ -198,7 +198,7 @@ func TestProxyCertificateBundle(t *testing.T) {
 	)
 
 	snap := &Snapshot{Secrets: []*corev1.Secret{own, shared, unrelated, denied}, ReferenceGrants: []*gwv1.ReferenceGrant{grant}}
-	if err := p.provision(ctx, []*gwv1.Gateway{gw}, snap); err != nil {
+	if err := p.provision(ctx, []*gwv1.Gateway{gw}, snap, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -433,7 +433,7 @@ func TestGatewayWithAddressesIsNotProvisioned(t *testing.T) {
 	kube := kubefake.NewSimpleClientset()
 	p := &Provider{kube: kube, cfg: Config{Proxy: Proxy{Namespace: "system", Image: "example:1"}}}
 
-	if err := p.provision(ctx, []*gwv1.Gateway{gw}, nil); err != nil {
+	if err := p.provision(ctx, []*gwv1.Gateway{gw}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 

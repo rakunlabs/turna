@@ -46,6 +46,12 @@ type Gateway struct {
 	// answering with the rule status, and when no rule matches. Use it to
 	// apply filters in front of other middlewares.
 	Passthrough bool `cfg:"passthrough"`
+
+	// Listeners are the hostnames of the HTTPS listeners sharing the port,
+	// "" for a listener without hostname. A TLS request whose Host header
+	// selects another listener than its TLS server name, for example on a
+	// reused HTTP/2 connection, is answered 421 Misdirected Request.
+	Listeners []string `cfg:"listeners"`
 }
 
 type Rule struct {
@@ -119,6 +125,7 @@ type Filter struct {
 	Redirect        *Redirect       `cfg:"redirect"`
 	Rewrite         *Rewrite        `cfg:"rewrite"`
 	Mirror          *service.Mirror `cfg:"mirror"`
+	CORS            *CORS           `cfg:"cors"`
 	// Middlewares runs named middlewares at the position of the filter.
 	Middlewares []string `cfg:"middlewares"`
 }
@@ -246,6 +253,12 @@ func (m *Gateway) Middleware() (func(http.Handler) http.Handler, error) {
 
 	return func(next http.Handler) http.Handler {
 		return grpcErrors(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if m.misdirected(r) {
+				writeError(w, r, http.StatusMisdirectedRequest)
+
+				return
+			}
+
 			r = normalizePath(r)
 
 			list := entries
@@ -598,6 +611,11 @@ func resolve(names []string) ([]func(http.Handler) http.Handler, error) {
 
 func (m *Gateway) filter(f Filter, match compiledMatch) ([]func(http.Handler) http.Handler, error) {
 	var out []func(http.Handler) http.Handler
+
+	// preflight requests are answered before other filters run
+	if f.CORS != nil {
+		out = append(out, f.CORS.middleware())
+	}
 
 	if f.RequestHeaders != nil {
 		out = append(out, f.RequestHeaders.request())

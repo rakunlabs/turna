@@ -75,11 +75,11 @@ When several rules match, the most specific wins, in this order: higher `priorit
 | Field | Default | Description |
 | --- | --- | --- |
 | `codes` | `[502, 503, 504]` | Retried response status codes. An unreachable upstream answers `502`. |
-| `attempts` | `1` | Retries after the first request. |
+| `attempts` | `1` | Retries after the first request; `0` disables retries. |
 | `backoff` | `0` | Minimum wait between attempts. |
 | `max_body_size` | `1MiB` | Request bodies up to this size are buffered and sent again. Larger requests are sent once without retries. |
 
-Filters run once per request; `middlewares` and `backends` run again for each attempt, so a retry can pick another backend. A retryable response is discarded before anything is sent to the client, and the last attempt's response is returned when all attempts fail.
+Filters run once per request; `middlewares` and `backends` run again for each attempt, so a retry can pick another backend. A retryable response is discarded before anything is sent to the client, and the last attempt's response is returned when all attempts fail. A `service` that cannot reach any upstream and an attempt exceeding `backend_timeout` are retried even when their status is not in `codes`.
 
 ## Filters
 
@@ -90,6 +90,7 @@ Filters run once per request; `middlewares` and `backends` run again for each at
 | `rewrite` | `hostname` and `path` (`replace_full_path` or `replace_prefix_match`). |
 | `redirect` | `scheme`, `hostname`, `port`, `path` and `status_code` (default `302`). |
 | `mirror` | Same options as the `service` mirror. |
+| `cors` | `allow_origins`, `allow_methods`, `allow_headers`, `expose_headers`, `allow_credentials` and `max_age` (default `5`). Preflight requests are answered by the filter. An origin `*` allows every origin, `*` in an origin host matches any number of labels to its left (`https://*.example.com`). Wildcard methods and headers are answered with the requested values. Allowed origins are echoed in `Access-Control-Allow-Origin`. |
 | `middlewares` | Run named middlewares at this position. |
 
 ## gRPC
@@ -113,3 +114,5 @@ routes:
 `grpc.type` is `exact` (default) or `regex`. More specific matches win: longer service, longer method, more headers. Errors of the gateway are returned to gRPC clients as gRPC status codes (`Unimplemented` when nothing matches, `Unavailable` when the upstream is unreachable). Use a `service` with `h2c: true` for plain text gRPC upstreams.
 
 Set `passthrough: true` to call the next middleware of the router after a rule's chain, or when no rule matches, instead of answering.
+
+`listeners` lists the hostnames of the TLS listeners sharing the entrypoint (`""` for a listener without hostname). A TLS request whose `Host` header selects another listener than its TLS server name, for example on a reused HTTP/2 connection, is answered `421 Misdirected Request`. Listeners are selected by exact hostname, then the longest wildcard, then the listener without hostname.

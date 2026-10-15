@@ -2,7 +2,7 @@
 
 Turna implements the [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/). It watches `GatewayClass`, `Gateway`, `HTTPRoute`, `GRPCRoute`, `TLSRoute`, `TCPRoute`, `UDPRoute`, `ReferenceGrant` and `BackendTLSPolicy` resources and routes traffic straight to pod endpoints from `EndpointSlice`s, using Turna's own load balancing, retries and passive health checks.
 
-It passes all tests of the `GATEWAY-HTTP`, `GATEWAY-GRPC`, `GATEWAY-TLS`, `GATEWAY-TCP` and `GATEWAY-UDP` conformance profiles of Gateway API v1.6.3 (core and extended). The report is in `deploy/conformance`.
+It passes all tests of the `GATEWAY-HTTP`, `GATEWAY-GRPC`, `GATEWAY-TLS`, `GATEWAY-TCP` and `GATEWAY-UDP` conformance profiles of Gateway API v1.6.3 (core and extended, experimental channel). The report and the script to run the suite in a kind cluster are in `deploy/conformance`.
 
 ## Install
 
@@ -167,17 +167,17 @@ The Kubernetes configuration is a separate layer next to the static `server` con
   - `HTTP`, and `HTTPS` with `Terminate` TLS from `kubernetes.io/tls` Secrets, also across namespaces with a `ReferenceGrant`.
   - `TLS` with `Passthrough` or `Terminate`; both modes can share a port and are selected by SNI.
   - `TCP` and `UDP`; a TCP and a UDP listener can use the same port number.
-- Hostnames: exact and wildcard on listeners and routes, with the intersection rules of the specification.
+- Hostnames: exact and wildcard on listeners and routes, with the intersection rules of the specification. Listeners sharing a port are isolated: a request is handled only by the routes of the most specific listener matching its host. On HTTPS listeners sharing a port, a request whose `Host` header selects another listener than its TLS server name (for example on a reused HTTP/2 connection) is answered `421 Misdirected Request`.
 - `HTTPRoute`:
   - Matches: path (`Exact`, `PathPrefix`, `RegularExpression`), method, headers, query parameters.
-  - Filters: request and response header modifiers, redirects (scheme, host, port, path, 301/302/303/307/308), URL rewrites, request mirrors (also several and by percentage).
+  - Filters: request and response header modifiers, redirects (scheme, host, port, path, 301/302/303/307/308), URL rewrites, request mirrors (also several and by percentage), `CORS` (experimental channel CRDs).
   - Request and `backendRequest` timeouts. Without a route `retry`, unreachable endpoints are retried right away on another endpoint, so the `backendRequest` timeout also bounds the whole request; the shorter of both applies.
-  - `retry` (experimental channel CRDs): `codes`, `attempts` and `backoff`. Without `codes`, 502, 503 and 504 are retried, which includes unreachable endpoints. Each attempt is bounded by `backendRequest` and all of them by `request`; a timed out attempt answers 504. Request bodies up to 1MiB are buffered for retries, larger requests are sent once. The GatewayClass does not list `HTTPRouteRetry` as a supported feature, because the standard channel CRDs have no `retry` field.
+  - `retry` (experimental channel CRDs): `codes`, `attempts` and `backoff`. Without `codes`, 502, 503 and 504 are retried. Connection errors and timed out attempts are always retried, also when their status is not in `codes`; a backend answering one of these statuses itself is retried only when the status is in `codes`. `attempts: 0` disables retries. Each attempt is bounded by `backendRequest` and all of them by `request`; a timed out attempt answers 504. Backends of a rule with `retry` do not retry unreachable endpoints themselves (`backend.retry` is not applied), so the number of attempts is exactly `attempts + 1`. Request bodies up to 1MiB are buffered for retries, larger requests are sent once.
 - `GRPCRoute`: service and method matches (exact and regex), header matches, header modifier and mirror filters. Plain text gRPC uses HTTP/2 without TLS (h2c) on HTTP listeners; gateway errors are returned as gRPC status codes. HTTPRoutes and GRPCRoutes can share a listener; on a hostname conflict the older route wins.
 - `TLSRoute`: routed by SNI to weighted backends; terminated connections reach the backend as plain TCP.
 - `TCPRoute` and `UDPRoute`: weighted backends. A listener without hostnames cannot tell routes apart, so the oldest attached route receives the traffic.
 - Backends: weighted `Service` references, cross-namespace with a `ReferenceGrant`, per-backend filters. Service ports with `appProtocol: kubernetes.io/h2c` are proxied as HTTP/2 without TLS; WebSocket upgrades are proxied on every backend (`kubernetes.io/ws`, and `kubernetes.io/wss` over TLS). `ExternalName` Services are rejected with `ResolvedRefs=False` unless `backend.allow_external_name` (chart: `allowExternalNameBackends`) is enabled, because they let route authors send traffic to any host, such as cloud metadata endpoints. Invalid backends answer their share of requests with an error (HTTP 500, gRPC `Internal`) or close their share of connections.
-- `BackendTLSPolicy`: HTTPRoute and GRPCRoute backends and mirrors connect to the targeted Service, or the port named by `sectionName`, over TLS. The certificate is verified against the CA bundles in `ca.crt` of the referenced ConfigMaps (or the system roots with `wellKnownCACertificates: System`), `hostname` is sent as SNI and checked unless `subjectAltNames` (hostname and URI) are set. Policies naming a section win over policies for the whole Service, then the older policy; others get `Accepted=False` with reason `Conflicted`. A policy without a usable CA certificate gets `Accepted=False` (`NoValidCACertificate`) and its backends fail instead of connecting without verification. TLSRoute and TCPRoute backends are not affected. Proxies receive the CA certificates in their bundle Secret and need no ConfigMap access.
+- `BackendTLSPolicy`: HTTPRoute and GRPCRoute backends and mirrors connect to the targeted Service, or the port named by `sectionName`, over TLS. The certificate is verified against the CA bundles in `ca.crt` of the referenced ConfigMaps (or the system roots with `wellKnownCACertificates: System`), `hostname` is sent as SNI and checked unless `subjectAltNames` (hostname and URI) are set. Policies naming a section win over policies for the whole Service, then the older policy; the losing policy gets `Accepted=False` with reason `Conflicted` for the Gateways using the conflicted target, while its other targets still apply. A policy without a usable CA certificate gets `Accepted=False` (`NoValidCACertificate`) and its backends fail instead of connecting without verification. TLSRoute and TCPRoute backends are not affected. Proxies receive only the CA certificates of the policies used by their Gateway in their bundle Secret and need no ConfigMap access. The controller caches only the `ca.crt` key of ConfigMaps. Policy status lists at most 16 Gateways, conflicted ones first.
 - `allowedRoutes` with `Same`, `All` and `Selector` namespaces and route kinds; `parentRef` `sectionName` and `port`.
 - Status for GatewayClass, Gateway, listeners, route parents of all route kinds and BackendTLSPolicy ancestors.
 
@@ -185,7 +185,7 @@ Route kinds and `BackendTLSPolicy` are skipped when their CRD is not installed. 
 
 `ReferenceGrant` is watched as `v1`. Clusters with older CRDs that serve only `v1beta1` keep working; the watch switches to `v1` within a minute after the CRDs are upgraded.
 
-Not yet supported: `ListenerSet`, CORS and external auth filters, `sessionPersistence`, client certificates towards backends, and `spec.addresses` on Gateways.
+Not yet supported: `ListenerSet`, external auth filters, `sessionPersistence`, client certificates towards backends and from clients, `spec.addresses` and `spec.infrastructure` propagation on Gateways.
 
 A rule with `sessionPersistence` keeps routing without it, and the route gets `ResolvedRefs=False` with reason `UnsupportedValue` so the missing behavior is visible.
 
@@ -208,7 +208,7 @@ Transient apply and provisioning failures are retried with exponential backoff (
 
 ### Upgrading
 
-BackendTLSPolicy support adds read access to `backendtlspolicies`, write access to `backendtlspolicies/status`, and cluster-wide read access to ConfigMaps for the controller. Apply the new RBAC together with the new image. With the old RBAC, BackendTLSPolicies are not watched and a warning is logged; they are picked up within a minute after the RBAC is updated.
+BackendTLSPolicy support adds read access to `backendtlspolicies`, write access to `backendtlspolicies/status`, and cluster-wide read access to ConfigMaps for the controller. Apply the new RBAC together with the new image. With the old RBAC, BackendTLSPolicies are not watched and a warning is logged; they are picked up within a minute after the RBAC is updated. When the access review itself fails (for example the API server is unavailable), discovery is retried instead of assuming the permission.
 
 The controller now needs `get` on its own pod, write access to Secrets and PodDisruptionBudgets in its namespace, and cluster-wide read access to Secrets; proxies lose cluster-wide Secret access and read only Secrets in the controller namespace. Apply the new RBAC together with the new image. `ExternalName` backends stop working until `backend.allow_external_name` is enabled.
 

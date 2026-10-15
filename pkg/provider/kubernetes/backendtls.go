@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
@@ -38,15 +39,23 @@ type policyState struct {
 	accepted metav1.Condition
 	resolved metav1.Condition
 
+	// targets taken by an older or more specific policy
+	lost map[policyTarget]bool
+
 	// gateways whose routes use a Service targeted by the policy; status is
-	// reported per gateway ancestor
-	ancestors map[nsName]struct{}
+	// reported per gateway ancestor, true when the policy lost a target that
+	// the gateway uses
+	ancestors map[nsName]bool
 }
+
+// maxPolicyAncestors is the size limit of PolicyStatus.Ancestors.
+const maxPolicyAncestors = 16
 
 // backendTLSPolicies resolves the policies targeting Services. Conflicting
 // policies follow GEP-713: a policy targeting a port by sectionName wins over
 // one targeting the whole Service, then the older policy, then the policy
-// first in namespace/name order.
+// first in namespace/name order. A conflict is reported only to the gateways
+// using the lost target; other targets of the policy still apply.
 func (t *translator) backendTLSPolicies(policies []*gwv1.BackendTLSPolicy) {
 	sorted := slices.Clone(policies)
 	slices.SortFunc(sorted, func(a, b *gwv1.BackendTLSPolicy) int {
@@ -66,11 +75,12 @@ func (t *translator) backendTLSPolicies(policies []*gwv1.BackendTLSPolicy) {
 			policy:    p,
 			accepted:  t.condition(gen, string(gwv1.PolicyConditionAccepted), true, string(gwv1.PolicyReasonAccepted), ""),
 			resolved:  t.condition(gen, string(gwv1.BackendTLSPolicyConditionResolvedRefs), true, string(gwv1.BackendTLSPolicyReasonResolvedRefs), ""),
-			ancestors: map[nsName]struct{}{},
+			lost:      map[policyTarget]bool{},
+			ancestors: map[nsName]bool{},
 		}
 		t.policies[key(p)] = st
 
-		cfg, ok := t.policyTLS(p, st)
+		cfg, _ := t.policyTLS(p, st)
 
 		var targets []policyTarget
 
@@ -85,10 +95,10 @@ func (t *translator) backendTLSPolicies(policies []*gwv1.BackendTLSPolicy) {
 			})
 		}
 
-		conflicted := false
-
 		for _, target := range targets {
-			t.policyTargets[target] = append(t.policyTargets[target], key(p))
+			if !slices.Contains(t.policyTargets[target], key(p)) {
+				t.policyTargets[target] = append(t.policyTargets[target], key(p))
+			}
 
 			sections := claimed[target.svc]
 			if sections == nil {
@@ -96,22 +106,17 @@ func (t *translator) backendTLSPolicies(policies []*gwv1.BackendTLSPolicy) {
 				claimed[target.svc] = sections
 			}
 
-			if _, taken := sections[target.section]; taken {
-				conflicted = true
+			if owner, taken := sections[target.section]; taken {
+				if owner != key(p) {
+					st.lost[target] = true
+				}
 
 				continue
 			}
 
 			sections[target.section] = key(p)
-
-			if ok || cfg != nil {
-				t.backendTLS[target] = backendTLS{policy: key(p), tls: cfg}
-			}
-		}
-
-		if conflicted {
-			st.accepted = t.condition(gen, string(gwv1.PolicyConditionAccepted), false, string(gwv1.PolicyReasonConflicted),
-				"another BackendTLSPolicy targets the same Service and section")
+			// an invalid policy still claims its target and fails connections
+			t.backendTLS[target] = backendTLS{policy: key(p), tls: cfg}
 		}
 	}
 }
@@ -221,10 +226,13 @@ func (t *translator) upstreamTLS(svc *corev1.Service, port *corev1.ServicePort) 
 
 	for _, target := range []policyTarget{section, whole} {
 		for _, name := range t.policyTargets[target] {
-			if st := t.policies[name]; st != nil {
-				for _, gw := range t.routeGateways {
-					st.ancestors[gw] = struct{}{}
-				}
+			st := t.policies[name]
+			if st == nil {
+				continue
+			}
+
+			for _, gw := range t.routeGateways {
+				st.ancestors[gw] = st.ancestors[gw] || st.lost[target]
 			}
 		}
 	}
@@ -238,6 +246,15 @@ func (t *translator) upstreamTLS(svc *corev1.Service, port *corev1.ServicePort) 
 		return nil
 	}
 
+	// the CA certificates of the applied policy go into the gateway bundles
+	for _, gw := range t.routeGateways {
+		if t.out.gatewayPolicies[gw] == nil {
+			t.out.gatewayPolicies[gw] = map[nsName]struct{}{}
+		}
+
+		t.out.gatewayPolicies[gw][b.policy] = struct{}{}
+	}
+
 	return b.tls
 }
 
@@ -247,7 +264,8 @@ func (r *Result) PolicyAncestors(k nsName) []gwv1.PolicyAncestorStatus {
 }
 
 // finishPolicies builds the ancestor status of every policy; policies used
-// by no served gateway get no status from this controller.
+// by no served gateway get no status from this controller. The status holds
+// at most maxPolicyAncestors gateways, conflicted ones first.
 func (t *translator) finishPolicies() {
 	for k, st := range t.policies {
 		gateways := make([]nsName, 0, len(st.ancestors))
@@ -255,10 +273,34 @@ func (t *translator) finishPolicies() {
 			gateways = append(gateways, gw)
 		}
 
-		slices.SortFunc(gateways, func(a, b nsName) int { return cmp.Compare(a.String(), b.String()) })
+		slices.SortFunc(gateways, func(a, b nsName) int {
+			if st.ancestors[a] != st.ancestors[b] {
+				if st.ancestors[a] {
+					return -1
+				}
+
+				return 1
+			}
+
+			return cmp.Compare(a.String(), b.String())
+		})
+
+		if len(gateways) > maxPolicyAncestors {
+			slog.Warn("kubernetes provider: BackendTLSPolicy status lists only the first gateways",
+				"policy", k.String(), "gateways", len(gateways), "limit", maxPolicyAncestors)
+
+			gateways = gateways[:maxPolicyAncestors]
+			slices.SortFunc(gateways, func(a, b nsName) int { return cmp.Compare(a.String(), b.String()) })
+		}
 
 		out := make([]gwv1.PolicyAncestorStatus, 0, len(gateways))
 		for _, gw := range gateways {
+			accepted := st.accepted
+			if st.ancestors[gw] && accepted.Status == metav1.ConditionTrue {
+				accepted = t.condition(st.policy.Generation, string(gwv1.PolicyConditionAccepted), false, string(gwv1.PolicyReasonConflicted),
+					"another BackendTLSPolicy targets the same Service and section")
+			}
+
 			out = append(out, gwv1.PolicyAncestorStatus{
 				AncestorRef: gwv1.ParentReference{
 					Group:     ptr(gwv1.Group(groupGateway)),
@@ -267,7 +309,7 @@ func (t *translator) finishPolicies() {
 					Name:      gwv1.ObjectName(gw.Name),
 				},
 				ControllerName: gwv1.GatewayController(t.cfg.controllerName()),
-				Conditions:     []metav1.Condition{st.accepted, st.resolved},
+				Conditions:     []metav1.Condition{accepted, st.resolved},
 			})
 		}
 

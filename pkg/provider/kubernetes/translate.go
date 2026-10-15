@@ -48,6 +48,10 @@ type Result struct {
 	Routes         map[routeKey][]gwv1.RouteParentStatus
 	// BackendTLSPolicy status per policy
 	Policies map[nsName][]gwv1.PolicyAncestorStatus
+
+	// BackendTLSPolicies applied to the backends of each served gateway;
+	// their CA certificates go into the proxy bundle of the gateway
+	gatewayPolicies map[nsName]map[nsName]struct{}
 }
 
 // HTTPRouteStatus returns the parent status of an HTTPRoute.
@@ -91,6 +95,8 @@ type translator struct {
 
 	// http entrypoint -> host -> rules collected for that host
 	hosts map[string]map[string]*hostRules
+	// valid HTTP listeners of each entrypoint, for listener isolation
+	entryListeners map[string][]*listener
 	// entrypoint -> listener family
 	families map[string]family
 	// http entrypoints serving TLS
@@ -151,15 +157,18 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 			Gateways:       make(map[nsName]*GatewayStatus),
 			Routes:         make(map[routeKey][]gwv1.RouteParentStatus),
 			Policies:       make(map[nsName][]gwv1.PolicyAncestorStatus),
+
+			gatewayPolicies: make(map[nsName]map[nsName]struct{}),
 		},
-		hosts:         make(map[string]map[string]*hostRules),
-		families:      make(map[string]family),
-		secure:        make(map[string]bool),
-		streams:       make(map[string][]*streamRoute),
-		middlewares:   make(map[string]shttp.HTTPMiddleware),
-		backendTLS:    make(map[policyTarget]backendTLS),
-		policies:      make(map[nsName]*policyState),
-		policyTargets: make(map[policyTarget][]nsName),
+		hosts:          make(map[string]map[string]*hostRules),
+		entryListeners: make(map[string][]*listener),
+		families:       make(map[string]family),
+		secure:         make(map[string]bool),
+		streams:        make(map[string][]*streamRoute),
+		middlewares:    make(map[string]shttp.HTTPMiddleware),
+		backendTLS:     make(map[policyTarget]backendTLS),
+		policies:       make(map[nsName]*policyState),
+		policyTargets:  make(map[policyTarget][]nsName),
 	}
 
 	classes := t.classes(s.GatewayClasses)
@@ -563,6 +572,8 @@ func (t *translator) mergePorts(all map[nsName][]*listener) {
 				continue
 			}
 
+			t.entryListeners[entry] = append(t.entryListeners[entry], li)
+
 			for _, c := range li.certs {
 				host := string(ptrOr(li.spec.Hostname, ""))
 				if host == "" {
@@ -755,6 +766,11 @@ func (t *translator) attach(route *routeInfo, ref gwv1.ParentReference, lis []*l
 		switch v := data.(type) {
 		case []gateway.Rule:
 			for _, h := range a.hosts {
+				// requests for the host belong to a more specific listener
+				if t.shadowed(a.li, h) {
+					continue
+				}
+
 				t.addRules(a.li.entry, h, v, route.kind == kindGRPCRoute)
 			}
 		case []streamBackend:
@@ -842,6 +858,73 @@ func hostMatches(pattern, host string) bool {
 	h := strings.TrimPrefix(host, "*")
 
 	return strings.HasSuffix(h, suffix) && len(h) > len(suffix)
+}
+
+// shadowed reports whether requests for host are served by another listener
+// on the same port with a more specific hostname than li. Listeners are
+// isolated: a request is handled only by the routes of the most specific
+// listener matching its host.
+func (t *translator) shadowed(li *listener, host string) bool {
+	own := string(ptrOr(li.spec.Hostname, ""))
+
+	for _, other := range t.entryListeners[li.entry] {
+		if other == li || !other.valid || other.family != familyHTTP {
+			continue
+		}
+
+		oh := string(ptrOr(other.spec.Hostname, ""))
+		if oh == "" || oh == own {
+			continue
+		}
+
+		moreSpecific := own == "" || hostMatches(own, oh)
+		if moreSpecific && (oh == host || hostMatches(oh, host)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// listenerHosts returns the sorted hostnames of the listeners of an
+// entrypoint, nil with a single listener as no request can be misdirected.
+func (t *translator) listenerHosts(entry string) []string {
+	if len(t.entryListeners[entry]) < 2 {
+		return nil
+	}
+
+	out := make([]string, 0, len(t.entryListeners[entry]))
+	for _, li := range t.entryListeners[entry] {
+		out = append(out, string(ptrOr(li.spec.Hostname, "")))
+	}
+
+	slices.Sort(out)
+
+	return slices.Compact(out)
+}
+
+// isolatedHosts returns the listener hostnames of an entrypoint that another,
+// less specific listener on the same entrypoint would also match.
+func (t *translator) isolatedHosts(entry string) []string {
+	var out []string
+
+	for _, li := range t.entryListeners[entry] {
+		h := string(ptrOr(li.spec.Hostname, ""))
+		if h == "" {
+			continue
+		}
+
+		for _, other := range t.entryListeners[entry] {
+			oh := string(ptrOr(other.spec.Hostname, ""))
+			if other != li && oh != h && (oh == "" || hostMatches(oh, h)) {
+				out = append(out, h)
+
+				break
+			}
+		}
+	}
+
+	return out
 }
 
 func (t *translator) addRules(entry, host string, rules []gateway.Rule, grpc bool) {
@@ -939,12 +1022,32 @@ func (t *translator) build() {
 			byHost = map[string]*hostRules{"": {entry: entry}}
 		}
 
+		// a listener hostname without routes still takes its requests, so
+		// they answer 404 instead of reaching a less specific listener
+		for _, h := range t.isolatedHosts(entry) {
+			if _, ok := byHost[h]; !ok {
+				byHost[h] = &hostRules{entry: entry, host: h}
+			}
+		}
+
+		// unknown hosts reach a gateway too, which detects misdirected
+		// requests before answering 404
+		if t.secure[entry] && len(t.listenerHosts(entry)) > 0 {
+			if _, ok := byHost[""]; !ok {
+				byHost[""] = &hostRules{entry: entry}
+			}
+		}
+
 		for host, hr := range byHost {
 			name := sanitize("k8s", entry, host)
 
 			g := &gateway.Gateway{Rules: hr.rules, ListenerPort: entryPort(entry)}
 			if len(hr.grpc) > 0 {
 				g.GRPC = hr.grpc
+			}
+
+			if t.secure[entry] {
+				g.Listeners = t.listenerHosts(entry)
 			}
 
 			srv.HTTP.Middlewares[name] = shttp.HTTPMiddleware{Gateway: g}

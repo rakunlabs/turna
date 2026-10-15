@@ -23,7 +23,7 @@ func TestHTTPBackendHonorsH2CAppProtocol(t *testing.T) {
 			svc.Spec.Ports[0].AppProtocol = ptr(app)
 			tr := &translator{cfg: &Config{}, idx: newIndex(&Snapshot{Services: []*corev1.Service{svc}, EndpointSlices: []*discoveryv1.EndpointSlice{slice}}), middlewares: map[string]shttp.HTTPMiddleware{}}
 			r := routeObj("demo", "r", "gw", nil, backendRule("/", "web", 80))
-			b, err := tr.backend(r, 0, 0, r.Spec.Rules[0].BackendRefs[0])
+			b, err := tr.backend(r, 0, 0, r.Spec.Rules[0].BackendRefs[0], false)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -1,6 +1,6 @@
 apiVersion: gateway.networking.k8s.io/v1
-date: '2026-10-14T23:58:16+02:00'
-gatewayAPIChannel: standard
+date: "2026-10-15T09:32:45Z"
+gatewayAPIChannel: experimental
 gatewayAPIVersion: v1.6.3
 implementation:
   contact:
@@ -8,46 +8,10 @@ implementation:
   organization: rakunlabs
   project: turna
   url: https://github.com/rakunlabs/turna
-  version: dev
+  version: v0.10.0-2-g62a7163-dirty
 kind: ConformanceReport
 mode: default
 profiles:
-- core:
-    result: success
-    statistics:
-      Failed: 0
-      Passed: 19
-      Skipped: 0
-  extended:
-    result: success
-    statistics:
-      Failed: 0
-      Passed: 4
-      Skipped: 0
-    supportedFeatures:
-    - GatewayPort8080
-    - TLSRouteModeMixed
-    - TLSRouteModeTerminate
-    unsupportedFeatures:
-    - GatewayAddressEmpty
-    - GatewayBackendClientCertificate
-    - GatewayFrontendClientCertificateValidation
-    - GatewayFrontendClientCertificateValidationInsecureFallback
-    - GatewayHTTPListenerIsolation
-    - GatewayHTTPSListenerDetectMisdirectedRequests
-    - GatewayInfrastructure
-    - GatewayStaticAddresses
-    - ListenerSet
-  name: GATEWAY-TLS
-  summary: Core tests succeeded. Extended tests succeeded.
-- core:
-    result: success
-    statistics:
-      Failed: 0
-      Passed: 19
-      Skipped: 0
-  name: GATEWAY-UDP
-  summary: Core tests succeeded.
 - core:
     result: success
     statistics:
@@ -58,11 +22,13 @@ profiles:
     result: success
     statistics:
       Failed: 0
-      Passed: 31
+      Passed: 36
       Skipped: 0
     supportedFeatures:
     - BackendTLSPolicy
     - BackendTLSPolicySANValidation
+    - GatewayHTTPListenerIsolation
+    - GatewayHTTPSListenerDetectMisdirectedRequests
     - GatewayPort8080
     - HTTPRoute303RedirectStatusCode
     - HTTPRoute307RedirectStatusCode
@@ -71,6 +37,8 @@ profiles:
     - HTTPRouteBackendProtocolWebSocket
     - HTTPRouteBackendRequestHeaderModification
     - HTTPRouteBackendTimeout
+    - HTTPRouteCORS
+    - HTTPRouteDestinationPortMatching
     - HTTPRouteHostRewrite
     - HTTPRouteMethodMatching
     - HTTPRouteNamedRouteRule
@@ -84,21 +52,17 @@ profiles:
     - HTTPRouteRequestPercentageMirror
     - HTTPRouteRequestTimeout
     - HTTPRouteResponseHeaderModification
+    - HTTPRouteRetry
+    - HTTPRouteRetryBackendTimeout
+    - HTTPRouteRetryConnectionError
     - HTTPRouteSchemeRedirect
     unsupportedFeatures:
     - GatewayAddressEmpty
     - GatewayBackendClientCertificate
     - GatewayFrontendClientCertificateValidation
     - GatewayFrontendClientCertificateValidationInsecureFallback
-    - GatewayHTTPListenerIsolation
-    - GatewayHTTPSListenerDetectMisdirectedRequests
     - GatewayInfrastructure
     - GatewayStaticAddresses
-    - HTTPRouteCORS
-    - HTTPRouteDestinationPortMatching
-    - HTTPRouteRetry
-    - HTTPRouteRetryBackendTimeout
-    - HTTPRouteRetryConnectionError
     - ListenerSet
   name: GATEWAY-HTTP
   summary: Core tests succeeded. Extended tests succeeded.
@@ -117,4 +81,40 @@ profiles:
       Passed: 18
       Skipped: 0
   name: GATEWAY-TCP
+  summary: Core tests succeeded.
+- core:
+    result: success
+    statistics:
+      Failed: 0
+      Passed: 19
+      Skipped: 0
+  extended:
+    result: success
+    statistics:
+      Failed: 0
+      Passed: 4
+      Skipped: 0
+    supportedFeatures:
+    - GatewayHTTPListenerIsolation
+    - GatewayHTTPSListenerDetectMisdirectedRequests
+    - GatewayPort8080
+    - TLSRouteModeMixed
+    - TLSRouteModeTerminate
+    unsupportedFeatures:
+    - GatewayAddressEmpty
+    - GatewayBackendClientCertificate
+    - GatewayFrontendClientCertificateValidation
+    - GatewayFrontendClientCertificateValidationInsecureFallback
+    - GatewayInfrastructure
+    - GatewayStaticAddresses
+    - ListenerSet
+  name: GATEWAY-TLS
+  summary: Core tests succeeded. Extended tests succeeded.
+- core:
+    result: success
+    statistics:
+      Failed: 0
+      Passed: 19
+      Skipped: 0
+  name: GATEWAY-UDP
   summary: Core tests succeeded.

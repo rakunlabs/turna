@@ -245,7 +245,7 @@ func (p *Provider) waitRouteKinds(ctx context.Context) (map[gwv1.Kind]bool, bool
 	backoff := time.Second
 
 	for {
-		available, err := p.routeKinds()
+		available, err := p.routeKinds(ctx)
 		if err == nil {
 			return available, true
 		}
@@ -273,7 +273,7 @@ func (p *Provider) watchRouteKinds(ctx context.Context, available map[gwv1.Kind]
 		case <-ticker.C:
 		}
 
-		now, err := p.routeKinds()
+		now, err := p.routeKinds(ctx)
 		if err != nil {
 			slog.Debug("kubernetes provider: discovery failed", "err", err.Error())
 
@@ -375,8 +375,17 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 			infs = append(infs, l.policies.Informer())
 
 			if !bundled {
-				l.configMaps = kf.Core().V1().ConfigMaps()
-				infs = append(infs, l.configMaps.Informer())
+				// every ConfigMap is watched, the cache keeps only CA bundles
+				cmf := informers.NewSharedInformerFactoryWithOptions(p.kube, 0, informers.WithNamespace(ns), informers.WithTransform(stripConfigMap))
+				l.configMaps = cmf.Core().V1().ConfigMaps()
+
+				inf := l.configMaps.Informer()
+				if _, err := inf.AddEventHandler(caHandler(p.notify)); err != nil {
+					return err
+				}
+
+				syncs = append(syncs, inf.HasSynced)
+				starters = append(starters, cmf.Start)
 			}
 		}
 
@@ -771,7 +780,7 @@ func (p *Provider) sync(ctx context.Context) error {
 			p.markReady()
 			return nil
 		}
-		provisionErr := p.provision(leaderCtx, res.served, snap)
+		provisionErr := p.provision(leaderCtx, res.served, snap, res.gatewayPolicies)
 		if provisionErr == nil {
 			p.markReady()
 		}
@@ -814,7 +823,7 @@ func (p *Provider) sync(ctx context.Context) error {
 
 // routeKinds reports which optional route CRDs are installed, and whether
 // ReferenceGrant is served as v1; older CRDs serve only v1beta1.
-func (p *Provider) routeKinds() (map[gwv1.Kind]bool, error) {
+func (p *Provider) routeKinds(ctx context.Context) (map[gwv1.Kind]bool, error) {
 	out := map[gwv1.Kind]bool{kindGRPCRoute: false, kindTLSRoute: false, kindTCPRoute: false, kindUDPRoute: false, kindReferenceGrant: false, kindBackendTLSPolicy: false}
 
 	res, err := p.gw.Discovery().ServerResourcesForGroupVersion(gwv1.GroupVersion.String())
@@ -840,17 +849,29 @@ func (p *Provider) routeKinds() (map[gwv1.Kind]bool, error) {
 
 	// An installation upgraded without the new RBAC must keep serving; a
 	// watch without permission would block the cache sync forever.
-	if out[kindBackendTLSPolicy] && !p.canWatchBackendTLS() {
-		out[kindBackendTLSPolicy] = false
+	if out[kindBackendTLSPolicy] {
+		ok, err := p.canWatchBackendTLS(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		out[kindBackendTLSPolicy] = ok
 	}
 
 	return out, nil
 }
 
+// accessReviewTimeout bounds the access reviews of one discovery.
+const accessReviewTimeout = 10 * time.Second
+
 // canWatchBackendTLS reports whether BackendTLSPolicies, and the ConfigMaps
 // holding their CA certificates, may be listed in the watched namespaces.
-// Proxies read the CA certificates from their bundle Secret.
-func (p *Provider) canWatchBackendTLS() bool {
+// Proxies read the CA certificates from their bundle Secret. A failed review
+// is an error, so discovery retries instead of guessing the permission.
+func (p *Provider) canWatchBackendTLS(ctx context.Context) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, accessReviewTimeout)
+	defer cancel()
+
 	namespaces := p.cfg.Namespaces
 	if len(namespaces) == 0 {
 		namespaces = []string{corev1.NamespaceAll}
@@ -867,27 +888,24 @@ func (p *Provider) canWatchBackendTLS() bool {
 				attrs := c
 				attrs.Namespace, attrs.Verb = ns, verb
 
-				review, err := p.kube.AuthorizationV1().SelfSubjectAccessReviews().Create(context.Background(),
+				review, err := p.kube.AuthorizationV1().SelfSubjectAccessReviews().Create(ctx,
 					&authorizationv1.SelfSubjectAccessReview{Spec: authorizationv1.SelfSubjectAccessReviewSpec{ResourceAttributes: &attrs}},
 					metav1.CreateOptions{})
 				if err != nil {
-					// unknown: assume allowed, as before the check existed
-					slog.Debug("kubernetes provider: access review failed", "err", err.Error())
-
-					continue
+					return false, fmt.Errorf("access review %s %s in %q: %w", verb, c.Resource, ns, err)
 				}
 
 				if !review.Status.Allowed {
 					slog.Warn("kubernetes provider: BackendTLSPolicy is installed but not watched, update the RBAC",
 						"resource", c.Resource, "verb", verb, "namespace", ns)
 
-					return false
+					return false, nil
 				}
 			}
 		}
 	}
 
-	return true
+	return true, nil
 }
 
 // controllerImage returns the image of this pod's turna container, preferring
@@ -931,6 +949,73 @@ func stripManagedFields(obj any) (any, error) {
 	}
 
 	return obj, nil
+}
+
+// stripConfigMap keeps only the identity and the CA certificate of a
+// ConfigMap; BackendTLSPolicies read nothing else, and the cache holds every
+// ConfigMap of the watched namespaces.
+func stripConfigMap(obj any) (any, error) {
+	cm, ok := obj.(*corev1.ConfigMap)
+	if !ok {
+		// tombstones and other types keep their content
+		return stripManagedFields(obj)
+	}
+
+	out := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:       cm.Namespace,
+			Name:            cm.Name,
+			UID:             cm.UID,
+			ResourceVersion: cm.ResourceVersion,
+		},
+	}
+
+	if ca, ok := cm.Data[caCertificateKey]; ok {
+		out.Data = map[string]string{caCertificateKey: ca}
+	}
+
+	return out, nil
+}
+
+// caHandler notifies only for ConfigMaps that hold a CA certificate, other
+// ConfigMaps cannot change the translation.
+func caHandler(notify func()) cache.ResourceEventHandler {
+	ca := func(obj any) (string, bool) {
+		if t, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+			obj = t.Obj
+		}
+
+		cm, ok := obj.(*corev1.ConfigMap)
+		if !ok {
+			// unknown content, translate again to be safe
+			return "", true
+		}
+
+		v, ok := cm.Data[caCertificateKey]
+
+		return v, ok
+	}
+
+	return cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj any) {
+			if _, ok := ca(obj); ok {
+				notify()
+			}
+		},
+		UpdateFunc: func(oldObj, newObj any) {
+			oldCA, oldOK := ca(oldObj)
+			newCA, newOK := ca(newObj)
+
+			if oldOK != newOK || oldCA != newCA {
+				notify()
+			}
+		},
+		DeleteFunc: func(obj any) {
+			if _, ok := ca(obj); ok {
+				notify()
+			}
+		},
+	}
 }
 
 func (p *Provider) markReady() {

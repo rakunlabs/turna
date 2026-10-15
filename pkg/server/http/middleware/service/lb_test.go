@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
 )
 
@@ -218,6 +219,43 @@ func TestRetryExhaustedReportsBadGateway(t *testing.T) {
 
 	if rec := call(h); rec.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d body = %q", rec.Code, rec.Body.String())
+	}
+}
+
+// An unreachable upstream is reported to a surrounding retry, an upstream
+// answering 502 is not.
+func TestUnreachableReportsUpstreamFailure(t *testing.T) {
+	dead := httptest.NewServer(http.NotFoundHandler())
+	deadURL := dead.URL
+	dead.Close()
+
+	var bad atomic.Int32
+	bad.Store(http.StatusBadGateway)
+
+	for _, tt := range []struct {
+		name   string
+		url    string
+		retry  int
+		failed bool
+	}{
+		{"unreachable", deadURL, 0, true},
+		{"unreachable after retries", deadURL, 2, true},
+		{"answered 502", namedBackend(t, "bad", &bad).URL, 0, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newServiceHandler(t, context.Background(), &Service{
+				Retry:        tt.retry,
+				LoadBalancer: LoadBalancer{Servers: []Server{{URL: tt.url}}},
+			})
+
+			req, failed := httputil.WithUpstreamFailure(httptest.NewRequest(http.MethodGet, "/", nil))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadGateway || failed.Load() != tt.failed {
+				t.Fatalf("status = %d failed = %v", rec.Code, failed.Load())
+			}
+		})
 	}
 }
 

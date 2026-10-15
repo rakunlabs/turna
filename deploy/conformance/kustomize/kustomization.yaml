@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Gateway API conformance setup, see deploy/conformance/README.md.
+resources:
+  - ../../kustomize/turna-gateway
+
+images:
+  - name: ghcr.io/rakunlabs/turna
+    newName: turna
+    newTag: conformance
+
+patches:
+  # one controller replica keeps the logs in one place; the image is loaded
+  # into the cluster and not pulled
+  - target:
+      kind: Deployment
+      name: turna
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never
+
+configMapGenerator:
+  - name: turna-config
+    behavior: replace
+    files:
+      - turna.yaml

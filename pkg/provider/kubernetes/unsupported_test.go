@@ -85,18 +85,23 @@ func TestRouteRetry(t *testing.T) {
 	plain := backendRule("/", "web", 80)
 	plain.Retry = &gwv1.HTTPRouteRetry{}
 
+	disabled := backendRule("/", "web", 80)
+	disabled.Retry = &gwv1.HTTPRouteRetry{Attempts: ptr(0)}
+
 	res := Translate(&Config{}, &Snapshot{
 		GatewayClasses: []*gwv1.GatewayClass{class()},
 		Gateways:       []*gwv1.Gateway{gatewayObj("app", "gw", httpListener("http", 80, ""))},
 		HTTPRoutes: []*gwv1.HTTPRoute{
 			routeObj("app", "r", "gw", []string{"a.example.com"}, rule),
 			routeObj("app", "p", "gw", []string{"b.example.com"}, plain),
+			routeObj("app", "d", "gw", []string{"c.example.com"}, disabled),
+			routeObj("app", "n", "gw", []string{"d.example.com"}, backendRule("/", "web", 80)),
 		},
 		Services:       []*corev1.Service{svc},
 		EndpointSlices: []*discoveryv1.EndpointSlice{slice},
 	})
 
-	for _, name := range []string{"r", "p"} {
+	for _, name := range []string{"r", "p", "d", "n"} {
 		c := condition(t, res.Routes[routeKey{Kind: kindRoute, nsName: nsName{"app", name}}][0].Conditions, string(gwv1.RouteConditionResolvedRefs))
 		if c.Status != metav1.ConditionTrue {
 			t.Fatalf("%s resolved refs = %+v", name, c)
@@ -110,26 +115,52 @@ func TestRouteRetry(t *testing.T) {
 		}
 	}
 
-	if len(got) != 2 {
+	if len(got) != 4 {
 		t.Fatalf("rules = %+v", got)
 	}
 
+	seen := map[int]bool{}
+
 	for _, r := range got {
-		if r.Retry == nil {
-			t.Fatalf("rule without retry: %+v", r)
+		// rules with a route retry must not retry again in the service
+		svc := res.Server.HTTP.Middlewares[r.Backends[0].Middlewares[len(r.Backends[0].Middlewares)-1]].ServiceMiddleware
+		if svc == nil {
+			t.Fatalf("rule backend is not a service: %+v", r.Backends[0])
 		}
 
-		switch r.Retry.Attempts {
+		if r.Retry == nil {
+			if svc.Retry != 2 {
+				t.Fatalf("service retry without route retry = %d", svc.Retry)
+			}
+
+			continue
+		}
+
+		if svc.Retry != 0 {
+			t.Fatalf("service retry with route retry = %d", svc.Retry)
+		}
+
+		if r.Retry.Attempts == nil {
+			t.Fatalf("attempts not set: %+v", r.Retry)
+		}
+
+		seen[*r.Retry.Attempts] = true
+
+		switch *r.Retry.Attempts {
 		case 3:
 			if !slices.Equal(r.Retry.Codes, []int{500, 503}) || r.Retry.Backoff != 100*time.Millisecond || r.Timeout != 10*time.Second || r.BackendTimeout != 2*time.Second {
 				t.Fatalf("retry rule = %+v retry = %+v", r, r.Retry)
 			}
-		case 1:
+		case 1, 0:
 			if len(r.Retry.Codes) != 0 || r.Retry.Backoff != 0 {
 				t.Fatalf("default retry = %+v", r.Retry)
 			}
 		default:
-			t.Fatalf("attempts = %d", r.Retry.Attempts)
+			t.Fatalf("attempts = %d", *r.Retry.Attempts)
 		}
+	}
+
+	if !seen[0] || !seen[1] || !seen[3] {
+		t.Fatalf("attempts seen = %v", seen)
 	}
 }

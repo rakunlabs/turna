@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/registry"
 )
 
@@ -43,11 +44,12 @@ func TestRetry(t *testing.T) {
 		want      int
 		wantCalls int32
 	}{
-		{"succeeds within attempts", Retry{Codes: []int{500}, Attempts: 3}, 2, 500, 200, 3},
-		{"exceeds attempts", Retry{Codes: []int{500}, Attempts: 3}, 4, 500, 500, 4},
-		{"code not retried", Retry{Codes: []int{500}, Attempts: 3}, 2, 503, 503, 1},
-		{"default codes", Retry{Attempts: 2}, 1, 502, 200, 2},
+		{"succeeds within attempts", Retry{Codes: []int{500}, Attempts: new(3)}, 2, 500, 200, 3},
+		{"exceeds attempts", Retry{Codes: []int{500}, Attempts: new(3)}, 4, 500, 500, 4},
+		{"code not retried", Retry{Codes: []int{500}, Attempts: new(3)}, 2, 503, 503, 1},
+		{"default codes", Retry{Attempts: new(2)}, 1, 502, 200, 2},
 		{"default attempts", Retry{Codes: []int{504}}, 2, 504, 504, 2},
+		{"zero attempts", Retry{Codes: []int{500}, Attempts: new(0)}, 1, 500, 500, 1},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var calls atomic.Int32
@@ -87,7 +89,7 @@ func TestRetryBackoff(t *testing.T) {
 	flaky("retry-backoff", 1, 500, &calls)
 
 	g := &Gateway{Rules: []Rule{{
-		Retry:    &Retry{Codes: []int{500}, Attempts: 1, Backoff: 50 * time.Millisecond},
+		Retry:    &Retry{Codes: []int{500}, Attempts: new(1), Backoff: 50 * time.Millisecond},
 		Backends: []Backend{{Weight: 1, Middlewares: []string{"retry-backoff"}}},
 	}}}
 
@@ -122,7 +124,7 @@ func TestRetryBackendTimeout(t *testing.T) {
 	}})
 
 	g := &Gateway{Rules: []Rule{{
-		Retry:          &Retry{Codes: []int{504}, Attempts: 1},
+		Retry:          &Retry{Codes: []int{504}, Attempts: new(1)},
 		BackendTimeout: 20 * time.Millisecond,
 		Backends:       []Backend{{Weight: 1, Middlewares: []string{"retry-slow"}}},
 	}}}
@@ -140,13 +142,83 @@ func TestRetryLargeBody(t *testing.T) {
 	flaky("retry-large", 1, 500, &calls)
 
 	g := &Gateway{Rules: []Rule{{
-		Retry:    &Retry{Codes: []int{500}, Attempts: 3, MaxBodySize: 4},
+		Retry:    &Retry{Codes: []int{500}, Attempts: new(3), MaxBodySize: 4},
 		Backends: []Backend{{Weight: 1, Middlewares: []string{"retry-large"}}},
 	}}}
 
 	rec := serve(t, g, httptest.NewRequest(http.MethodPost, "/", strings.NewReader("too large")))
 
 	if rec.Code != http.StatusInternalServerError || calls.Load() != 1 {
+		t.Fatalf("status = %d calls = %d", rec.Code, calls.Load())
+	}
+}
+
+// Connection errors and backend timeouts are retried even when their status
+// is not in the retried codes.
+func TestRetryUpstreamFailure(t *testing.T) {
+	var calls atomic.Int32
+
+	registry.GlobalReg.AddHttpMiddleware("retry-unreachable", []func(http.Handler) http.Handler{func(http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if calls.Add(1) == 1 {
+				httputil.ReportUpstreamFailure(r)
+				w.WriteHeader(http.StatusBadGateway)
+
+				return
+			}
+
+			w.WriteHeader(http.StatusOK)
+		})
+	}})
+
+	g := &Gateway{Rules: []Rule{{
+		Retry:    &Retry{Codes: []int{500}, Attempts: new(1)},
+		Backends: []Backend{{Weight: 1, Middlewares: []string{"retry-unreachable"}}},
+	}}}
+
+	rec := serve(t, g, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK || calls.Load() != 2 {
+		t.Fatalf("connection error: status = %d calls = %d", rec.Code, calls.Load())
+	}
+
+	// a backend answering 502 itself is not a connection error
+	var answered atomic.Int32
+	flaky("retry-answered-502", 1, http.StatusBadGateway, &answered)
+
+	g = &Gateway{Rules: []Rule{{
+		Retry:    &Retry{Codes: []int{500}, Attempts: new(1)},
+		Backends: []Backend{{Weight: 1, Middlewares: []string{"retry-answered-502"}}},
+	}}}
+
+	rec = serve(t, g, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusBadGateway || answered.Load() != 1 {
+		t.Fatalf("answered 502: status = %d calls = %d", rec.Code, answered.Load())
+	}
+}
+
+func TestRetryBackendTimeoutWithoutCode(t *testing.T) {
+	var calls atomic.Int32
+
+	registry.GlobalReg.AddHttpMiddleware("retry-slow-nocode", []func(http.Handler) http.Handler{func(http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if calls.Add(1) == 1 {
+				<-r.Context().Done()
+
+				return
+			}
+
+			w.WriteHeader(http.StatusOK)
+		})
+	}})
+
+	g := &Gateway{Rules: []Rule{{
+		Retry:          &Retry{Codes: []int{500}, Attempts: new(1)},
+		BackendTimeout: 20 * time.Millisecond,
+		Backends:       []Backend{{Weight: 1, Middlewares: []string{"retry-slow-nocode"}}},
+	}}}
+
+	rec := serve(t, g, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK || calls.Load() != 2 {
 		t.Fatalf("status = %d calls = %d", rec.Code, calls.Load())
 	}
 }

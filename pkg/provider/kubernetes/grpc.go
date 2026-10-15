@@ -163,7 +163,7 @@ func (t *translator) grpcBackend(route *gwv1.GRPCRoute, rule, idx int, b gwv1.GR
 	}
 
 	// plain text gRPC needs HTTP/2 prior knowledge
-	out.Middlewares = append(names, t.serviceMiddlewareFor(up, up.scheme == "http"))
+	out.Middlewares = append(names, t.serviceMiddlewareFor(up, up.scheme == "http", false))
 
 	return out, nil
 }
@@ -171,7 +171,9 @@ func (t *translator) grpcBackend(route *gwv1.GRPCRoute, rule, idx int, b gwv1.GR
 // serviceMiddlewareFor returns a shared service middleware for the upstream
 // set so routes using the same backend share health and balancing state.
 // Upstreams with a different TLS configuration get their own middleware.
-func (t *translator) serviceMiddlewareFor(up upstream, h2c bool) string {
+// Rules with a route retry get a middleware without connection retries, so
+// the attempts do not multiply.
+func (t *translator) serviceMiddlewareFor(up upstream, h2c, routeRetry bool) string {
 	sorted := up.urls()
 	slices.Sort(sorted)
 
@@ -184,6 +186,12 @@ func (t *translator) serviceMiddlewareFor(up upstream, h2c bool) string {
 	if up.tls != nil {
 		prefix = "k8s-tls"
 		id += "|" + tlsID(up.tls)
+	}
+
+	retry := ptrOr(t.cfg.Backend.Retry, 2)
+	if routeRetry {
+		prefix += "-nr"
+		retry = 0
 	}
 
 	name := sanitize(prefix, id)
@@ -200,7 +208,7 @@ func (t *translator) serviceMiddlewareFor(up upstream, h2c bool) string {
 			Strategy:           t.cfg.Backend.Strategy,
 			PassiveHealthCheck: &service.PassiveHealthCheck{MaxFails: 3},
 		},
-		Retry: ptrOr(t.cfg.Backend.Retry, 2),
+		Retry: retry,
 		TLS:   up.tls,
 	}
 

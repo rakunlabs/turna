@@ -121,7 +121,7 @@ func TestProxyCleanupOwnership(t *testing.T) {
 			case "scope":
 				other.cfg.Namespaces = []string{"other"}
 			}
-			if err := other.provision(ctx, nil, nil); err != nil {
+			if err := other.provision(ctx, nil, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := kube.AppsV1().Deployments("system").Get(ctx, name, metav1.GetOptions{}); err != nil {
@@ -136,7 +136,7 @@ func TestProxyCleanupOwnership(t *testing.T) {
 			if err := other.applyProxy(ctx, "system", name, gw, nil, nil); err == nil {
 				t.Fatal("foreign resources adopted")
 			}
-			if err := owner.provision(ctx, nil, nil); err != nil {
+			if err := owner.provision(ctx, nil, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := kube.AppsV1().Deployments("system").Get(ctx, name, metav1.GetOptions{}); err == nil {
@@ -163,10 +163,10 @@ func TestProxyCleanupRetriesOrphans(t *testing.T) {
 		}
 		return false, nil, nil
 	})
-	if err := p.provision(ctx, nil, nil); err == nil {
+	if err := p.provision(ctx, nil, nil, nil); err == nil {
 		t.Fatal("deletion error was swallowed")
 	}
-	if err := p.provision(ctx, nil, nil); err != nil {
+	if err := p.provision(ctx, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := kube.CoreV1().Services("system").Get(ctx, name, metav1.GetOptions{}); err == nil {
@@ -362,7 +362,7 @@ func TestProvisionErrorIsPerGateway(t *testing.T) {
 		}
 		return false, nil, nil
 	})
-	err := p.provision(context.Background(), []*gwv1.Gateway{good, bad}, nil)
+	err := p.provision(context.Background(), []*gwv1.Gateway{good, bad}, nil, nil)
 	if err == nil {
 		t.Fatal("provision error was swallowed")
 	}

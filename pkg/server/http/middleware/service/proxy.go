@@ -178,6 +178,7 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 						// all targets were tried, report the last upstream error
 						if retries < config.RetryCount && errHolder.Err != nil {
 							err = &errHolder
+							reportUnreachable(r, &errHolder)
 						}
 
 						httputil2.HandleError(w, httputil2.NewErrorAs(config.ErrorHandler(w, r, err)))
@@ -222,6 +223,7 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 
 				retry := retries > 0 && config.RetryFilter(w, r, &errHolder)
 				if !retry {
+					reportUnreachable(r, &errHolder)
 					httputil2.HandleError(w, httputil2.NewErrorAs(config.ErrorHandler(w, r, &errHolder)))
 					return
 				}
@@ -229,6 +231,13 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 				retries--
 			}
 		})
+	}
+}
+
+// reportUnreachable tells a surrounding retry that no upstream answered.
+func reportUnreachable(r *http.Request, e *httputil2.Error) {
+	if e.Code == http.StatusBadGateway {
+		httputil2.ReportUpstreamFailure(r)
 	}
 }
 

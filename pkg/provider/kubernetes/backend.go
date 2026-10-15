@@ -81,7 +81,7 @@ func (t *translator) rules(route *gwv1.HTTPRoute) ([]gateway.Rule, *refError) {
 
 		if !redirect {
 			for j, b := range r.BackendRefs {
-				backend, err := t.backend(route, i, j, b)
+				backend, err := t.backend(route, i, j, b, rule.Retry != nil)
 				if err != nil {
 					setErr(err)
 				}
@@ -107,11 +107,11 @@ func unsupportedRuleFields(sessionPersistence bool) *refError {
 	return nil
 }
 
-// convertRetry maps a route retry. Without attempts one retry is made, without
-// codes 502, 503 and 504 are retried, and without a backoff the next attempt
-// starts right away.
+// convertRetry maps a route retry. Without attempts one retry is made, 0
+// disables retries, without codes 502, 503 and 504 are retried, and without
+// a backoff the next attempt starts right away.
 func convertRetry(r *gwv1.HTTPRouteRetry) *gateway.Retry {
-	out := &gateway.Retry{Attempts: ptrOr(r.Attempts, 1)}
+	out := &gateway.Retry{Attempts: new(ptrOr(r.Attempts, 1))}
 
 	for _, c := range r.Codes {
 		out.Codes = append(out.Codes, int(c))
@@ -261,12 +261,43 @@ func (t *translator) filters(route *gwv1.HTTPRoute, in []gwv1.HTTPRouteFilter) (
 			}
 
 			out = append(out, gateway.Filter{Mirror: m})
+		case gwv1.HTTPRouteFilterCORS:
+			out = append(out, gateway.Filter{CORS: cors(f.CORS)})
 		default:
 			return nil, &refError{string(gwv1.RouteReasonUnsupportedValue), fmt.Sprintf("filter %s is not supported", f.Type)}
 		}
 	}
 
 	return out, nil
+}
+
+func cors(c *gwv1.HTTPCORSFilter) *gateway.CORS {
+	if c == nil {
+		return &gateway.CORS{}
+	}
+
+	out := &gateway.CORS{
+		AllowCredentials: ptrOr(c.AllowCredentials, false),
+		MaxAge:           int(c.MaxAge),
+	}
+
+	for _, o := range c.AllowOrigins {
+		out.AllowOrigins = append(out.AllowOrigins, string(o))
+	}
+
+	for _, m := range c.AllowMethods {
+		out.AllowMethods = append(out.AllowMethods, string(m))
+	}
+
+	for _, h := range c.AllowHeaders {
+		out.AllowHeaders = append(out.AllowHeaders, string(h))
+	}
+
+	for _, h := range c.ExposeHeaders {
+		out.ExposeHeaders = append(out.ExposeHeaders, string(h))
+	}
+
+	return out
 }
 
 func headerModifier(h *gwv1.HTTPHeaderFilter) *gateway.HeaderModifier {
@@ -372,7 +403,7 @@ func (t *translator) requestMirror(kind gwv1.Kind, namespace string, m *gwv1.HTT
 	return out, nil
 }
 
-func (t *translator) backend(route *gwv1.HTTPRoute, rule, idx int, b gwv1.HTTPBackendRef) (gateway.Backend, *refError) {
+func (t *translator) backend(route *gwv1.HTTPRoute, rule, idx int, b gwv1.HTTPBackendRef, routeRetry bool) (gateway.Backend, *refError) {
 	weight := int(ptrOr(b.Weight, 1))
 	out := gateway.Backend{Weight: weight}
 
@@ -404,7 +435,7 @@ func (t *translator) backend(route *gwv1.HTTPRoute, rule, idx int, b gwv1.HTTPBa
 		filterNames = append(filterNames, name)
 	}
 
-	name := t.serviceMiddlewareFor(up, up.scheme == "http" && t.backendH2C(route.Namespace, b.BackendObjectReference))
+	name := t.serviceMiddlewareFor(up, up.scheme == "http" && t.backendH2C(route.Namespace, b.BackendObjectReference), routeRetry)
 	out.Middlewares = append(filterNames, name)
 
 	return out, nil

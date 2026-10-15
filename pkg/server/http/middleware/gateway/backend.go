@@ -7,6 +7,8 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"time"
+
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 )
 
 type weighted struct {
@@ -107,6 +109,7 @@ func (w *timeoutWriter) expired() bool {
 func (w *timeoutWriter) timeout() {
 	w.written = true
 	w.timedOut = true
+	httputil.ReportUpstreamFailure(w.req)
 	writeError(w.ResponseWriter, w.req, http.StatusGatewayTimeout)
 }
 

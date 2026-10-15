@@ -206,7 +206,8 @@ func gatewayError(err error, gw nsName) error {
 // provision creates or updates the proxy resources of the served gateways
 // and removes resources of deleted gateways. Current objects are read from
 // the informer cache when available, so unchanged gateways cost no requests.
-func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap *Snapshot) error {
+// policies lists the BackendTLSPolicies applied per gateway.
+func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap *Snapshot, policies map[nsName]map[nsName]struct{}) error {
 	ns := p.proxyNamespace()
 	want := make(map[string]struct{}, len(gateways))
 	perGateway := make(map[nsName]error)
@@ -217,8 +218,6 @@ func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap
 	}
 	idx := newIndex(snap)
 
-	cas := bundleCACertificates(snap.BackendTLSPolicies, idx)
-
 	for _, gw := range gateways {
 		// rejected gateways are not accepted, see finishGateways
 		if _, _, _, rejected := gatewayRejection(gw); rejected {
@@ -228,6 +227,8 @@ func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap
 		k := key(gw)
 		name := proxyName(k)
 		want[name] = struct{}{}
+
+		cas := bundleCACertificates(snap.BackendTLSPolicies, policies[k], idx)
 
 		if err := p.applyProxy(ctx, ns, name, gw, idx, cas); err != nil {
 			err = fmt.Errorf("provision gateway %s: %w", k.String(), err)
@@ -629,13 +630,18 @@ func bundleCertificates(gw *gwv1.Gateway, idx *index) map[string][]byte {
 // namespace, which cannot contain '.', and names cannot contain '_'.
 const caBundlePrefix = caCertificateKey + "-"
 
-// bundleCACertificates returns the CA certificates referenced by
+// bundleCACertificates returns the CA certificates referenced by the given
 // BackendTLSPolicies. Proxies translate the policies themselves and only
-// lack access to ConfigMaps.
-func bundleCACertificates(policies []*gwv1.BackendTLSPolicy, idx *index) map[string][]byte {
+// lack access to ConfigMaps; a proxy gets the policies applied to the
+// backends of its own gateway.
+func bundleCACertificates(policies []*gwv1.BackendTLSPolicy, used map[nsName]struct{}, idx *index) map[string][]byte {
 	out := map[string][]byte{}
 
 	for _, p := range policies {
+		if _, ok := used[key(p)]; !ok {
+			continue
+		}
+
 		for _, ref := range p.Spec.Validation.CACertificateRefs {
 			if ref.Group != "" || ref.Kind != kindConfigMap {
 				continue
