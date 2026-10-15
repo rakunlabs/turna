@@ -26,6 +26,10 @@ type Snapshot struct {
 	EndpointSlices  []*discoveryv1.EndpointSlice
 	Secrets         []*corev1.Secret
 	Namespaces      []*corev1.Namespace
+
+	BackendTLSPolicies []*gwv1.BackendTLSPolicy
+	// ConfigMaps holding CA certificates of BackendTLSPolicies
+	ConfigMaps []*corev1.ConfigMap
 }
 
 type nsName struct {
@@ -46,6 +50,7 @@ type index struct {
 	services   map[nsName]*corev1.Service
 	slices     map[nsName][]*discoveryv1.EndpointSlice
 	secrets    map[nsName]*corev1.Secret
+	configMaps map[nsName]*corev1.ConfigMap
 	namespaces map[string]*corev1.Namespace
 	grants     map[string][]*gwv1.ReferenceGrant
 }
@@ -55,6 +60,7 @@ func newIndex(s *Snapshot) *index {
 		services:   make(map[nsName]*corev1.Service, len(s.Services)),
 		slices:     make(map[nsName][]*discoveryv1.EndpointSlice),
 		secrets:    make(map[nsName]*corev1.Secret, len(s.Secrets)),
+		configMaps: make(map[nsName]*corev1.ConfigMap, len(s.ConfigMaps)),
 		namespaces: make(map[string]*corev1.Namespace, len(s.Namespaces)),
 		grants:     make(map[string][]*gwv1.ReferenceGrant),
 	}
@@ -75,6 +81,10 @@ func newIndex(s *Snapshot) *index {
 
 	for _, o := range s.Secrets {
 		idx.secrets[key(o)] = o
+	}
+
+	for _, o := range s.ConfigMaps {
+		idx.configMaps[key(o)] = o
 	}
 
 	for _, o := range s.Namespaces {

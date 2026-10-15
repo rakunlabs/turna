@@ -62,6 +62,11 @@ type Rule struct {
 	Backends []Backend `cfg:"backends"`
 	// Timeout of the whole request, 0 disables.
 	Timeout time.Duration `cfg:"timeout"`
+	// BackendTimeout bounds each attempt when Retry is set, 0 disables.
+	BackendTimeout time.Duration `cfg:"backend_timeout"`
+	// Retry sends the request again when the backend answers a retryable
+	// status.
+	Retry *Retry `cfg:"retry"`
 	// Status is returned when the chain does not write a response, default is
 	// 500 as the rule has no backend.
 	Status int `cfg:"status"`
@@ -531,7 +536,7 @@ func (m *Gateway) chain(rule Rule, match compiledMatch) (http.Handler, error) {
 		writeError(w, r, status)
 	})
 
-	middlewares := make([]func(http.Handler) http.Handler, 0, len(rule.Filters)+len(rule.Middlewares))
+	middlewares := make([]func(http.Handler) http.Handler, 0, len(rule.Filters)+1)
 
 	for i, f := range rule.Filters {
 		mws, err := m.filter(f, match)
@@ -547,8 +552,6 @@ func (m *Gateway) chain(rule Rule, match compiledMatch) (http.Handler, error) {
 		return nil, err
 	}
 
-	middlewares = append(middlewares, named...)
-
 	if len(rule.Backends) > 0 {
 		backends, err := newWeighted(rule.Backends)
 		if err != nil {
@@ -556,6 +559,15 @@ func (m *Gateway) chain(rule Rule, match compiledMatch) (http.Handler, error) {
 		}
 
 		handler = backends
+	}
+
+	for i := len(named) - 1; i >= 0; i-- {
+		handler = named[i](handler)
+	}
+
+	// filters such as mirrors run once, backends are chosen again on retry
+	if rule.Retry != nil {
+		handler = rule.Retry.middleware(rule.BackendTimeout)(handler)
 	}
 
 	if rule.Timeout > 0 {

@@ -2,10 +2,12 @@
 
 package auth
 
-// The IAM package is included because the auth API exposes the same IAM
-// resources and response models under its own prefix.
-//
-//go:generate go tool swag init -pd -d ./,../iam -g swagger.go --ot go,json -o ./docs
+import (
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/ldap"
+)
+
+//go:generate go tool swag init -pd -d ./ -g swagger.go --ot go,json -o ./docs
 
 // @title Turna Auth API
 // @version 1.0
@@ -22,6 +24,11 @@ package auth
 // @name X-User
 // @description Authenticated user forwarded by the session middleware.
 func swaggerInfo() {}
+
+var (
+	_ data.Response[any]
+	_ ldap.LdapUser
+)
 
 type swaggerObject map[string]interface{}
 
@@ -782,3 +789,565 @@ func swaggerMeCheck() {}
 // @Success 200 {object} swaggerObject
 // @Router /oauth2/openid/{custom}/.well-known/openid-configuration [get]
 func swaggerCustomOpenIDConfiguration() {}
+
+// @Summary Create service account
+// @Tags service-accounts
+// @Param user body data.UserCreate true "Service Account"
+// @Success 200 {object} data.Response[data.ResponseCreate]
+// @Failure 400 {object} httputil.Error
+// @Failure 409 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/service-accounts [POST]
+func swaggerIAMCreateServiceAccount() {}
+
+// @Summary Get service accounts
+// @Tags service-accounts
+// @Param alias query string false "service alias"
+// @Param id query string false "service id"
+// @Param role_ids query []string false "role ids" collectionFormat(multi)
+// @Param uid query string false "details->uid"
+// @Param name query string false "details->name"
+// @Param email query string false "details->email"
+// @Param path query string false "request path"
+// @Param method query string false "request method"
+// @Param permission query []string false "permission" collectionFormat(multi)
+// @Param is_active query bool false "is_active"
+// @Param add_roles query bool false "add roles default(true)"
+// @Param add_permissions query bool false "add permissions"
+// @Param add_data query bool false "add data"
+// @Param limit query int false "limit" default(20)
+// @Param offset query int false "offset"
+// @Success 200 {object} data.Response[[]data.UserExtended]
+// @Failure 500 {object} httputil.Error
+// @Router /v1/service-accounts [GET]
+func swaggerIAMGetServiceAccounts() {}
+
+// @Summary Export service accounts
+// @Tags service-accounts
+// @Param alias query string false "service alias"
+// @Param id query string false "service id"
+// @Param role_ids query []string false "role ids" collectionFormat(multi)
+// @Param uid query string false "details->uid"
+// @Param name query string false "details->name"
+// @Param email query string false "details->email"
+// @Param path query string false "request path"
+// @Param method query string false "request method"
+// @Param is_active query bool false "is_active"
+// @Success 200
+// @Failure 500 {object} httputil.Error
+// @Router /v1/service-accounts/export [GET]
+func swaggerIAMExportServiceAccounts() {}
+
+// @Summary Get service account
+// @Tags service-accounts
+// @Param id path string true "service id"
+// @Param add_roles query bool false "add roles default(true)"
+// @Param add_permissions query bool false "add permissions"
+// @Param add_data query bool false "add data"
+// @Success 200 {object} data.Response[data.UserExtended]
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/service-accounts/{id} [GET]
+func swaggerIAMGetServiceAccount() {}
+
+// @Summary Patch service account
+// @Tags service-accounts
+// @Param id path string true "service id"
+// @Param user body data.UserPatch true "Service"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/service-accounts/{id} [PATCH]
+func swaggerIAMPatchServiceAccount() {}
+
+// @Summary Access service account
+// @Description Give temporary access to service account
+// @Tags service-accounts
+// @Param id path string true "user id"
+// @Param access body data.UserAccess true "Access"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/service-accounts/{id}/access [POST]
+func swaggerIAMAccessServiceAccount() {}
+
+// @Summary Put service account
+// @Tags service-accounts
+// @Param id path string true "service id"
+// @Param user body data.User true "Service"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/service-accounts/{id} [PUT]
+func swaggerIAMPutServiceAccount() {}
+
+// @Summary Delete service account
+// @Tags service-accounts
+// @Param id path string true "service id"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/service-accounts/{id} [DELETE]
+func swaggerIAMDeleteServiceAccount() {}
+
+// @Summary Create user
+// @Tags users
+// @Param user body data.UserCreate true "User"
+// @Success 200 {object} data.Response[data.ResponseCreate]
+// @Failure 400 {object} httputil.Error
+// @Failure 409 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/users [POST]
+func swaggerIAMCreateUser() {}
+
+// @Summary Get users
+// @Tags users
+// @Param alias query string false "user alias"
+// @Param id query string false "user id"
+// @Param role_ids query []string false "role ids" collectionFormat(multi)
+// @Param role_type query string false "role type" Enums(PERMANENT, TEMPORARY)
+// @Param uid query string false "details->uid"
+// @Param name query string false "details->name"
+// @Param email query string false "details->email"
+// @Param path query string false "request path"
+// @Param method query string false "request method"
+// @Param permission query []string false "permission" collectionFormat(multi)
+// @Param is_active query bool false "is_active"
+// @Param add_roles query bool false "add roles default(true)"
+// @Param add_permissions query bool false "add permissions"
+// @Param add_data query bool false "add data"
+// @Param add_scope_roles query bool false "add scope roles"
+// @Param limit query int false "limit" default(20)
+// @Param offset query int false "offset"
+// @Success 200 {object} data.Response[[]data.UserExtended]
+// @Failure 500 {object} httputil.Error
+// @Router /v1/users [GET]
+func swaggerIAMGetUsers() {}
+
+// @Summary Export users
+// @Tags users
+// @Param alias query string false "user alias"
+// @Param id query string false "user id"
+// @Param role_ids query []string false "role ids" collectionFormat(multi)
+// @Param uid query string false "details->uid"
+// @Param name query string false "details->name"
+// @Param email query string false "details->email"
+// @Param path query string false "request path"
+// @Param method query string false "request method"
+// @Param is_active query bool false "is_active"
+// @Success 200
+// @Failure 500 {object} httputil.Error
+// @Router /v1/users/export [GET]
+func swaggerIAMExportUsers() {}
+
+// @Summary Get user
+// @Tags users
+// @Param id path string true "user id"
+// @Param add_roles query bool false "add roles default(true)"
+// @Param add_permissions query bool false "add permissions"
+// @Param add_data query bool false "add data"
+// @Success 200 {object} data.Response[data.UserExtended]
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/users/{id} [GET]
+func swaggerIAMGetUser() {}
+
+// @Summary Delete user
+// @Tags users
+// @Param id path string true "user id"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/users/{id} [DELETE]
+func swaggerIAMDeleteUser() {}
+
+// @Summary Patch user
+// @Tags users
+// @Param id path string true "user id"
+// @Param user body data.UserPatch true "User"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/users/{id} [PATCH]
+func swaggerIAMPatchUser() {}
+
+// @Summary Access user
+// @Description Give temporary access to user
+// @Tags users
+// @Param id path string true "user id"
+// @Param access body data.UserAccess true "Access"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/users/{id}/access [POST]
+func swaggerIAMAccessUser() {}
+
+// @Summary Put user
+// @Tags users
+// @Param id path string true "user id"
+// @Param user body data.User true "User"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/users/{id} [PUT]
+func swaggerIAMPutUser() {}
+
+// @Summary Get roles
+// @Tags roles
+// @Param name query string false "role name"
+// @Param description query string false "role description"
+// @Param id query string false "role id"
+// @Param permission_ids query []string false "role permission ids" collectionFormat(multi)
+// @Param role_ids query []string false "role ids" collectionFormat(multi)
+// @Param method query string false "request method"
+// @Param path query string false "request path"
+// @Param permission query []string false "permission" collectionFormat(multi)
+// @Param add_permissions query bool false "add permissions default(true)"
+// @Param add_roles query bool false "add roles default(true)"
+// @Param add_total_users query bool false "add total users default(true)"
+// @Param limit query int false "limit" default(20)
+// @Param offset query int false "offset"
+// @Success 200 {object} data.Response[[]data.RoleExtended]
+// @Failure 500 {object} httputil.Error
+// @Router /v1/roles [GET]
+func swaggerIAMGetRoles() {}
+
+// @Summary Export roles
+// @Tags roles
+// @Param name query string false "role name"
+// @Param description query string false "role description"
+// @Param id query string false "role id"
+// @Param permission_ids query []string false "role permission ids" collectionFormat(multi)
+// @Param role_ids query []string false "role ids" collectionFormat(multi)
+// @Param method query string false "request method"
+// @Param path query string false "request path"
+// @Success 200
+// @Failure 500 {object} httputil.Error
+// @Router /v1/roles/export [GET]
+func swaggerIAMExportRoles() {}
+
+// @Summary Create role
+// @Tags roles
+// @Param role body data.Role true "Role"
+// @Success 200 {object} data.Response[data.ResponseCreate]
+// @Failure 400 {object} httputil.Error
+// @Failure 409 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/roles [POST]
+func swaggerIAMCreateRole() {}
+
+// @Summary Get role
+// @Tags roles
+// @Param id path string true "role ID"
+// @Param add_permissions query bool false "add permissions default(true)"
+// @Param add_roles query bool false "add roles default(true)"
+// @Param add_total_users query bool false "add total users default(true)"
+// @Success 200 {object} data.Response[data.RoleExtended]
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/roles/{id} [GET]
+func swaggerIAMGetRole() {}
+
+// @Summary Set role relation
+// @Tags roles
+// @Param relation body map[string]data.RoleRelation true "RoleRelation"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/roles/relation [PUT]
+func swaggerIAMPutRoleRelation() {}
+
+// @Summary Get role relation (dump)
+// @Tags roles
+// @Success 200 {object} map[string]data.RoleRelation
+// @Failure 500 {object} httputil.Error
+// @Router /v1/roles/relation [GET]
+func swaggerIAMGetRoleRelation() {}
+
+// @Summary Patch role
+// @Tags roles
+// @Param id path string true "role ID"
+// @Param role body data.RolePatch true "Role"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/roles/{id} [PATCH]
+func swaggerIAMPatchRole() {}
+
+// @Summary Put role
+// @Tags roles
+// @Param id path string true "role ID"
+// @Param role body data.Role true "Role"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/roles/{id} [PUT]
+func swaggerIAMPutRole() {}
+
+// @Summary Delete role
+// @Tags roles
+// @Param id path string true "role name"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/roles/{id} [DELETE]
+func swaggerIAMDeleteRole() {}
+
+// @Summary Get permissions
+// @Tags permissions
+// @Param id query string false "permission id"
+// @Param name query string false "permission name"
+// @Param description query string false "permission description"
+// @Param path query string false "request path"
+// @Param method query string false "request method"
+// @Param add_roles query bool false "add roles default(true)"
+// @Param limit query int false "limit" default(20)
+// @Param offset query int false "offset"
+// @Success 200 {object} data.Response[[]data.Permission]
+// @Failure 500 {object} httputil.Error
+// @Router /v1/permissions [GET]
+func swaggerIAMGetPermissions() {}
+
+// @Summary Export permissions
+// @Tags permissions
+// @Param id query string false "permission id"
+// @Param name query string false "permission name"
+// @Param description query string false "permission description"
+// @Param path query string false "request path"
+// @Param method query string false "request method"
+// @Success 200
+// @Failure 500 {object} httputil.Error
+// @Router /v1/permissions/export [GET]
+func swaggerIAMExportPermissions() {}
+
+// @Summary Create permission
+// @Tags permissions
+// @Param permission body data.Permission true "Permission"
+// @Success 200 {object} data.Response[data.ResponseCreate]
+// @Failure 400 {object} httputil.Error
+// @Failure 409 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/permissions [POST]
+func swaggerIAMCreatePermission() {}
+
+// @Summary Create permission bulk
+// @Tags permissions
+// @Param permission body []data.Permission true "Permission"
+// @Success 200 {object} data.Response[data.ResponseCreateBulk]
+// @Failure 500 {object} httputil.Error
+// @Router /v1/permissions/bulk [POST]
+func swaggerIAMCreatePermissionBulk() {}
+
+// @Summary Get permission
+// @Tags permissions
+// @Param id path string true "permission name"
+// @Param add_roles query bool false "add roles default(true)"
+// @Success 200 {object} data.Response[data.Permission]
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/permissions/{id} [GET]
+func swaggerIAMGetPermission() {}
+
+// @Summary Patch permission
+// @Tags permissions
+// @Param id path string true "permission ID"
+// @Param permission body data.PermissionPatch true "Permission"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/permissions/{id} [PATCH]
+func swaggerIAMPatchPermission() {}
+
+// @Summary Put permission
+// @Tags permissions
+// @Param id path string true "permission ID"
+// @Param permission body data.Permission true "Permission"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/permissions/{id} [PUT]
+func swaggerIAMPutPermission() {}
+
+// @Summary Delete permission
+// @Tags permissions
+// @Param id path string true "permission name"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/permissions/{id} [DELETE]
+func swaggerIAMDeletePermission() {}
+
+// @Summary Delete permission bulk
+// @Tags permissions
+// @Param permission body []data.Permission true "Permission"
+// @Success 200 {object} data.Response[[]data.IDName]
+// @Failure 500 {object} httputil.Error
+// @Router /v1/permissions/keep [POST]
+func swaggerIAMKeepPermissionBulk() {}
+
+// @Summary Post check
+// @Tags check
+// @Param check body data.CheckRequest true "Check"
+// @Success 200 {object} data.CheckResponse
+// @Failure 400 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/check [POST]
+func swaggerIAMPostCheck() {}
+
+// @Summary Post check
+// @Tags public
+// @Param X-User header string false "User alias, X-User is authorized user auto adds"
+// @Param check body data.CheckRequestUser true "Check"
+// @Success 200 {object} data.CheckResponse
+// @Failure 400 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /check [POST]
+func swaggerIAMPostCheckUser() {}
+
+// @Summary Create LDAP Map
+// @Tags ldap
+// @Param map body data.LMap true "Map"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 409 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/ldap/maps [POST]
+func swaggerIAMLdapCreateGroupMaps() {}
+
+// @Summary Get LDAP Maps
+// @Tags ldap
+// @Param name query string false "map name"
+// @Param role_ids query []string false "role ids" collectionFormat(multi)
+// @Param limit query int false "limit" default(20)
+// @Param offset query int false "offset"
+// @Success 200 {object} data.Response[[]data.LMap]
+// @Failure 500 {object} httputil.Error
+// @Router /v1/ldap/maps [GET]
+func swaggerIAMLdapGetGroupMaps() {}
+
+// @Summary Get LDAP Map
+// @Tags ldap
+// @Param name path string true "map name"
+// @Success 200 {object} data.Response[data.LMap]
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/ldap/maps/{name} [GET]
+func swaggerIAMLdapGetGroupMap() {}
+
+// @Summary Put LDAP Map
+// @Tags ldap
+// @Param name path string true "map name"
+// @Param map body data.LMap true "Map"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/ldap/maps/{name} [PUT]
+func swaggerIAMLdapPutGroupMaps() {}
+
+// @Summary Delete LDAP Map
+// @Tags ldap
+// @Param name path string true "map name"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/ldap/maps/{name} [DELETE]
+func swaggerIAMLdapDeleteGroupMaps() {}
+
+// @Summary Get current user's info
+// @Tags info
+// @Param alias query string true "User alias"
+// @Param data query bool false "add role data"
+// @Success 200 {object} data.Response[data.UserInfo]
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/info [GET]
+func swaggerIAMInfo() {}
+
+// @Summary Get current user's info
+// @Tags public
+// @Param X-User header string false "User alias, X-User is authorized user auto adds"
+// @Param data query bool false "add role data"
+// @Success 200 {object} data.Response[data.UserInfo]
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /info [GET]
+func swaggerIAMInfoUser() {}
+
+// @Summary Get version
+// @Tags backup
+// @Success 200 {object} data.ResponseVersion
+// @Router /v1/version [GET]
+func swaggerIAMVersion() {}
+
+// @Summary Sync with write API
+// @Tags backup
+// @Param X-Sync-Version header string false "Sync version"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 400 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/sync [POST]
+func swaggerIAMSync() {}
+
+// @Summary Get dashboard info
+// @Tags dashboard
+// @Success 200 {object} data.Response[data.Dashboard]
+// @Failure 500 {object} httputil.Error
+// @Router /v1/dashboard [GET]
+func swaggerIAMDashboard() {}
+
+// @Summary Get LDAP groups
+// @Tags ldap
+// @Success 200 {object} data.Response[[]ldap.LdapGroup]
+// @Failure 500 {object} httputil.Error
+// @Router /v1/ldap/groups [GET]
+func swaggerIAMLdapGetGroups() {}
+
+// @Summary Get LDAP user
+// @Tags ldap
+// @Param uid path string true "user uid"
+// @Success 200 {object} data.Response[ldap.LdapUser]
+// @Failure 400 {object} httputil.Error
+// @Failure 404 {object} httputil.Error
+// @Failure 500 {object} httputil.Error
+// @Router /v1/ldap/users/{uid} [GET]
+func swaggerIAMLdapGetUsers() {}
+
+// @Summary Sync LDAP groups
+// @Tags ldap
+// @Param Body body LdapSyncRequest false "force"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 500 {object} httputil.Error
+// @Router /v1/ldap/sync [POST]
+func swaggerIAMLdapSyncGroups() {}
+
+// @Summary Sync LDAP groups
+// @Tags ldap
+// @Param uid path string true "user uid"
+// @Param Body body LdapSyncRequest false "force"
+// @Success 200 {object} data.ResponseMessage
+// @Failure 500 {object} httputil.Error
+// @Router /v1/ldap/sync/{uid} [POST]
+func swaggerIAMLdapSyncGroupsUID() {}

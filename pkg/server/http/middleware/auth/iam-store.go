@@ -13,8 +13,8 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/oklog/ulid/v2"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/access"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/access"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 	"github.com/spf13/cast"
 	"github.com/worldline-go/types"
 	"golang.org/x/crypto/bcrypt"

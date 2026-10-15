@@ -46,6 +46,8 @@ type Result struct {
 	GatewayClasses map[string][]metav1.Condition
 	Gateways       map[nsName]*GatewayStatus
 	Routes         map[routeKey][]gwv1.RouteParentStatus
+	// BackendTLSPolicy status per policy
+	Policies map[nsName][]gwv1.PolicyAncestorStatus
 }
 
 // HTTPRouteStatus returns the parent status of an HTTPRoute.
@@ -98,6 +100,14 @@ type translator struct {
 	streams map[string][]*streamRoute
 
 	middlewares map[string]shttp.HTTPMiddleware
+
+	// backend TLS of Service ports, resolved from BackendTLSPolicies
+	backendTLS map[policyTarget]backendTLS
+	policies   map[nsName]*policyState
+	// every policy targeting a Service section, including conflicted ones
+	policyTargets map[policyTarget][]nsName
+	// gateways of the route being translated
+	routeGateways []nsName
 }
 
 type hostRules struct {
@@ -140,15 +150,20 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 			GatewayClasses: make(map[string][]metav1.Condition),
 			Gateways:       make(map[nsName]*GatewayStatus),
 			Routes:         make(map[routeKey][]gwv1.RouteParentStatus),
+			Policies:       make(map[nsName][]gwv1.PolicyAncestorStatus),
 		},
-		hosts:       make(map[string]map[string]*hostRules),
-		families:    make(map[string]family),
-		secure:      make(map[string]bool),
-		streams:     make(map[string][]*streamRoute),
-		middlewares: make(map[string]shttp.HTTPMiddleware),
+		hosts:         make(map[string]map[string]*hostRules),
+		families:      make(map[string]family),
+		secure:        make(map[string]bool),
+		streams:       make(map[string][]*streamRoute),
+		middlewares:   make(map[string]shttp.HTTPMiddleware),
+		backendTLS:    make(map[policyTarget]backendTLS),
+		policies:      make(map[nsName]*policyState),
+		policyTargets: make(map[policyTarget][]nsName),
 	}
 
 	classes := t.classes(s.GatewayClasses)
+	t.backendTLSPolicies(s.BackendTLSPolicies)
 
 	listeners := make(map[nsName][]*listener)
 
@@ -188,6 +203,7 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 	}
 
 	t.finishGateways(s.Gateways, listeners)
+	t.finishPolicies()
 	t.build()
 	t.buildStreams()
 
@@ -586,7 +602,9 @@ func (t *translator) route(route *routeInfo, gateways map[nsName][]*listener) {
 
 	translate := func() (any, *refError) {
 		if !translated {
+			t.routeGateways = route.gateways(gateways)
 			data, refErr = route.translate()
+			t.routeGateways = nil
 			translated = true
 		}
 

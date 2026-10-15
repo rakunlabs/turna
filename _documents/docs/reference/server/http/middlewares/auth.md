@@ -1,6 +1,6 @@
 # auth
 
-`auth` is the PostgreSQL-backed authentication middleware. It replaces the legacy [`iam`](./iam) + [`oauth2`](./oauth2) stack with one middleware that serves IAM, OAuth2, LDAP sync, and an embedded management UI.
+`auth` is the PostgreSQL-backed authentication middleware. It replaces the removed legacy `iam` + `oauth2` stack with one middleware that serves IAM, OAuth2, LDAP sync, and an embedded management UI.
 
 The middleware behaves like a standalone app with its own UI: shared runtime settings (OAuth2 redirect behavior, permission check rules, cache polling, token lifetimes, OAuth clients/providers, LDAP) live in PostgreSQL and are managed through the API or UI. The static configuration covers the encryption key, database connection, migration settings, and instance-local LDAP and session provider endpoint overrides.
 
@@ -774,6 +774,6 @@ Remote notes:
 
 ## Migration from iam/oauth2
 
-- `iam` and `oauth2` middlewares are deprecated but still available for Badger-backed deployments.
+- The Badger-backed `iam` and `oauth2` middlewares have been removed; migrate their data into `auth` before upgrading.
 - API payload shapes match the old IAM API (`data.Response`, `UserExtended`, etc.), so existing clients largely work after switching base paths to `/auth/v1`.
 - Not ported: Badger binary backup/restore endpoints (`/v1/backup`, `/v1/restore`) and the Badger write-api/Redis sync model; PostgreSQL notifications with version polling fallback replace them.

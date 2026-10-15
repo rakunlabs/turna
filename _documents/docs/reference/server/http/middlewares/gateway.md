@@ -65,8 +65,21 @@ When several rules match, the most specific wins, in this order: higher `priorit
 | `filters[]` | Run in order before the middlewares. |
 | `middlewares` | Named middlewares, usually a `service`. |
 | `backends[]` | Weighted middleware chains; one is picked per request. `weight: 0` disables a backend. `status` answers with a fixed status instead. |
-| `timeout` | Request timeout. When it expires before a response starts, the response is `504`. |
+| `timeout` | Request timeout, including all retries. When it expires before a response starts, the response is `504`. |
+| `retry` | Send the request again when the middlewares and backends answer a retryable status. See below. |
+| `backend_timeout` | With `retry`, bounds each attempt. A timed out attempt answers `504`, which can be retried. |
 | `status` | Status when the chain does not answer, default `500`. |
+
+### Retry
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `codes` | `[502, 503, 504]` | Retried response status codes. An unreachable upstream answers `502`. |
+| `attempts` | `1` | Retries after the first request. |
+| `backoff` | `0` | Minimum wait between attempts. |
+| `max_body_size` | `1MiB` | Request bodies up to this size are buffered and sent again. Larger requests are sent once without retries. |
+
+Filters run once per request; `middlewares` and `backends` run again for each attempt, so a retry can pick another backend. A retryable response is discarded before anything is sent to the client, and the last attempt's response is returned when all attempts fail.
 
 ## Filters
 

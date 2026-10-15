@@ -470,11 +470,6 @@ const docTemplate = `{
         },
         "/oauth2/consent": {
             "get": {
-                "security": [
-                    {
-                        "XUserAuth": []
-                    }
-                ],
                 "tags": [
                     "oauth2"
                 ],
@@ -507,14 +502,14 @@ const docTemplate = `{
                             "type": "string"
                         }
                     }
-                }
-            },
-            "post": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "post": {
                 "consumes": [
                     "application/x-www-form-urlencoded"
                 ],
@@ -570,7 +565,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "XUserAuth": []
+                    }
+                ]
             }
         },
         "/oauth2/device_authorization": {
@@ -918,11 +918,6 @@ const docTemplate = `{
         },
         "/oauth2/register/{client_id}": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "tags": [
                     "client-registration"
                 ],
@@ -961,14 +956,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/auth.AccessTokenErrorResponse"
                         }
                     }
-                }
-            },
-            "put": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            },
+            "put": {
                 "tags": [
                     "client-registration"
                 ],
@@ -1022,14 +1017,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/auth.AccessTokenErrorResponse"
                         }
                     }
-                }
-            },
-            "delete": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            },
+            "delete": {
                 "tags": [
                     "client-registration"
                 ],
@@ -1065,7 +1060,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/auth.AccessTokenErrorResponse"
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
             }
         },
         "/oauth2/revoke": {
@@ -1322,11 +1322,6 @@ const docTemplate = `{
         },
         "/oauth2/userinfo": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
                 "tags": [
                     "oidc"
                 ],
@@ -1356,16 +1351,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/auth.AccessTokenErrorResponse"
                         }
                     }
-                }
-            }
-        },
-        "/oauth2/userinfo/{custom}": {
-            "get": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/oauth2/userinfo/{custom}": {
+            "get": {
                 "tags": [
                     "oidc"
                 ],
@@ -1404,7 +1399,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/auth.AccessTokenErrorResponse"
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
             }
         },
         "/saml/{provider}/acs": {
@@ -1542,11 +1542,6 @@ const docTemplate = `{
         },
         "/v1/api-key-principals": {
             "get": {
-                "security": [
-                    {
-                        "XUserAuth": []
-                    }
-                ],
                 "tags": [
                     "api-key-principals"
                 ],
@@ -1570,14 +1565,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "post": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "post": {
                 "tags": [
                     "api-key-principals"
                 ],
@@ -1618,16 +1613,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/api-key-principals/{id}": {
-            "delete": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/api-key-principals/{id}": {
+            "delete": {
                 "tags": [
                     "api-key-principals"
                 ],
@@ -1666,14 +1661,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "patch": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "patch": {
                 "tags": [
                     "api-key-principals"
                 ],
@@ -1727,16 +1722,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/api-keys": {
-            "get": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/api-keys": {
+            "get": {
                 "tags": [
                     "api-keys"
                 ],
@@ -1760,14 +1755,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "post": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "post": {
                 "description": "Returns the API key secret once. Store it securely.",
                 "tags": [
                     "api-keys"
@@ -1809,16 +1804,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/api-keys/{id}": {
-            "delete": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/api-keys/{id}": {
+            "delete": {
                 "tags": [
                     "api-keys"
                 ],
@@ -1857,14 +1852,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "patch": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "patch": {
                 "tags": [
                     "api-keys"
                 ],
@@ -1918,74 +1913,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/backup": {
-            "get": {
-                "tags": [
-                    "backup"
-                ],
-                "summary": "Backup Database",
-                "parameters": [
+                },
+                "security": [
                     {
-                        "type": "number",
-                        "description": "since txid",
-                        "name": "since",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "include deleted data",
-                        "name": "deleted",
-                        "in": "query"
+                        "XUserAuth": []
                     }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK"
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/httputil.Error"
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/backup/until": {
-            "get": {
-                "tags": [
-                    "backup"
-                ],
-                "summary": "Backup Database until txid",
-                "parameters": [
-                    {
-                        "type": "number",
-                        "description": "until txid",
-                        "name": "until",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK"
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httputil.Error"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/httputil.Error"
-                        }
-                    }
-                }
+                ]
             }
         },
         "/v1/capabilities": {
@@ -2045,11 +1978,6 @@ const docTemplate = `{
         },
         "/v1/custom-info/preview": {
             "post": {
-                "security": [
-                    {
-                        "XUserAuth": []
-                    }
-                ],
                 "tags": [
                     "settings"
                 ],
@@ -2090,7 +2018,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "XUserAuth": []
+                    }
+                ]
             }
         },
         "/v1/dashboard": {
@@ -2117,11 +2050,6 @@ const docTemplate = `{
         },
         "/v1/device": {
             "post": {
-                "security": [
-                    {
-                        "XUserAuth": []
-                    }
-                ],
                 "tags": [
                     "device-flow"
                 ],
@@ -2168,16 +2096,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/device/{user_code}": {
-            "get": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/device/{user_code}": {
+            "get": {
                 "tags": [
                     "device-flow"
                 ],
@@ -2216,16 +2144,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/email/preview": {
-            "post": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/email/preview": {
+            "post": {
                 "tags": [
                     "settings"
                 ],
@@ -2266,16 +2194,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/encryption/rotate": {
-            "post": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/encryption/rotate": {
+            "post": {
                 "tags": [
                     "maintenance"
                 ],
@@ -2299,7 +2227,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "XUserAuth": []
+                    }
+                ]
             }
         },
         "/v1/info": {
@@ -2353,11 +2286,6 @@ const docTemplate = `{
         },
         "/v1/jwt/rotate": {
             "post": {
-                "security": [
-                    {
-                        "XUserAuth": []
-                    }
-                ],
                 "tags": [
                     "maintenance"
                 ],
@@ -2381,16 +2309,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/ldap/configs": {
-            "get": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/ldap/configs": {
+            "get": {
                 "tags": [
                     "ldap-config"
                 ],
@@ -2414,16 +2342,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/ldap/configs/{id}": {
-            "get": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/ldap/configs/{id}": {
+            "get": {
                 "tags": [
                     "ldap-config"
                 ],
@@ -2462,14 +2390,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "put": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "put": {
                 "tags": [
                     "ldap-config"
                 ],
@@ -2517,14 +2445,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "delete": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "delete": {
                 "tags": [
                     "ldap-config"
                 ],
@@ -2563,7 +2491,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "XUserAuth": []
+                    }
+                ]
             }
         },
         "/v1/ldap/groups": {
@@ -2830,7 +2763,7 @@ const docTemplate = `{
                         "name": "Body",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/iam.SyncRequest"
+                            "$ref": "#/definitions/auth.LdapSyncRequest"
                         }
                     }
                 ],
@@ -2869,7 +2802,7 @@ const docTemplate = `{
                         "name": "Body",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/iam.SyncRequest"
+                            "$ref": "#/definitions/auth.LdapSyncRequest"
                         }
                     }
                 ],
@@ -2934,11 +2867,6 @@ const docTemplate = `{
         },
         "/v1/lmaps": {
             "get": {
-                "security": [
-                    {
-                        "XUserAuth": []
-                    }
-                ],
                 "tags": [
                     "ldap"
                 ],
@@ -2962,14 +2890,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "post": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "post": {
                 "tags": [
                     "ldap"
                 ],
@@ -3010,16 +2938,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/lmaps/{name}": {
-            "get": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/lmaps/{name}": {
+            "get": {
                 "tags": [
                     "ldap"
                 ],
@@ -3058,14 +2986,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "put": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "put": {
                 "tags": [
                     "ldap"
                 ],
@@ -3119,14 +3047,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "delete": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "delete": {
                 "tags": [
                     "ldap"
                 ],
@@ -3165,16 +3093,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/maintenance/flow-codes/purge": {
-            "post": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/maintenance/flow-codes/purge": {
+            "post": {
                 "tags": [
                     "maintenance"
                 ],
@@ -3198,16 +3126,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/me": {
-            "get": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/me": {
+            "get": {
                 "tags": [
                     "self-service"
                 ],
@@ -3237,16 +3165,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/me/check": {
-            "post": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/me/check": {
+            "post": {
                 "tags": [
                     "self-service"
                 ],
@@ -3287,16 +3215,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/me/password": {
-            "post": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/me/password": {
+            "post": {
                 "tags": [
                     "self-service"
                 ],
@@ -3340,16 +3268,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/oauth/clients": {
-            "get": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/oauth/clients": {
+            "get": {
                 "tags": [
                     "oauth-clients"
                 ],
@@ -3373,16 +3301,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/oauth/clients/{id}": {
-            "get": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/oauth/clients/{id}": {
+            "get": {
                 "tags": [
                     "oauth-clients"
                 ],
@@ -3415,14 +3343,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "put": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "put": {
                 "tags": [
                     "oauth-clients"
                 ],
@@ -3464,14 +3392,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "delete": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "delete": {
                 "tags": [
                     "oauth-clients"
                 ],
@@ -3504,16 +3432,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/oauth/providers": {
-            "get": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/oauth/providers": {
+            "get": {
                 "tags": [
                     "oauth-providers"
                 ],
@@ -3537,16 +3465,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/oauth/providers/{id}": {
-            "get": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/oauth/providers/{id}": {
+            "get": {
                 "tags": [
                     "oauth-providers"
                 ],
@@ -3579,14 +3507,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "put": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "put": {
                 "tags": [
                     "oauth-providers"
                 ],
@@ -3628,14 +3556,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "delete": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "delete": {
                 "tags": [
                     "oauth-providers"
                 ],
@@ -3668,16 +3596,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/passkey/credentials": {
-            "get": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/passkey/credentials": {
+            "get": {
                 "tags": [
                     "passkeys"
                 ],
@@ -3701,16 +3629,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/passkey/credentials/{id}": {
-            "delete": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/passkey/credentials/{id}": {
+            "delete": {
                 "tags": [
                     "passkeys"
                 ],
@@ -3749,16 +3677,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/passkey/register": {
-            "post": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/passkey/register": {
+            "post": {
                 "tags": [
                     "passkeys"
                 ],
@@ -3805,7 +3733,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "XUserAuth": []
+                    }
+                ]
             }
         },
         "/v1/permissions": {
@@ -4226,43 +4159,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httputil.Error"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/httputil.Error"
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/restore": {
-            "post": {
-                "tags": [
-                    "backup"
-                ],
-                "summary": "Restore Database",
-                "parameters": [
-                    {
-                        "type": "file",
-                        "description": "Backup file",
-                        "name": "file",
-                        "in": "formData",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/data.ResponseMessage"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/httputil.Error"
                         }
@@ -4780,11 +4676,6 @@ const docTemplate = `{
         },
         "/v1/saml/providers": {
             "get": {
-                "security": [
-                    {
-                        "XUserAuth": []
-                    }
-                ],
                 "tags": [
                     "saml"
                 ],
@@ -4808,16 +4699,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/saml/providers/{id}": {
-            "get": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/saml/providers/{id}": {
+            "get": {
                 "tags": [
                     "saml"
                 ],
@@ -4856,14 +4747,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "put": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "put": {
                 "tags": [
                     "saml"
                 ],
@@ -4911,14 +4802,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "delete": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "delete": {
                 "tags": [
                     "saml"
                 ],
@@ -4957,7 +4848,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "XUserAuth": []
+                    }
+                ]
             }
         },
         "/v1/service-accounts": {
@@ -5464,11 +5360,6 @@ const docTemplate = `{
         },
         "/v1/session-providers": {
             "get": {
-                "security": [
-                    {
-                        "XUserAuth": []
-                    }
-                ],
                 "tags": [
                     "session-providers"
                 ],
@@ -5492,16 +5383,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/session-providers/{group}": {
-            "get": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/session-providers/{group}": {
+            "get": {
                 "tags": [
                     "session-providers"
                 ],
@@ -5540,16 +5431,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/settings": {
-            "get": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/settings": {
+            "get": {
                 "tags": [
                     "settings"
                 ],
@@ -5593,16 +5484,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/settings/{namespace}": {
-            "get": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/settings/{namespace}": {
+            "get": {
                 "tags": [
                     "settings"
                 ],
@@ -5635,14 +5526,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "put": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "put": {
                 "description": "Replaces a runtime setting and reloads the auth snapshot.",
                 "tags": [
                     "settings"
@@ -5685,14 +5576,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "delete": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "delete": {
                 "tags": [
                     "settings"
                 ],
@@ -5725,7 +5616,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "XUserAuth": []
+                    }
+                ]
             }
         },
         "/v1/sync": {
@@ -5766,11 +5662,6 @@ const docTemplate = `{
         },
         "/v1/totp": {
             "get": {
-                "security": [
-                    {
-                        "XUserAuth": []
-                    }
-                ],
                 "tags": [
                     "totp"
                 ],
@@ -5794,14 +5685,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            },
-            "delete": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            },
+            "delete": {
                 "tags": [
                     "totp"
                 ],
@@ -5825,16 +5716,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/totp/confirm": {
-            "post": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/totp/confirm": {
+            "post": {
                 "tags": [
                     "totp"
                 ],
@@ -5878,16 +5769,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/totp/recovery": {
-            "post": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/totp/recovery": {
+            "post": {
                 "tags": [
                     "totp"
                 ],
@@ -5911,16 +5802,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
-            }
-        },
-        "/v1/totp/register": {
-            "post": {
+                },
                 "security": [
                     {
                         "XUserAuth": []
                     }
-                ],
+                ]
+            }
+        },
+        "/v1/totp/register": {
+            "post": {
                 "tags": [
                     "totp"
                 ],
@@ -5944,7 +5835,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/httputil.Error"
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "XUserAuth": []
+                    }
+                ]
             }
         },
         "/v1/users": {
@@ -6752,6 +6648,14 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/auth.JWK"
                     }
+                }
+            }
+        },
+        "auth.LdapSyncRequest": {
+            "type": "object",
+            "properties": {
+                "force": {
+                    "type": "boolean"
                 }
             }
         },
@@ -7948,14 +7852,6 @@ const docTemplate = `{
                 "error": {},
                 "message": {
                     "type": "string"
-                }
-            }
-        },
-        "iam.SyncRequest": {
-            "type": "object",
-            "properties": {
-                "force": {
-                    "type": "boolean"
                 }
             }
         },

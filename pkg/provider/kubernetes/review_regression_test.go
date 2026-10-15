@@ -126,7 +126,7 @@ func TestProxyServiceKeepsForeignAnnotations(t *testing.T) {
 	}}
 	name := proxyName(key(gw))
 
-	if err := p.applyProxy(ctx, "system", name, gw, nil); err != nil {
+	if err := p.applyProxy(ctx, "system", name, gw, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -140,7 +140,7 @@ func TestProxyServiceKeepsForeignAnnotations(t *testing.T) {
 	}
 
 	kube.ClearActions()
-	if err := p.applyProxy(ctx, "system", name, gw, nil); err != nil {
+	if err := p.applyProxy(ctx, "system", name, gw, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, action := range kube.Actions() {
@@ -150,7 +150,7 @@ func TestProxyServiceKeepsForeignAnnotations(t *testing.T) {
 	}
 
 	delete(gw.Spec.Infrastructure.Annotations, "lb.example.com/scheme")
-	if err := p.applyProxy(ctx, "system", name, gw, nil); err != nil {
+	if err := p.applyProxy(ctx, "system", name, gw, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 

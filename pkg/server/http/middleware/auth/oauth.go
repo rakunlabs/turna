@@ -15,7 +15,7 @@ import (
 	"sync"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 	oauth2auth "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/token"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"

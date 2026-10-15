@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/rakunlabs/ada/middleware/auth/strategy/passkey"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 )
 
 // PasskeyCredentialMeta is the listing shape for stored passkeys.

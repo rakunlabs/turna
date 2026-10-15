@@ -12,8 +12,8 @@ import (
 
 	"github.com/rakunlabs/logi"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/ldap"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/ldap"
 	"github.com/xhit/go-str2duration/v2"
 )
 

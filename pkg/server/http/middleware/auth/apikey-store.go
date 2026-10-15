@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 )
 
 // APIKeyPrefix marks turna auth api keys.

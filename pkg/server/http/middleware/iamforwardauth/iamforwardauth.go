@@ -10,17 +10,16 @@ import (
 	"github.com/rakunlabs/ok"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
 
 type IamForwardAuth struct {
 	CheckAPI string `cfg:"check_api"`
 
-	// IamMiddleware is the name of a registered IAM middleware instance.
-	// When set, the check is performed directly in-process via the IAM
-	// database instead of making an HTTP request to CheckAPI.
-	IamMiddleware *string `cfg:"iam_middleware"`
+	// AuthMiddleware performs checks directly against an auth middleware in
+	// the same process. It takes precedence over CheckAPI.
+	AuthMiddleware string `cfg:"auth_middleware"`
 
 	MethodHeader string `cfg:"method_header"`
 	HostHeader   string `cfg:"host_header"`
@@ -30,24 +29,16 @@ type IamForwardAuth struct {
 	// request to the outgoing response on a successful auth check.
 	PassHeaders []string `cfg:"pass_headers"`
 
-	InsecureSkipVerify bool           `cfg:"insecure_skip_verify"`
+	InsecureSkipVerify bool       `cfg:"insecure_skip_verify"`
 	client             *ok.Client `cfg:"-"`
-	iamInstance        *iam.Iam   `cfg:"-"`
-}
-
-func (m *IamForwardAuth) Init() error {
-	if m.IamMiddleware != nil {
-		m.iamInstance = iam.GlobalRegistry.Resolve(*m.IamMiddleware)
-		if m.iamInstance == nil {
-			return fmt.Errorf("iam middleware %q not found in registry", *m.IamMiddleware)
-		}
-	}
-
-	return nil
 }
 
 func (m *IamForwardAuth) Middleware() (func(http.Handler) http.Handler, error) {
-	if m.IamMiddleware == nil {
+	if m.AuthMiddleware == "" {
+		if m.CheckAPI == "" {
+			return nil, fmt.Errorf("check_api or auth_middleware is required")
+		}
+
 		client, err := ok.New(
 			ok.WithDisableRetry(true),
 			ok.WithInsecureSkipVerify(m.InsecureSkipVerify),
@@ -118,15 +109,23 @@ func (m *IamForwardAuth) Middleware() (func(http.Handler) http.Handler, error) {
 
 			var allowed bool
 
-			if m.iamInstance != nil {
-				// Direct in-process check via IAM database.
-				resp, err := m.iamInstance.DB().Check(body)
-				if err != nil {
-					httputil.HandleError(w, httputil.NewError("check failed", err, http.StatusInternalServerError))
+			if m.AuthMiddleware != "" {
+				checker, ok := session.IssuerRegistry.Get(m.AuthMiddleware).(session.InfAccessChecker)
+				if !ok {
+					httputil.HandleError(w, httputil.NewError(
+						fmt.Sprintf("auth middleware %q does not support access checks", m.AuthMiddleware),
+						nil,
+						http.StatusInternalServerError,
+					))
 					return
 				}
 
-				allowed = resp.Allowed
+				var err error
+				allowed, err = checker.AccessAllowed(ctx, xUser, host, path, method)
+				if err != nil {
+					httputil.HandleError(w, httputil.NewErrorAs(err))
+					return
+				}
 			} else {
 				// HTTP-based check via CheckAPI.
 				jsonBody, err := json.Marshal(body)

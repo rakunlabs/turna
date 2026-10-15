@@ -48,14 +48,12 @@ A single named middleware can hold only one middleware type. If you need both he
 | `gzip` | Compress responses. |
 | `headers` | Set or delete request/response headers. |
 | `hello` | Return a static or templated response. |
-| `iam` | Deprecated Badger-backed IAM API/UI and permission store. |
 | `iam_check` | Check request authorization through an IAM API. |
 | `iam_forward_auth` | Forward-auth endpoint for external proxies. |
 | `info` | Return cookie or session value content. |
 | `inject` | Rewrite response bodies by path. |
 | `log` | Lightweight request log line. |
 | `login` | Login UI and OAuth2 code/password flows backed by `session`. |
-| `oauth2` | Deprecated OAuth2/OIDC-compatible endpoints backed by IAM. |
 | `oauth2_resource` | Protect an upstream (e.g. an MCP server) as an OAuth2 resource server (RFC 9728). |
 | `path` | Replace the request path and optionally set request headers. |
 | `print` | Print POST bodies to stderr for debugging. |

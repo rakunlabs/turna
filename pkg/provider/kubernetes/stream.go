@@ -36,12 +36,12 @@ func (t *translator) streamBackends(kind gwv1.Kind, namespace string, refs []gwv
 	for _, ref := range refs {
 		b := streamBackend{weight: int(ptrOr(ref.Weight, 1))}
 
-		addrs, _, err := t.resolveAddresses(kind, namespace, ref.BackendObjectReference, protocol)
+		up, err := t.resolveAddresses(kind, namespace, ref.BackendObjectReference, protocol)
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}
 
-		b.addrs = addrs
+		b.addrs = up.addrs
 		out = append(out, b)
 	}
 

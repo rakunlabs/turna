@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -99,6 +100,9 @@ type listers struct {
 	slices    func() ([]*discoveryv1.EndpointSlice, error)
 	secrets   func() ([]*corev1.Secret, error)
 	namespace func() ([]*corev1.Namespace, error)
+
+	policies   func() ([]*gwv1.BackendTLSPolicy, error)
+	configMaps func() ([]*corev1.ConfigMap, error)
 }
 
 func restConfig(path string) (*rest.Config, error) {
@@ -365,6 +369,16 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 			l.udp = gf.Gateway().V1().UDPRoutes()
 			infs = append(infs, l.udp.Informer())
 		}
+		// proxies get the CA certificates of their policies in the bundle
+		if available[kindBackendTLSPolicy] {
+			l.policies = gf.Gateway().V1().BackendTLSPolicies()
+			infs = append(infs, l.policies.Informer())
+
+			if !bundled {
+				l.configMaps = kf.Core().V1().ConfigMaps()
+				infs = append(infs, l.configMaps.Informer())
+			}
+		}
 
 		for _, inf := range infs {
 			if _, err := inf.AddEventHandler(handler); err != nil {
@@ -419,6 +433,14 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 		return l.secrets.Lister().List(labels.Everything())
 	})
 
+	configMaps := collect(perNS, func(l nsListers) ([]*corev1.ConfigMap, error) {
+		if l.configMaps == nil {
+			return nil, nil
+		}
+
+		return l.configMaps.Lister().List(labels.Everything())
+	})
+
 	if bundled {
 		k, _ := splitNsName(p.cfg.CertificateSecret)
 		bf := informers.NewSharedInformerFactoryWithOptions(p.kube, 0,
@@ -446,6 +468,18 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 			}
 
 			return unbundleSecrets(s), nil
+		}
+
+		configMaps = func() ([]*corev1.ConfigMap, error) {
+			s, err := bundle.Lister().Secrets(k.Namespace).Get(k.Name)
+			if apierrors.IsNotFound(err) {
+				return nil, nil
+			}
+			if err != nil {
+				return nil, err
+			}
+
+			return unbundleConfigMaps(s), nil
 		}
 	}
 
@@ -548,6 +582,14 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 			return l.slices.Lister().List(labels.Everything())
 		}),
 		secrets: secrets,
+		policies: collect(perNS, func(l nsListers) ([]*gwv1.BackendTLSPolicy, error) {
+			if l.policies == nil {
+				return nil, nil
+			}
+
+			return l.policies.Lister().List(labels.Everything())
+		}),
+		configMaps: configMaps,
 	}
 
 	for _, start := range starters {
@@ -582,11 +624,13 @@ type nsListers struct {
 	tls        gwinformersv1.TLSRouteInformer
 	tcp        gwinformersv1.TCPRouteInformer
 	udp        gwinformersv1.UDPRouteInformer
+	policies   gwinformersv1.BackendTLSPolicyInformer
 	grants     gwinformersv1.ReferenceGrantInformer
 	grantsBeta gwinformersv1beta1.ReferenceGrantInformer
 	services   coreinformers.ServiceInformer
 	slices     discoveryinformers.EndpointSliceInformer
 	secrets    coreinformers.SecretInformer
+	configMaps coreinformers.ConfigMapInformer
 }
 
 func collect[T any](per []nsListers, fn func(nsListers) ([]T, error)) func() ([]T, error) {
@@ -696,6 +740,17 @@ func (p *Provider) snapshot() (*Snapshot, error) {
 	if s.Namespaces, err = p.listers.namespace(); err != nil {
 		return nil, err
 	}
+	// optional: BackendTLSPolicy is watched only when its CRD is installed
+	if p.listers.policies != nil {
+		if s.BackendTLSPolicies, err = p.listers.policies(); err != nil {
+			return nil, err
+		}
+	}
+	if p.listers.configMaps != nil {
+		if s.ConfigMaps, err = p.listers.configMaps(); err != nil {
+			return nil, err
+		}
+	}
 
 	return s, nil
 }
@@ -760,7 +815,7 @@ func (p *Provider) sync(ctx context.Context) error {
 // routeKinds reports which optional route CRDs are installed, and whether
 // ReferenceGrant is served as v1; older CRDs serve only v1beta1.
 func (p *Provider) routeKinds() (map[gwv1.Kind]bool, error) {
-	out := map[gwv1.Kind]bool{kindGRPCRoute: false, kindTLSRoute: false, kindTCPRoute: false, kindUDPRoute: false, kindReferenceGrant: false}
+	out := map[gwv1.Kind]bool{kindGRPCRoute: false, kindTLSRoute: false, kindTCPRoute: false, kindUDPRoute: false, kindReferenceGrant: false, kindBackendTLSPolicy: false}
 
 	res, err := p.gw.Discovery().ServerResourcesForGroupVersion(gwv1.GroupVersion.String())
 	if apierrors.IsNotFound(err) {
@@ -778,12 +833,61 @@ func (p *Provider) routeKinds() (map[gwv1.Kind]bool, error) {
 	}
 
 	for kind, ok := range out {
-		if !ok && kind != kindReferenceGrant {
+		if !ok && kind != kindReferenceGrant && kind != kindBackendTLSPolicy {
 			slog.Debug("kubernetes provider: route kind not installed", "kind", kind)
 		}
 	}
 
+	// An installation upgraded without the new RBAC must keep serving; a
+	// watch without permission would block the cache sync forever.
+	if out[kindBackendTLSPolicy] && !p.canWatchBackendTLS() {
+		out[kindBackendTLSPolicy] = false
+	}
+
 	return out, nil
+}
+
+// canWatchBackendTLS reports whether BackendTLSPolicies, and the ConfigMaps
+// holding their CA certificates, may be listed in the watched namespaces.
+// Proxies read the CA certificates from their bundle Secret.
+func (p *Provider) canWatchBackendTLS() bool {
+	namespaces := p.cfg.Namespaces
+	if len(namespaces) == 0 {
+		namespaces = []string{corev1.NamespaceAll}
+	}
+
+	checks := []authorizationv1.ResourceAttributes{{Group: gwv1.GroupName, Resource: "backendtlspolicies"}}
+	if p.cfg.mode() != ModeProxy || p.cfg.CertificateSecret == "" {
+		checks = append(checks, authorizationv1.ResourceAttributes{Resource: "configmaps"})
+	}
+
+	for _, ns := range namespaces {
+		for _, c := range checks {
+			for _, verb := range []string{"list", "watch"} {
+				attrs := c
+				attrs.Namespace, attrs.Verb = ns, verb
+
+				review, err := p.kube.AuthorizationV1().SelfSubjectAccessReviews().Create(context.Background(),
+					&authorizationv1.SelfSubjectAccessReview{Spec: authorizationv1.SelfSubjectAccessReviewSpec{ResourceAttributes: &attrs}},
+					metav1.CreateOptions{})
+				if err != nil {
+					// unknown: assume allowed, as before the check existed
+					slog.Debug("kubernetes provider: access review failed", "err", err.Error())
+
+					continue
+				}
+
+				if !review.Status.Allowed {
+					slog.Warn("kubernetes provider: BackendTLSPolicy is installed but not watched, update the RBAC",
+						"resource", c.Resource, "verb", verb, "namespace", ns)
+
+					return false
+				}
+			}
+		}
+	}
+
+	return true
 }
 
 // controllerImage returns the image of this pod's turna container, preferring

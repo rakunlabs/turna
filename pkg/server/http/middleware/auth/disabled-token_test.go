@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 	oauth2store "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
 	"golang.org/x/crypto/bcrypt"
 )

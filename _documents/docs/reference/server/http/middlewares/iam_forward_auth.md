@@ -8,7 +8,7 @@ server:
     middlewares:
       forward_auth:
         iam_forward_auth:
-          iam_middleware: iam
+          auth_middleware: auth
           check_api: ""
           method_header: X-Forwarded-Method
           host_header: X-Forwarded-Host
@@ -24,8 +24,8 @@ Use one of these modes:
 
 | Mode | Configuration |
 | --- | --- |
-| In-process | Set `iam_middleware` to a registered [`iam`](./iam) middleware name. |
-| HTTP | Leave `iam_middleware` empty and set `check_api`. |
+| In-process | Set `auth_middleware` to a registered [`auth`](./auth) middleware name. It takes precedence over `check_api`. |
+| HTTP | Leave `auth_middleware` empty and set `check_api`. |
 
 Required request headers default to `X-Forwarded-Method`, `X-Forwarded-Host`, and `X-Forwarded-Uri`. `X-User` must also be present.
 

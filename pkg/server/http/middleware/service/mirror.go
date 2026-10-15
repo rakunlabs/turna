@@ -21,6 +21,8 @@ type Mirror struct {
 	Servers []MirrorServer `cfg:"servers"`
 	// H2C uses HTTP/2 prior knowledge for plaintext mirror targets.
 	H2C bool `cfg:"h2c"`
+	// TLS verifies https mirror targets, see Service.TLS.
+	TLS *UpstreamTLS `cfg:"tls"`
 	// MaxBodySize is the maximum request body size in bytes to mirror,
 	// requests with larger bodies are not mirrored. Default is 1MB.
 	MaxBodySize int64 `cfg:"max_body_size"`
@@ -300,6 +302,14 @@ func (m *Mirror) MirrorMiddleware() (func(http.Handler) http.Handler, error) {
 		protocols.SetUnencryptedHTTP2(true)
 		protocols.SetHTTP2(true)
 		transport.Protocols = &protocols
+	}
+	if m != nil && m.TLS != nil {
+		tlsConfig, err := m.TLS.config()
+		if err != nil {
+			return nil, err
+		}
+
+		transport.TLSClientConfig = tlsConfig
 	}
 	mr, err := m.build(transport)
 	if err != nil {

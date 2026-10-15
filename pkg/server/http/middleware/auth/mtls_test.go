@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 )
 
 func testClientCertificate(t *testing.T, notBefore, notAfter time.Time) (*x509.Certificate, string) {

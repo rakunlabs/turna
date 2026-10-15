@@ -23,14 +23,12 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/gzip"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/headers"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/hello"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iamcheck"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iamforwardauth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/info"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/inject"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/log"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/login"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2resource"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/path"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/print"
@@ -90,7 +88,6 @@ type HTTPMiddleware struct {
 	RedirectionMiddleware      *redirection.Redirection              `cfg:"redirection"`
 	TryMiddleware              *try.Try                              `cfg:"try"`
 	SessionInfoMiddleware      *sessioninfo.Info                     `cfg:"session_info"`
-	IamMiddleware              *iam.Iam                              `cfg:"iam"`
 	IamCheckMiddleware         *iamcheck.IamCheck                    `cfg:"iam_check"`
 	IamForwardAuthMiddleware   *iamforwardauth.IamForwardAuth        `cfg:"iam_forward_auth"`
 	RoleCheckMiddleware        *rolecheck.RoleCheck                  `cfg:"role_check"`
@@ -103,7 +100,6 @@ type HTTPMiddleware struct {
 	SplitterMiddleware         *splitter.Splitter                    `cfg:"splitter"`
 	PathMiddleware             *path.Path                            `cfg:"path"`
 	RequestIDMiddleware        *requestid.RequestID                  `cfg:"request_id"`
-	Oauth2                     *oauth2.Oauth2                        `cfg:"oauth2"`
 	AccessLogMiddleware        *accesslog.AccessLog                  `cfg:"access_log"`
 	URL                        *url.URL                              `cfg:"url"`
 	RateLimit                  *ratelimit.RateLimit                  `cfg:"rate_limit"`
@@ -190,16 +186,10 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 	case h.SessionInfoMiddleware != nil:
 		m, err := h.SessionInfoMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
-	case h.IamMiddleware != nil:
-		m, err := h.IamMiddleware.Middleware(ctx, name)
-		return []MiddlewareFunc{m}, err
 	case h.IamCheckMiddleware != nil:
 		m, err := h.IamCheckMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
 	case h.IamForwardAuthMiddleware != nil:
-		if h.IamForwardAuthMiddleware.IamMiddleware != nil {
-			registry.GlobalReg.AddInitFunc(name, h.IamForwardAuthMiddleware.Init)
-		}
 		m, err := h.IamForwardAuthMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
 	case h.RoleCheckMiddleware != nil:
@@ -231,10 +221,6 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 	case h.RequestIDMiddleware != nil:
 		m := h.RequestIDMiddleware.Middleware()
 		return []MiddlewareFunc{m}, nil
-	case h.Oauth2 != nil:
-		registry.GlobalReg.AddInitFunc(name, h.Oauth2.Init)
-		m, err := h.Oauth2.Middleware(ctx)
-		return []MiddlewareFunc{m}, err
 	case h.AccessLogMiddleware != nil:
 		m, err := h.AccessLogMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err

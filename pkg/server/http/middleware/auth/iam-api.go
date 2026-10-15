@@ -12,7 +12,7 @@ import (
 
 	"github.com/rakunlabs/query"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 )
 
 type ctxKeySA struct{}

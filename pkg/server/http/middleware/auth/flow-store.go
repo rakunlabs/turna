@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 )
 
 // flow code kinds stored in auth_flow_codes.

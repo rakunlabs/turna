@@ -30,6 +30,10 @@ func (t *translator) grpcRules(route *gwv1.GRPCRoute) ([]gateway.Rule, *refError
 	for i, r := range route.Spec.Rules {
 		rule := gateway.Rule{}
 
+		if err := unsupportedRuleFields(r.SessionPersistence != nil); err != nil {
+			setErr(err)
+		}
+
 		matches, ok, err := validMatches(r.Matches, convertGRPCMatch, true)
 		if err != nil {
 			setErr(err)
@@ -130,14 +134,14 @@ func (t *translator) grpcFilters(route *gwv1.GRPCRoute, in []gwv1.GRPCRouteFilte
 func (t *translator) grpcBackend(route *gwv1.GRPCRoute, rule, idx int, b gwv1.GRPCBackendRef) (gateway.Backend, *refError) {
 	out := gateway.Backend{Weight: int(ptrOr(b.Weight, 1))}
 
-	addrs, scheme, err := t.resolveAddresses(kindGRPCRoute, route.Namespace, b.BackendObjectReference, corev1.ProtocolTCP)
+	up, err := t.resolveAddresses(kindGRPCRoute, route.Namespace, b.BackendObjectReference, corev1.ProtocolTCP)
 	if err != nil {
 		out.Status = http.StatusInternalServerError
 
 		return out, err
 	}
 
-	if len(addrs) == 0 {
+	if len(up.addrs) == 0 {
 		out.Status = http.StatusServiceUnavailable
 
 		return out, nil
@@ -158,21 +162,17 @@ func (t *translator) grpcBackend(route *gwv1.GRPCRoute, rule, idx int, b gwv1.GR
 		names = append(names, name)
 	}
 
-	urls := make([]string, 0, len(addrs))
-	for _, a := range addrs {
-		urls = append(urls, scheme+"://"+a)
-	}
-
 	// plain text gRPC needs HTTP/2 prior knowledge
-	out.Middlewares = append(names, t.serviceMiddlewareFor(urls, scheme == "http"))
+	out.Middlewares = append(names, t.serviceMiddlewareFor(up, up.scheme == "http"))
 
 	return out, nil
 }
 
 // serviceMiddlewareFor returns a shared service middleware for the upstream
 // set so routes using the same backend share health and balancing state.
-func (t *translator) serviceMiddlewareFor(urls []string, h2c bool) string {
-	sorted := slices.Clone(urls)
+// Upstreams with a different TLS configuration get their own middleware.
+func (t *translator) serviceMiddlewareFor(up upstream, h2c bool) string {
+	sorted := up.urls()
 	slices.Sort(sorted)
 
 	prefix := "k8s-svc"
@@ -180,7 +180,13 @@ func (t *translator) serviceMiddlewareFor(urls []string, h2c bool) string {
 		prefix = "k8s-h2c"
 	}
 
-	name := sanitize(prefix, strings.Join(sorted, ","))
+	id := strings.Join(sorted, ",")
+	if up.tls != nil {
+		prefix = "k8s-tls"
+		id += "|" + tlsID(up.tls)
+	}
+
+	name := sanitize(prefix, id)
 
 	if _, ok := t.middlewares[name]; ok {
 		return name
@@ -195,6 +201,7 @@ func (t *translator) serviceMiddlewareFor(urls []string, h2c bool) string {
 			PassiveHealthCheck: &service.PassiveHealthCheck{MaxFails: 3},
 		},
 		Retry: ptrOr(t.cfg.Backend.Retry, 2),
+		TLS:   up.tls,
 	}
 
 	for _, u := range sorted {

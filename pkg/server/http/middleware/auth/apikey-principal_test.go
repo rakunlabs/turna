@@ -3,7 +3,7 @@ package auth
 import (
 	"testing"
 
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 )
 
 func hasAccessID(values []data.IDName, id string) bool {

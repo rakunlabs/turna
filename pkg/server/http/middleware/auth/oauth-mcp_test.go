@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 )
 
 func TestValidateResource(t *testing.T) {

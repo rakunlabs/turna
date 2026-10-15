@@ -33,8 +33,7 @@ Flags:
 | `-u`, `--url` | | URL to call. Can be provided more than once. |
 | `-m`, `--method` | `GET` | HTTP method. |
 | `-k`, `--insecure` | `false` | Skip TLS certificate verification. |
-| `-s`, `--slient` | `false` | Suppress response body output. The flag name is currently spelled `slient` in the CLI. |
-| `--ping` | `false` | Deprecated compatibility flag. |
+| `-s`, `--silent` | `false` | Suppress response body output. |
 
 ## Shell Completion
 

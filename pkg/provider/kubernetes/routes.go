@@ -80,6 +80,24 @@ func (r *routeInfo) key() nsName {
 	return nsName{Namespace: r.meta.Namespace, Name: r.meta.Name}
 }
 
+// gateways returns the served gateways the route references.
+func (r *routeInfo) gateways(served map[nsName][]*listener) []nsName {
+	var out []nsName
+
+	for _, ref := range r.parentRefs {
+		if ptrOr(ref.Group, gwv1.Group(groupGateway)) != groupGateway || ptrOr(ref.Kind, kindGateway) != kindGateway {
+			continue
+		}
+
+		gk := nsName{Namespace: string(ptrOr(ref.Namespace, gwv1.Namespace(r.meta.Namespace))), Name: string(ref.Name)}
+		if _, ok := served[gk]; ok && !slices.Contains(out, gk) {
+			out = append(out, gk)
+		}
+	}
+
+	return out
+}
+
 func sortRouteInfos(routes []*routeInfo) {
 	slices.SortFunc(routes, func(a, b *routeInfo) int {
 		if c := a.meta.CreationTimestamp.Compare(b.meta.CreationTimestamp.Time); c != 0 {

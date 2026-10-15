@@ -217,6 +217,8 @@ func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap
 	}
 	idx := newIndex(snap)
 
+	cas := bundleCACertificates(snap.BackendTLSPolicies, idx)
+
 	for _, gw := range gateways {
 		// rejected gateways are not accepted, see finishGateways
 		if _, _, _, rejected := gatewayRejection(gw); rejected {
@@ -227,7 +229,7 @@ func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap
 		name := proxyName(k)
 		want[name] = struct{}{}
 
-		if err := p.applyProxy(ctx, ns, name, gw, idx); err != nil {
+		if err := p.applyProxy(ctx, ns, name, gw, idx, cas); err != nil {
 			err = fmt.Errorf("provision gateway %s: %w", k.String(), err)
 			perGateway[k] = err
 			errs = append(errs, err)
@@ -390,7 +392,7 @@ func cached[T any](ok bool, get func(string) (T, error)) func(string) (T, error)
 	return get
 }
 
-func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gateway, idx *index) error {
+func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gateway, idx *index, cas map[string][]byte) error {
 	if p.proxyImage() == "" {
 		return errors.New("proxy image is not set")
 	}
@@ -411,6 +413,7 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 		Type:       corev1.SecretTypeOpaque,
 		Data:       bundleCertificates(gw, idx),
 	}
+	maps.Copy(bundle.Data, cas)
 
 	if err := upsert(ctx, p.kube.CoreV1().Secrets(ns), cached(pl != nil, func(n string) (*corev1.Secret, error) {
 		return pl.secrets.Secrets(ns).Get(n)
@@ -621,11 +624,68 @@ func bundleCertificates(gw *gwv1.Gateway, idx *index) map[string][]byte {
 	return out
 }
 
+// caBundlePrefix marks CA certificates of BackendTLSPolicies in a bundle,
+// keyed "ca.crt-<namespace>_<name>". Certificate keys start with a
+// namespace, which cannot contain '.', and names cannot contain '_'.
+const caBundlePrefix = caCertificateKey + "-"
+
+// bundleCACertificates returns the CA certificates referenced by
+// BackendTLSPolicies. Proxies translate the policies themselves and only
+// lack access to ConfigMaps.
+func bundleCACertificates(policies []*gwv1.BackendTLSPolicy, idx *index) map[string][]byte {
+	out := map[string][]byte{}
+
+	for _, p := range policies {
+		for _, ref := range p.Spec.Validation.CACertificateRefs {
+			if ref.Group != "" || ref.Kind != kindConfigMap {
+				continue
+			}
+
+			cm, ok := idx.configMaps[nsName{Namespace: p.Namespace, Name: string(ref.Name)}]
+			if !ok {
+				continue
+			}
+
+			out[caBundlePrefix+p.Namespace+"_"+string(ref.Name)] = []byte(cm.Data[caCertificateKey])
+		}
+	}
+
+	return out
+}
+
+// unbundleConfigMaps restores the CA ConfigMaps of a bundle.
+func unbundleConfigMaps(bundle *corev1.Secret) []*corev1.ConfigMap {
+	var out []*corev1.ConfigMap
+
+	for k, v := range bundle.Data {
+		rest, ok := strings.CutPrefix(k, caBundlePrefix)
+		if !ok {
+			continue
+		}
+
+		ns, name, ok := strings.Cut(rest, "_")
+		if !ok {
+			continue
+		}
+
+		out = append(out, &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name},
+			Data:       map[string]string{caCertificateKey: string(v)},
+		})
+	}
+
+	return out
+}
+
 // unbundleSecrets restores the certificate Secrets of a bundle.
 func unbundleSecrets(bundle *corev1.Secret) []*corev1.Secret {
 	byName := map[nsName]*corev1.Secret{}
 
 	for k, v := range bundle.Data {
+		if strings.HasPrefix(k, caBundlePrefix) {
+			continue
+		}
+
 		ref, field, ok := strings.Cut(k, "_")
 		if !ok {
 			continue

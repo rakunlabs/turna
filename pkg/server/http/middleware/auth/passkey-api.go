@@ -11,7 +11,7 @@ import (
 
 	"github.com/rakunlabs/ada/middleware/auth/strategy/passkey"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 	"golang.org/x/net/publicsuffix"
 )
 

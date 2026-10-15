@@ -24,7 +24,7 @@ rules:
     resources: ["endpointslices"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["gateway.networking.k8s.io"]
-    resources: {{ concat (ternary (list) (list "gatewayclasses") $namespaced) (list "gateways" "httproutes" "grpcroutes" "tlsroutes" "tcproutes" "udproutes" "referencegrants") | toJson }}
+    resources: {{ concat (ternary (list) (list "gatewayclasses") $namespaced) (list "gateways" "httproutes" "grpcroutes" "tlsroutes" "tcproutes" "udproutes" "referencegrants" "backendtlspolicies") | toJson }}
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -34,13 +34,13 @@ metadata:
   labels:
     {{- include "turna-gateway.labels" . | nindent 4 }}
 rules:
-  # listener certificates; proxies get the certificates of their Gateway
-  # through a Secret in the release namespace
+  # listener certificates and BackendTLSPolicy CA certificates; proxies get
+  # them for their Gateway through a Secret in the release namespace
   - apiGroups: [""]
-    resources: ["secrets"]
+    resources: ["secrets", "configmaps"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["gateway.networking.k8s.io"]
-    resources: {{ concat (ternary (list) (list "gatewayclasses/status") $namespaced) (list "gateways/status" "httproutes/status" "grpcroutes/status" "tlsroutes/status" "tcproutes/status" "udproutes/status") | toJson }}
+    resources: {{ concat (ternary (list) (list "gatewayclasses/status") $namespaced) (list "gateways/status" "httproutes/status" "grpcroutes/status" "tlsroutes/status" "tcproutes/status" "udproutes/status" "backendtlspolicies/status") | toJson }}
     verbs: ["get", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

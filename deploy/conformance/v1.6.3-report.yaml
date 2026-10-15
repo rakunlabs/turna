@@ -1,5 +1,5 @@
 apiVersion: gateway.networking.k8s.io/v1
-date: "2026-10-09T20:59:11+02:00"
+date: '2026-10-14T23:58:16+02:00'
 gatewayAPIChannel: standard
 gatewayAPIVersion: v1.6.3
 implementation:
@@ -58,13 +58,19 @@ profiles:
     result: success
     statistics:
       Failed: 0
-      Passed: 19
+      Passed: 31
       Skipped: 0
     supportedFeatures:
+    - BackendTLSPolicy
+    - BackendTLSPolicySANValidation
     - GatewayPort8080
     - HTTPRoute303RedirectStatusCode
     - HTTPRoute307RedirectStatusCode
     - HTTPRoute308RedirectStatusCode
+    - HTTPRouteBackendProtocolH2C
+    - HTTPRouteBackendProtocolWebSocket
+    - HTTPRouteBackendRequestHeaderModification
+    - HTTPRouteBackendTimeout
     - HTTPRouteHostRewrite
     - HTTPRouteMethodMatching
     - HTTPRouteNamedRouteRule
@@ -75,12 +81,11 @@ profiles:
     - HTTPRouteQueryParamMatching
     - HTTPRouteRequestMirror
     - HTTPRouteRequestMultipleMirrors
+    - HTTPRouteRequestPercentageMirror
     - HTTPRouteRequestTimeout
     - HTTPRouteResponseHeaderModification
     - HTTPRouteSchemeRedirect
     unsupportedFeatures:
-    - BackendTLSPolicy
-    - BackendTLSPolicySANValidation
     - GatewayAddressEmpty
     - GatewayBackendClientCertificate
     - GatewayFrontendClientCertificateValidation
@@ -89,13 +94,8 @@ profiles:
     - GatewayHTTPSListenerDetectMisdirectedRequests
     - GatewayInfrastructure
     - GatewayStaticAddresses
-    - HTTPRouteBackendProtocolH2C
-    - HTTPRouteBackendProtocolWebSocket
-    - HTTPRouteBackendRequestHeaderModification
-    - HTTPRouteBackendTimeout
     - HTTPRouteCORS
     - HTTPRouteDestinationPortMatching
-    - HTTPRouteRequestPercentageMirror
     - HTTPRouteRetry
     - HTTPRouteRetryBackendTimeout
     - HTTPRouteRetryConnectionError

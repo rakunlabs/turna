@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 )
 
 // MeResponse is the self-service account overview for the X-User identity.

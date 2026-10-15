@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 )
 
 // TestStoreIntegration runs against a real PostgreSQL when AUTH_TEST_DSN is set.

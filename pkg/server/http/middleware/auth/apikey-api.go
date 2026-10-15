@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 	"github.com/xhit/go-str2duration/v2"
 )
 

@@ -40,7 +40,7 @@ func TestProxyServiceTypeTransitions(t *testing.T) {
 			p := &Provider{kube: kube, cfg: Config{Proxy: Proxy{Image: "example:1", ServiceType: "LoadBalancer"}}}
 			gw := gatewayObj("demo", "web", httpListener("http", 80, ""))
 			name := proxyName(key(gw))
-			if err := p.applyProxy(ctx, "system", name, gw, nil); err != nil {
+			if err := p.applyProxy(ctx, "system", name, gw, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			svc, err := kube.CoreV1().Services("system").Get(ctx, name, metav1.GetOptions{})
@@ -56,7 +56,7 @@ func TestProxyServiceTypeTransitions(t *testing.T) {
 				t.Fatal(err)
 			}
 			p.cfg.Proxy.ServiceType = string(typ)
-			if err := p.applyProxy(ctx, "system", name, gw, nil); err != nil {
+			if err := p.applyProxy(ctx, "system", name, gw, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			svc, err = kube.CoreV1().Services("system").Get(ctx, name, metav1.GetOptions{})
@@ -74,7 +74,7 @@ func TestProxyServiceTypeTransitions(t *testing.T) {
 				t.Error("allocated NodePort lost")
 			}
 			kube.ClearActions()
-			if err := p.applyProxy(ctx, "system", name, gw, nil); err != nil {
+			if err := p.applyProxy(ctx, "system", name, gw, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			for _, action := range kube.Actions() {

@@ -40,6 +40,10 @@ func (t *translator) rules(route *gwv1.HTTPRoute) ([]gateway.Rule, *refError) {
 	for i, r := range route.Spec.Rules {
 		rule := gateway.Rule{}
 
+		if err := unsupportedRuleFields(r.SessionPersistence != nil); err != nil {
+			setErr(err)
+		}
+
 		matches, ok, err := validMatches(r.Matches, convertMatch, false)
 		if err != nil {
 			setErr(err)
@@ -62,7 +66,14 @@ func (t *translator) rules(route *gwv1.HTTPRoute) ([]gateway.Rule, *refError) {
 
 		rule.Filters = filters
 
-		rule.Timeout = ruleTimeout(r.Timeouts)
+		if r.Retry != nil {
+			// each attempt is bounded by backendRequest, all of them by request
+			rule.Timeout = parseTimeout(r.Timeouts, false)
+			rule.BackendTimeout = parseTimeout(r.Timeouts, true)
+			rule.Retry = convertRetry(r.Retry)
+		} else {
+			rule.Timeout = ruleTimeout(r.Timeouts)
+		}
 
 		redirect := slices.ContainsFunc(r.Filters, func(f gwv1.HTTPRouteFilter) bool {
 			return f.Type == gwv1.HTTPRouteFilterRequestRedirect
@@ -83,6 +94,60 @@ func (t *translator) rules(route *gwv1.HTTPRoute) ([]gateway.Rule, *refError) {
 	}
 
 	return out, firstErr
+}
+
+// unsupportedRuleFields reports rule fields that are not implemented. They
+// do not change security or placement, so the rule keeps routing without
+// them and only the status tells the route author.
+func unsupportedRuleFields(sessionPersistence bool) *refError {
+	if sessionPersistence {
+		return &refError{string(gwv1.RouteReasonUnsupportedValue), "sessionPersistence is not supported"}
+	}
+
+	return nil
+}
+
+// convertRetry maps a route retry. Without attempts one retry is made, without
+// codes 502, 503 and 504 are retried, and without a backoff the next attempt
+// starts right away.
+func convertRetry(r *gwv1.HTTPRouteRetry) *gateway.Retry {
+	out := &gateway.Retry{Attempts: ptrOr(r.Attempts, 1)}
+
+	for _, c := range r.Codes {
+		out.Codes = append(out.Codes, int(c))
+	}
+
+	if r.Backoff != nil {
+		if d, err := time.ParseDuration(string(*r.Backoff)); err == nil && d > 0 {
+			out.Backoff = d
+		}
+	}
+
+	return out
+}
+
+// parseTimeout returns the request or backend request timeout of a rule, 0
+// disables it.
+func parseTimeout(t *gwv1.HTTPRouteTimeouts, backend bool) time.Duration {
+	if t == nil {
+		return 0
+	}
+
+	v := t.Request
+	if backend {
+		v = t.BackendRequest
+	}
+
+	if v == nil {
+		return 0
+	}
+
+	d, err := time.ParseDuration(string(*v))
+	if err != nil || d < 0 {
+		return 0
+	}
+
+	return d
 }
 
 // ruleTimeout returns the timeout of a rule, 0 disables it. Retries go only
@@ -281,14 +346,11 @@ func (t *translator) requestMirror(kind gwv1.Kind, namespace string, m *gwv1.HTT
 		return nil, &refError{string(gwv1.RouteReasonUnsupportedValue), "requestMirror is empty"}
 	}
 
-	addrs, scheme, err := t.resolveAddresses(kind, namespace, m.BackendRef, corev1.ProtocolTCP)
+	up, err := t.resolveAddresses(kind, namespace, m.BackendRef, corev1.ProtocolTCP)
 	if err != nil {
 		return nil, err
 	}
-	urls := make([]string, 0, len(addrs))
-	for _, a := range addrs {
-		urls = append(urls, scheme+"://"+a)
-	}
+	urls := up.urls()
 
 	percent := 100.0
 
@@ -302,7 +364,7 @@ func (t *translator) requestMirror(kind gwv1.Kind, namespace string, m *gwv1.HTT
 		}
 	}
 
-	out := &service.Mirror{H2C: scheme == "http" && (grpc || t.backendH2C(namespace, m.BackendRef))}
+	out := &service.Mirror{H2C: up.scheme == "http" && (grpc || t.backendH2C(namespace, m.BackendRef)), TLS: up.tls}
 	if len(urls) > 0 {
 		out.Servers = []service.MirrorServer{{Endpoints: urls, Percent: &percent}}
 	}
@@ -314,14 +376,14 @@ func (t *translator) backend(route *gwv1.HTTPRoute, rule, idx int, b gwv1.HTTPBa
 	weight := int(ptrOr(b.Weight, 1))
 	out := gateway.Backend{Weight: weight}
 
-	urls, err := t.resolveBackend(route, b.BackendObjectReference)
+	up, err := t.resolveAddresses(kindRoute, route.Namespace, b.BackendObjectReference, corev1.ProtocolTCP)
 	if err != nil {
 		out.Status = http.StatusInternalServerError
 
 		return out, err
 	}
 
-	if len(urls) == 0 {
+	if len(up.addrs) == 0 {
 		out.Status = http.StatusServiceUnavailable
 
 		return out, nil
@@ -342,7 +404,7 @@ func (t *translator) backend(route *gwv1.HTTPRoute, rule, idx int, b gwv1.HTTPBa
 		filterNames = append(filterNames, name)
 	}
 
-	name := t.serviceMiddlewareFor(urls, t.backendH2C(route.Namespace, b.BackendObjectReference))
+	name := t.serviceMiddlewareFor(up, up.scheme == "http" && t.backendH2C(route.Namespace, b.BackendObjectReference))
 	out.Middlewares = append(filterNames, name)
 
 	return out, nil
@@ -363,41 +425,44 @@ func (t *translator) backendH2C(namespace string, ref gwv1.BackendObjectReferenc
 	return false
 }
 
-// resolveBackend returns upstream URLs of a Service reference of an HTTPRoute.
-func (t *translator) resolveBackend(route *gwv1.HTTPRoute, ref gwv1.BackendObjectReference) ([]string, *refError) {
-	addrs, scheme, err := t.resolveAddresses(kindRoute, route.Namespace, ref, corev1.ProtocolTCP)
-	if err != nil {
-		return nil, err
+// upstream is a resolved Service port.
+type upstream struct {
+	addrs  []string
+	scheme string
+	// tls verifies https upstreams, set by a BackendTLSPolicy
+	tls *service.UpstreamTLS
+}
+
+func (u upstream) urls() []string {
+	out := make([]string, 0, len(u.addrs))
+	for _, a := range u.addrs {
+		out = append(out, u.scheme+"://"+a)
 	}
 
-	urls := make([]string, 0, len(addrs))
-	for _, a := range addrs {
-		urls = append(urls, scheme+"://"+a)
-	}
-
-	return urls, nil
+	return out
 }
 
 // resolveAddresses returns "host:port" upstreams of a Service reference made
 // by a route of fromKind in fromNamespace, and the scheme derived from the
-// port app protocol.
-func (t *translator) resolveAddresses(fromKind gwv1.Kind, fromNamespace string, ref gwv1.BackendObjectReference, protocol corev1.Protocol) ([]string, string, *refError) {
+// port app protocol. A BackendTLSPolicy targeting the port switches it to
+// verified TLS.
+func (t *translator) resolveAddresses(fromKind gwv1.Kind, fromNamespace string, ref gwv1.BackendObjectReference, protocol corev1.Protocol) (upstream, *refError) {
 	if ptrOr(ref.Group, "") != "" || ptrOr(ref.Kind, kindService) != kindService {
-		return nil, "", &refError{string(gwv1.RouteReasonInvalidKind), fmt.Sprintf("backend kind %s is not supported", ptrOr(ref.Kind, ""))}
+		return upstream{}, &refError{string(gwv1.RouteReasonInvalidKind), fmt.Sprintf("backend kind %s is not supported", ptrOr(ref.Kind, ""))}
 	}
 
 	ns := string(ptrOr(ref.Namespace, gwv1.Namespace(fromNamespace)))
 	if !t.idx.referenceAllowed(groupGateway, string(fromKind), fromNamespace, "", kindService, ns, string(ref.Name)) {
-		return nil, "", &refError{string(gwv1.RouteReasonRefNotPermitted), fmt.Sprintf("service %s/%s is not permitted by a ReferenceGrant", ns, ref.Name)}
+		return upstream{}, &refError{string(gwv1.RouteReasonRefNotPermitted), fmt.Sprintf("service %s/%s is not permitted by a ReferenceGrant", ns, ref.Name)}
 	}
 
 	svc, ok := t.idx.services[nsName{Namespace: ns, Name: string(ref.Name)}]
 	if !ok {
-		return nil, "", &refError{string(gwv1.RouteReasonBackendNotFound), fmt.Sprintf("service %s/%s not found", ns, ref.Name)}
+		return upstream{}, &refError{string(gwv1.RouteReasonBackendNotFound), fmt.Sprintf("service %s/%s not found", ns, ref.Name)}
 	}
 
 	if ref.Port == nil {
-		return nil, "", &refError{string(gwv1.RouteReasonUnsupportedValue), fmt.Sprintf("service %s/%s: port is required", ns, ref.Name)}
+		return upstream{}, &refError{string(gwv1.RouteReasonUnsupportedValue), fmt.Sprintf("service %s/%s: port is required", ns, ref.Name)}
 	}
 
 	var port *corev1.ServicePort
@@ -411,35 +476,48 @@ func (t *translator) resolveAddresses(fromKind gwv1.Kind, fromNamespace string, 
 	}
 
 	if port == nil {
-		return nil, "", &refError{string(gwv1.RouteReasonBackendNotFound), fmt.Sprintf("service %s/%s has no %s port %d", ns, ref.Name, protocol, *ref.Port)}
+		return upstream{}, &refError{string(gwv1.RouteReasonBackendNotFound), fmt.Sprintf("service %s/%s has no %s port %d", ns, ref.Name, protocol, *ref.Port)}
 	}
 
-	scheme := "http"
+	out := upstream{scheme: "http"}
 	if port.AppProtocol != nil {
 		switch *port.AppProtocol {
 		case "kubernetes.io/h2c", "kubernetes.io/ws":
 		case "kubernetes.io/wss", "https":
-			scheme = "https"
+			out.scheme = "https"
+		}
+	}
+
+	// stream routes pass connections through unchanged
+	if fromKind == kindRoute || fromKind == kindGRPCRoute {
+		if cfg := t.upstreamTLS(svc, port); cfg != nil {
+			out.scheme, out.tls = "https", cfg
 		}
 	}
 
 	if svc.Spec.Type == corev1.ServiceTypeExternalName {
 		if !t.cfg.Backend.AllowExternalName {
-			return nil, "", &refError{string(gwv1.RouteReasonUnsupportedValue), fmt.Sprintf("service %s/%s: ExternalName services are disabled (backend.allow_external_name)", ns, ref.Name)}
+			return upstream{}, &refError{string(gwv1.RouteReasonUnsupportedValue), fmt.Sprintf("service %s/%s: ExternalName services are disabled (backend.allow_external_name)", ns, ref.Name)}
 		}
 
-		return []string{net.JoinHostPort(svc.Spec.ExternalName, strconv.Itoa(int(port.Port)))}, scheme, nil
+		out.addrs = []string{net.JoinHostPort(svc.Spec.ExternalName, strconv.Itoa(int(port.Port)))}
+
+		return out, nil
 	}
 
 	if t.cfg.Backend.UseServiceIP {
 		if svc.Spec.ClusterIP == "" || svc.Spec.ClusterIP == corev1.ClusterIPNone {
-			return nil, "", &refError{string(gwv1.RouteReasonBackendNotFound), fmt.Sprintf("service %s/%s has no cluster ip", ns, ref.Name)}
+			return upstream{}, &refError{string(gwv1.RouteReasonBackendNotFound), fmt.Sprintf("service %s/%s has no cluster ip", ns, ref.Name)}
 		}
 
-		return []string{net.JoinHostPort(svc.Spec.ClusterIP, strconv.Itoa(int(port.Port)))}, scheme, nil
+		out.addrs = []string{net.JoinHostPort(svc.Spec.ClusterIP, strconv.Itoa(int(port.Port)))}
+
+		return out, nil
 	}
 
-	return t.endpoints(nsName{Namespace: ns, Name: svc.Name}, port, protocol), scheme, nil
+	out.addrs = t.endpoints(nsName{Namespace: ns, Name: svc.Name}, port, protocol)
+
+	return out, nil
 }
 
 func (t *translator) endpoints(svc nsName, port *corev1.ServicePort, protocol corev1.Protocol) []string {

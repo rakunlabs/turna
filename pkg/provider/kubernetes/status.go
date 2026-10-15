@@ -231,6 +231,67 @@ func (w *statusWriter) write(ctx context.Context, u *statusUpdate) {
 	}
 
 	w.writeRoutes(ctx, u.snap, u.res)
+	w.writePolicies(ctx, u.snap, u.res)
+}
+
+// policyAncestors merges the ancestors of this controller into the current
+// policy status and keeps entries of other controllers.
+func policyAncestors(controller gwv1.GatewayController, st *gwv1.PolicyStatus, ancestors []gwv1.PolicyAncestorStatus) []gwv1.PolicyAncestorStatus {
+	next := make([]gwv1.PolicyAncestorStatus, 0, len(st.Ancestors)+len(ancestors))
+	for _, a := range st.Ancestors {
+		if a.ControllerName != controller {
+			next = append(next, a)
+		}
+	}
+
+	for _, a := range ancestors {
+		for _, old := range st.Ancestors {
+			if old.ControllerName == controller && equality.Semantic.DeepEqual(old.AncestorRef, a.AncestorRef) {
+				a.Conditions = mergeConditions(old.Conditions, a.Conditions)
+			}
+		}
+
+		next = append(next, a)
+	}
+
+	return next
+}
+
+func (w *statusWriter) writePolicies(ctx context.Context, snap *Snapshot, res *Result) {
+	api := w.p.gw.GatewayV1()
+	controller := gwv1.GatewayController(w.p.cfg.controllerName())
+
+	for _, source := range snap.BackendTLSPolicies {
+		k := key(source)
+		ancestors := res.PolicyAncestors(k)
+
+		if equality.Semantic.DeepEqual(source.Status.Ancestors, policyAncestors(controller, &source.Status, ancestors)) {
+			continue
+		}
+
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			cur, err := api.BackendTLSPolicies(k.Namespace).Get(ctx, k.Name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			if !w.currentSnapshot(source, cur) {
+				return nil
+			}
+
+			next := policyAncestors(controller, &cur.Status, ancestors)
+			if equality.Semantic.DeepEqual(cur.Status.Ancestors, next) {
+				return nil
+			}
+
+			cur.Status.Ancestors = next
+			_, err = api.BackendTLSPolicies(k.Namespace).UpdateStatus(ctx, cur, metav1.UpdateOptions{})
+
+			return err
+		})
+		if err != nil && !apierrors.IsNotFound(err) {
+			slog.Warn("kubernetes provider: backend tls policy status", "policy", k.String(), "err", err.Error())
+		}
+	}
 }
 
 func withApplyError(st *GatewayStatus, err error) *GatewayStatus {
@@ -345,6 +406,8 @@ func supportedFeatures() []gwv1.SupportedFeature {
 		features.SupportGateway,
 		features.SupportHTTPRoute,
 		features.SupportReferenceGrant,
+		features.SupportBackendTLSPolicy,
+		features.SupportBackendTLSPolicySANValidation,
 		features.SupportHTTPRouteQueryParamMatching,
 		features.SupportHTTPRouteMethodMatching,
 		features.SupportHTTPRouteResponseHeaderModification,
@@ -355,7 +418,12 @@ func supportedFeatures() []gwv1.SupportedFeature {
 		features.SupportHTTPRoutePathRewrite,
 		features.SupportHTTPRouteRequestMirror,
 		features.SupportHTTPRouteRequestMultipleMirrors,
+		features.SupportHTTPRouteRequestPercentageMirror,
 		features.SupportHTTPRouteRequestTimeout,
+		features.SupportHTTPRouteBackendTimeout,
+		features.SupportHTTPRouteBackendRequestHeaderModification,
+		features.SupportHTTPRouteBackendProtocolH2C,
+		features.SupportHTTPRouteBackendProtocolWebSocket,
 		features.SupportHTTPRouteParentRefPort,
 		features.SupportHTTPRoute303RedirectStatusCode,
 		features.SupportHTTPRoute307RedirectStatusCode,

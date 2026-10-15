@@ -17,8 +17,6 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.10.2
 	github.com/creack/pty v1.1.24
 	github.com/crewjam/saml v0.5.1
-	github.com/dgraph-io/badger/v4 v4.9.6
-	github.com/dgraph-io/ristretto/v2 v2.4.2
 	github.com/dustin/go-humanize v1.1.0
 	github.com/expr-lang/expr v1.17.8
 	github.com/fullstorydev/grpcui v1.5.4
@@ -67,7 +65,6 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/swaggo/swag v1.16.6
 	github.com/things-go/go-socks5 v0.0.5
-	github.com/timshannon/badgerhold/v4 v4.0.3
 	github.com/twmb/tlscfg v1.3.0
 	github.com/worldline-go/conn v0.1.0
 	github.com/worldline-go/types v0.6.1
@@ -84,7 +81,6 @@ require (
 	golang.org/x/time v0.15.0
 	google.golang.org/api v0.273.1
 	google.golang.org/grpc v1.83.2
-	google.golang.org/protobuf v1.36.12
 	k8s.io/api v0.36.1
 	k8s.io/apimachinery v0.36.1
 	k8s.io/client-go v0.36.1
@@ -158,7 +154,6 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/gomarkdown/markdown v0.0.0-20260824154242-13c5cf49db8d // indirect
-	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -238,6 +233,7 @@ require (
 	google.golang.org/genproto v0.0.0-20260319201613-d00831a3d3e7 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260825221802-da73d73af1c5 // indirect
+	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

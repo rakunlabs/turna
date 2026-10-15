@@ -19,8 +19,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/access"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/access"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 	oauth2store "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
 )
 

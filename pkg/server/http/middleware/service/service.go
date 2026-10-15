@@ -24,7 +24,28 @@ type Service struct {
 	// for gRPC backends without TLS.
 	H2C bool `cfg:"h2c"`
 
+	// TLS verifies https upstreams against a CA bundle instead of the system
+	// roots, with a fixed server name.
+	TLS *UpstreamTLS `cfg:"tls"`
+
 	Mirror *Mirror `cfg:"mirror"`
+}
+
+// UpstreamTLS configures verification of https upstreams.
+type UpstreamTLS struct {
+	// CA is a PEM bundle of trusted CA certificates. Empty uses the system
+	// roots.
+	CA string `cfg:"ca"`
+	// ServerName is sent as SNI and verified against the certificate unless
+	// SubjectAltNames is set.
+	ServerName string `cfg:"server_name"`
+	// SubjectAltNames replace ServerName for verification; the certificate
+	// must contain one of them. DNS names may use a leading "*." wildcard,
+	// values with a scheme are matched against URI SANs.
+	SubjectAltNames []string `cfg:"subject_alt_names"`
+	// Invalid makes every connection fail, used when the configured trust
+	// anchors cannot be loaded.
+	Invalid bool `cfg:"invalid"`
 }
 
 type LoadBalancer struct {
@@ -172,6 +193,14 @@ func (m *Service) Middleware(ctx context.Context) ([]func(http.Handler) http.Han
 		}
 		transport.TLSClientConfig.InsecureSkipVerify = true
 	}
+	if m.TLS != nil {
+		tlsConfig, err := m.TLS.config()
+		if err != nil {
+			return nil, err
+		}
+
+		transport.TLSClientConfig = tlsConfig
+	}
 	if m.H2C {
 		var protocols http.Protocols
 		protocols.SetUnencryptedHTTP2(true)
@@ -197,7 +226,18 @@ func (m *Service) Middleware(ctx context.Context) ([]func(http.Handler) http.Han
 		}
 	}
 
-	mirror, err := m.Mirror.build(transport)
+	mirrorTransport := transport
+	if m.Mirror != nil && m.Mirror.TLS != nil {
+		tlsConfig, err := m.Mirror.TLS.config()
+		if err != nil {
+			return nil, err
+		}
+
+		mirrorTransport = transport.Clone()
+		mirrorTransport.TLSClientConfig = tlsConfig
+	}
+
+	mirror, err := m.Mirror.build(mirrorTransport)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create mirror: %w", err)
 	}

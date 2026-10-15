@@ -368,12 +368,8 @@ func (h HTTPMiddleware) refs() []string {
 		add(h.SessionInfoMiddleware.SessionMiddleware)
 	case h.LoginMiddleware != nil:
 		add(h.LoginMiddleware.SessionMiddleware, h.LoginMiddleware.AuthMiddleware)
-	case h.Oauth2 != nil:
-		add(h.Oauth2.IamMiddleware)
 	case h.IamForwardAuthMiddleware != nil:
-		if h.IamForwardAuthMiddleware.IamMiddleware != nil {
-			add(*h.IamForwardAuthMiddleware.IamMiddleware)
-		}
+		add(h.IamForwardAuthMiddleware.AuthMiddleware)
 	case h.IamCheckMiddleware != nil:
 		add(h.IamCheckMiddleware.AuthMiddleware)
 	case h.OAuth2Resource != nil:

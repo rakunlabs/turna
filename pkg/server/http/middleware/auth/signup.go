@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/access"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/iam/data"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/access"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 	"github.com/xhit/go-str2duration/v2"
 )
