@@ -71,11 +71,18 @@ type Result struct {
 	seenGateways     map[nsName]struct{}
 	seenListenerSets map[nsName]struct{}
 	watched          []string
+
+	// seen Gateways and ListenerSets whose class does not resolve to the
+	// controller name, or no longer exists: no installation sharing the
+	// controller name serves them
+	foreignGateways     map[nsName]struct{}
+	foreignListenerSets map[nsName]struct{}
 }
 
 // ownsParent reports whether a route parent or policy ancestor of a route in
-// namespace ns is served by this translation, or was deleted from a watched
-// namespace.
+// namespace ns is served by this translation, was deleted from a watched
+// namespace, or is a parent whose class no longer resolves to the controller
+// name.
 func (r *Result) ownsParent(ref gwv1.ParentReference, ns string) bool {
 	if ptrOr(ref.Group, gwv1.Group(groupGateway)) != groupGateway {
 		return false
@@ -83,13 +90,13 @@ func (r *Result) ownsParent(ref gwv1.ParentReference, ns string) bool {
 
 	k := nsName{Namespace: string(ptrOr(ref.Namespace, gwv1.Namespace(ns))), Name: string(ref.Name)}
 
-	var owned, seen map[nsName]struct{}
+	var owned, seen, foreign map[nsName]struct{}
 
 	switch ptrOr(ref.Kind, kindGateway) {
 	case kindGateway:
-		owned, seen = r.ownedGateways, r.seenGateways
+		owned, seen, foreign = r.ownedGateways, r.seenGateways, r.foreignGateways
 	case kindListenerSet:
-		owned, seen = r.ownedListenerSets, r.seenListenerSets
+		owned, seen, foreign = r.ownedListenerSets, r.seenListenerSets, r.foreignListenerSets
 	default:
 		return false
 	}
@@ -99,10 +106,16 @@ func (r *Result) ownsParent(ref gwv1.ParentReference, ns string) bool {
 	}
 
 	if _, ok := seen[k]; ok {
-		return false
+		_, foreignParent := foreign[k]
+
+		return foreignParent
 	}
 
-	return len(r.watched) == 0 || slices.Contains(r.watched, k.Namespace)
+	return r.watches(k.Namespace)
+}
+
+func (r *Result) watches(ns string) bool {
+	return len(r.watched) == 0 || slices.Contains(r.watched, ns)
 }
 
 // HTTPRouteStatus returns the parent status of an HTTPRoute.
@@ -267,20 +280,48 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 	classes := t.classes(s.GatewayClasses)
 	t.backendTLSPolicies(s.BackendTLSPolicies)
 
-	t.out.seenGateways = make(map[nsName]struct{}, len(s.Gateways))
-	for _, gw := range s.Gateways {
-		t.out.seenGateways[key(gw)] = struct{}{}
-	}
-
-	t.out.seenListenerSets = make(map[nsName]struct{}, len(s.ListenerSets))
-	for _, ls := range s.ListenerSets {
-		t.out.seenListenerSets[key(ls)] = struct{}{}
-	}
-
 	t.out.watched = slices.DeleteFunc(slices.Clone(cfg.Namespaces), func(ns string) bool { return ns == "" })
 	if len(t.out.watched) < len(cfg.Namespaces) {
 		// "" watches every namespace
 		t.out.watched = nil
+	}
+
+	controllerOf := make(map[string]string, len(s.GatewayClasses))
+	for _, gc := range s.GatewayClasses {
+		controllerOf[gc.Name] = string(gc.Spec.ControllerName)
+	}
+
+	t.out.seenGateways = make(map[nsName]struct{}, len(s.Gateways))
+	t.out.foreignGateways = make(map[nsName]struct{})
+	for _, gw := range s.Gateways {
+		t.out.seenGateways[key(gw)] = struct{}{}
+
+		// with a configured class other classes are not watched, a missing
+		// one is unknown
+		controller, ok := controllerOf[string(gw.Spec.GatewayClassName)]
+		if !ok && cfg.GatewayClass != "" && string(gw.Spec.GatewayClassName) != cfg.GatewayClass {
+			continue
+		}
+		if controller != cfg.controllerName() {
+			t.out.foreignGateways[key(gw)] = struct{}{}
+		}
+	}
+
+	t.out.seenListenerSets = make(map[nsName]struct{}, len(s.ListenerSets))
+	t.out.foreignListenerSets = make(map[nsName]struct{})
+	for _, ls := range s.ListenerSets {
+		t.out.seenListenerSets[key(ls)] = struct{}{}
+
+		parent, ok := listenerSetParent(ls)
+		if !ok {
+			t.out.foreignListenerSets[key(ls)] = struct{}{}
+			continue
+		}
+		_, foreign := t.out.foreignGateways[parent]
+		_, seen := t.out.seenGateways[parent]
+		if foreign || (!seen && t.out.watches(parent.Namespace)) {
+			t.out.foreignListenerSets[key(ls)] = struct{}{}
+		}
 	}
 
 	listeners := make(map[nsName][]*listener)

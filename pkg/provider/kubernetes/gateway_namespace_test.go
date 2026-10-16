@@ -384,3 +384,86 @@ func TestSwitchBackRemovesBindings(t *testing.T) {
 		t.Errorf("binding of the new proxy: %v", err)
 	}
 }
+
+// Switching from gateway_namespace back to the default placement removes the
+// proxies left in the gateway namespaces.
+func TestSwitchBackRemovesProxies(t *testing.T) {
+	ctx := context.Background()
+	kube := kubefake.NewSimpleClientset()
+	gw := gatewayObj("team-a", "web", httpListener("http", 80, ""))
+	gw.Spec.Infrastructure = nil
+	name := proxyName(key(gw))
+
+	gp := gatewayNamespaceProvider(kube)
+	gp.cfg.Proxy.Replicas = 2
+	if err := gp.provision(ctx, []*gwv1.Gateway{gw}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := kube.PolicyV1().PodDisruptionBudgets("team-a").Get(ctx, name, metav1.GetOptions{}); err != nil {
+		t.Fatalf("pdb not created: %v", err)
+	}
+
+	back := &Provider{kube: kube, cfg: Config{
+		Mode:  ModeController,
+		Proxy: Proxy{Image: "example:1", Namespace: "turna-system", Replicas: 2},
+	}}
+	if err := back.provision(ctx, []*gwv1.Gateway{gw}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := kube.AppsV1().Deployments("team-a").Get(ctx, name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Errorf("deployment in team-a: %v", err)
+	}
+	if _, err := kube.CoreV1().Services("team-a").Get(ctx, name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Errorf("service in team-a: %v", err)
+	}
+	if _, err := kube.CoreV1().ConfigMaps("team-a").Get(ctx, name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Errorf("configmap in team-a: %v", err)
+	}
+	if _, err := kube.PolicyV1().PodDisruptionBudgets("team-a").Get(ctx, name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Errorf("pdb in team-a: %v", err)
+	}
+	if _, err := kube.CoreV1().ServiceAccounts("team-a").Get(ctx, name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Errorf("serviceaccount in team-a: %v", err)
+	}
+	if _, err := kube.AppsV1().Deployments("turna-system").Get(ctx, name, metav1.GetOptions{}); err != nil {
+		t.Errorf("deployment in turna-system: %v", err)
+	}
+}
+
+// Removing proxy.cluster_role removes the proxy identities.
+func TestClusterRoleRemovedRemovesIdentity(t *testing.T) {
+	ctx := context.Background()
+	kube := kubefake.NewSimpleClientset()
+	gw := gatewayObj("team-a", "web", httpListener("http", 80, ""))
+	name := proxyName(key(gw))
+	cfg := Config{Mode: ModeController, Proxy: Proxy{ClusterRole: "turna-proxy-reader", Image: "example:1", Namespace: "turna-system"}}
+
+	if err := (&Provider{kube: kube, cfg: cfg}).provision(ctx, []*gwv1.Gateway{gw}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := kube.CoreV1().ServiceAccounts("turna-system").Get(ctx, name, metav1.GetOptions{}); err != nil {
+		t.Fatalf("serviceaccount not created: %v", err)
+	}
+
+	cfg.Proxy.ClusterRole = ""
+	if err := (&Provider{kube: kube, cfg: cfg}).provision(ctx, []*gwv1.Gateway{gw}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := kube.CoreV1().ServiceAccounts("turna-system").Get(ctx, name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Errorf("serviceaccount: %v", err)
+	}
+	if l, _ := kube.RbacV1().Roles("turna-system").List(ctx, metav1.ListOptions{}); len(l.Items) != 0 {
+		t.Errorf("roles = %d", len(l.Items))
+	}
+	if l, _ := kube.RbacV1().RoleBindings("turna-system").List(ctx, metav1.ListOptions{}); len(l.Items) != 0 {
+		t.Errorf("rolebindings = %d", len(l.Items))
+	}
+	if _, err := kube.RbacV1().ClusterRoleBindings().Get(ctx, clusterRoleBindingName(nsName{"turna-system", name}), metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Errorf("clusterrolebinding: %v", err)
+	}
+	if _, err := kube.AppsV1().Deployments("turna-system").Get(ctx, name, metav1.GetOptions{}); err != nil {
+		t.Errorf("deployment: %v", err)
+	}
+}

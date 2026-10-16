@@ -72,6 +72,9 @@ type Provider struct {
 	// proxy resources from informers, set in controller mode; replaced when
 	// the watches restart while goroutines of the previous run may read it
 	proxyCache atomic.Pointer[proxyListers]
+
+	// proxies of earlier placements and identities were removed
+	swept atomic.Bool
 }
 
 func (p *Provider) proxies() *proxyListers {

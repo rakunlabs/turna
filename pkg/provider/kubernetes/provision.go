@@ -359,43 +359,80 @@ func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap
 	selector := labels.SelectorFromSet(map[string]string{labelManagedBy: managedByValue, labelController: p.controllerID()})
 	core, apps, policy, rbac := p.kube.CoreV1(), p.kube.AppsV1(), p.kube.PolicyV1(), p.kube.RbacV1()
 
+	// Without informers for every namespace, proxies left in gateway
+	// namespaces by proxy.gateway_namespace are found by an uncached list.
+	// The sweep runs until it succeeds once, so unchanged gateways cost no
+	// requests afterwards.
+	sweep, errCount := !p.swept.Load(), len(errs)
+	var all *Provider
+	if sweep && ns != metav1.NamespaceAll {
+		all = &Provider{kube: p.kube, cfg: p.cfg}
+	}
+
 	// Each kind is cleaned up independently so a failed deletion is retried
 	// even after its Deployment has already disappeared.
-	errs = append(errs, cleanup(ctx, "deployment", want, p.listDeployments(ctx, ns, selector), func(k nsName, opts metav1.DeleteOptions) error {
+	errs = append(errs, cleanup(ctx, "deployment", want, withStrays(p.listDeployments(ctx, ns, selector), all, ns, func() listed[*appsv1.Deployment] {
+		return all.listDeployments(ctx, metav1.NamespaceAll, selector)
+	}), func(k nsName, opts metav1.DeleteOptions) error {
 		propagation := metav1.DeletePropagationForeground
 		opts.PropagationPolicy = &propagation
 
 		return apps.Deployments(k.Namespace).Delete(ctx, k.Name, opts)
 	})...)
-	errs = append(errs, cleanup(ctx, "pdb", want, p.listPDBs(ctx, ns, selector), func(k nsName, opts metav1.DeleteOptions) error {
+	errs = append(errs, cleanup(ctx, "pdb", want, withStrays(p.listPDBs(ctx, ns, selector), all, ns, func() listed[*policyv1.PodDisruptionBudget] {
+		return all.listPDBs(ctx, metav1.NamespaceAll, selector)
+	}), func(k nsName, opts metav1.DeleteOptions) error {
 		return policy.PodDisruptionBudgets(k.Namespace).Delete(ctx, k.Name, opts)
 	})...)
-	errs = append(errs, cleanup(ctx, "service", want, p.listServices(ctx, ns, selector), func(k nsName, opts metav1.DeleteOptions) error {
+	errs = append(errs, cleanup(ctx, "service", want, withStrays(p.listServices(ctx, ns, selector), all, ns, func() listed[*corev1.Service] {
+		return all.listServices(ctx, metav1.NamespaceAll, selector)
+	}), func(k nsName, opts metav1.DeleteOptions) error {
 		return core.Services(k.Namespace).Delete(ctx, k.Name, opts)
 	})...)
-	errs = append(errs, cleanup(ctx, "configmap", want, p.listConfigMaps(ctx, ns, selector), func(k nsName, opts metav1.DeleteOptions) error {
+	errs = append(errs, cleanup(ctx, "configmap", want, withStrays(p.listConfigMaps(ctx, ns, selector), all, ns, func() listed[*corev1.ConfigMap] {
+		return all.listConfigMaps(ctx, metav1.NamespaceAll, selector)
+	}), func(k nsName, opts metav1.DeleteOptions) error {
 		return core.ConfigMaps(k.Namespace).Delete(ctx, k.Name, opts)
 	})...)
 	errs = append(errs, cleanup(ctx, "secret", wantBundle, p.listSecrets(ctx, ns, selector), func(k nsName, opts metav1.DeleteOptions) error {
 		return core.Secrets(k.Namespace).Delete(ctx, k.Name, opts)
 	})...)
 
-	// Bindings are cluster scoped: switching back from gateway_namespace
-	// also removes the bindings of the proxies left in gateway namespaces,
-	// so they lose their read access.
-	if p.cfg.Proxy.ownIdentity() {
-		errs = append(errs, cleanup(ctx, "serviceaccount", want, p.listServiceAccounts(ctx, ns, selector), func(k nsName, opts metav1.DeleteOptions) error {
+	// Identities are removed even when proxy.cluster_role was unset since,
+	// with an empty want set; bindings are cluster scoped, so switching back
+	// from gateway_namespace also removes the bindings of the proxies left
+	// in gateway namespaces.
+	wantIdentity, wantBundleIdentity := want, wantBundle
+	if !p.cfg.Proxy.ownIdentity() {
+		wantIdentity, wantBundleIdentity = nil, nil
+	}
+
+	var identityErrs []error
+	if sweep || p.cfg.Proxy.ownIdentity() {
+		identityErrs = append(identityErrs, cleanup(ctx, "serviceaccount", wantIdentity, withStrays(p.listServiceAccounts(ctx, ns, selector), all, ns, func() listed[*corev1.ServiceAccount] {
+			return all.listServiceAccounts(ctx, metav1.NamespaceAll, selector)
+		}), func(k nsName, opts metav1.DeleteOptions) error {
 			return core.ServiceAccounts(k.Namespace).Delete(ctx, k.Name, opts)
 		})...)
-		errs = append(errs, cleanup(ctx, "role", wantBundle, p.listRoles(ctx, p.proxyNamespace(), selector), func(k nsName, opts metav1.DeleteOptions) error {
+		identityErrs = append(identityErrs, cleanup(ctx, "role", wantBundleIdentity, p.listRoles(ctx, p.proxyNamespace(), selector), func(k nsName, opts metav1.DeleteOptions) error {
 			return rbac.Roles(k.Namespace).Delete(ctx, k.Name, opts)
 		})...)
-		errs = append(errs, cleanup(ctx, "rolebinding", wantBundle, p.listRoleBindings(ctx, p.proxyNamespace(), selector), func(k nsName, opts metav1.DeleteOptions) error {
+		identityErrs = append(identityErrs, cleanup(ctx, "rolebinding", wantBundleIdentity, p.listRoleBindings(ctx, p.proxyNamespace(), selector), func(k nsName, opts metav1.DeleteOptions) error {
 			return rbac.RoleBindings(k.Namespace).Delete(ctx, k.Name, opts)
 		})...)
-		errs = append(errs, cleanupClusterRoleBindings(ctx, want, p.listClusterRoleBindings(ctx, selector), func(name string, opts metav1.DeleteOptions) error {
+		identityErrs = append(identityErrs, cleanupClusterRoleBindings(ctx, wantIdentity, p.listClusterRoleBindings(ctx, selector), func(name string, opts metav1.DeleteOptions) error {
 			return rbac.ClusterRoleBindings().Delete(ctx, name, opts)
 		})...)
+	}
+
+	if !p.cfg.Proxy.ownIdentity() {
+		// without proxy identities the controller may lack RBAC permissions
+		identityErrs = slices.DeleteFunc(identityErrs, apierrors.IsForbidden)
+	}
+	errs = append(errs, identityErrs...)
+
+	if sweep && len(errs) == errCount {
+		p.swept.Store(true)
 	}
 
 	if len(errs) == 0 {
@@ -420,6 +457,32 @@ func fromList[T any, P interface {
 	}
 
 	return out
+}
+
+// withStrays adds the objects outside ns listed by others when all is set.
+// A forbidden list is ignored: the controller may lack access to other
+// namespaces.
+func withStrays[T metav1.Object](l listed[T], all *Provider, ns string, others func() listed[T]) listed[T] {
+	if all == nil || l.err != nil {
+		return l
+	}
+
+	o := others()
+	if o.err != nil {
+		if apierrors.IsForbidden(o.err) {
+			return l
+		}
+
+		return listed[T]{err: o.err}
+	}
+
+	for _, obj := range o.items {
+		if obj.GetNamespace() != ns {
+			l.items = append(l.items, obj)
+		}
+	}
+
+	return l
 }
 
 // cleanup deletes listed objects that are not wanted. The list is already

@@ -230,3 +230,74 @@ func TestRouteParentsSharedController(t *testing.T) {
 		t.Fatalf("parents after other installation = %d, want 2", len(next))
 	}
 }
+
+// Parents whose class moved to another controller or was deleted lose the
+// stale entries of the controller name, ListenerSets follow their Gateway.
+func TestRouteParentsClassMovedAway(t *testing.T) {
+	moved := class()
+	moved.Name = "moved"
+	moved.Spec.ControllerName = "example.com/other"
+
+	gw := gatewayObj("app", "gw", httpListener("http", 80, ""))
+	away := gatewayObj("app", "away", httpListener("http", 81, ""))
+	away.Spec.GatewayClassName = "moved"
+	orphan := gatewayObj("app", "orphan", httpListener("http", 82, ""))
+	orphan.Spec.GatewayClassName = "missing"
+	sibling := gatewayObj("app", "sibling", httpListener("http", 83, ""))
+	sibling.Spec.GatewayClassName = "sibling"
+	shared := class()
+	shared.Name = "sibling"
+
+	ls := &gwv1.ListenerSet{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "app", Name: "ls"},
+		Spec:       gwv1.ListenerSetSpec{ParentRef: gwv1.ParentGatewayReference{Name: "away"}},
+	}
+
+	route := routeObj("app", "r", "gw", nil)
+	snap := &Snapshot{
+		GatewayClasses: []*gwv1.GatewayClass{class(), moved, shared},
+		Gateways:       []*gwv1.Gateway{gw, away, orphan, sibling},
+		ListenerSets:   []*gwv1.ListenerSet{ls},
+		HTTPRoutes:     []*gwv1.HTTPRoute{route},
+	}
+
+	mine := Translate(&Config{GatewayClass: "turna"}, snap)
+	all := Translate(&Config{}, snap)
+	controller := gwv1.GatewayController(DefaultControllerName)
+	lsKind, lsGroup := gwv1.Kind(kindListenerSet), gwv1.Group(groupGateway)
+
+	st := &gwv1.RouteStatus{Parents: []gwv1.RouteParentStatus{
+		{ParentRef: gwv1.ParentReference{Name: "away"}, ControllerName: controller},
+		{ParentRef: gwv1.ParentReference{Name: "orphan"}, ControllerName: controller},
+		{ParentRef: gwv1.ParentReference{Name: "sibling"}, ControllerName: controller},
+		{ParentRef: gwv1.ParentReference{Name: "ls", Kind: &lsKind, Group: &lsGroup}, ControllerName: controller},
+	}}
+	next := routeParents(controller, st, all.HTTPRouteStatus(key(route)), func(ref gwv1.ParentReference) bool {
+		return all.ownsParent(ref, "app")
+	})
+
+	names := make([]string, 0, len(next))
+	for _, p := range next {
+		names = append(names, string(p.ParentRef.Name))
+	}
+	slices.Sort(names)
+
+	if !slices.Equal(names, []string{"gw"}) {
+		t.Fatalf("parents = %v, want gw", names)
+	}
+
+	// an installation for one class keeps the parents of sibling classes
+	// and of classes it does not watch
+	next = routeParents(controller, st, mine.HTTPRouteStatus(key(route)), func(ref gwv1.ParentReference) bool {
+		return mine.ownsParent(ref, "app")
+	})
+	names = names[:0]
+	for _, p := range next {
+		names = append(names, string(p.ParentRef.Name))
+	}
+	slices.Sort(names)
+
+	if !slices.Equal(names, []string{"gw", "orphan", "sibling"}) {
+		t.Fatalf("parents with configured class = %v, want gw, orphan and sibling", names)
+	}
+}
