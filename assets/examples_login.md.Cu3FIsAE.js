@@ -1,0 +1,117 @@
+import{H as e,ht as t,nt as n,tt as r}from"./chunks/framework.CxcmDv9y.js";var i=JSON.parse(`{"title":"Login","description":"","frontmatter":{},"headers":[],"relativePath":"examples/login.md","filePath":"examples/login.md","lastUpdated":1792111269000}`),a={name:`examples/login.md`};function o(e,i,a,o,s,c){return t(),r(`div`,null,[...i[0]||=[n(`<h1 id="login" tabindex="-1">Login <a class="header-anchor" href="#login" aria-label="Permalink to “Login”">​</a></h1><p>This example combines <code>session</code>, <code>login</code>, <code>session_info</code>, and <code>role</code> for a browser application backed by an external OAuth2 provider.</p><div class="language-yaml"><button title="Copy code" data-copied="Copied" class="copy"></button><span class="lang">yaml</span><pre class="shiki shiki-themes vesper vesper" style="--shiki-light:#FFF;--shiki-dark:#FFF;--shiki-light-bg:#101010;--shiki-dark-bg:#101010;" tabindex="0" dir="ltr"><code><span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">server</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">  entrypoints</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">    web</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">      address</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">&quot;:8082&quot;</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">  http</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">    middlewares</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">      session</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        session</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          cookie_name</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">turna_auth</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          store</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">            active</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">file</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">            file</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">              session_key</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">my_secret_key</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          options</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">            http_only</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">true</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">            secure</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">false</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">            same_site</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">2</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          provider</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">            keycloak</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">              name</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">Keycloak</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">              password_flow</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">true</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">              oauth2</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">                client_id</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">test</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">                client_secret</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">&quot;&quot;</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">                scopes</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: [</span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">openid</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">]</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">                cert_url</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">http://localhost:8080/realms/master/protocol/openid-connect/certs</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">                token_url</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">http://localhost:8080/realms/master/protocol/openid-connect/token</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">                auth_url</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">http://localhost:8080/realms/master/protocol/openid-connect/auth</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">                logout_url</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">http://localhost:8080/realms/master/protocol/openid-connect/logout</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          action</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">            token</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">              login_path</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">/login/</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">      login</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        login</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          session_middleware</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">session</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          path</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">            base</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">/login/</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          redirect</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">            schema</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">http</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          info</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">            title</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">Turna Login</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">      logout_flag</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        set</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          values</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">            - </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">logout</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">      token_api_mode</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        set</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          values</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">            - </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">token_header</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">            - </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">disable_redirect</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">      current_user</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        session_info</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          session_middleware</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">session</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          information</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">            values</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">              - </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">preferred_username</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">              - </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">email</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">            roles</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">true</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">      api_roles</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        role</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          allow_others</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">true</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          path_map</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">            - </span><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">regex_path</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">^/api/transaction/.*</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">              map</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">                - </span><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">roles</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: [</span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">transaction_r</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">, </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">transaction_rw</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">]</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">                  methods</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: [</span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">GET</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">]</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">                - </span><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">roles</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: [</span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">transaction_rw</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">]</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">                  write_methods</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">true</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">      app</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        hello</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          content_type</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">text/html; charset=utf-8</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          message</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#A0A0A0;--shiki-dark:#A0A0A0;">|</span></span>
+<span class="line"><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">            &lt;html&gt;</span></span>
+<span class="line"><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">              &lt;body&gt;</span></span>
+<span class="line"><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">                &lt;h1&gt;Turna protected page&lt;/h1&gt;</span></span>
+<span class="line"><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">                &lt;a href=&quot;/logout/&quot;&gt;Logout&lt;/a&gt;</span></span>
+<span class="line"><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">              &lt;/body&gt;</span></span>
+<span class="line"><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">            &lt;/html&gt;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">      api</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        service</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">          loadbalancer</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">            servers</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">              - </span><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">url</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">http://localhost:9090</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">    routers</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">      login</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        path</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">/login/*</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        middlewares</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">          - </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">login</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">      logout</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        path</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">/logout/*</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        middlewares</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">          - </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">logout_flag</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">          - </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">login</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">      current_user</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        path</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">/auth/info</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        middlewares</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">          - </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">current_user</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">      api</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        path</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">/api/*</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        middlewares</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">          - </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">token_api_mode</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">          - </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">session</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">          - </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">api_roles</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">          - </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">api</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">      app</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        path</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">: </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">/*</span></span>
+<span class="line"><span style="--shiki-light:#FFC799;--shiki-dark:#FFC799;">        middlewares</span><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">:</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">          - </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">session</span></span>
+<span class="line"><span style="--shiki-light:#FFF;--shiki-dark:#FFF;">          - </span><span style="--shiki-light:#99FFE4;--shiki-dark:#99FFE4;">app</span></span></code></pre></div><p>Routes under <code>/api/*</code> return <code>407</code> instead of redirecting because <code>token_api_mode</code> sets <code>disable_redirect</code>. Browser routes use the default redirect behavior and send users to <code>/login/</code>.</p>`,4)]])}var s=e(a,[[`render`,o]]);export{i as __pageData,s as default};
