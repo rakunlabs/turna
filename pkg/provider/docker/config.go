@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"time"
@@ -134,6 +135,38 @@ func (c *Config) endpoint() string {
 	}
 
 	return defaultEndpoint
+}
+
+// tls returns the TLS configuration; without one, DOCKER_TLS_VERIFY and
+// DOCKER_CERT_PATH are used like the docker CLI.
+func (c *Config) tls() *TLS {
+	if c.TLS != nil || os.Getenv("DOCKER_TLS_VERIFY") == "" {
+		return c.TLS
+	}
+
+	dir := os.Getenv("DOCKER_CERT_PATH")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return &TLS{}
+		}
+
+		dir = filepath.Join(home, ".docker")
+	}
+
+	out := &TLS{}
+	if _, err := os.Stat(filepath.Join(dir, "ca.pem")); err == nil {
+		out.CA = filepath.Join(dir, "ca.pem")
+	}
+
+	cert, key := filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem")
+	if _, err := os.Stat(cert); err == nil {
+		if _, err := os.Stat(key); err == nil {
+			out.Cert, out.Key = cert, key
+		}
+	}
+
+	return out
 }
 
 func (c *Config) labelPrefix() string {

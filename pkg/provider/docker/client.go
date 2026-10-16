@@ -59,13 +59,18 @@ func newClient(cfg *Config) (*client, error) {
 		}
 		c.base = "http://docker"
 	case "tcp", "http", "https":
+		tlsCfg := cfg.TLS
+		if u.Scheme == "tcp" {
+			tlsCfg = cfg.tls()
+		}
+
 		scheme := "http"
-		if u.Scheme == "https" || cfg.TLS != nil {
+		if u.Scheme == "https" || tlsCfg != nil {
 			scheme = "https"
 		}
 
 		if scheme == "https" {
-			tlsConfig, err := cfg.TLS.config()
+			tlsConfig, err := tlsCfg.config()
 			if err != nil {
 				return nil, err
 			}
@@ -306,7 +311,8 @@ type apiEvent struct {
 }
 
 // events calls fn for every event until ctx is done or the stream fails.
-func (c *client) events(ctx context.Context, types []string, fn func(apiEvent)) error {
+// ready is closed once the stream is open.
+func (c *client) events(ctx context.Context, types []string, ready chan<- struct{}, fn func(apiEvent)) error {
 	query := filters(map[string][]string{"type": types})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url("/events", query), nil)
@@ -323,6 +329,8 @@ func (c *client) events(ctx context.Context, types []string, fn func(apiEvent)) 
 	if resp.StatusCode != http.StatusOK {
 		return apiError("/events", resp)
 	}
+
+	close(ready)
 
 	dec := json.NewDecoder(bufio.NewReader(resp.Body))
 	for {

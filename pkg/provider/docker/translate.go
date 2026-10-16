@@ -36,6 +36,10 @@ type group struct {
 	Ports map[string][]int
 	// Err is set when the members cannot be reached, the group is skipped.
 	Err error
+	// HostNetwork is set when members use the host network, Swarm for swarm
+	// services; both only change error messages.
+	HostNetwork bool
+	Swarm       bool
 }
 
 // labels decoded below the prefix
@@ -189,6 +193,8 @@ type claims struct {
 	reserved map[string][][]string
 	// tls mode of entrypoints used by http routers
 	secure map[string]bool
+	// entrypoints other layers use with both tls modes
+	mixed map[string]struct{}
 	// entrypoints used by tcp and udp routers, the value is the router
 	tcp map[string]string
 	udp map[string]string
@@ -201,6 +207,7 @@ func newClaims(others *server.Server) *claims {
 		http:        make(map[[2]string][][]string),
 		reserved:    make(map[string][][]string),
 		secure:      make(map[string]bool),
+		mixed:       make(map[string]struct{}),
 		tcp:         make(map[string]string),
 		udp:         make(map[string]string),
 	}
@@ -245,7 +252,8 @@ func newClaims(others *server.Server) *claims {
 		}
 	}
 
-	for name, r := range others.HTTP.Routers {
+	for _, name := range keys(others.HTTP.Routers) {
+		r := others.HTTP.Routers[name]
 		if isOwned(name) {
 			continue
 		}
@@ -256,6 +264,12 @@ func newClaims(others *server.Server) *claims {
 		}
 
 		for _, e := range eps {
+			// routers of other layers mixing tls modes on an entrypoint
+			// leave it to them
+			if secure, ok := c.secure[e]; ok && secure != (r.TLS != nil) {
+				c.mixed[e] = struct{}{}
+			}
+
 			c.secure[e] = r.TLS != nil
 		}
 
@@ -315,6 +329,10 @@ func (c *claims) claimHTTP(host string, paths, entrypoints []string, tls bool) e
 			return fmt.Errorf("entrypoint %s is used by tcp router %s", e, by)
 		}
 
+		if _, ok := c.mixed[e]; ok {
+			return fmt.Errorf("entrypoint %s serves both tls and plain http in the static configuration, use another entrypoint", e)
+		}
+
 		if secure, ok := c.secure[e]; ok && secure != tls {
 			if secure {
 				return fmt.Errorf("entrypoint %s serves tls, set tls=true or use another entrypoint", e)
@@ -365,6 +383,10 @@ func (c *claims) defaultEntrypoints(tls bool, streams []string) []string {
 	out := make([]string, 0)
 	for _, e := range c.httpEntrypoints() {
 		if slices.Contains(streams, e) {
+			continue
+		}
+
+		if _, ok := c.mixed[e]; ok {
 			continue
 		}
 
@@ -675,6 +697,13 @@ func (t *translator) port(kind, svc string, port int) (int, error) {
 	case 1:
 		return ports[0], nil
 	case 0:
+		switch {
+		case t.g.Swarm:
+			return 0, fmt.Errorf("%s service %s: no port is published, swarm only lists published ports, set port", kind, svc)
+		case t.g.HostNetwork:
+			return 0, fmt.Errorf("%s service %s: host network containers list no ports, set port", kind, svc)
+		}
+
 		return 0, fmt.Errorf("%s service %s: no port is exposed, set port", kind, svc)
 	default:
 		return 0, fmt.Errorf("%s service %s: several ports are exposed, set port", kind, svc)
@@ -756,10 +785,12 @@ func (t *translator) httpRouters() {
 func (t *translator) httpRouter(name string, r httpRouter) error {
 	entrypoints := r.EntryPoints
 	switch {
-	case len(entrypoints) == 0 && len(t.cfg.HTTP.EntryPoints) > 0:
-		entrypoints = t.cfg.HTTP.EntryPoints
 	case len(entrypoints) == 0:
 		entrypoints = t.claims.defaultEntrypoints(r.TLS, t.cfg.TCP.EntryPoints)
+		if len(t.cfg.HTTP.EntryPoints) > 0 {
+			entrypoints = slices.DeleteFunc(entrypoints, func(e string) bool { return !slices.Contains(t.cfg.HTTP.EntryPoints, e) })
+		}
+
 		if len(entrypoints) == 0 {
 			return errors.New("no entrypoint is available, set entrypoints")
 		}

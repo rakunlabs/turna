@@ -75,12 +75,12 @@ providers:
 | `enabled` | `false` | Starts the provider. |
 | `endpoint` | `DOCKER_HOST`, then `unix:///var/run/docker.sock` | Docker API address: `unix://`, `tcp://`, `http://` or `https://`. |
 | `api_version` | daemon version | Pins the API version, like `1.47`. |
-| `tls.ca`, `tls.cert`, `tls.key` | | Files for a TLS protected `tcp://` or `https://` endpoint. |
+| `tls.ca`, `tls.cert`, `tls.key` | | Files for a TLS protected `tcp://` or `https://` endpoint. Without `tls`, `DOCKER_TLS_VERIFY` and `DOCKER_CERT_PATH` (`ca.pem`, `cert.pem`, `key.pem`, default `~/.docker`) are used like the docker CLI, and `tcp://` then uses HTTPS. |
 | `tls.insecure_skip_verify` | `false` | Skips verification of the daemon certificate. |
 | `label_prefix` | `turna` | Prefix of the labels read. Use different prefixes to run several Turna instances on one host. |
 | `exposed_by_default` | `false` | Serves containers without `<prefix>.enable`. `<prefix>.enable=false` still opts out. |
 | `network` | | Network used to reach containers attached to several networks. Compose and stack project prefixes are added automatically, so `default` matches `myproject_default`. |
-| `http.entrypoints` | every HTTP entrypoint | Entrypoints labels may use, and the entrypoints of routers without `entrypoints`. |
+| `http.entrypoints` | every HTTP entrypoint | Entrypoints labels may use. Routers without `entrypoints` use the ones of this list serving the same TLS mode. |
 | `http.middlewares` | safe set, see below | Middleware types labels may define. `["*"]` allows every type. |
 | `http.static_middlewares` | none | Middlewares of the static configuration labels may reference by name, like `[auth, login]`. `["*"]` allows every one. |
 | `tcp.entrypoints` | none | Entrypoints TCP routers from labels may use. TCP routers are disabled until this is set, because a TCP router takes over the whole entrypoint. |
@@ -273,11 +273,12 @@ providers:
     network: app
 ```
 
-Turna must be attached to the networks of the services it routes to. Swarm services do not publish their ports in the image metadata, so set `port` on services unless the service publishes exactly one port.
+Turna must be attached to the networks of the services it routes to. Swarm only reports published ports, not the ports exposed by the image, so set `port` on services unless the service publishes exactly one port.
 
 ## Runtime behavior
 
-- Containers are discovered when they start and removed when they stop. Containers with a failing or starting health check get no traffic. In Swarm mode, tasks get traffic once Swarm reports them running, which waits for a passing health check.
+- Containers are discovered when they start and removed when they stop. Containers with a failing or starting health check get no traffic; when no replica of a group is healthy, its routers stay and answer `503`. In Swarm mode, tasks get traffic once Swarm reports them running, which waits for a passing health check.
+- Containers with `network_mode: host` are reached on `127.0.0.1`, which only works when Turna runs on the host network too. They list no ports, so set `port`.
 - Replicas of a compose service (same `com.docker.compose.project` and `com.docker.compose.service`) form one group. During a rolling update the labels of the newest replica are used.
 - When two containers claim the same host and path, the older one keeps it and the newer one is logged and ignored.
 - Hosts served by the static configuration are reserved: containers cannot add any path to them, which would bypass the middlewares of the static routers. Routers without a host are rejected when the static configuration has a router without host on the same entrypoint.

@@ -32,6 +32,8 @@ func discoverContainers(ctx context.Context, c *client, cfg *Config) ([]*group, 
 		labels  map[string]string
 		target  string
 		ports   map[string][]int
+		host    bool
+		down    bool
 		err     error
 	}
 
@@ -44,17 +46,19 @@ func discoverContainers(ctx context.Context, c *client, cfg *Config) ([]*group, 
 			continue
 		}
 
-		// starting or failing replicas do not get traffic
-		if ct.State != "running" || strings.Contains(ct.Status, "(unhealthy)") || strings.Contains(ct.Status, "(health: starting)") {
-			continue
-		}
-
 		name := containerGroup(ct)
 
 		m := member{
 			created: time.Unix(ct.Created, 0),
 			labels:  ct.Labels,
 			ports:   containerPorts(ct),
+			host:    ct.HostConfig.NetworkMode == "host",
+		}
+
+		// starting or failing replicas do not get traffic, but keep the group
+		// routed so requests get 503 instead of another router
+		if ct.State != "running" || strings.Contains(ct.Status, "(unhealthy)") || strings.Contains(ct.Status, "(health: starting)") {
+			m.down = true
 		}
 
 		m.target, m.err = containerAddress(ct, cfg.Network, ct.Labels[prefix+".network"])
@@ -81,13 +85,17 @@ func discoverContainers(ctx context.Context, c *client, cfg *Config) ([]*group, 
 		var errs []error
 
 		for _, m := range ms {
-			if m.err != nil {
+			g.HostNetwork = g.HostNetwork || m.host
+
+			if m.err != nil && !m.down {
 				errs = append(errs, m.err)
 
 				continue
 			}
 
-			g.Targets = append(g.Targets, m.target)
+			if !m.down {
+				g.Targets = append(g.Targets, m.target)
+			}
 
 			for proto, ports := range m.ports {
 				for _, p := range ports {
@@ -164,6 +172,7 @@ func containerPorts(ct *apiContainer) map[string][]int {
 func containerAddress(ct *apiContainer, defaultNetwork, labelNetwork string) (string, error) {
 	mode := ct.HostConfig.NetworkMode
 	if mode == "host" {
+		// only reachable when turna runs on the host network as well
 		return "127.0.0.1", nil
 	}
 
@@ -255,6 +264,7 @@ func discoverSwarm(ctx context.Context, c *client, cfg *Config) ([]*group, error
 			Created: svc.CreatedAt,
 			Labels:  svc.Spec.Labels,
 			Ports:   make(map[string][]int),
+			Swarm:   true,
 		}
 
 		for _, p := range svc.Endpoint.Ports {

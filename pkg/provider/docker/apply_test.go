@@ -106,12 +106,7 @@ func TestProviderApply(t *testing.T) {
 		},
 	}
 
-	fragments, errs := translateAll(&p.cfg, groups, m.Current())
-	if len(errs) > 0 {
-		t.Fatal(errs)
-	}
-
-	applyErrs := p.apply(fragments, m.Current())
+	_, applyErrs := p.apply(groups, m.Current())
 	if _, ok := applyErrs["broken"]; !ok || len(applyErrs) != 1 {
 		t.Fatalf("apply errors %v", applyErrs)
 	}
@@ -129,8 +124,7 @@ func TestProviderApply(t *testing.T) {
 	}
 
 	// a removed group is removed from the server
-	fragments, _ = translateAll(&p.cfg, groups[:1], m.Current())
-	if errs := p.apply(fragments, m.Current()); len(errs) > 0 {
+	if _, errs := p.apply(groups[:1], m.Current()); len(errs) > 0 {
 		t.Fatal(errs)
 	}
 

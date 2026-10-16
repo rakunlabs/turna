@@ -42,9 +42,10 @@ type Provider struct {
 	// failed is the last configuration that could only be applied in part,
 	// with the errors of the dropped groups and the other layers it was
 	// tried with
-	failed       *server.Server
-	failedErrs   map[string]error
-	failedOthers *server.Server
+	failed          *server.Server
+	failedFragments map[string]*fragment
+	failedErrs      map[string]error
+	failedOthers    *server.Server
 }
 
 func New(cfg Config, applier Applier) (*Provider, error) {
@@ -114,11 +115,24 @@ func (p *Provider) run(ctx context.Context) error {
 	}
 
 	events := make(chan error, 1)
+	ready := make(chan struct{})
 	go func() {
-		events <- p.client.events(runCtx, types, func(apiEvent) { p.notify() })
+		events <- p.client.events(runCtx, types, ready, func(apiEvent) { p.notify() })
 	}()
 
 	// the first sync after the event stream is open misses no change
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-events:
+		if err == nil {
+			err = errors.New("event stream closed")
+		}
+
+		return err
+	case <-ready:
+	}
+
 	if err := p.sync(runCtx); err != nil {
 		return err
 	}
@@ -189,59 +203,80 @@ func (p *Provider) sync(ctx context.Context) error {
 	}
 
 	others := withoutOwned(p.applier.Current())
-	fragments, errs := translateAll(&p.cfg, groups, others)
-
-	applyErrs := p.apply(fragments, others)
-	maps.Copy(errs, applyErrs)
+	fragments, errs := p.apply(groups, others)
 
 	p.report(fragments, errs)
 
 	return nil
 }
 
-// apply sets the layer. When the merged configuration fails, groups are added
-// one by one so a single broken group does not take the others down.
-func (p *Provider) apply(fragments map[string]*fragment, others *server.Server) map[string]error {
+// apply translates the groups and sets the layer. When the merged
+// configuration fails, groups are checked one by one so a single broken group
+// does not take the others down; the rest is translated again without the
+// broken groups, so their claims do not reject younger groups.
+func (p *Provider) apply(groups []*group, others *server.Server) (map[string]*fragment, map[string]error) {
+	fragments, errs := translateAll(&p.cfg, groups, others)
 	next := merge(fragments)
 
 	p.mu.Lock()
 	unchanged := p.applied && reflect.DeepEqual(p.last, next)
 	// a partly applied configuration is not retried until it or the other
 	// layers change
-	knownErrs := p.failedErrs
+	knownFragments, knownErrs := p.failedFragments, p.failedErrs
 	known := p.applied && p.failed != nil && reflect.DeepEqual(p.failed, next) && reflect.DeepEqual(p.failedOthers, others)
 	p.mu.Unlock()
 
 	if unchanged {
-		return nil
+		return fragments, errs
 	}
 
 	if known {
-		return knownErrs
+		return knownFragments, knownErrs
 	}
 
 	err := p.applier.SetLayer(Layer, next)
 	if err == nil {
-		p.done(next, len(fragments), nil, nil, nil)
+		p.done(next, len(fragments), nil, nil, nil, nil)
 
-		return nil
+		return fragments, errs
 	}
 
 	slog.Warn("docker provider: configuration failed, checking containers one by one", "err", err.Error())
 
-	// groups are only checked one by one, so the running configuration does
-	// not lose working groups in between
-	errs := make(map[string]error)
-	accepted := make(map[string]*fragment)
+	dropped := make(map[string]error)
+	accepted := fragments
 
-	for _, name := range slices.Sorted(maps.Keys(fragments)) {
-		accepted[name] = fragments[name]
+	for {
+		// groups are only checked one by one, so the running configuration
+		// does not lose working groups in between
+		bad := make(map[string]error)
+		checked := make(map[string]*fragment)
 
-		if err := p.applier.CheckLayer(Layer, merge(accepted)); err != nil {
-			errs[name] = err
-			delete(accepted, name)
+		for _, name := range slices.Sorted(maps.Keys(accepted)) {
+			checked[name] = accepted[name]
+
+			if err := p.applier.CheckLayer(Layer, merge(checked)); err != nil {
+				bad[name] = err
+				delete(checked, name)
+			}
 		}
+
+		if len(bad) == 0 {
+			break
+		}
+
+		maps.Copy(dropped, bad)
+
+		remaining := slices.DeleteFunc(slices.Clone(groups), func(g *group) bool {
+			_, ok := dropped[g.Name]
+
+			return ok
+		})
+
+		accepted, errs = translateAll(&p.cfg, remaining, others)
 	}
+
+	maps.Copy(errs, dropped)
 
 	applied := merge(accepted)
 	if err := p.applier.SetLayer(Layer, applied); err != nil {
@@ -252,19 +287,20 @@ func (p *Provider) apply(fragments map[string]*fragment, others *server.Server) 
 		p.applied = false
 		p.mu.Unlock()
 
-		return errs
+		return accepted, errs
 	}
 
-	p.done(applied, len(accepted), next, errs, others)
+	p.done(applied, len(accepted), next, accepted, errs, others)
 
-	return errs
+	return accepted, errs
 }
 
-func (p *Provider) done(s *server.Server, groups int, failed *server.Server, failedErrs map[string]error, others *server.Server) {
+func (p *Provider) done(s *server.Server, groups int, failed *server.Server, failedFragments map[string]*fragment, failedErrs map[string]error, others *server.Server) {
 	p.mu.Lock()
 	p.last = s
 	p.applied = true
 	p.failed = failed
+	p.failedFragments = failedFragments
 	p.failedErrs = failedErrs
 	p.failedOthers = others
 	p.mu.Unlock()
