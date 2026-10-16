@@ -87,6 +87,17 @@ func invalidShare(backends []streamBackend) (valid, invalid int) {
 
 // streamTarget returns the middleware names forwarding to the backends, an
 // empty result rejects connections.
+// streamStrategy is backend.strategy for TCP and UDP load balancers. Unset,
+// connections are spread at random: all proxy replicas then share the load
+// without starting on the same endpoint.
+func (t *translator) streamStrategy() string {
+	if t.cfg == nil || t.cfg.Backend.Strategy == "" {
+		return "random"
+	}
+
+	return t.cfg.Backend.Strategy
+}
+
 func (t *translator) streamTarget(entry string, idx int, backends []streamBackend, udpRoute bool) []string {
 	servers := streamServers(backends)
 	if len(servers) == 0 {
@@ -101,7 +112,7 @@ func (t *translator) streamTarget(entry string, idx int, backends []streamBacken
 	if udpRoute {
 		srv.UDP.Middlewares[name] = udp.UDPMiddleware{LoadBalancerMiddleware: &udplb.LoadBalancer{
 			Servers:            servers,
-			Strategy:           "random",
+			Strategy:           t.streamStrategy(),
 			PassiveHealthCheck: &netlb.PassiveHealthCheck{MaxFails: 3},
 		}}
 		valid, invalid := invalidShare(backends)
@@ -115,7 +126,7 @@ func (t *translator) streamTarget(entry string, idx int, backends []streamBacken
 
 	srv.TCP.Middlewares[name] = tcp.TCPMiddleware{LoadBalancerMiddleware: &loadbalancer.LoadBalancer{
 		Servers:            servers,
-		Strategy:           "random",
+		Strategy:           t.streamStrategy(),
 		Retry:              ptrOr(t.cfg.Backend.Retry, 2),
 		PassiveHealthCheck: &netlb.PassiveHealthCheck{MaxFails: 3},
 	}}

@@ -358,11 +358,12 @@ func (w *statusWriter) writeListenerSets(ctx context.Context, snap *Snapshot, re
 }
 
 // policyAncestors merges the ancestors of this controller into the current
-// policy status and keeps entries of other controllers.
-func policyAncestors(controller gwv1.GatewayController, st *gwv1.PolicyStatus, ancestors []gwv1.PolicyAncestorStatus) []gwv1.PolicyAncestorStatus {
+// policy status and keeps entries of other controllers, and of installations
+// sharing the controller name for gateways this one does not serve.
+func policyAncestors(controller gwv1.GatewayController, st *gwv1.PolicyStatus, ancestors []gwv1.PolicyAncestorStatus, owns func(gwv1.ParentReference) bool) []gwv1.PolicyAncestorStatus {
 	next := make([]gwv1.PolicyAncestorStatus, 0, len(st.Ancestors)+len(ancestors))
 	for _, a := range st.Ancestors {
-		if a.ControllerName != controller {
+		if a.ControllerName != controller || !owns(a.AncestorRef) {
 			next = append(next, a)
 		}
 	}
@@ -387,8 +388,9 @@ func (w *statusWriter) writePolicies(ctx context.Context, snap *Snapshot, res *R
 	for _, source := range snap.BackendTLSPolicies {
 		k := key(source)
 		ancestors := res.PolicyAncestors(k)
+		owns := func(ref gwv1.ParentReference) bool { return res.ownsParent(ref, k.Namespace) }
 
-		if equality.Semantic.DeepEqual(source.Status.Ancestors, policyAncestors(controller, &source.Status, ancestors)) {
+		if equality.Semantic.DeepEqual(source.Status.Ancestors, policyAncestors(controller, &source.Status, ancestors, owns)) {
 			continue
 		}
 
@@ -401,7 +403,7 @@ func (w *statusWriter) writePolicies(ctx context.Context, snap *Snapshot, res *R
 				return nil
 			}
 
-			next := policyAncestors(controller, &cur.Status, ancestors)
+			next := policyAncestors(controller, &cur.Status, ancestors, owns)
 			if equality.Semantic.DeepEqual(cur.Status.Ancestors, next) {
 				return nil
 			}
@@ -743,11 +745,12 @@ type routeStatusClient[T metav1.Object] struct {
 }
 
 // routeParents merges the parents of this controller into the current
-// route status and keeps entries of other controllers.
-func routeParents(controller gwv1.GatewayController, st *gwv1.RouteStatus, parents []gwv1.RouteParentStatus) []gwv1.RouteParentStatus {
+// route status and keeps entries of other controllers, and of installations
+// sharing the controller name for parents this one does not serve.
+func routeParents(controller gwv1.GatewayController, st *gwv1.RouteStatus, parents []gwv1.RouteParentStatus, owns func(gwv1.ParentReference) bool) []gwv1.RouteParentStatus {
 	next := make([]gwv1.RouteParentStatus, 0, len(st.Parents)+len(parents))
 	for _, p := range st.Parents {
-		if p.ControllerName != controller {
+		if p.ControllerName != controller || !owns(p.ParentRef) {
 			next = append(next, p)
 		}
 	}
@@ -765,12 +768,13 @@ func routeParents(controller gwv1.GatewayController, st *gwv1.RouteStatus, paren
 	return next
 }
 
-func writeRouteStatus[T metav1.Object](ctx context.Context, w *statusWriter, c routeStatusClient[T], kind gwv1.Kind, source T, parents []gwv1.RouteParentStatus) {
+func writeRouteStatus[T metav1.Object](ctx context.Context, w *statusWriter, c routeStatusClient[T], kind gwv1.Kind, source T, parents []gwv1.RouteParentStatus, res *Result) {
 	controller := gwv1.GatewayController(w.p.cfg.controllerName())
 	k := key(source)
+	owns := func(ref gwv1.ParentReference) bool { return res.ownsParent(ref, k.Namespace) }
 
 	// Most routes are unchanged on a sync; skip them without a request.
-	if st := c.status(source); equality.Semantic.DeepEqual(st.Parents, routeParents(controller, st, parents)) {
+	if st := c.status(source); equality.Semantic.DeepEqual(st.Parents, routeParents(controller, st, parents, owns)) {
 		return
 	}
 
@@ -784,7 +788,7 @@ func writeRouteStatus[T metav1.Object](ctx context.Context, w *statusWriter, c r
 		}
 
 		st := c.status(cur)
-		next := routeParents(controller, st, parents)
+		next := routeParents(controller, st, parents, owns)
 
 		if equality.Semantic.DeepEqual(st.Parents, next) {
 			return nil
@@ -813,7 +817,7 @@ func (w *statusWriter) writeRoutes(ctx context.Context, snap *Snapshot, res *Res
 				return err
 			},
 			status: func(o *gwv1.HTTPRoute) *gwv1.RouteStatus { return &o.Status.RouteStatus },
-		}, kindRoute, r, res.Routes[routeKey{Kind: kindRoute, nsName: key(r)}])
+		}, kindRoute, r, res.Routes[routeKey{Kind: kindRoute, nsName: key(r)}], res)
 	}
 
 	for _, r := range snap.GRPCRoutes {
@@ -827,7 +831,7 @@ func (w *statusWriter) writeRoutes(ctx context.Context, snap *Snapshot, res *Res
 				return err
 			},
 			status: func(o *gwv1.GRPCRoute) *gwv1.RouteStatus { return &o.Status.RouteStatus },
-		}, kindGRPCRoute, r, res.Routes[routeKey{Kind: kindGRPCRoute, nsName: key(r)}])
+		}, kindGRPCRoute, r, res.Routes[routeKey{Kind: kindGRPCRoute, nsName: key(r)}], res)
 	}
 
 	for _, r := range snap.TLSRoutes {
@@ -841,7 +845,7 @@ func (w *statusWriter) writeRoutes(ctx context.Context, snap *Snapshot, res *Res
 				return err
 			},
 			status: func(o *gwv1.TLSRoute) *gwv1.RouteStatus { return &o.Status.RouteStatus },
-		}, kindTLSRoute, r, res.Routes[routeKey{Kind: kindTLSRoute, nsName: key(r)}])
+		}, kindTLSRoute, r, res.Routes[routeKey{Kind: kindTLSRoute, nsName: key(r)}], res)
 	}
 
 	for _, r := range snap.TCPRoutes {
@@ -855,7 +859,7 @@ func (w *statusWriter) writeRoutes(ctx context.Context, snap *Snapshot, res *Res
 				return err
 			},
 			status: func(o *gwv1.TCPRoute) *gwv1.RouteStatus { return &o.Status.RouteStatus },
-		}, kindTCPRoute, r, res.Routes[routeKey{Kind: kindTCPRoute, nsName: key(r)}])
+		}, kindTCPRoute, r, res.Routes[routeKey{Kind: kindTCPRoute, nsName: key(r)}], res)
 	}
 
 	for _, r := range snap.UDPRoutes {
@@ -869,7 +873,7 @@ func (w *statusWriter) writeRoutes(ctx context.Context, snap *Snapshot, res *Res
 				return err
 			},
 			status: func(o *gwv1.UDPRoute) *gwv1.RouteStatus { return &o.Status.RouteStatus },
-		}, kindUDPRoute, r, res.Routes[routeKey{Kind: kindUDPRoute, nsName: key(r)}])
+		}, kindUDPRoute, r, res.Routes[routeKey{Kind: kindUDPRoute, nsName: key(r)}], res)
 	}
 }
 

@@ -14,8 +14,10 @@ providers:
         name: turna
     proxy:
       # Namespace defaults to POD_NAMESPACE. The image defaults to the image
-      # of the controller pod, set in kustomization.yaml.
-      service_account: turna-proxy
+      # of the controller pod, set in kustomization.yaml. Every proxy gets
+      # its own ServiceAccount bound to cluster_role and a Role reading only
+      # its certificate Secret.
+      cluster_role: turna-reader
       replicas: 2
       service_type: LoadBalancer
       log_level: info

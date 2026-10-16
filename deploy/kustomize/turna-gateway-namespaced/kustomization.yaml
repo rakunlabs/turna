@@ -57,3 +57,28 @@ patches:
       kind: ClusterRoleBinding
       metadata:
         name: turna-status
+  - patch: |-
+      $patch: delete
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: turna-proxy-identity
+  - patch: |-
+      $patch: delete
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: turna-proxy-identity
+  # the shared proxy ServiceAccount needs no per proxy ServiceAccounts and
+  # Roles
+  - target:
+      kind: Role
+      name: turna
+    patch: |-
+      - op: test
+        path: /rules/6/resources/0
+        value: serviceaccounts
+      - op: remove
+        path: /rules/7
+      - op: remove
+        path: /rules/6

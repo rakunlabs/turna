@@ -180,6 +180,8 @@ func TestCAHandlerIgnoresUnrelatedConfigMaps(t *testing.T) {
 
 // A failed access review is not taken as permission, discovery retries.
 func TestCanWatchBackendTLSReviewError(t *testing.T) {
+	attrs := authorizationv1.ResourceAttributes{Group: gwv1.GroupName, Resource: "backendtlspolicies"}
+
 	review := func(allowed bool, err error) *Provider {
 		kube := kubefake.NewSimpleClientset()
 		kube.PrependReactor("create", "selfsubjectaccessreviews", func(k8stesting.Action) (bool, runtime.Object, error) {
@@ -193,15 +195,15 @@ func TestCanWatchBackendTLSReviewError(t *testing.T) {
 		return &Provider{kube: kube}
 	}
 
-	if _, err := review(false, errors.New("unavailable")).canWatchBackendTLS(context.Background()); err == nil {
+	if _, err := review(false, errors.New("unavailable")).canWatch(context.Background(), "BackendTLSPolicy", attrs); err == nil {
 		t.Fatal("review error was ignored")
 	}
 
-	if ok, err := review(false, nil).canWatchBackendTLS(context.Background()); err != nil || ok {
+	if ok, err := review(false, nil).canWatch(context.Background(), "BackendTLSPolicy", attrs); err != nil || ok {
 		t.Fatalf("denied = %v, %v", ok, err)
 	}
 
-	if ok, err := review(true, nil).canWatchBackendTLS(context.Background()); err != nil || !ok {
+	if ok, err := review(true, nil).canWatch(context.Background(), "BackendTLSPolicy", attrs); err != nil || !ok {
 		t.Fatalf("allowed = %v, %v", ok, err)
 	}
 }

@@ -61,9 +61,11 @@ resources:
 # than one replica, each proxy gets a PodDisruptionBudget and its replicas are
 # spread over nodes and zones.
 proxy:
-  # placement is "controller" (proxies in the release namespace with a shared
-  # ServiceAccount) or "gateway" (proxies, a ServiceAccount and RBAC per
-  # Gateway in the Gateway namespace, so Gateway owners see their proxy).
+  # placement is "controller" (proxies in the release namespace) or "gateway"
+  # (proxies in the Gateway namespace, so Gateway owners see their proxy).
+  # With scope cluster every proxy gets its own ServiceAccount and a Role
+  # reading only its certificate Secret, which needs cluster-wide write
+  # access to ClusterRoleBindings; scope namespace shares one ServiceAccount.
   # "gateway" needs scope cluster and grants the controller cluster-wide write
   # access to proxy resources and RBAC bindings.
   placement: controller

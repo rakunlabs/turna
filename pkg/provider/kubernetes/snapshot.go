@@ -134,12 +134,16 @@ func (idx *index) referenceAllowed(fromGroup, fromKind, fromNamespace, toGroup, 
 	return false
 }
 
-func (idx *index) namespaceLabels(ns string) labels.Set {
-	if n, ok := idx.namespaces[ns]; ok {
-		return n.Labels
+// namespaceSelected reports whether the labels of namespace ns match sel. A
+// namespace that is not watched, as in namespace scoped mode, never matches,
+// even an empty selector.
+func (idx *index) namespaceSelected(sel labels.Selector, ns string) bool {
+	n, ok := idx.namespaces[ns]
+	if !ok {
+		return false
 	}
 
-	return nil
+	return sel.Matches(labels.Set(n.Labels))
 }
 
 func sanitize(parts ...string) string {

@@ -3,11 +3,6 @@ kind: ServiceAccount
 metadata:
   name: turna
 ---
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: turna-proxy
----
 # Both the controller and proxies need read access to Gateway API resources
 # and their Service, EndpointSlice and Namespace references.
 apiVersion: rbac.authorization.k8s.io/v1
@@ -36,9 +31,6 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: turna
-    namespace: default
-  - kind: ServiceAccount
-    name: turna-proxy
     namespace: default
 ---
 # Only the controller writes status and reads listener and BackendTLSPolicy
@@ -95,6 +87,14 @@ rules:
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # each proxy gets a ServiceAccount and a Role reading only its certificate
+  # Secret
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -109,25 +109,29 @@ subjects:
     name: turna
     namespace: default
 ---
-# Proxies read only the certificate bundles written by the controller.
+# The ServiceAccount of each proxy is bound to turna-reader.
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
-  name: turna-proxy
+  name: turna-proxy-identity
 rules:
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "list", "watch"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterrolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles"]
+    resourceNames: ["turna-reader"]
+    verbs: ["bind"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
-  name: turna-proxy
+  name: turna-proxy-identity
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: turna-proxy
+  kind: ClusterRole
+  name: turna-proxy-identity
 subjects:
   - kind: ServiceAccount
-    name: turna-proxy
+    name: turna
     namespace: default

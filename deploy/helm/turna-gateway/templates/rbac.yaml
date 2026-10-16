@@ -1,6 +1,7 @@
 {{- $namespaced := eq .Values.scope "namespace" -}}
 {{- $readerKind := ternary "Role" "ClusterRole" $namespaced -}}
 {{- $gatewayPlacement := eq (include "turna-gateway.gatewayPlacement" .) "true" -}}
+{{- $proxyIdentity := eq (include "turna-gateway.proxyIdentity" .) "true" -}}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -58,7 +59,7 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "turna-gateway.fullname" . }}
     namespace: {{ .Release.Namespace }}
-  {{- if and (ne .Values.mode "standalone") (not $gatewayPlacement) }}
+  {{- if and (ne .Values.mode "standalone") (not $proxyIdentity) }}
   - kind: ServiceAccount
     name: {{ include "turna-gateway.proxyServiceAccount" . }}
     namespace: {{ .Release.Namespace }}
@@ -107,6 +108,16 @@ rules:
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  {{- if $proxyIdentity }}
+  # each proxy gets a ServiceAccount and a Role reading only its certificate
+  # Secret
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  {{- end }}
   {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -123,17 +134,27 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "turna-gateway.fullname" . }}
     namespace: {{ .Release.Namespace }}
-{{- if $gatewayPlacement }}
+{{- if $proxyIdentity }}
 ---
-# proxies, their ServiceAccounts and RBAC are created in the namespace of
-# each Gateway; proxies are bound to the reader ClusterRole
+# the ServiceAccount of each proxy is bound to the reader ClusterRole; with
+# placement gateway the proxies and their RBAC live in the Gateway namespaces
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "turna-gateway.fullname" . }}-gateway-namespace
+  name: {{ include "turna-gateway.fullname" . }}-proxy-identity
   labels:
     {{- include "turna-gateway.labels" . | nindent 4 }}
 rules:
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterrolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles"]
+    resourceNames: [{{ printf "%s-reader" (include "turna-gateway.fullname" .) | quote }}]
+    verbs: ["bind"]
+  {{- if $gatewayPlacement }}
+  # proxies, their ServiceAccounts and RBAC are created in the namespace of
+  # each Gateway
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
@@ -144,29 +165,26 @@ rules:
     resources: ["poddisruptionbudgets"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["rbac.authorization.k8s.io"]
-    resources: ["roles", "rolebindings", "clusterrolebindings"]
+    resources: ["roles", "rolebindings"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["rbac.authorization.k8s.io"]
-    resources: ["clusterroles"]
-    resourceNames: [{{ printf "%s-reader" (include "turna-gateway.fullname" .) | quote }}]
-    verbs: ["bind"]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "turna-gateway.fullname" . }}-gateway-namespace
+  name: {{ include "turna-gateway.fullname" . }}-proxy-identity
   labels:
     {{- include "turna-gateway.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "turna-gateway.fullname" . }}-gateway-namespace
+  name: {{ include "turna-gateway.fullname" . }}-proxy-identity
 subjects:
   - kind: ServiceAccount
     name: {{ include "turna-gateway.fullname" . }}
     namespace: {{ .Release.Namespace }}
 {{- end }}
-{{- if and (ne .Values.mode "standalone") (not $gatewayPlacement) }}
+{{- if and (ne .Values.mode "standalone") (not $proxyIdentity) }}
 ---
 apiVersion: v1
 kind: ServiceAccount

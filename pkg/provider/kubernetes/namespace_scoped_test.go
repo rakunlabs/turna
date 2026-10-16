@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -176,5 +177,56 @@ func TestProviderNamespaceScoped(t *testing.T) {
 	defer mu.Unlock()
 	if len(violations) > 0 {
 		t.Fatalf("requests outside the namespace scope: %v", violations)
+	}
+}
+
+// Installations sharing a controller name keep the route parents of each
+// other; parents of deleted gateways are removed.
+func TestRouteParentsSharedController(t *testing.T) {
+	other := class()
+	other.Name = "other"
+
+	gw := gatewayObj("app", "gw", httpListener("http", 80, ""))
+	foreign := gatewayObj("app", "foreign", httpListener("http", 81, ""))
+	foreign.Spec.GatewayClassName = "other"
+
+	route := routeObj("app", "r", "gw", nil)
+	route.Spec.ParentRefs = append(route.Spec.ParentRefs, gwv1.ParentReference{Name: "foreign"}, gwv1.ParentReference{Name: "deleted"})
+
+	snap := &Snapshot{
+		GatewayClasses: []*gwv1.GatewayClass{class(), other},
+		Gateways:       []*gwv1.Gateway{gw, foreign},
+		HTTPRoutes:     []*gwv1.HTTPRoute{route},
+	}
+
+	mine := Translate(&Config{GatewayClass: "turna"}, snap)
+	theirs := Translate(&Config{GatewayClass: "other"}, snap)
+
+	controller := gwv1.GatewayController(DefaultControllerName)
+	stale := gwv1.RouteParentStatus{ParentRef: gwv1.ParentReference{Name: "deleted"}, ControllerName: controller}
+
+	st := &gwv1.RouteStatus{Parents: append(slices.Clone(theirs.HTTPRouteStatus(key(route))), stale)}
+	next := routeParents(controller, st, mine.HTTPRouteStatus(key(route)), func(ref gwv1.ParentReference) bool {
+		return mine.ownsParent(ref, "app")
+	})
+
+	names := make([]string, 0, len(next))
+	for _, p := range next {
+		names = append(names, string(p.ParentRef.Name))
+	}
+
+	slices.Sort(names)
+
+	if !slices.Equal(names, []string{"foreign", "gw"}) {
+		t.Fatalf("parents = %v, want foreign and gw", names)
+	}
+
+	// the other installation keeps the parent of this one
+	next = routeParents(controller, &gwv1.RouteStatus{Parents: next}, theirs.HTTPRouteStatus(key(route)), func(ref gwv1.ParentReference) bool {
+		return theirs.ownsParent(ref, "app")
+	})
+
+	if len(next) != 2 {
+		t.Fatalf("parents after other installation = %d, want 2", len(next))
 	}
 }

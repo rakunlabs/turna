@@ -611,3 +611,61 @@ func TestGRPCRoute(t *testing.T) {
 func metadataContext(ctx context.Context, kv ...string) context.Context {
 	return metadata.AppendToOutgoingContext(ctx, kv...)
 }
+
+// TCP and UDP load balancers use backend.strategy, random when unset.
+func TestStreamStrategy(t *testing.T) {
+	svcs, slices := backendObjects(
+		backend{name: "tcp", addr: "10.0.0.1:3000", port: 3000},
+		backend{name: "udp", addr: "10.0.0.2:53", port: 53, protocol: corev1.ProtocolUDP},
+	)
+
+	gw := gatewayObj("app", "gw",
+		gwv1.Listener{Name: "tcp", Port: 5300, Protocol: gwv1.TCPProtocolType},
+		gwv1.Listener{Name: "udp", Port: 5300, Protocol: gwv1.UDPProtocolType},
+	)
+
+	snap := &Snapshot{
+		GatewayClasses: []*gwv1.GatewayClass{class()},
+		Gateways:       []*gwv1.Gateway{gw},
+		TCPRoutes: []*gwv1.TCPRoute{{
+			ObjectMeta: objMeta("app", "tcp"),
+			Spec: gwv1.TCPRouteSpec{
+				CommonRouteSpec: gwv1.CommonRouteSpec{ParentRefs: []gwv1.ParentReference{{Name: "gw", SectionName: ptr(gwv1.SectionName("tcp"))}}},
+				Rules:           []gwv1.TCPRouteRule{{BackendRefs: []gwv1.BackendRef{backendRef("tcp", 3000)}}},
+			},
+		}},
+		UDPRoutes: []*gwv1.UDPRoute{{
+			ObjectMeta: objMeta("app", "udp"),
+			Spec: gwv1.UDPRouteSpec{
+				CommonRouteSpec: gwv1.CommonRouteSpec{ParentRefs: []gwv1.ParentReference{{Name: "gw", SectionName: ptr(gwv1.SectionName("udp"))}}},
+				Rules:           []gwv1.UDPRouteRule{{BackendRefs: []gwv1.BackendRef{backendRef("udp", 53)}}},
+			},
+		}},
+		Services:       svcs,
+		EndpointSlices: slices,
+	}
+
+	strategies := func(cfg *Config) (tcpS, udpS []string) {
+		res := Translate(cfg, snap)
+		for _, m := range res.Server.TCP.Middlewares {
+			if m.LoadBalancerMiddleware != nil {
+				tcpS = append(tcpS, m.LoadBalancerMiddleware.Strategy)
+			}
+		}
+		for _, m := range res.Server.UDP.Middlewares {
+			if m.LoadBalancerMiddleware != nil {
+				udpS = append(udpS, m.LoadBalancerMiddleware.Strategy)
+			}
+		}
+
+		return tcpS, udpS
+	}
+
+	if tcpS, udpS := strategies(&Config{}); len(tcpS) != 1 || tcpS[0] != "random" || len(udpS) != 1 || udpS[0] != "random" {
+		t.Fatalf("default strategies tcp %v udp %v", tcpS, udpS)
+	}
+
+	if tcpS, udpS := strategies(&Config{Backend: Backend{Strategy: "least_conn"}}); len(tcpS) != 1 || tcpS[0] != "least_conn" || len(udpS) != 1 || udpS[0] != "least_conn" {
+		t.Fatalf("configured strategies tcp %v udp %v", tcpS, udpS)
+	}
+}

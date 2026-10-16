@@ -52,3 +52,32 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: turna
+---
+# Proxies share a ServiceAccount: per proxy ServiceAccounts need
+# cluster-wide bindings. It reads only the certificate bundles written by the
+# controller, which are the only Secrets the controller writes here.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: turna-proxy
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: turna-proxy
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: turna-proxy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: turna-proxy
+subjects:
+  - kind: ServiceAccount
+    name: turna-proxy

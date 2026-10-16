@@ -85,15 +85,15 @@ In controller mode, `spec.infrastructure.labels` and `spec.infrastructure.annota
 
 ### Proxy placement
 
-By default the proxies of all Gateways are created in the controller namespace and share the ServiceAccount `proxy.service_account`.
+By default the proxies of all Gateways are created in the controller namespace. With `proxy.cluster_role` set (the chart and the Kustomize base set it to their reader ClusterRole) each proxy gets its own ServiceAccount, a Role that reads only its certificate Secret, and a ClusterRoleBinding to `proxy.cluster_role` for the watched resources. The controller then needs write access to ServiceAccounts, Roles and RoleBindings in its namespace, to ClusterRoleBindings, and the `bind` verb on `proxy.cluster_role`. Without `proxy.cluster_role` the proxies share the ServiceAccount `proxy.service_account`, which must be able to read the certificate Secrets; namespace scoped installations use this, as they cannot create cluster-wide bindings. Switching an existing installation to `proxy.cluster_role` keeps the proxies and their addresses, and only restarts their pods with the new ServiceAccount.
 
-With `proxy.gateway_namespace: true` (chart: `proxy.placement=gateway`, Kustomize: `deploy/kustomize/turna-gateway-gateway-namespace`) the Deployment, Service, ConfigMap and PodDisruptionBudget of a Gateway are created in the Gateway's namespace, so the Gateway owner sees and debugs the proxy next to the Gateway. The certificate Secret stays in the controller namespace: it holds private keys of Secrets in other namespaces (through a `ReferenceGrant` or a ListenerSet), which the users of the Gateway namespace must not read. Each proxy gets its own ServiceAccount, a Role in the controller namespace that reads only its certificate Secret, and a ClusterRoleBinding to `proxy.cluster_role` for the watched resources. The proxy ServiceAccount can read the watched resources of every namespace, so whoever may run pods with it in the Gateway namespace can too. `imagePullSecrets` must exist in the Gateway namespaces. Switching the placement recreates the proxies, with new load balancer addresses, and leaves the old proxy resources to be removed by hand. The controller then needs cluster-wide write access to these resource kinds and the `bind` verb on `proxy.cluster_role`; the chart and the overlay create this ClusterRole. It cannot be combined with `namespace_scoped`.
+With `proxy.gateway_namespace: true` (chart: `proxy.placement=gateway`, Kustomize: `deploy/kustomize/turna-gateway-gateway-namespace`) the Deployment, Service, ConfigMap and PodDisruptionBudget of a Gateway are created in the Gateway's namespace, so the Gateway owner sees and debugs the proxy next to the Gateway. The certificate Secret stays in the controller namespace: it holds private keys of Secrets in other namespaces (through a `ReferenceGrant` or a ListenerSet), which the users of the Gateway namespace must not read. The ServiceAccount of each proxy is created in the Gateway namespace, and its Role stays in the controller namespace next to the certificate Secret. The proxy ServiceAccount can read the watched resources of every namespace, so whoever may run pods with it in the Gateway namespace can too. `imagePullSecrets` must exist in the Gateway namespaces. The controller then needs cluster-wide write access to these resource kinds and the `bind` verb on `proxy.cluster_role`; the chart and the overlay create this ClusterRole. It cannot be combined with `namespace_scoped`.
 
-Switching the placement of an existing installation creates new proxies in the new place and removes the old ones, which can change the load balancer addresses of the Gateways.
+Switching the placement of an existing installation creates new proxies in the new place, which can change the load balancer addresses of the Gateways. Switching to `gateway_namespace` removes the old proxies of the controller namespace. Switching back removes the `turna-proxy:*` ClusterRoleBindings of the old proxies, so they lose their read access, but leaves their Deployments, Services, ConfigMaps, PodDisruptionBudgets and ServiceAccounts in the Gateway namespaces; remove them by hand with `kubectl delete deploy,svc,cm,pdb,sa -A -l app.kubernetes.io/managed-by=turna-gateway` after checking the list.
 
 Each proxy Deployment spreads its replicas over nodes and zones. With more than one replica it also gets a PodDisruptionBudget with `maxUnavailable: 1`, so node drains and upgrades keep the Gateway serving. A terminating proxy keeps serving for `proxy.shutdown_delay` (preStop sleep, Kubernetes 1.30 or later) while load balancers stop sending it new connections.
 
-Proxies do not read Secrets of the watched namespaces. The controller copies the certificates referenced by a Gateway's listeners, after the ReferenceGrant checks, into a Secret next to the proxy; the proxy watches only that Secret.
+Proxies do not read Secrets of the watched namespaces. The controller copies the certificates referenced by a Gateway's listeners, after the ReferenceGrant checks, into a Secret next to the proxy; the proxy watches only that Secret. With a ServiceAccount per proxy (`proxy.cluster_role`) a proxy may read only its own certificate Secret. A shared `proxy.service_account` can read every Secret of the controller namespace, including the certificate Secrets of all Gateways, so keep other Secrets out of that namespace.
 
 Only the elected leader provisions proxies and writes status. Standby controllers still watch resources and can take over when leadership changes. Disabling status updates does not disable controller-mode leader election; `status.leader_election.disabled` is intended only for single-replica installations.
 
@@ -124,7 +124,7 @@ Use a separate GatewayClass and `controllerName` for every tenant. `gateway_clas
 
 ## Configuration
 
-The chart writes this configuration; it can be extended with `extraConfig`.
+These are the defaults of the provider. The chart sets some of them from its values (for example `proxy.replicas: 2`, `proxy.cluster_role: <release>-reader` (scope namespace: `proxy.service_account: <release>-proxy`), and the release name and namespace for leader election); the configuration can be extended with `extraConfig`.
 
 ```yaml
 providers:
@@ -144,7 +144,7 @@ providers:
     debounce: 200ms
     backend:
       retry: 2              # retries on another endpoint when unreachable
-      strategy: round_robin # round_robin, random or least_conn
+      strategy: round_robin # round_robin, random or least_conn; TCP and UDP default to random
       use_service_ip: false # proxy to the cluster IP instead of endpoints
       allow_external_name: false # permit ExternalName Services as backends
     status:
@@ -158,9 +158,9 @@ providers:
     proxy:                  # controller mode
       namespace: ""         # needs the controller and proxy Roles in that namespace
       gateway_namespace: false # create proxies in the namespace of each Gateway
-      cluster_role: ""      # gateway_namespace: ClusterRole bound to each proxy ServiceAccount
+      cluster_role: ""      # ClusterRole bound to a ServiceAccount per proxy; required with gateway_namespace
       image: ""             # empty uses the image of the controller pod (POD_NAME)
-      service_account: turna-proxy # not used with gateway_namespace
+      service_account: turna-proxy # shared by the proxies, not used with cluster_role
       addresses_annotation: "" # Service annotation for Gateway spec.addresses, e.g. metallb.io/loadBalancerIPs
       replicas: 1           # more than 1 adds a PodDisruptionBudget
       service_type: LoadBalancer

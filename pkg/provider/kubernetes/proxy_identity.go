@@ -142,13 +142,13 @@ func (p *Provider) applyProxyIdentity(ctx context.Context, ns, bundleNS, name st
 	return nil
 }
 
-func (p *Provider) listServiceAccounts(ctx context.Context, sel labels.Selector) listed[*corev1.ServiceAccount] {
+func (p *Provider) listServiceAccounts(ctx context.Context, ns string, sel labels.Selector) listed[*corev1.ServiceAccount] {
 	if pl := p.proxies(); pl != nil && pl.serviceAccounts != nil {
-		items, err := pl.serviceAccounts.List(sel)
+		items, err := pl.serviceAccounts.ServiceAccounts(ns).List(sel)
 		return listed[*corev1.ServiceAccount]{items: items, err: err}
 	}
 
-	l, err := p.kube.CoreV1().ServiceAccounts(metav1.NamespaceAll).List(ctx, metav1.ListOptions{LabelSelector: sel.String()})
+	l, err := p.kube.CoreV1().ServiceAccounts(ns).List(ctx, metav1.ListOptions{LabelSelector: sel.String()})
 	if err != nil {
 		return listed[*corev1.ServiceAccount]{err: err}
 	}
@@ -156,13 +156,13 @@ func (p *Provider) listServiceAccounts(ctx context.Context, sel labels.Selector)
 	return fromList[corev1.ServiceAccount, *corev1.ServiceAccount](l.Items, nil)
 }
 
-func (p *Provider) listRoles(ctx context.Context, sel labels.Selector) listed[*rbacv1.Role] {
+func (p *Provider) listRoles(ctx context.Context, ns string, sel labels.Selector) listed[*rbacv1.Role] {
 	if pl := p.proxies(); pl != nil && pl.roles != nil {
-		items, err := pl.roles.List(sel)
+		items, err := pl.roles.Roles(ns).List(sel)
 		return listed[*rbacv1.Role]{items: items, err: err}
 	}
 
-	l, err := p.kube.RbacV1().Roles(metav1.NamespaceAll).List(ctx, metav1.ListOptions{LabelSelector: sel.String()})
+	l, err := p.kube.RbacV1().Roles(ns).List(ctx, metav1.ListOptions{LabelSelector: sel.String()})
 	if err != nil {
 		return listed[*rbacv1.Role]{err: err}
 	}
@@ -170,13 +170,13 @@ func (p *Provider) listRoles(ctx context.Context, sel labels.Selector) listed[*r
 	return fromList[rbacv1.Role, *rbacv1.Role](l.Items, nil)
 }
 
-func (p *Provider) listRoleBindings(ctx context.Context, sel labels.Selector) listed[*rbacv1.RoleBinding] {
+func (p *Provider) listRoleBindings(ctx context.Context, ns string, sel labels.Selector) listed[*rbacv1.RoleBinding] {
 	if pl := p.proxies(); pl != nil && pl.roleBindings != nil {
-		items, err := pl.roleBindings.List(sel)
+		items, err := pl.roleBindings.RoleBindings(ns).List(sel)
 		return listed[*rbacv1.RoleBinding]{items: items, err: err}
 	}
 
-	l, err := p.kube.RbacV1().RoleBindings(metav1.NamespaceAll).List(ctx, metav1.ListOptions{LabelSelector: sel.String()})
+	l, err := p.kube.RbacV1().RoleBindings(ns).List(ctx, metav1.ListOptions{LabelSelector: sel.String()})
 	if err != nil {
 		return listed[*rbacv1.RoleBinding]{err: err}
 	}

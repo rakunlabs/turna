@@ -530,7 +530,7 @@ func (p *Provider) run(ctx context.Context, available map[gwv1.Kind]bool) error 
 			pf.Policy().V1().PodDisruptionBudgets().Informer(),
 		}
 
-		if p.cfg.Proxy.GatewayNamespace {
+		if p.cfg.Proxy.ownIdentity() {
 			pl.serviceAccounts = pf.Core().V1().ServiceAccounts().Lister()
 			pl.roles = pf.Rbac().V1().Roles().Lister()
 			pl.roleBindings = pf.Rbac().V1().RoleBindings().Lister()
@@ -926,12 +926,6 @@ func (p *Provider) routeKinds(ctx context.Context) (map[gwv1.Kind]bool, error) {
 
 // accessReviewTimeout bounds the access reviews of one discovery.
 const accessReviewTimeout = 10 * time.Second
-
-// canWatchBackendTLS reports whether BackendTLSPolicies may be listed in the
-// watched namespaces.
-func (p *Provider) canWatchBackendTLS(ctx context.Context) (bool, error) {
-	return p.canWatch(ctx, "BackendTLSPolicy", authorizationv1.ResourceAttributes{Group: gwv1.GroupName, Resource: "backendtlspolicies"})
-}
 
 // canWatch reports whether the resource may be listed and watched in the
 // watched namespaces. A failed review is an error, so discovery retries

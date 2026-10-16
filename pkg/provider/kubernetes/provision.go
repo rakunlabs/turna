@@ -220,7 +220,7 @@ func (p *Provider) managedNamespace() string {
 
 // proxyServiceAccount is the ServiceAccount of the proxy pods named name.
 func (p *Provider) proxyServiceAccount(name string) string {
-	if p.cfg.Proxy.GatewayNamespace {
+	if p.cfg.Proxy.ownIdentity() {
 		return name
 	}
 
@@ -380,14 +380,17 @@ func (p *Provider) provision(ctx context.Context, gateways []*gwv1.Gateway, snap
 		return core.Secrets(k.Namespace).Delete(ctx, k.Name, opts)
 	})...)
 
-	if p.cfg.Proxy.GatewayNamespace {
-		errs = append(errs, cleanup(ctx, "serviceaccount", want, p.listServiceAccounts(ctx, selector), func(k nsName, opts metav1.DeleteOptions) error {
+	// Bindings are cluster scoped: switching back from gateway_namespace
+	// also removes the bindings of the proxies left in gateway namespaces,
+	// so they lose their read access.
+	if p.cfg.Proxy.ownIdentity() {
+		errs = append(errs, cleanup(ctx, "serviceaccount", want, p.listServiceAccounts(ctx, ns, selector), func(k nsName, opts metav1.DeleteOptions) error {
 			return core.ServiceAccounts(k.Namespace).Delete(ctx, k.Name, opts)
 		})...)
-		errs = append(errs, cleanup(ctx, "role", wantBundle, p.listRoles(ctx, selector), func(k nsName, opts metav1.DeleteOptions) error {
+		errs = append(errs, cleanup(ctx, "role", wantBundle, p.listRoles(ctx, p.proxyNamespace(), selector), func(k nsName, opts metav1.DeleteOptions) error {
 			return rbac.Roles(k.Namespace).Delete(ctx, k.Name, opts)
 		})...)
-		errs = append(errs, cleanup(ctx, "rolebinding", wantBundle, p.listRoleBindings(ctx, selector), func(k nsName, opts metav1.DeleteOptions) error {
+		errs = append(errs, cleanup(ctx, "rolebinding", wantBundle, p.listRoleBindings(ctx, p.proxyNamespace(), selector), func(k nsName, opts metav1.DeleteOptions) error {
 			return rbac.RoleBindings(k.Namespace).Delete(ctx, k.Name, opts)
 		})...)
 		errs = append(errs, cleanupClusterRoleBindings(ctx, want, p.listClusterRoleBindings(ctx, selector), func(name string, opts metav1.DeleteOptions) error {
@@ -564,7 +567,7 @@ func (p *Provider) applyProxy(ctx context.Context, ns, name string, gw *gwv1.Gat
 	// other namespaces, which gateway owners must not read.
 	bundleNS := p.proxyNamespace()
 
-	if p.cfg.Proxy.GatewayNamespace {
+	if p.cfg.Proxy.ownIdentity() {
 		if err := p.applyProxyIdentity(ctx, ns, bundleNS, name, lbls, meta, annotations); err != nil {
 			return err
 		}

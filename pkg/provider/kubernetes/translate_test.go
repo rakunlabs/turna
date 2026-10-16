@@ -231,6 +231,39 @@ func TestTranslateCrossNamespace(t *testing.T) {
 	}
 }
 
+// Namespaces that are not watched, as in namespace scoped mode, match no
+// selector, not even an empty one.
+func TestTranslateSelectorUnwatchedNamespace(t *testing.T) {
+	gw := gatewayObj("infra", "gw", httpListener("http", 80, ""))
+	gw.Spec.Listeners[0].AllowedRoutes = &gwv1.AllowedRoutes{Namespaces: &gwv1.RouteNamespaces{
+		From:     ptr(gwv1.NamespacesFromSelector),
+		Selector: &metav1.LabelSelector{},
+	}}
+
+	route := routeObj("app", "r", "gw", nil, backendRule("/", "api", 80))
+	route.Spec.ParentRefs[0].Namespace = ptr(gwv1.Namespace("infra"))
+
+	snap := &Snapshot{
+		GatewayClasses: []*gwv1.GatewayClass{class()},
+		Gateways:       []*gwv1.Gateway{gw},
+		HTTPRoutes:     []*gwv1.HTTPRoute{route},
+	}
+
+	res := Translate(&Config{}, snap)
+	c := condition(t, res.HTTPRouteStatus(key(route))[0].Conditions, string(gwv1.RouteConditionAccepted))
+	if c.Status != metav1.ConditionFalse || c.Reason != string(gwv1.RouteReasonNotAllowedByListeners) {
+		t.Fatalf("accepted from unwatched namespace = %v", c)
+	}
+
+	snap.Namespaces = []*corev1.Namespace{{ObjectMeta: objMeta("", "app")}}
+
+	res = Translate(&Config{}, snap)
+	c = condition(t, res.HTTPRouteStatus(key(route))[0].Conditions, string(gwv1.RouteConditionAccepted))
+	if c.Status != metav1.ConditionTrue {
+		t.Fatalf("accepted from watched namespace = %v", c)
+	}
+}
+
 func TestTranslateHostnames(t *testing.T) {
 	svc, slice := serviceObj("app", "web", 80)
 	gw := gatewayObj("app", "gw", httpListener("http", 80, "*.example.com"))

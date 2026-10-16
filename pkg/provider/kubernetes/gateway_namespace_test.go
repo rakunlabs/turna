@@ -254,6 +254,8 @@ func TestGatewayNamespaceValidate(t *testing.T) {
 		"no cluster role":   {Config{Mode: ModeController, Proxy: Proxy{GatewayNamespace: true}}, false},
 		"namespace scoped":  {Config{Mode: ModeController, NamespaceScoped: true, Namespaces: []string{"a"}, GatewayClass: "c", Proxy: Proxy{GatewayNamespace: true, ClusterRole: "r"}}, false},
 		"proxy mode ignore": {Config{Mode: ModeProxy, Proxy: Proxy{GatewayNamespace: true}}, true},
+		"own identity":      {Config{Mode: ModeController, Proxy: Proxy{ClusterRole: "r"}}, true},
+		"scoped identity":   {Config{Mode: ModeController, NamespaceScoped: true, Namespaces: []string{"a"}, GatewayClass: "c", Proxy: Proxy{ClusterRole: "r"}}, false},
 	} {
 		if err := tt.cfg.validate(); (err == nil) != tt.ok {
 			t.Errorf("%s: err = %v", name, err)
@@ -277,5 +279,108 @@ func TestInfrastructureCannotSetTurnaMetadata(t *testing.T) {
 	l := infrastructureLabels(gw, map[string]string{})
 	if _, ok := l["turna.rakunlabs.com/other"]; ok || l["team"] != "a" {
 		t.Errorf("labels = %v", l)
+	}
+}
+
+// With proxy.cluster_role and the default placement every proxy gets its
+// own ServiceAccount in the controller namespace and a Role reading only its
+// certificate Secret; an existing proxy with the shared ServiceAccount is
+// switched in place.
+func TestControllerPlacementProxyIdentity(t *testing.T) {
+	ctx := context.Background()
+	kube := kubefake.NewSimpleClientset()
+	gw := gatewayObj("team-a", "web", httpListener("http", 80, ""))
+	name := proxyName(key(gw))
+
+	shared := &Provider{kube: kube, cfg: Config{
+		Mode:  ModeController,
+		Proxy: Proxy{ServiceAccount: "turna-proxy", Image: "example:1", Namespace: "turna-system"},
+	}}
+	if err := shared.provision(ctx, []*gwv1.Gateway{gw}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := kube.AppsV1().Deployments("turna-system").Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	own := &Provider{kube: kube, cfg: Config{
+		Mode:  ModeController,
+		Proxy: Proxy{ClusterRole: "turna-reader", Image: "example:1", Namespace: "turna-system"},
+	}}
+	if err := own.provision(ctx, []*gwv1.Gateway{gw}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	dep, err := kube.AppsV1().Deployments("turna-system").Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dep.UID != before.UID {
+		t.Error("deployment recreated")
+	}
+	if dep.Spec.Template.Spec.ServiceAccountName != name {
+		t.Errorf("service account = %q, want %q", dep.Spec.Template.Spec.ServiceAccountName, name)
+	}
+
+	if _, err := kube.CoreV1().ServiceAccounts("turna-system").Get(ctx, name, metav1.GetOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	role, err := kube.RbacV1().Roles("turna-system").Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(role.Rules) != 1 || len(role.Rules[0].ResourceNames) != 1 || role.Rules[0].ResourceNames[0] != name {
+		t.Errorf("role rules = %+v, want only the bundle Secret", role.Rules)
+	}
+
+	crb, err := kube.RbacV1().ClusterRoleBindings().Get(ctx, clusterRoleBindingName(nsName{"turna-system", name}), metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if crb.RoleRef.Name != "turna-reader" || crb.Subjects[0].Namespace != "turna-system" {
+		t.Errorf("clusterrolebinding = %+v", crb)
+	}
+
+	// a deleted gateway removes the identity
+	if err := own.provision(ctx, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := kube.CoreV1().ServiceAccounts("turna-system").Get(ctx, name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Errorf("serviceaccount after delete: %v", err)
+	}
+	if _, err := kube.RbacV1().ClusterRoleBindings().Get(ctx, clusterRoleBindingName(nsName{"turna-system", name}), metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Errorf("clusterrolebinding after delete: %v", err)
+	}
+}
+
+// Switching from gateway_namespace back to the default placement removes the
+// ClusterRoleBindings of the proxies left in the gateway namespaces.
+func TestSwitchBackRemovesBindings(t *testing.T) {
+	ctx := context.Background()
+	kube := kubefake.NewSimpleClientset()
+	gw := gatewayObj("team-a", "web", httpListener("http", 80, ""))
+	name := proxyName(key(gw))
+
+	if err := gatewayNamespaceProvider(kube).provision(ctx, []*gwv1.Gateway{gw}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	back := &Provider{kube: kube, cfg: Config{
+		Mode:  ModeController,
+		Proxy: Proxy{ClusterRole: "turna-proxy-reader", Image: "example:1", Namespace: "turna-system"},
+	}}
+	if err := back.provision(ctx, []*gwv1.Gateway{gw}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := kube.RbacV1().ClusterRoleBindings().Get(ctx, clusterRoleBindingName(nsName{"team-a", name}), metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Errorf("binding of the old proxy: %v", err)
+	}
+	if _, err := kube.RbacV1().ClusterRoleBindings().Get(ctx, clusterRoleBindingName(nsName{"turna-system", name}), metav1.GetOptions{}); err != nil {
+		t.Errorf("binding of the new proxy: %v", err)
 	}
 }

@@ -130,16 +130,22 @@ type Proxy struct {
 	// proxy resources, ServiceAccounts, Roles, RoleBindings and
 	// ClusterRoleBindings, and the bind verb on ClusterRole.
 	GatewayNamespace bool `cfg:"gateway_namespace"`
-	// ClusterRole grants the proxies of GatewayNamespace read access to the
-	// watched resources, bound to the ServiceAccount of each proxy.
+	// ClusterRole grants the proxies read access to the watched resources.
+	// When set, every proxy gets its own ServiceAccount bound to it and a
+	// Role reading only its certificate Secret, instead of the shared
+	// ServiceAccount. The controller then needs write access to
+	// ServiceAccounts, Roles and RoleBindings where proxies live, to
+	// ClusterRoleBindings, and the bind verb on ClusterRole. Required with
+	// GatewayNamespace, not used with namespace_scoped.
 	ClusterRole string `cfg:"cluster_role"`
 	// Image of the proxy pods. Empty uses the image of the controller pod
 	// (POD_NAME), so both stay in sync.
 	Image            string   `cfg:"image"`
 	ImagePullPolicy  string   `cfg:"image_pull_policy"`
 	ImagePullSecrets []string `cfg:"image_pull_secrets"`
-	// ServiceAccount of the proxy pods, it needs read access to the watched
-	// resources. Not used with GatewayNamespace.
+	// ServiceAccount shared by the proxy pods, it needs read access to the
+	// watched resources and to the certificate Secrets. Not used with
+	// ClusterRole.
 	ServiceAccount string `cfg:"service_account"`
 	// Replicas per gateway, default is 1.
 	Replicas int32 `cfg:"replicas"`
@@ -163,6 +169,11 @@ type Proxy struct {
 	MemoryRequest string `cfg:"memory_request"`
 	CPULimit      string `cfg:"cpu_limit"`
 	MemoryLimit   string `cfg:"memory_limit"`
+}
+
+// ownIdentity reports whether each proxy gets its own ServiceAccount.
+func (pc Proxy) ownIdentity() bool {
+	return pc.GatewayNamespace || pc.ClusterRole != ""
 }
 
 func (pc Proxy) replicas() int32 {
@@ -226,6 +237,10 @@ func (c *Config) validate() error {
 		if c.Proxy.ClusterRole == "" {
 			return errors.New("proxy.gateway_namespace needs proxy.cluster_role")
 		}
+	}
+
+	if c.mode() == ModeController && c.NamespaceScoped && c.Proxy.ClusterRole != "" {
+		return errors.New("proxy.cluster_role is not used with namespace_scoped, it needs cluster-wide bindings; use proxy.service_account")
 	}
 
 	if !c.NamespaceScoped {

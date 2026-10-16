@@ -43,6 +43,13 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- and (eq $placement "gateway") (ne .Values.mode "standalone") -}}
 {{- end -}}
 
+{{/* "true" when every proxy gets its own ServiceAccount and a Role reading
+only its certificate Secret; scope namespace cannot bind cluster roles and
+keeps a shared ServiceAccount */}}
+{{- define "turna-gateway.proxyIdentity" -}}
+{{- and (ne .Values.mode "standalone") (eq .Values.scope "cluster") -}}
+{{- end -}}
+
 {{- define "turna-gateway.config" -}}
 {{- $k8s := dict
   "enabled" true
@@ -88,6 +95,8 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 ) -}}
 {{- if eq (include "turna-gateway.gatewayPlacement" .) "true" -}}
 {{- $_ := set $k8s.proxy "gateway_namespace" true -}}
+{{- end -}}
+{{- if eq (include "turna-gateway.proxyIdentity" .) "true" -}}
 {{- $_ := set $k8s.proxy "cluster_role" (printf "%s-reader" (include "turna-gateway.fullname" .)) -}}
 {{- $_ := unset $k8s.proxy "service_account" -}}
 {{- end -}}

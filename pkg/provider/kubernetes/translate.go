@@ -12,7 +12,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/rakunlabs/turna/pkg/server"
@@ -59,6 +58,51 @@ type Result struct {
 	// BackendTLSPolicies applied to the backends of each served gateway;
 	// their CA certificates go into the proxy bundle of the gateway
 	gatewayPolicies map[nsName]map[nsName]struct{}
+
+	// gateways and ListenerSets served by this translation; status entries
+	// of the same controller name for other parents belong to another
+	// installation and are kept
+	ownedGateways     map[nsName]struct{}
+	ownedListenerSets map[nsName]struct{}
+
+	// every Gateway and ListenerSet of the snapshot and the watched
+	// namespaces: a parent missing from a watched namespace was deleted, its
+	// stale entries are removed
+	seenGateways     map[nsName]struct{}
+	seenListenerSets map[nsName]struct{}
+	watched          []string
+}
+
+// ownsParent reports whether a route parent or policy ancestor of a route in
+// namespace ns is served by this translation, or was deleted from a watched
+// namespace.
+func (r *Result) ownsParent(ref gwv1.ParentReference, ns string) bool {
+	if ptrOr(ref.Group, gwv1.Group(groupGateway)) != groupGateway {
+		return false
+	}
+
+	k := nsName{Namespace: string(ptrOr(ref.Namespace, gwv1.Namespace(ns))), Name: string(ref.Name)}
+
+	var owned, seen map[nsName]struct{}
+
+	switch ptrOr(ref.Kind, kindGateway) {
+	case kindGateway:
+		owned, seen = r.ownedGateways, r.seenGateways
+	case kindListenerSet:
+		owned, seen = r.ownedListenerSets, r.seenListenerSets
+	default:
+		return false
+	}
+
+	if _, ok := owned[k]; ok {
+		return true
+	}
+
+	if _, ok := seen[k]; ok {
+		return false
+	}
+
+	return len(r.watched) == 0 || slices.Contains(r.watched, k.Namespace)
 }
 
 // HTTPRouteStatus returns the parent status of an HTTPRoute.
@@ -201,8 +245,10 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 			Policies:       make(map[nsName][]gwv1.PolicyAncestorStatus),
 			ListenerSets:   make(map[nsName]*ListenerSetStatus),
 
-			gatewayPolicies:  make(map[nsName]map[nsName]struct{}),
-			listenerSetPorts: make(map[nsName][]listenerPort),
+			gatewayPolicies:   make(map[nsName]map[nsName]struct{}),
+			listenerSetPorts:  make(map[nsName][]listenerPort),
+			ownedGateways:     make(map[nsName]struct{}),
+			ownedListenerSets: make(map[nsName]struct{}),
 		},
 		hosts:          make(map[string]map[string]*hostRules),
 		entryListeners: make(map[string][]*listener),
@@ -221,6 +267,22 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 	classes := t.classes(s.GatewayClasses)
 	t.backendTLSPolicies(s.BackendTLSPolicies)
 
+	t.out.seenGateways = make(map[nsName]struct{}, len(s.Gateways))
+	for _, gw := range s.Gateways {
+		t.out.seenGateways[key(gw)] = struct{}{}
+	}
+
+	t.out.seenListenerSets = make(map[nsName]struct{}, len(s.ListenerSets))
+	for _, ls := range s.ListenerSets {
+		t.out.seenListenerSets[key(ls)] = struct{}{}
+	}
+
+	t.out.watched = slices.DeleteFunc(slices.Clone(cfg.Namespaces), func(ns string) bool { return ns == "" })
+	if len(t.out.watched) < len(cfg.Namespaces) {
+		// "" watches every namespace
+		t.out.watched = nil
+	}
+
 	listeners := make(map[nsName][]*listener)
 
 	for _, gw := range s.Gateways {
@@ -233,6 +295,7 @@ func Translate(cfg *Config, s *Snapshot) *Result {
 		}
 
 		t.out.served = append(t.out.served, gw)
+		t.out.ownedGateways[key(gw)] = struct{}{}
 		listeners[key(gw)] = t.listenerSets(gw, t.gateway(gw))
 
 		// an invalid client certificate is reported in the gateway status;
@@ -957,7 +1020,7 @@ func (t *translator) routeAllowed(route *routeInfo, li *listener) bool {
 			return false
 		}
 
-		return sel.Matches(labels.Set(t.idx.namespaceLabels(route.meta.Namespace)))
+		return t.idx.namespaceSelected(sel, route.meta.Namespace)
 	default:
 		return false
 	}

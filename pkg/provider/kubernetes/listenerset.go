@@ -6,7 +6,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
@@ -63,7 +62,7 @@ func listenerSetAllowed(gw *gwv1.Gateway, ls *gwv1.ListenerSet, idx *index) bool
 			return false
 		}
 
-		return sel.Matches(labels.Set(idx.namespaceLabels(ls.Namespace)))
+		return idx.namespaceSelected(sel, ls.Namespace)
 	default:
 		return false
 	}
@@ -152,6 +151,7 @@ func (t *translator) listenerSets(gw *gwv1.Gateway, lis []*listener) []*listener
 	for _, ls := range listenerSetsOf(gw, t.idx) {
 		info := &setInfo{set: ls, gw: key(gw), allowed: listenerSetAllowed(gw, ls, t.idx)}
 		t.sets[key(ls)] = info
+		t.out.ownedListenerSets[key(ls)] = struct{}{}
 
 		if !info.allowed {
 			continue
