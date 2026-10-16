@@ -12,6 +12,7 @@ const httpMiddlewares = [
   ['csrf', '/reference/server/http/middlewares/csrf'],
   ['decompress', '/reference/server/http/middlewares/decompress'],
   ['dns_path', '/reference/server/http/middlewares/dns_path'],
+  ['file_manager', '/reference/server/http/middlewares/file_manager'],
   ['folder', '/reference/server/http/middlewares/folder'],
   ['forward', '/reference/server/http/middlewares/forward'],
   ['gateway', '/reference/server/http/middlewares/gateway'],

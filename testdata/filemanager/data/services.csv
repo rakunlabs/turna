@@ -1,0 +1,7 @@
+service,owner,region,replicas,p95_ms,notes
+backend,platform,eu-west-1,6,182,"Handles /api/*"
+auth,identity,eu-west-1,3,64,"Issues tokens, rotates keys"
+search,discovery,us-east-1,4,240,"Beta; ""fuzzy"" mode behind a flag"
+billing,payments,eu-central-1,2,310,
+gateway,platform,global,8,41,"Edge
+multi-line note"

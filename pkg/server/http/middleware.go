@@ -15,6 +15,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/csrf"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/decompress"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/dnspath"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/filemanager"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/forward"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/gateway"
@@ -70,6 +71,7 @@ type HTTPMiddleware struct {
 	ScopeMiddleware            *scope.Scope                          `cfg:"scope"`
 	ServiceMiddleware          *service.Service                      `cfg:"service"`
 	FolderMiddleware           *folder.Folder                        `cfg:"folder"`
+	FileManagerMiddleware      *filemanager.FileManager              `cfg:"file_manager"`
 	BasicAuthMiddleware        *basicauth.BasicAuth                  `cfg:"basic_auth"`
 	CorsMiddleware             *cors.Cors                            `cfg:"cors"`
 	HeadersMiddleware          *headers.Headers                      `cfg:"headers"`
@@ -138,6 +140,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return m, err
 	case h.FolderMiddleware != nil:
 		m, err := h.FolderMiddleware.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.FileManagerMiddleware != nil:
+		m, err := h.FileManagerMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
 	case h.BasicAuthMiddleware != nil:
 		m, err := h.BasicAuthMiddleware.Middleware(name)

@@ -1,0 +1,17 @@
+server:
+  entrypoints:
+    http:
+      address: ":8080"
+  http:
+    middlewares:
+      files:
+        file_manager:
+          path: ./testdata/filemanager
+          prefix_path: /files
+          title: Test files
+          # read_only: true
+    routers:
+      files:
+        path: /files/*
+        middlewares:
+          - files

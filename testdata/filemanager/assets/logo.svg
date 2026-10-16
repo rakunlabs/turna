@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="140" viewBox="0 0 680 140">
+  <defs>
+    <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <path d="M0 0V8M0 0H8" stroke="#000" stroke-width="1.5"/>
+    </pattern>
+  </defs>
+  <path fill="url(#hatch)" fill-rule="evenodd" d="M0 0H140V140H0Z M50 10V50H10V90H50V130H90V90H130V50H90V10Z"/>
+  <rect x="1.0" y="1.0" width="138" height="138" fill="none" stroke="#000" stroke-width="2"/>
+  <path fill="#000" fill-rule="evenodd" d="M160 10H200V90H240V10H280V130H160Z M300 10H400V50H340V130H300Z M420 10H540V130H500V50H460V130H420Z M560 10H680V130H640V110H600V130H560Z M600 50V80H640V50Z"/>
+</svg>

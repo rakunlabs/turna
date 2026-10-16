@@ -40,6 +40,7 @@ A single named middleware can hold only one middleware type. If you need both he
 | `csrf` | Reject cross-site requests; optional double-submit token. |
 | `decompress` | Decompress gzip, Brotli or zstd request bodies. |
 | `dns_path` | Route to DNS-resolved instances selected from the path. |
+| `file_manager` | Browse, edit, upload and move files in a directory through a UI; serve them by path. |
 | `folder` | Serve files and SPA assets from a directory. |
 | `forward` | Forward proxy for HTTP and CONNECT requests. |
 | `gateway` | Route by path, method, header and query with Gateway API style filters and weighted backends. |

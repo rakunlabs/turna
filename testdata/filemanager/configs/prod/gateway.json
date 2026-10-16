@@ -1,0 +1,7 @@
+{
+  "routes": [
+    { "path": "/api/*", "service": "backend", "timeout": "30s" },
+    { "path": "/auth/*", "service": "auth", "timeout": "10s" }
+  ],
+  "rate_limit": 200
+}

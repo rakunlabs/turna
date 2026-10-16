@@ -1,0 +1,236 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-sunk: var(--surface-sunk);
+  --color-hover: var(--hover);
+  --color-ink: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-text: var(--accent-text);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ok: var(--ok);
+
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Neutral scale tinted a hair toward the indigo accent so greys never read dead. */
+:root {
+  --canvas: oklch(0.982 0.003 270);
+  --surface: oklch(1 0 0);
+  --surface-sunk: oklch(0.965 0.004 270);
+  --hover: oklch(0.948 0.006 270);
+  --text: oklch(0.21 0.012 270);
+  --text-muted: oklch(0.47 0.014 270);
+  --text-faint: oklch(0.56 0.012 270);
+  --line: oklch(0.92 0.006 270);
+  --line-strong: oklch(0.86 0.008 270);
+  --accent: oklch(0.51 0.21 270);
+  --accent-ink: oklch(1 0 0);
+  --accent-soft: oklch(0.95 0.03 270);
+  --accent-text: oklch(0.45 0.2 270);
+  --danger: oklch(0.53 0.2 25);
+  --danger-soft: oklch(0.96 0.025 25);
+  --ok: oklch(0.55 0.13 155);
+  --selection: oklch(0.9 0.06 270);
+  --shadow: 0 1px 2px oklch(0.2 0.02 270 / 0.06), 0 8px 24px oklch(0.2 0.02 270 / 0.08);
+
+
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --canvas: oklch(0.17 0.008 270);
+  --surface: oklch(0.205 0.009 270);
+  --surface-sunk: oklch(0.185 0.008 270);
+  --hover: oklch(0.255 0.011 270);
+  --text: oklch(0.94 0.005 270);
+  --text-muted: oklch(0.72 0.012 270);
+  --text-faint: oklch(0.62 0.012 270);
+  --line: oklch(0.27 0.01 270);
+  --line-strong: oklch(0.34 0.012 270);
+  --accent: oklch(0.6 0.19 270);
+  --accent-ink: oklch(1 0 0);
+  --accent-soft: oklch(0.28 0.06 270);
+  --accent-text: oklch(0.78 0.12 270);
+  --danger: oklch(0.7 0.17 25);
+  --danger-soft: oklch(0.27 0.06 25);
+  --ok: oklch(0.72 0.14 155);
+  --selection: oklch(0.36 0.09 270);
+  --shadow: 0 1px 2px oklch(0 0 0 / 0.3), 0 8px 24px oklch(0 0 0 / 0.35);
+
+
+  color-scheme: dark;
+}
+
+/* Code surfaces use Vesper, as the docs do, and stay dark in both themes. */
+:root {
+  --code-bg: #0d0d0d;
+  --code-raised: #161616;
+  --code-text: #ffffff;
+  --code-keyword: #a0a0a0;
+  --code-accent: #ffc799;
+  --code-string: #99ffe4;
+  --code-error: #ff8080;
+  --code-comment: #8b8b8b;
+  --code-line-number: #6b6b6b;
+  --code-divider: #262626;
+  --code-divider-strong: #333333;
+  --code-line-highlight: rgb(255 255 255 / 0.05);
+  --code-selection: rgb(255 255 255 / 0.15);
+  --code-match: rgb(255 199 153 / 0.16);
+  --code-caret: #ffc799;
+  /* matches the dark theme's --line-strong so code scrollbars look the same in both themes */
+  --code-scrollbar: oklch(0.34 0.012 270);
+  --code-scrollbar-hover: oklch(0.42 0.012 270);
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+
+::selection {
+  background: var(--selection);
+}
+
+/* Tailwind v4 dropped the pointer cursor on buttons; bring it back for every clickable control. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  select:not(:disabled),
+  summary,
+  label:has(> input[type="checkbox"], > input[type="radio"]),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="file"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  select:disabled {
+    cursor: not-allowed;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 10px;
+}
+
+/* Code surfaces are always dark, so their scrollbars keep the dark colours too. */
+.cm-editor {
+  --line-strong: var(--code-scrollbar);
+  color-scheme: dark;
+}
+
+.cm-scroller:hover {
+  --line-strong: var(--code-scrollbar-hover);
+}
+
+.cm-scroller::-webkit-scrollbar-corner {
+  background: var(--code-bg);
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-2.5 text-[13px] font-medium text-ink transition-colors duration-150 select-none;
+  }
+  .btn:hover:not(:disabled) {
+    @apply bg-hover;
+  }
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+  .btn-primary {
+    @apply border-transparent bg-accent text-accent-ink;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: color-mix(in oklch, var(--accent) 88%, black);
+  }
+  .btn-danger {
+    @apply border-transparent bg-danger text-white;
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: color-mix(in oklch, var(--danger) 88%, black);
+  }
+  .btn-ghost {
+    @apply border-transparent bg-transparent text-muted;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    @apply text-ink;
+  }
+  .icon-btn {
+    @apply inline-flex size-7 items-center justify-center rounded-md text-muted transition-colors duration-150;
+  }
+  .icon-btn:hover:not(:disabled) {
+    @apply bg-hover text-ink;
+  }
+  .icon-btn:disabled {
+    @apply cursor-not-allowed opacity-40;
+  }
+  .input {
+    @apply h-8 w-full rounded-md border border-line-strong bg-surface px-2.5 text-[13px] text-ink placeholder:text-faint;
+  }
+  .input:focus {
+    @apply border-accent outline-none;
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .kbd {
+    @apply rounded border border-line bg-sunk px-1 font-mono text-[11px] text-muted;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
