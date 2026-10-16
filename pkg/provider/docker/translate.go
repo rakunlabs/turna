@@ -359,10 +359,15 @@ func (c *claims) claimHTTP(host string, paths, entrypoints []string, tls bool) e
 }
 
 // defaultEntrypoints are the http entrypoints a router without entrypoints
-// uses: the ones serving the same tls mode or not used yet.
-func (c *claims) defaultEntrypoints(tls bool) []string {
+// uses: the ones serving the same tls mode or not used yet. Entrypoints kept
+// for tcp routers are skipped.
+func (c *claims) defaultEntrypoints(tls bool, streams []string) []string {
 	out := make([]string, 0)
 	for _, e := range c.httpEntrypoints() {
+		if slices.Contains(streams, e) {
+			continue
+		}
+
 		if secure, ok := c.secure[e]; !ok || secure == tls {
 			out = append(out, e)
 		}
@@ -464,7 +469,52 @@ func translate(cfg *Config, g *group, cl *claims) (*fragment, error) {
 	t.tcpRouters()
 	t.udpRouters()
 
+	t.pruneServices()
+
 	return t.out, nil
+}
+
+// pruneServices drops services of rejected routers, they would run health
+// checks without serving traffic.
+func (t *translator) pruneServices() {
+	s := t.out.server
+
+	pruneUnused(s.HTTP.Middlewares, namePrefix+t.g.Name+"@http-service@", func(yield func([]string) bool) {
+		for _, r := range s.HTTP.Routers {
+			if !yield(r.Middlewares) {
+				return
+			}
+		}
+	})
+	pruneUnused(s.TCP.Middlewares, namePrefix+t.g.Name+"@tcp-service@", func(yield func([]string) bool) {
+		for _, r := range s.TCP.Routers {
+			if !yield(r.Middlewares) {
+				return
+			}
+		}
+	})
+	pruneUnused(s.UDP.Middlewares, namePrefix+t.g.Name+"@udp-service@", func(yield func([]string) bool) {
+		for _, r := range s.UDP.Routers {
+			if !yield(r.Middlewares) {
+				return
+			}
+		}
+	})
+}
+
+func pruneUnused[V any](middlewares map[string]V, prefix string, routers func(yield func([]string) bool)) {
+	used := make(map[string]struct{})
+	for names := range routers {
+		for _, n := range names {
+			used[n] = struct{}{}
+		}
+	}
+
+	for name := range middlewares {
+		if _, ok := used[name]; !ok && strings.HasPrefix(name, prefix) {
+			delete(middlewares, name)
+		}
+	}
 }
 
 func validNames(lc *labelConfig) error {
@@ -709,7 +759,7 @@ func (t *translator) httpRouter(name string, r httpRouter) error {
 	case len(entrypoints) == 0 && len(t.cfg.HTTP.EntryPoints) > 0:
 		entrypoints = t.cfg.HTTP.EntryPoints
 	case len(entrypoints) == 0:
-		entrypoints = t.claims.defaultEntrypoints(r.TLS)
+		entrypoints = t.claims.defaultEntrypoints(r.TLS, t.cfg.TCP.EntryPoints)
 		if len(entrypoints) == 0 {
 			return errors.New("no entrypoint is available, set entrypoints")
 		}

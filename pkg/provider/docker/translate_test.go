@@ -2,6 +2,7 @@ package docker
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -384,6 +385,66 @@ func TestTranslateStreams(t *testing.T) {
 
 	if len(f2.server.TCP.Routers) != 0 || len(f2.warnings) == 0 {
 		t.Fatal("second tcp router took a used entrypoint")
+	}
+}
+
+func TestTranslateHTTPKeepsTCPEntrypoints(t *testing.T) {
+	cfg := &Config{TCP: Protocol{EntryPoints: []string{"db"}}}
+
+	g := &group{
+		Name:    "app",
+		Targets: []string{"10.0.0.2"},
+		Ports:   map[string][]int{"tcp": {8080}},
+		Labels: map[string]string{
+			"turna.http.routers.web.host":      "app.example.com",
+			"turna.http.services.web.port":     "8080",
+			"turna.tcp.routers.pg.entrypoints": "db",
+			"turna.tcp.routers.pg.service":     "pg",
+			"turna.tcp.services.pg.port":       "5432",
+		},
+	}
+
+	f, err := translate(cfg, g, newClaims(staticServer()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(f.warnings) > 0 {
+		t.Fatal(f.warnings)
+	}
+
+	if eps := f.server.HTTP.Routers["docker@app@http@web"].EntryPoints; slices.Contains(eps, "db") {
+		t.Fatalf("http router took tcp entrypoint: %v", eps)
+	}
+
+	if _, ok := f.server.TCP.Routers["docker@app@tcp@pg"]; !ok {
+		t.Fatal("tcp router missing")
+	}
+}
+
+func TestTranslatePrunesUnusedServices(t *testing.T) {
+	g := &group{
+		Name:    "app",
+		Targets: []string{"10.0.0.2"},
+		Ports:   map[string][]int{"tcp": {8080}},
+		Labels: map[string]string{
+			// the static configuration serves this host
+			"turna.http.routers.web.host":          "static.example.com",
+			"turna.http.services.web.health_check": "true",
+		},
+	}
+
+	f, err := translate(&Config{}, g, newClaims(staticServer()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(f.warnings) == 0 {
+		t.Fatal("expected a warning")
+	}
+
+	if len(f.server.HTTP.Middlewares) != 0 {
+		t.Fatalf("unused service kept: %v", keys(f.server.HTTP.Middlewares))
 	}
 }
 
