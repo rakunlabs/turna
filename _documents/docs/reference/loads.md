@@ -2,6 +2,8 @@
 
 `loads` fetch data before preprocess, server startup, and services. Loaded data is stored in memory and can be used by templates, `server.load_value`, service environment variables, service filters, preprocessors, and response templates.
 
+`loads` are for extra data. Turna's own config comes from the [application config sources](./config#application-config-sources), which are chosen with environment variables.
+
 ```yaml
 loads:
   - name: app_config

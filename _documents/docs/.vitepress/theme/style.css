@@ -82,20 +82,141 @@
 }
 
 .VPHero .image-src {
-  max-width: 400px;
+  max-width: 420px;
   height: auto;
 }
 
 @media (min-width: 1200px) {
   .VPHero .image-src {
-    max-width: 640px;
+    max-width: 600px;
   }
 }
 
 @media (max-width: 500px) {
   .VPHero .image-src {
-    max-width: 320px;
+    max-width: 300px;
   }
+}
+
+.VPHero .text {
+  font-size: 32px;
+  line-height: 1.25;
+  max-width: 480px;
+}
+
+@media (min-width: 640px) {
+  .VPHero .text {
+    font-size: 40px;
+    line-height: 1.2;
+  }
+}
+
+@media (min-width: 960px) {
+  .VPHero .text {
+    font-size: 42px;
+    line-height: 1.15;
+  }
+}
+
+/**
+ * Component: Home backdrop (old TV static + scanlines)
+ * -------------------------------------------------------------------------- */
+
+:root {
+  --home-static-opacity: 0.22;
+  --home-static-blend: multiply;
+  --home-scanline: rgb(0 0 0 / 0.06);
+  --home-roll: rgb(0 0 0 / 0.04);
+}
+
+.dark {
+  --home-static-opacity: 0.2;
+  --home-static-blend: screen;
+  --home-scanline: rgb(0 0 0 / 0.35);
+  --home-roll: rgb(255 255 255 / 0.035);
+}
+
+.VPHome {
+  position: relative;
+  isolation: isolate;
+}
+
+.VPHome::before,
+.VPHome::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--vp-nav-height) * -1) 0 auto;
+  height: calc(100% + var(--vp-nav-height));
+  max-height: 1100px;
+  z-index: -1;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 40%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 40%, transparent 100%);
+}
+
+/* Static: grayscale noise tile, jumped to a new offset every frame. */
+.VPHome::after {
+  opacity: var(--home-static-opacity);
+  mix-blend-mode: var(--home-static-blend);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='linear' slope='2.2' intercept='-0.6'/%3E%3CfeFuncG type='linear' slope='2.2' intercept='-0.6'/%3E%3CfeFuncB type='linear' slope='2.2' intercept='-0.6'/%3E%3CfeFuncA type='linear' slope='0' intercept='1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: home-static 0.5s steps(1) infinite;
+}
+
+/* Scanlines plus a slow rolling band, like a badly tuned CRT. */
+.VPHome::before {
+  background:
+    linear-gradient(to bottom, transparent, var(--home-roll) 50%, transparent) 0 0 / 100% 180px no-repeat,
+    repeating-linear-gradient(to bottom, var(--home-scanline) 0 1px, transparent 1px 3px);
+  animation: home-roll 7s linear infinite;
+}
+
+@keyframes home-static {
+  0% { background-position: 0 0; }
+  12% { background-position: -83px 41px; }
+  25% { background-position: 57px -112px; }
+  37% { background-position: -131px -29px; }
+  50% { background-position: 96px 77px; }
+  62% { background-position: -18px 140px; }
+  75% { background-position: 121px -63px; }
+  87% { background-position: -47px -98px; }
+}
+
+@keyframes home-roll {
+  from { background-position: 0 -180px, 0 0; }
+  to { background-position: 0 1100px, 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .VPHome::before,
+  .VPHome::after {
+    animation: none;
+  }
+}
+
+.VPHome .VPFeature {
+  background-color: color-mix(in srgb, var(--vp-c-bg-soft) 82%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.VPHome .VPFeature,
+.VPHome .VPButton,
+.VPHome div[class*='language-'] {
+  border-radius: 8px !important;
+}
+
+.VPHome :not(pre) > code {
+  border-radius: 0 !important;
+}
+
+.VPHome .home-quickstart {
+  max-width: 1152px;
+  margin: 48px auto 64px;
+}
+
+.VPHome .home-quickstart h2 {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
 }
 
 .vp-doc ul {
@@ -103,6 +224,100 @@
 }
 
 .vp-doc :not(pre) > code {
-  color: #1e1e1e;
-  background-color: #ffd500;
+  color: #e1e4e8;
+  background-color: #0d0d0d;
+  border-radius: 0;
+  padding: 2px 6px;
+}
+.dark .vp-doc :not(pre) > code {
+  background-color: #2a2a2e;
+}
+
+/**
+ * Component: Code blocks (always dark)
+ * -------------------------------------------------------------------------- */
+
+:root,
+.dark {
+  --vp-code-block-bg: #0d0d0d;
+  --vp-code-block-color: #e1e4e8;
+  --vp-code-block-divider-color: #262626;
+  --vp-code-lang-color: #8a8a8a;
+  --vp-code-line-highlight-color: rgb(255 255 255 / 0.08);
+  --vp-code-line-number-color: #6b6b6b;
+  --vp-code-copy-code-border-color: #333;
+  --vp-code-copy-code-bg: #1a1a1a;
+  --vp-code-copy-code-hover-border-color: #444;
+  --vp-code-copy-code-hover-bg: #262626;
+  --vp-code-copy-code-active-text: #c9c9c9;
+  --vp-code-tab-bg: #0d0d0d;
+  --vp-code-tab-divider: #262626;
+  --vp-code-tab-text-color: #8a8a8a;
+  --vp-code-tab-hover-text-color: #e1e4e8;
+  --vp-code-tab-active-text-color: #ffffff;
+}
+
+html:not(.dark) .vp-doc div[class*='language-'] .shiki span {
+  color: var(--shiki-dark, inherit);
+  text-decoration: var(--shiki-dark-text-decoration, inherit);
+  font-weight: var(--shiki-dark-font-weight, inherit);
+}
+
+/**
+ * Component: Doc layout (wider content column)
+ * -------------------------------------------------------------------------- */
+
+.VPDoc.has-aside .content-container {
+  max-width: 880px !important;
+}
+
+@media (min-width: 1280px) {
+  .VPDoc .content {
+    flex-grow: 1;
+  }
+}
+
+@media (min-width: 1440px) {
+  .VPDoc:not(.has-sidebar) .content {
+    max-width: 960px !important;
+  }
+
+  .VPDoc:not(.has-sidebar) .container {
+    max-width: 1280px !important;
+  }
+}
+
+/**
+ * Component: Nav logo
+ * -------------------------------------------------------------------------- */
+
+.VPNavBarTitle .logo {
+  height: 26px;
+  width: auto;
+}
+
+/**
+ * Component: Page background (light, paper tone)
+ * -------------------------------------------------------------------------- */
+
+:root:not(.dark) {
+  --vp-c-bg: #faf8f4;
+  --vp-c-bg-alt: #f2efe8;
+  --vp-c-bg-soft: #f4f1ea;
+  --vp-c-bg-elv: #faf8f4;
+  --vp-nav-bg-color: #faf8f4;
+  --vp-local-nav-bg-color: #faf8f4;
+}
+
+/**
+ * Component: Sidebar scrollbar (visible only while scrolling)
+ * -------------------------------------------------------------------------- */
+
+.VPSidebar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.VPSidebar.is-scrolling {
+  scrollbar-color: var(--vp-c-text-3) transparent;
 }

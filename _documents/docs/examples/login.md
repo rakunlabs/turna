@@ -1,6 +1,6 @@
 # Login
 
-This example combines `session`, `login`, `session_info`, and `role_check` for a browser application backed by an external OAuth2 provider.
+This example combines `session`, `login`, `session_info`, and `role` for a browser application backed by an external OAuth2 provider.
 
 ```yaml
 server:
@@ -67,7 +67,7 @@ server:
             roles: true
 
       api_roles:
-        role_check:
+        role:
           allow_others: true
           path_map:
             - regex_path: ^/api/transaction/.*

@@ -78,9 +78,25 @@ func (r *Router) set(ruleRouter *RuleRouter, available []string) error {
 		}
 
 		for path := range mPath {
-			e.Handle(path, httputil.NewMiddlewareHandler(middlewares))
+			if err := handle(e, path, httputil.NewMiddlewareHandler(middlewares)); err != nil {
+				return err
+			}
 		}
 	}
+
+	return nil
+}
+
+// handle registers a route. The router panics on invalid patterns, which
+// rejects the configuration instead of stopping the process.
+func handle(e RouterHandler, path string, h http.Handler) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("path %q: %v", path, r)
+		}
+	}()
+
+	e.Handle(path, h)
 
 	return nil
 }

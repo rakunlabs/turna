@@ -36,8 +36,6 @@ const httpMiddlewares = [
   ['request', '/reference/server/http/middlewares/request'],
   ['request_id', '/reference/server/http/middlewares/request_id'],
   ['role', '/reference/server/http/middlewares/role'],
-  ['role_check', '/reference/server/http/middlewares/role_check'],
-  ['role_data', '/reference/server/http/middlewares/role_data'],
   ['scope', '/reference/server/http/middlewares/scope'],
   ['service', '/reference/server/http/middlewares/service'],
   ['session', '/reference/server/http/middlewares/session'],
@@ -57,8 +55,18 @@ export default defineConfig({
   title: 'turna',
   description: 'turna documentation',
   base: '/turna/',
+  head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/turna/favicon.svg' }]],
   lastUpdated: true,
+  markdown: {
+    theme: { light: 'vesper', dark: 'vesper' },
+  },
   themeConfig: {
+    logo: {
+      light: '/assets/turna.svg',
+      dark: '/assets/turna_light.svg',
+      alt: 'turna',
+    },
+    siteTitle: false,
     search: {
       provider: 'local',
     },
@@ -167,6 +175,7 @@ export default defineConfig({
           },
           { text: 'Services', link: '/reference/services' },
           { text: 'Kubernetes Gateway', link: '/reference/kubernetes' },
+          { text: 'Docker and Swarm', link: '/reference/docker' },
         ],
       },
       {

@@ -63,9 +63,7 @@ A single named middleware can hold only one middleware type. If you need both he
 | `regex_path` | Rewrite the URL path with a regex. |
 | `request` | Make an outbound HTTP request and return its response. |
 | `request_id` | Ensure `X-Request-Id` exists. |
-| `role` | Check roles in parsed claims. |
-| `role_check` | Path/method role authorization after `session`. |
-| `role_data` | Return data based on roles in parsed claims. |
+| `role` | Role authorization (global and per path/method) and role based data after `session`. |
 | `scope` | Check scopes in parsed claims. |
 | `service` | Reverse proxy and load balancer. |
 | `session` | Validate bearer/session tokens and set identity headers. |

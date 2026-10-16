@@ -20,7 +20,7 @@ telemetry: {}
 Turna applies configuration and runtime work in this order:
 
 1. Load bootstrap settings from environment variables.
-2. Load Turna application config from Consul, Vault, file, and environment sources depending on `config_set`.
+2. Load Turna application config from the [application config sources](#application-config-sources): Consul, AWS, Azure, Vault, GCP, HTTP, file, and environment.
 3. Run `loads` and store loaded data in template memory.
 4. Apply top-level `env_values` and `env` to Turna's own process environment, then refresh the default HTTP transport's proxy settings.
 5. Run `preprocess` modules.
@@ -94,51 +94,78 @@ telemetry:
 
 Telemetry is recorded by the `telemetry` middlewares of [HTTP](./server/http/middlewares/telemetry), [TCP](./server/tcp/middlewares/telemetry) and [UDP](./server/udp/middlewares/telemetry). Service name and resource attributes follow the standard `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES` environment variables.
 
-## Bootstrap Settings
+## Application Config Sources
 
-Bootstrap settings decide where the Turna config itself is loaded from.
+Turna's own configuration (everything on this page) is loaded with [`github.com/rakunlabs/chu`](https://github.com/rakunlabs/chu). Every source looks up a document named after the application, `turna` by default, and later sources override earlier ones:
 
-```yaml
-prefix:
-  vault: ""
-  consul: ""
-app_name: turna
-config_set:
-  consul: false
-  vault: false
-  file: true
-```
+| Order | Source | Enabled when | Document looked up |
+| --- | --- | --- | --- |
+| 1 | `default` | always | `default` struct tags |
+| 2 | `consul` | `CONSUL_HTTP_ADDR` is set | KV key `<CONSUL_CONFIG_PATH_PREFIX>/turna` |
+| 3 | `awsssm` | `AWS_REGION` or `AWS_DEFAULT_REGION` is set | parameter `/<AWS_SSM_PREFIX>/turna` |
+| 4 | `awssecrets` | `AWS_REGION` or `AWS_DEFAULT_REGION` is set | secret `<AWS_SECRETS_PREFIX>/turna` |
+| 5 | `azurekeyvault` | `AZURE_KEYVAULT_URL` or `AZURE_KEYVAULT_NAME` is set | secret `turna` |
+| 6 | `vault` | `VAULT_ADDR` or `VAULT_AGENT_ADDR` is set | KVv2 `<VAULT_SECRET_BASE_PATH>/turna` |
+| 7 | `gcpparameter` | `GCP_PROJECT_ID` is set | parameter `turna` |
+| 8 | `gcpsecret` | `GCP_PROJECT_ID` is set | secret `turna` |
+| 9 | `http` | `CONFIG_HTTP_ADDR` is set | `GET <CONFIG_HTTP_ADDR>/turna<CONFIG_HTTP_SUFFIX>` |
+| 10 | `file` | always | `turna.toml`, `.yaml`, `.yml` or `.json` |
+| 11 | `env` | always | environment variables and `.env` files |
 
-Equivalent environment variables:
+A source whose address variable is missing, or whose document does not exist, is skipped. Any other error, such as failed authentication, stops startup.
+
+Remote documents are decoded as YAML, so JSON works as well.
 
 ```sh
-APP_NAME=turna
-PREFIX_CONSUL=finops
-PREFIX_VAULT=secret
-CONFIG_SET_CONSUL=false
-CONFIG_SET_VAULT=false
-CONFIG_SET_FILE=true
+# Base config in Consul, secrets from GCP Secret Manager, overrides from env
+CONSUL_HTTP_ADDR=consul:8500 \
+CONSUL_CONFIG_PATH_PREFIX=finops \
+GCP_PROJECT_ID=my-project \
+LOG_LEVEL=debug \
+turna
 ```
 
-The effective loader order is Consul, Vault, file, and environment. Environment variables are always loaded last.
+### Naming
 
-## File Config
+| Environment variable | Description |
+| --- | --- |
+| `APP_NAME` | Document name used by every source. Default is `turna`. |
+| `CONFIG_NAME_PREFIX` | Prepended to the name as `<prefix>/<APP_NAME>`. |
+| `CONFIG_SET_<SOURCE>` | Set to `false` to skip a source, for example `CONFIG_SET_VAULT=false` or `CONFIG_SET_GCPSECRET=false`. Useful when a backend is down and should not block startup. |
 
-File loading is enabled by default. Supported extensions are `toml`, `yaml`, `yml`, and `json`.
+### File
 
-Turna looks for a file named after `APP_NAME`, which defaults to `turna`, such as `turna.yaml`. Set `CONFIG_FILE` to use a specific file name.
+Turna looks for `turna.toml`, `turna.yaml`, `turna.yml` or `turna.json` in the current directory, then in `/etc`. `CONFIG_FILE_TURNA` (the uppercased app name) or `CONFIG_FILE` points to a specific file instead.
 
 ```sh
 CONFIG_FILE=local.yaml turna
 ```
 
-## Consul And Vault Client Environment
+### Environment
 
-Consul uses `github.com/hashicorp/consul/api` environment variables. Common options:
+Environment variables are loaded last and override every other source. Field paths are uppercased and joined with `_`, so `log_level` is `LOG_LEVEL` and `telemetry.collector` is `TELEMETRY_COLLECTOR`. `.env` and `.env.local` in the current directory are read automatically; `CONFIG_ENV_FILE` adds one more file.
+
+### HTTP
 
 | Environment variable | Description |
 | --- | --- |
-| `CONSUL_HTTP_ADDR` | Consul address. |
+| `CONFIG_HTTP_ADDR` | Base URL. The app name is appended as a path. |
+| `CONFIG_HTTP_SUFFIX` | Appended after the name, for example `.yaml`. |
+| `CONFIG_HTTP_QUERY` | Query string added to the request, for example `env=prod`. |
+
+Only a `200` response is used; `204` and `404` skip the source.
+
+### Consul
+
+| Environment variable | Description |
+| --- | --- |
+| `CONSUL_HTTP_ADDR` | Consul address. Required to enable the source. |
+| `CONSUL_CONFIG_PATH_PREFIX` | Key prefix, the key becomes `<prefix>/turna`. |
+
+The client also reads the standard `github.com/hashicorp/consul/api` variables:
+
+| Environment variable | Description |
+| --- | --- |
 | `CONSUL_HTTP_TOKEN_FILE` | File containing the Consul token. |
 | `CONSUL_HTTP_TOKEN` | Consul token. |
 | `CONSUL_HTTP_AUTH` | HTTP basic auth. |
@@ -152,15 +179,21 @@ Consul uses `github.com/hashicorp/consul/api` environment variables. Common opti
 | `CONSUL_NAMESPACE` | Consul namespace. |
 | `CONSUL_PARTITION` | Consul partition. |
 
-Vault uses `github.com/hashicorp/vault/api` environment variables. Common options:
+### Vault
 
 | Environment variable | Description |
 | --- | --- |
-| `VAULT_ADDR` | Vault address. |
+| `VAULT_ADDR`, `VAULT_AGENT_ADDR` | Vault address. Required to enable the source. |
+| `VAULT_SECRET_BASE_PATH` | KVv2 mount path. Required when Vault is enabled. |
+| `VAULT_ROLE_ID` | AppRole role ID. When set, Turna logs in with AppRole; otherwise `VAULT_TOKEN` is used. |
+| `VAULT_ROLE_SECRET` | AppRole secret ID. |
+| `VAULT_APPROLE_BASE_PATH` | AppRole login path. Default is `auth/approle/login`. |
+
+The client also reads the standard `github.com/hashicorp/vault/api` variables:
+
+| Environment variable | Description |
+| --- | --- |
 | `VAULT_TOKEN` | Vault token. |
-| `VAULT_ROLE_ID` | AppRole role ID. |
-| `VAULT_ROLE_SECRET` | AppRole secret. |
-| `VAULT_AGENT_ADDR` | Vault agent address. |
 | `VAULT_MAX_RETRIES` | Retry count. |
 | `VAULT_CACERT` | CA certificate file. |
 | `VAULT_CACERT_BYTES` | CA certificate bytes. |
@@ -174,4 +207,36 @@ Vault uses `github.com/hashicorp/vault/api` environment variables. Common option
 | `VAULT_HTTP_PROXY` | HTTP proxy. |
 | `VAULT_PROXY_ADDR` | Proxy address. |
 | `VAULT_DISABLE_REDIRECTS` | Disable redirects. |
-| `VAULT_APPROLE_BASE_PATH` | AppRole login path. |
+
+### AWS
+
+Both AWS sources use the default AWS credential chain (environment, shared config, IAM role).
+
+| Environment variable | Description |
+| --- | --- |
+| `AWS_REGION`, `AWS_DEFAULT_REGION` | Region. Required to enable the sources. |
+| `AWS_SSM_PREFIX` | Parameter Store prefix, the name becomes `/<prefix>/turna`. Loaded with decryption. |
+| `AWS_SECRETS_PREFIX` | Secrets Manager prefix, the secret id becomes `<prefix>/turna`. |
+
+### Azure Key Vault
+
+Uses `DefaultAzureCredential` (environment, managed identity, Azure CLI). The latest version of the secret is loaded; `/` in the name is replaced with `-`.
+
+| Environment variable | Description |
+| --- | --- |
+| `AZURE_KEYVAULT_URL` | Vault URL, for example `https://my-vault.vault.azure.net/`. |
+| `AZURE_KEYVAULT_NAME` | Vault name, used to build the URL when `AZURE_KEYVAULT_URL` is unset. |
+
+### GCP
+
+Both GCP sources use Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS`, workload identity). `/` in the name is replaced with `-`.
+
+| Environment variable | Description |
+| --- | --- |
+| `GCP_PROJECT_ID` | Project id. Required to enable the sources. |
+| `GCP_PARAMETER_LOCATION` | Parameter Manager location. Default is `global`. |
+| `GCP_PARAMETER_VERSION` | Parameter version to render. Default is `latest`. Referenced secrets are resolved server-side. |
+| `GCP_PARAMETER_FALLBACK` | When `true` and `latest` is disabled, use the most recent enabled version. |
+| `GCP_SECRET_LOCATION` | Secret Manager location. Default is `global`. |
+| `GCP_SECRET_VERSION` | Secret version. Default is `latest`. |
+| `GCP_SECRET_ADDITIONAL` | Comma-separated shared secrets loaded before `turna`, for example `generic,keycloak`. Missing ones are skipped. |

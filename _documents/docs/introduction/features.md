@@ -4,7 +4,7 @@ Turna combines four operational building blocks in one binary.
 
 ## Configuration Loader
 
-Turna loads its own configuration from files, environment variables, Consul, and Vault. The `loads` section can also fetch extra data and expose it to templates, generated files, server configuration, or service environment variables.
+Turna loads its own configuration from files, environment variables, HTTP, Consul, Vault, AWS Secrets Manager and SSM Parameter Store, Azure Key Vault, and GCP Secret Manager and Parameter Manager. The `loads` section can also fetch extra data and expose it to templates, generated files, server configuration, or service environment variables.
 
 ## Preprocess
 

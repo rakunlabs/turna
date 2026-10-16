@@ -127,17 +127,18 @@ server:
             title: "Turna Login"
           session_middleware: "session"
       role_data:
-        role_data:
-          map:
-          - roles:
-            - "transaction_rw"
-            data:
-              "test": 5555
-          default:
-            - test: 0
-            - test2: 0
+        role:
+          data:
+            map:
+            - roles:
+              - "transaction_rw"
+              data:
+                "test": 5555
+            default:
+              - test: 0
+              - test2: 0
       role_check:
-        role_check:
+        role:
           allow_others: true
           redirect:
             enable: true

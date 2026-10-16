@@ -13,10 +13,9 @@ Flags:
 | Flag | Default | Description |
 | --- | --- | --- |
 | `-l`, `--log-level` | `info` | Log level. Command-line value overrides loaded config. |
-| `--config-consul` | `false` | Enable Consul as a Turna config source. |
-| `--config-vault` | `false` | Enable Vault as a Turna config source. Requires `PREFIX_VAULT`. |
-| `--config-file` | `true` | Enable file-based config loading. |
 | `-v`, `--version` | | Print version metadata. |
+
+Config sources are selected with environment variables, not flags. See [Application Config Sources](../reference/config#application-config-sources).
 
 ## API Command
 

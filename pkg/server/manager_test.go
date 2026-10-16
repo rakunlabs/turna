@@ -178,8 +178,52 @@ func TestManagerFailedApplyKeepsRunning(t *testing.T) {
 		t.Fatal("expected router error")
 	}
 
+	// invalid path pattern makes the router panic
+	bad = helloServer(map[string]EntryPoint{"a": {Address: "127.0.0.1:0"}}, "bad")
+	bad.HTTP.Routers["a"] = shttp.Router{Path: []string{"/x/*/y/*"}, Middlewares: []string{"mgr-hello"}}
+	if err := m.Apply(bad); err == nil {
+		t.Fatal("expected path error")
+	}
+
 	if got := body(t, addrA); got != "ok" {
 		t.Fatalf("previous config not kept: %q", got)
+	}
+}
+
+func TestManagerCheckLayer(t *testing.T) {
+	m := newTestManager(t)
+
+	if err := m.SetLayer(LayerStatic, helloServer(map[string]EntryPoint{"a": {Address: "127.0.0.1:0"}}, "ok")); err != nil {
+		t.Fatal(err)
+	}
+	addrA := addr(t, m, "a")
+
+	good := &Server{HTTP: shttp.HTTP{
+		Routers:     map[string]shttp.Router{"x": {Host: "x.test", Path: []string{"/*"}, Middlewares: []string{"x"}}},
+		Middlewares: map[string]shttp.HTTPMiddleware{"x": {HelloMiddleware: &hello.Hello{Message: "x"}}},
+	}}
+	if err := m.CheckLayer("dyn", good); err != nil {
+		t.Fatal(err)
+	}
+
+	bad := &Server{HTTP: shttp.HTTP{
+		Routers: map[string]shttp.Router{"x": {Host: "x.test", Path: []string{"/*"}, Middlewares: []string{"missing"}}},
+	}}
+	if err := m.CheckLayer("dyn", bad); err == nil {
+		t.Fatal("expected error")
+	}
+
+	// a check does not change the running configuration
+	if m.Layer("dyn") != nil {
+		t.Fatal("check set the layer")
+	}
+	if got := body(t, addrA); got != "ok" {
+		t.Fatalf("got %q", got)
+	}
+
+	// a checked middleware is built again on apply
+	if err := m.SetLayer("dyn", good); err != nil {
+		t.Fatal(err)
 	}
 }
 

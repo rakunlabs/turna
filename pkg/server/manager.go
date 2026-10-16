@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"sync"
 
@@ -98,6 +99,67 @@ func (m *Manager) Layer(name string) *Server {
 	defer m.layerMu.Unlock()
 
 	return m.layers[name]
+}
+
+// CheckLayer reports whether replacing the layer name with s would apply,
+// without changing the running configuration. Entrypoints are not bound, so
+// bind errors of new entrypoints are not detected.
+func (m *Manager) CheckLayer(name string, s *Server) error {
+	m.layerMu.Lock()
+	defer m.layerMu.Unlock()
+
+	layers := maps.Clone(m.layers)
+	if s == nil {
+		delete(layers, name)
+	} else {
+		layers[name] = s
+	}
+
+	merged, err := mergeLayers(layers)
+	if err != nil {
+		return err
+	}
+
+	return m.check(merged)
+}
+
+func (m *Manager) check(s *Server) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	streams := make([]string, 0, len(s.EntryPoints))
+	packets := make([]string, 0)
+
+	for name, cfg := range s.EntryPoints {
+		if isPacket(cfg.Network) {
+			packets = append(packets, name)
+		} else {
+			streams = append(streams, name)
+		}
+	}
+
+	registry.Begin()
+	defer registry.Rollback()
+
+	pTCP, err := m.tcp.Prepare(&s.TCP, streams)
+	if err != nil {
+		return fmt.Errorf("tcp: %w", err)
+	}
+	defer pTCP.Discard()
+
+	pHTTP, err := m.http.Prepare(&s.HTTP, without(streams, pTCP.Entrypoints()))
+	if err != nil {
+		return fmt.Errorf("http: %w", err)
+	}
+	defer pHTTP.Discard()
+
+	pUDP, err := m.udp.Prepare(&s.UDP, packets)
+	if err != nil {
+		return fmt.Errorf("udp: %w", err)
+	}
+	defer pUDP.Discard()
+
+	return nil
 }
 
 // Apply activates s.

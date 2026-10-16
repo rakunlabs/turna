@@ -8,36 +8,57 @@ import (
 
 	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/turna/internal/config"
+	"github.com/rakunlabs/turna/pkg/provider/docker"
 	"github.com/rakunlabs/turna/pkg/provider/kubernetes"
 	"github.com/rakunlabs/turna/pkg/server"
 )
 
+type provider interface {
+	Run(ctx context.Context) error
+}
+
 // runProviders starts the dynamic configuration providers. They need a
 // running server manager, which exists even without static entrypoints.
 func runProviders(ctx context.Context, wg *sync.WaitGroup) error {
-	k8s := config.Application.Providers.Kubernetes
-	if !k8s.Enabled {
+	providers := config.Application.Providers
+
+	if !providers.Kubernetes.Enabled && !providers.Docker.Enabled {
 		return nil
 	}
 
 	if server.GlobalManager == nil {
-		return fmt.Errorf("kubernetes provider: server is not running")
+		return fmt.Errorf("providers: server is not running")
 	}
 
-	p, err := kubernetes.New(k8s, server.GlobalManager)
-	if err != nil {
-		return err
+	if providers.Kubernetes.Enabled {
+		p, err := kubernetes.New(providers.Kubernetes, server.GlobalManager)
+		if err != nil {
+			return err
+		}
+
+		startProvider(ctx, wg, "kubernetes", p)
 	}
 
+	if providers.Docker.Enabled {
+		p, err := docker.New(providers.Docker, server.GlobalManager)
+		if err != nil {
+			return err
+		}
+
+		startProvider(ctx, wg, "docker", p)
+	}
+
+	return nil
+}
+
+func startProvider(ctx context.Context, wg *sync.WaitGroup, name string, p provider) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 
 		if err := p.Run(ctx); err != nil && ctx.Err() == nil {
-			slog.Error("kubernetes provider stopped", "err", err.Error())
+			slog.Error(name+" provider stopped", "err", err.Error())
 			into.CtxCancel()
 		}
 	}()
-
-	return nil
 }

@@ -15,7 +15,8 @@ curl -fSL https://github.com/rakunlabs/turna/releases/latest/download/turna_Linu
 macOS Apple Silicon:
 
 ```sh
-curl -fSL https://github.com/rakunlabs/turna/releases/latest/download/turna_Darwin_arm64.tar.gz | tar -xz --overwrite -C ~/bin/ turna
+# mkdir -p ~/bin
+curl -fSL https://github.com/rakunlabs/turna/releases/latest/download/turna_Darwin_arm64.tar.gz | tar -xz -C ~/bin turna
 ```
 
 ## First Config
@@ -46,7 +47,7 @@ server:
 Start Turna.
 
 ```sh
-turna --config-file
+turna
 ```
 
 Requests to `http://localhost:8080/*` are proxied to `http://localhost:3000/*`.

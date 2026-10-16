@@ -39,8 +39,6 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/request"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/requestid"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/role"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/rolecheck"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/roledata"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/scope"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/service"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
@@ -90,8 +88,6 @@ type HTTPMiddleware struct {
 	SessionInfoMiddleware      *sessioninfo.Info                     `cfg:"session_info"`
 	IamCheckMiddleware         *iamcheck.IamCheck                    `cfg:"iam_check"`
 	IamForwardAuthMiddleware   *iamforwardauth.IamForwardAuth        `cfg:"iam_forward_auth"`
-	RoleCheckMiddleware        *rolecheck.RoleCheck                  `cfg:"role_check"`
-	RoleDataMiddleware         *roledata.RoleData                    `cfg:"role_data"`
 	TokenPassMiddleware        *tokenpass.TokenPass                  `cfg:"token_pass"`
 	RedirectContinueMiddleware *redirectcontinue.RedirectionContinue `cfg:"redirect_continue"`
 	ForwardMiddleware          *forward.Forward                      `cfg:"forward"`
@@ -133,7 +129,8 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 	case h.StripPrefixMiddleware != nil:
 		return []MiddlewareFunc{h.StripPrefixMiddleware.Middleware()}, nil
 	case h.RoleMiddleware != nil:
-		return []MiddlewareFunc{h.RoleMiddleware.Middleware()}, nil
+		m, err := h.RoleMiddleware.Middleware()
+		return []MiddlewareFunc{m}, err
 	case h.ScopeMiddleware != nil:
 		return []MiddlewareFunc{h.ScopeMiddleware.Middleware()}, nil
 	case h.ServiceMiddleware != nil:
@@ -191,12 +188,6 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	case h.IamForwardAuthMiddleware != nil:
 		m, err := h.IamForwardAuthMiddleware.Middleware()
-		return []MiddlewareFunc{m}, err
-	case h.RoleCheckMiddleware != nil:
-		m, err := h.RoleCheckMiddleware.Middleware()
-		return []MiddlewareFunc{m}, err
-	case h.RoleDataMiddleware != nil:
-		m, err := h.RoleDataMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
 	case h.TokenPassMiddleware != nil:
 		m, err := h.TokenPassMiddleware.Middleware()
