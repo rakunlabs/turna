@@ -368,7 +368,7 @@ func TestPrefixBalancerWeighted(t *testing.T) {
 
 	h := newServiceHandler(t, context.Background(), &Service{PrefixBalancer: PrefixBalancer{
 		Prefixes: []PrefixServers{{
-			Prefix:  "/api",
+			Prefix:  []string{"/api", "/v2"},
 			Servers: []Server{{URL: a.URL, Weight: 2}, {URL: b.URL}},
 		}},
 		DefaultServers: []Server{{URL: d.URL}},
@@ -384,6 +384,13 @@ func TestPrefixBalancerWeighted(t *testing.T) {
 
 	if counts["a"] != 4 || counts["b"] != 2 {
 		t.Fatalf("counts = %v", counts)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v2/x", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if got := rec.Body.String(); got != "a" && got != "b" {
+		t.Fatalf("got %q for /v2, want a or b", got)
 	}
 
 	if got := call(h).Body.String(); got != "default" {
@@ -561,5 +568,35 @@ func TestInsecureSkipVerifyHealthCheckAndMirror(t *testing.T) {
 		}
 
 		cancel()
+	}
+}
+
+func TestResponseHeaderTimeout(t *testing.T) {
+	release := make(chan struct{})
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		<-release
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(slow.Close)
+	t.Cleanup(func() { close(release) })
+
+	h := newServiceHandler(t, context.Background(), &Service{
+		LoadBalancer: LoadBalancer{Servers: []Server{{URL: slow.URL}}},
+		Timeouts:     Timeouts{ResponseHeader: 20 * time.Millisecond},
+	})
+
+	if got := call(h).Code; got != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", got)
+	}
+}
+
+func TestNegativeTimeout(t *testing.T) {
+	m := &Service{
+		LoadBalancer: LoadBalancer{Servers: []Server{{URL: "http://127.0.0.1:1"}}},
+		Timeouts:     Timeouts{Dial: -time.Second},
+	}
+
+	if _, err := m.Middleware(context.Background()); err == nil {
+		t.Fatal("expected error")
 	}
 }

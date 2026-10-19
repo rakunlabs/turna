@@ -12,12 +12,16 @@ server:
             - POST
             - PUT
             - DELETE
-          regex_path: ^/admin/.*$
+          regex_path:
+            - ^/admin/.*$
+            - \.env$
 ```
 
-| Field | Description |
-| --- | --- |
-| `methods` | HTTP methods to block. Matching is case-insensitive after methods are uppercased. |
-| `regex_path` | Optional Go regular expression. Matching paths are blocked. |
+| Field | Default | Description |
+| --- | --- | --- |
+| `methods` | | HTTP methods to block. Matching is case-insensitive after methods are uppercased. |
+| `regex_path` | | Go regular expression, or a list of them. Paths matching any are blocked. |
+| `status_code` | `403` | Status of blocked requests, e.g. `404` to hide the path. |
+| `message` | | Error message of the response body. |
 
-Requests that do not match continue to the next middleware.
+Requests that do not match continue to the next middleware. To block by client IP, use [`ip_filter`](./ip_filter).

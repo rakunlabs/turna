@@ -190,7 +190,7 @@ type PrefixBalancer struct {
 }
 
 type PrefixServers struct {
-	Prefix  string   `cfg:"prefix"`
+	Prefix  []string `cfg:"prefix"`
 	Servers []Server `cfg:"servers"`
 
 	Balancer ProxyBalancer
@@ -204,8 +204,10 @@ func (b *PrefixBalancer) balancer(r *http.Request) ProxyBalancer {
 	path := r.URL.Path
 
 	for _, prefix := range b.Prefixes {
-		if strings.HasPrefix(path, prefix.Prefix) {
-			return prefix.Balancer
+		for _, p := range prefix.Prefix {
+			if strings.HasPrefix(path, p) {
+				return prefix.Balancer
+			}
 		}
 	}
 

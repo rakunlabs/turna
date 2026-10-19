@@ -1,6 +1,7 @@
 package block
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -9,8 +10,13 @@ import (
 )
 
 type Block struct {
-	Methods   []string `cfg:"methods"`
-	RegexPath string   `cfg:"regex_path"`
+	Methods []string `cfg:"methods"`
+	// RegexPath blocks paths matching any of the regular expressions.
+	RegexPath []string `cfg:"regex_path"`
+	// StatusCode of blocked requests, default is 403.
+	StatusCode int `cfg:"status_code"`
+	// Message of the error body, default is "method not allowed" or "path not allowed".
+	Message string `cfg:"message"`
 }
 
 func (m *Block) Middleware() (func(http.Handler) http.Handler, error) {
@@ -19,27 +25,40 @@ func (m *Block) Middleware() (func(http.Handler) http.Handler, error) {
 		methodsSet[strings.ToUpper(m)] = struct{}{}
 	}
 
-	var rgxPath *regexp.Regexp
-	if m.RegexPath != "" {
-		rgx, err := regexp.Compile(m.RegexPath)
+	rgxPaths := make([]*regexp.Regexp, 0, len(m.RegexPath))
+	for _, p := range m.RegexPath {
+		rgx, err := regexp.Compile(p)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("block regex_path %q: %w", p, err)
 		}
 
-		rgxPath = rgx
+		rgxPaths = append(rgxPaths, rgx)
+	}
+
+	status := m.StatusCode
+	if status == 0 {
+		status = http.StatusForbidden
+	}
+
+	reject := func(w http.ResponseWriter, msg string) {
+		if m.Message != "" {
+			msg = m.Message
+		}
+
+		httputil.HandleError(w, httputil.NewError(msg, nil, status))
 	}
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if _, ok := methodsSet[r.Method]; ok {
-				httputil.HandleError(w, httputil.NewError("method not allowed", nil, http.StatusForbidden))
+				reject(w, "method not allowed")
 
 				return
 			}
 
-			if rgxPath != nil {
-				if rgxPath.MatchString(r.URL.Path) {
-					httputil.HandleError(w, httputil.NewError("path not allowed", nil, http.StatusForbidden))
+			for _, rgx := range rgxPaths {
+				if rgx.MatchString(r.URL.Path) {
+					reject(w, "path not allowed")
 
 					return
 				}

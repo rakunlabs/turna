@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 )
 
 type Service struct {
@@ -29,6 +31,46 @@ type Service struct {
 	TLS *UpstreamTLS `cfg:"tls"`
 
 	Mirror *Mirror `cfg:"mirror"`
+
+	// Timeouts of upstream connections, 0 keeps the defaults.
+	Timeouts Timeouts `cfg:"timeouts"`
+}
+
+type Timeouts struct {
+	// Dial bounds establishing the TCP connection, default is 30s.
+	Dial time.Duration `cfg:"dial"`
+	// TLSHandshake bounds the TLS handshake, default is 10s.
+	TLSHandshake time.Duration `cfg:"tls_handshake"`
+	// ResponseHeader bounds waiting for the response headers after the
+	// request is sent, default is no limit.
+	ResponseHeader time.Duration `cfg:"response_header"`
+	// IdleConn closes idle keep-alive connections, default is 90s.
+	IdleConn time.Duration `cfg:"idle_conn"`
+}
+
+func (t Timeouts) apply(transport *http.Transport) error {
+	for name, d := range map[string]time.Duration{
+		"dial": t.Dial, "tls_handshake": t.TLSHandshake, "response_header": t.ResponseHeader, "idle_conn": t.IdleConn,
+	} {
+		if d < 0 {
+			return fmt.Errorf("timeouts.%s must not be negative", name)
+		}
+	}
+
+	if t.Dial > 0 {
+		transport.DialContext = (&net.Dialer{Timeout: t.Dial, KeepAlive: 30 * time.Second}).DialContext
+	}
+	if t.TLSHandshake > 0 {
+		transport.TLSHandshakeTimeout = t.TLSHandshake
+	}
+	if t.ResponseHeader > 0 {
+		transport.ResponseHeaderTimeout = t.ResponseHeader
+	}
+	if t.IdleConn > 0 {
+		transport.IdleConnTimeout = t.IdleConn
+	}
+
+	return nil
 }
 
 // UpstreamTLS configures verification of https upstreams.
@@ -180,6 +222,9 @@ func (m *Service) Middleware(ctx context.Context) ([]func(http.Handler) http.Han
 	}
 
 	transport = transport.Clone()
+	if err := m.Timeouts.apply(transport); err != nil {
+		return nil, err
+	}
 	if m.Proxy != "" {
 		proxyURL, err := url.Parse(m.Proxy)
 		if err != nil {

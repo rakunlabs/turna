@@ -27,7 +27,7 @@ server:
           duration: 1m
 
       compress:
-        gzip: {}
+        compress: {}
 
       api_strip:
         strip_prefix:
@@ -77,7 +77,9 @@ backend:
         - prefix: /api
           servers:
             - url: http://api:3000
-        - prefix: /admin
+        - prefix:
+            - /admin
+            - /internal
           servers:
             - url: http://admin:3000
       default_servers:

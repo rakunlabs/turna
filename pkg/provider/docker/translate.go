@@ -626,6 +626,11 @@ func (t *translator) middleware(kind, name string, def any, known []string, p Pr
 		return fmt.Errorf("%s middleware %s: %w", kind, name, err)
 	}
 
+	// labels must not make Turna connect to arbitrary addresses
+	if m, ok := out.(*shttp.HTTPMiddleware); ok && m.RateLimit != nil && m.RateLimit.Redis != nil {
+		return fmt.Errorf("%s middleware %s: rate_limit redis is not allowed in labels", kind, name)
+	}
+
 	return nil
 }
 

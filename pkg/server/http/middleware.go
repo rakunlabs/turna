@@ -10,6 +10,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/basicauth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/block"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/bodylimit"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/compress"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/cors"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/csrf"
@@ -28,6 +29,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iamforwardauth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/info"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/inject"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/ipfilter"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/log"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/login"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2resource"
@@ -49,6 +51,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/stripprefix"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/telemetry"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/template"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/timeout"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/tokenpass"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/try"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/url"
@@ -108,6 +111,9 @@ type HTTPMiddleware struct {
 	Telemetry                  *telemetry.Telemetry                  `cfg:"telemetry"`
 	GCPToken                   *gcptoken.GCPToken                    `cfg:"gcp_token"`
 	Gateway                    *gateway.Gateway                      `cfg:"gateway"`
+	IPFilter                   *ipfilter.IPFilter                    `cfg:"ip_filter"`
+	BodyLimit                  *bodylimit.BodyLimit                  `cfg:"body_limit"`
+	Timeout                    *timeout.Timeout                      `cfg:"timeout"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
@@ -229,8 +235,17 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 	case h.Telemetry != nil:
 		return []MiddlewareFunc{h.Telemetry.Middleware()}, nil
 	case h.RateLimit != nil:
-		m := h.RateLimit.Middleware()
-		return []MiddlewareFunc{m}, nil
+		m, err := h.RateLimit.Middleware(ctx)
+		return []MiddlewareFunc{m}, err
+	case h.IPFilter != nil:
+		m, err := h.IPFilter.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.BodyLimit != nil:
+		m, err := h.BodyLimit.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.Timeout != nil:
+		m, err := h.Timeout.Middleware()
+		return []MiddlewareFunc{m}, err
 	case h.Auth != nil:
 		m, err := h.Auth.Middleware(ctx, name)
 		return []MiddlewareFunc{m}, err

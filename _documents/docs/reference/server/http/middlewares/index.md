@@ -35,6 +35,7 @@ A single named middleware can hold only one middleware type. If you need both he
 | `auth` | PostgreSQL-backed unified IAM/OAuth2 middleware. |
 | `basic_auth` | HTTP Basic authentication with htpasswd hashes. |
 | `block` | Block methods or paths. |
+| `body_limit` | Reject request bodies larger than a size. |
 | `compress` | Compress responses with zstd, Brotli or gzip. |
 | `cors` | CORS headers and preflight handling. |
 | `csrf` | Reject cross-site requests; optional double-submit token. |
@@ -46,19 +47,20 @@ A single named middleware can hold only one middleware type. If you need both he
 | `gateway` | Route by path, method, header and query with Gateway API style filters and weighted backends. |
 | `gcp_token` | Google Cloud token via X.509 workload identity federation (OAuth2 endpoint or header inject). |
 | `grpcui` | Browser UI for gRPC services. |
-| `gzip` | Compress responses. |
-| `headers` | Set or delete request/response headers. |
+| `gzip` | Deprecated, use `compress`. |
+| `headers` | Set, append or delete request/response headers. |
 | `hello` | Return a static or templated response. |
 | `iam_check` | Check request authorization through an IAM API. |
 | `iam_forward_auth` | Forward-auth endpoint for external proxies. |
 | `info` | Return cookie or session value content. |
 | `inject` | Rewrite response bodies by path. |
+| `ip_filter` | Allow or deny requests by client IP or CIDR. |
 | `log` | Lightweight request log line. |
 | `login` | Login UI and OAuth2 code/password flows backed by `session`. |
 | `oauth2_resource` | Protect an upstream (e.g. an MCP server) as an OAuth2 resource server (RFC 9728). |
 | `path` | Replace the request path and optionally set request headers. |
 | `print` | Print POST bodies to stderr for debugging. |
-| `rate_limit` | Limit requests by all traffic, IP, or real IP. |
+| `rate_limit` | Limit requests by IP, header, path and other keys, in memory or shared through Redis. |
 | `redirect_continue` | Redirect when a regex rewrite changes the URL, otherwise continue. |
 | `redirection` | Always redirect. |
 | `regex_path` | Rewrite the URL path with a regex. |
@@ -74,6 +76,7 @@ A single named middleware can hold only one middleware type. If you need both he
 | `strip_prefix` | Remove one of several path prefixes. |
 | `telemetry` | OpenTelemetry traces and metrics of requests. |
 | `template` | Render a response body template. |
+| `timeout` | Bound request time with `504`, per path prefix. |
 | `token_pass` | Generate a JWT and redirect or call another service. |
 | `try` | Retry a chain with a rewritten path for selected response statuses. |
 | `url` | Modify scheme, host, path, query, fragment, and port by rule. |

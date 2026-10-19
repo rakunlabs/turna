@@ -1,6 +1,7 @@
 package gzip
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/rakunlabs/ada/middleware/encoding"
@@ -8,10 +9,13 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 )
 
+// Gzip is deprecated, use compress.
 type Gzip struct {
 }
 
 func (m *Gzip) Middleware() func(http.Handler) http.Handler {
+	slog.Warn("gzip middleware is deprecated, use compress instead")
+
 	encodingMiddleware := encoding.Middleware(encoding.WithConfig(encoding.Config{
 		Encoding: []string{"gzip"},
 	}))

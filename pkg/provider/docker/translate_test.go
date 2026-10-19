@@ -206,6 +206,19 @@ func TestTranslateRejects(t *testing.T) {
 			err:    "exactly one type",
 		},
 		{
+			name:   "rate limit redis in labels",
+			labels: map[string]string{"turna.http.middlewares.f.rate_limit.redis.address": "evil:6379"},
+			err:    "rate_limit redis is not allowed",
+		},
+		{
+			name: "new filter middlewares allowed",
+			labels: map[string]string{
+				"turna.http.middlewares.f.ip_filter.allow":     "10.0.0.0/8,192.168.0.0/16",
+				"turna.http.middlewares.b.body_limit.max_size": "1MB",
+				"turna.http.middlewares.t.timeout.duration":    "30s",
+			},
+		},
+		{
 			name:   "unknown middleware reference",
 			labels: map[string]string{"turna.http.routers.r.middlewares": "missing"},
 			warn:   "middleware missing is not defined",

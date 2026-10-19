@@ -267,6 +267,12 @@ html:not(.dark) .vp-doc div[class*='language-'] .shiki span {
  * Component: Doc layout (wider content column)
  * -------------------------------------------------------------------------- */
 
+/* Keep the scrollbar space reserved so short pages without a scrollbar do
+   not shift the layout. */
+html {
+  scrollbar-gutter: stable;
+}
+
 .VPDoc.has-aside .content-container {
   max-width: 880px !important;
 }

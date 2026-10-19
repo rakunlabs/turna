@@ -32,8 +32,14 @@ server:
 | `loadbalancer.passive_health_check` | | Passive health check, see below. |
 | `retry` | `0` | Retries on other upstreams when an upstream is unreachable. |
 | `mirror` | | Shadow traffic, see below. |
-| `prefixbalancer.prefixes` | | Path-prefix-specific upstream lists. |
+| `prefixbalancer.prefixes` | | Path-prefix-specific upstream lists. `prefix` accepts a single string or a list of prefixes. |
 | `prefixbalancer.default_servers` | | Default upstreams when no prefix matches. |
+| `timeouts.dial` | `30s` | Timeout of establishing the upstream TCP connection. |
+| `timeouts.tls_handshake` | `10s` | Timeout of the upstream TLS handshake. |
+| `timeouts.response_header` | | Time to wait for the upstream response headers after the request is sent. Empty means no limit. Exceeding it gives `502` and counts as an upstream failure for `retry`. |
+| `timeouts.idle_conn` | `90s` | Idle keep-alive connections are closed after this. |
+
+`timeouts` limit the upstream connection only; reading a long response body is not limited. To limit the whole request, put [`timeout`](./timeout) in front of `service`.
 
 ## WebSockets and streaming
 
@@ -50,7 +56,9 @@ service:
       - prefix: /api
         servers:
           - url: http://api:3000
-      - prefix: /admin
+      - prefix:
+          - /admin
+          - /internal
         servers:
           - url: http://admin:3000
     default_servers:
@@ -58,6 +66,8 @@ service:
 ```
 
 If the prefix balancer is configured, it is used instead of the plain `loadbalancer`.
+
+`prefix` can be a single string or a list; a group matches when the request path starts with any of its prefixes. Groups are checked in order and the first match wins.
 
 The `loadbalancer` options (`strategy`, `sticky`, `health_check`, `passive_health_check`) also apply to every prefix group and the default servers. The same upstream URL used in several groups shares its health and connection state.
 
