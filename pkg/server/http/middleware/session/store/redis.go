@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"crypto/rand"
-	"crypto/tls"
 	"encoding/base32"
 	"encoding/json"
 	"fmt"
@@ -15,8 +14,8 @@ import (
 
 	"github.com/rakunlabs/ada/utils/securecookie"
 	"github.com/rakunlabs/ada/utils/sessions"
+	storeredis "github.com/rakunlabs/cache/store/redis"
 	"github.com/redis/go-redis/v9"
-	"github.com/twmb/tlscfg"
 )
 
 type Redis struct {
@@ -50,19 +49,8 @@ func (r Redis) Store(ctx context.Context, opts sessions.Options) (*RedisStore, e
 		return nil, fmt.Errorf("redis store compat %q is unknown, expected one of %q, %q, %q", r.Compat, CompatNone, CompatV1, CompatMixed)
 	}
 
-	tlsConfig, err := r.TLS.Generate()
+	client, err := storeredis.NewClient(ctx, r.connConfig())
 	if err != nil {
-		return nil, err
-	}
-
-	client, err := r.newClient(ctx, tlsConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := client.Ping(ctx).Err(); err != nil {
-		_ = client.Close()
-
 		return nil, err
 	}
 
@@ -87,49 +75,21 @@ func (r Redis) Store(ctx context.Context, opts sessions.Options) (*RedisStore, e
 	}, nil
 }
 
-func (r Redis) newClient(ctx context.Context, tlsConfig *tls.Config) (redis.UniversalClient, error) {
-	if strings.TrimSpace(r.Address) == "" {
-		return nil, fmt.Errorf("redis address is required")
+// connConfig keeps the single-address session config while sharing the
+// connection and cluster detection logic with the other Redis stores.
+func (r Redis) connConfig() storeredis.ConnConfig {
+	var address []string
+	if strings.TrimSpace(r.Address) != "" {
+		address = []string{r.Address}
 	}
 
-	if r.Cluster {
-		return r.newClusterClient(tlsConfig), nil
+	return storeredis.ConnConfig{
+		Address:  address,
+		Username: r.Username,
+		Password: r.Password,
+		Cluster:  r.Cluster,
+		TLS:      r.TLS,
 	}
-
-	client := redis.NewClient(&redis.Options{
-		Addr:      r.Address,
-		Username:  r.Username,
-		Password:  r.Password,
-		TLSConfig: tlsConfig,
-	})
-
-	info, err := client.Info(ctx, "cluster").Result()
-	if err != nil || !redisClusterEnabled(info) {
-		return client, nil
-	}
-
-	_ = client.Close()
-
-	return r.newClusterClient(tlsConfig), nil
-}
-
-func (r Redis) newClusterClient(tlsConfig *tls.Config) redis.UniversalClient {
-	return redis.NewClusterClient(&redis.ClusterOptions{
-		Addrs:     []string{r.Address},
-		Username:  r.Username,
-		Password:  r.Password,
-		TLSConfig: tlsConfig,
-	})
-}
-
-func redisClusterEnabled(info string) bool {
-	for line := range strings.Lines(info) {
-		if strings.TrimSpace(line) == "cluster_enabled:1" {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (s *RedisStore) Get(r *http.Request, name string) (*sessions.Session, error) {
@@ -275,43 +235,7 @@ func (s *RedisStore) save(ctx context.Context, sessionID string, values map[stri
 }
 
 // TLSConfig contains options for TLS authentication.
-type TLSConfig struct {
-	// Enabled is whether TLS is enabled.
-	Enabled bool `cfg:"enabled"`
-	// CertFile is the path to the client's TLS certificate.
-	// Should be use with KeyFile.
-	CertFile string `cfg:"cert_file"`
-	// KeyFile is the path to the client's TLS key.
-	// Should be use with CertFile.
-	KeyFile string `cfg:"key_file"`
-	// CAFile is the path to the CA certificate.
-	// If empty, the server's root CA set will be used.
-	CAFile string `cfg:"ca_file"`
-}
-
-// Generate returns a tls.Config based on the TLSConfig.
-//
-// If the TLSConfig is empty, nil is returned.
-func (t TLSConfig) Generate() (*tls.Config, error) {
-	if !t.Enabled {
-		return nil, nil
-	}
-
-	opts := []tlscfg.Opt{}
-
-	// load client cert
-	if t.CertFile != "" && t.KeyFile != "" {
-		opts = append(opts, tlscfg.WithDiskKeyPair(t.CertFile, t.KeyFile))
-	}
-
-	// load CA cert
-	opts = append(opts, tlscfg.WithSystemCertPool())
-	if t.CAFile != "" {
-		opts = append(opts, tlscfg.WithDiskCA(t.CAFile, tlscfg.ForClient))
-	}
-
-	return tlscfg.New(opts...)
-}
+type TLSConfig = storeredis.TLSConfig
 
 func generateRandomKey() (string, error) {
 	k := make([]byte, 64)

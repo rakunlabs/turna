@@ -1,39 +1,36 @@
 package store
 
 import (
+	"context"
 	"testing"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/rakunlabs/ada/utils/sessions"
 )
 
-func TestRedisClusterCanBeForcedWithOneAddress(t *testing.T) {
-	client, err := (Redis{Address: "redis:6379", Cluster: true}).newClient(t.Context(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = client.Close() })
+func TestRedisConnConfig(t *testing.T) {
+	cfg := Redis{
+		Address:  "redis:6379",
+		Username: "user",
+		Password: "pass",
+		Cluster:  true,
+		TLS:      TLSConfig{Enabled: true, CAFile: "ca.pem"},
+	}.connConfig()
 
-	if _, ok := client.(*redis.ClusterClient); !ok {
-		t.Fatalf("client = %T, want *redis.ClusterClient", client)
+	if len(cfg.Address) != 1 || cfg.Address[0] != "redis:6379" {
+		t.Fatalf("address = %q", cfg.Address)
+	}
+	if cfg.Username != "user" || cfg.Password != "pass" || !cfg.Cluster {
+		t.Fatalf("conn config = %+v", cfg)
+	}
+	if !cfg.TLS.Enabled || cfg.TLS.CAFile != "ca.pem" {
+		t.Fatalf("tls = %+v", cfg.TLS)
 	}
 }
 
-func TestRedisClusterEnabled(t *testing.T) {
-	tests := []struct {
-		name string
-		info string
-		want bool
-	}{
-		{name: "cluster", info: "# Cluster\r\ncluster_enabled:1\r\n", want: true},
-		{name: "standalone", info: "# Cluster\r\ncluster_enabled:0\r\n"},
-		{name: "empty"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := redisClusterEnabled(tt.info); got != tt.want {
-				t.Fatalf("redisClusterEnabled() = %v, want %v", got, tt.want)
-			}
-		})
+func TestRedisStoreRequiresAddress(t *testing.T) {
+	for _, addr := range []string{"", "  "} {
+		if _, err := (Redis{Address: addr}).Store(context.Background(), sessions.Options{}); err == nil {
+			t.Fatalf("Store(%q) succeeded, want address error", addr)
+		}
 	}
 }

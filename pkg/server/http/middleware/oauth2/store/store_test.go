@@ -1,10 +1,14 @@
 package store
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/rakunlabs/cache"
 )
 
 func TestTakeCodeIsAtomicInMemory(t *testing.T) {
@@ -56,3 +60,21 @@ func TestTakeCodeIsAtomicInMemory(t *testing.T) {
 		t.Fatalf("successful consumes = %d, want 1", got)
 	}
 }
+
+func TestTakeRequiresAtomicStore(t *testing.T) {
+	t.Parallel()
+
+	store := &StoreCache{Code: getDeleteOnly{}, State: getDeleteOnly{}}
+	if _, _, err := store.TakeCode(t.Context(), "code"); !errors.Is(err, cache.ErrTakeNotSupported) {
+		t.Fatalf("TakeCode error = %v, want ErrTakeNotSupported", err)
+	}
+	if _, _, err := store.TakeState(t.Context(), "state"); !errors.Is(err, cache.ErrTakeNotSupported) {
+		t.Fatalf("TakeState error = %v, want ErrTakeNotSupported", err)
+	}
+}
+
+type getDeleteOnly struct{}
+
+func (getDeleteOnly) Get(context.Context, string) (string, bool, error) { return "v", true, nil }
+func (getDeleteOnly) Set(context.Context, string, string) error         { return nil }
+func (getDeleteOnly) Delete(context.Context, string) error              { return nil }

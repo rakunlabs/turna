@@ -8,9 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rakunlabs/cache"
+	storeredis "github.com/rakunlabs/cache/store/redis"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 	oauth2store "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
-	"github.com/worldline-go/conn/connredis"
 )
 
 // CodeStoreSettings configures the temporary OAuth2 code/state cache.
@@ -93,17 +94,18 @@ func validateCodeStoreSettings(c CodeStoreSettings) error {
 
 func (c CodeStoreSettings) store() oauth2store.Store {
 	c = c.normalized()
-	store := oauth2store.Store{Active: c.Active, KeyPrefix: c.KeyPrefix, Cluster: c.Redis.Cluster}
+	store := oauth2store.Store{Active: c.Active, KeyPrefix: c.KeyPrefix}
 	if c.Active != "redis" {
 		return store
 	}
 
-	store.Redis = connredis.Config{
+	store.Redis = storeredis.ConnConfig{
 		ClientName: c.Redis.ClientName,
 		Address:    c.Redis.Address,
-		UserName:   c.Redis.Username,
+		Username:   c.Redis.Username,
 		Password:   c.Redis.Password,
-		TLS: connredis.TLSConfig{
+		Cluster:    c.Redis.Cluster,
+		TLS: storeredis.TLSConfig{
 			Enabled:  c.Redis.TLS.Enabled,
 			CertFile: c.Redis.TLS.CertFile,
 			KeyFile:  c.Redis.TLS.KeyFile,
@@ -113,6 +115,8 @@ func (c CodeStoreSettings) store() oauth2store.Store {
 
 	return store
 }
+
+var _ cache.Taker[string, string] = (*databaseCodeCache)(nil)
 
 type databaseCodeCache struct {
 	store *Store

@@ -39,8 +39,8 @@ require (
 	github.com/rakunlabs/ada/middleware/encoding v0.5.3
 	github.com/rakunlabs/ada/middleware/ratelimit v0.5.3
 	github.com/rakunlabs/ada/middleware/telemetry v0.5.3
-	github.com/rakunlabs/cache v0.4.0
-	github.com/rakunlabs/cache/store/redis v0.4.0
+	github.com/rakunlabs/cache v0.5.0
+	github.com/rakunlabs/cache/store/redis v0.5.0
 	github.com/rakunlabs/chu v0.5.0
 	github.com/rakunlabs/chu/loader/external/loaderawssecrets v0.0.0-20260831101252-0c6a77e06f7f
 	github.com/rakunlabs/chu/loader/external/loaderawsssm v0.0.0-20260831101252-0c6a77e06f7f
@@ -65,8 +65,6 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/swaggo/swag v1.16.6
 	github.com/things-go/go-socks5 v0.0.5
-	github.com/twmb/tlscfg v1.3.0
-	github.com/worldline-go/conn v0.1.0
 	github.com/worldline-go/types v0.6.1
 	github.com/xhit/go-str2duration/v2 v2.2.0
 	go.opentelemetry.io/otel v1.46.0
@@ -210,6 +208,7 @@ require (
 	github.com/spiffe/go-spiffe/v2 v2.8.1 // indirect
 	github.com/tdewolff/minify/v2 v2.24.17 // indirect
 	github.com/tdewolff/parse/v2 v2.8.16 // indirect
+	github.com/twmb/tlscfg v1.3.0 // indirect
 	github.com/urfave/cli/v2 v2.3.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.8.0 // indirect
