@@ -236,12 +236,7 @@ func (m *Rule) applyPathPrefix(path string) string {
 		path = "/" + path
 	}
 
-	prefix := m.PathPrefix
-	if !strings.HasSuffix(prefix, "/") && !strings.HasPrefix(path, "/") {
-		prefix += "/"
-	}
-
-	return prefix + strings.TrimPrefix(path, "/")
+	return strings.TrimSuffix(m.PathPrefix, "/") + path
 }
 
 func (m *Rule) applyPathSuffix(path string) string {

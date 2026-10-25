@@ -1,10 +1,50 @@
 package url
 
 import (
+	neturl "net/url"
 	"testing"
 
 	"github.com/bmatcuk/doublestar/v4"
 )
+
+func TestModifyPath(t *testing.T) {
+	tests := []struct {
+		name string
+		rule Rule
+		path string
+		want string
+	}{
+		{
+			name: "prefix without trailing slash",
+			rule: Rule{StripPrefix: "/consul", PathPrefix: "/files/raw", PathSuffix: ".json"},
+			path: "/consul/ofs-ui/apps/ofs-chat",
+			want: "/files/raw/ofs-ui/apps/ofs-chat.json",
+		},
+		{
+			name: "prefix with trailing slash",
+			rule: Rule{StripPrefix: "/consul", PathPrefix: "/files/raw/"},
+			path: "/consul/a/b",
+			want: "/files/raw/a/b",
+		},
+		{
+			name: "path without leading slash",
+			rule: Rule{PathPrefix: "/api"},
+			path: "v1",
+			want: "/api/v1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := &neturl.URL{Path: tt.path}
+			tt.rule.modifyPath(u)
+
+			if u.Path != tt.want {
+				t.Errorf("modifyPath() = %q, want %q", u.Path, tt.want)
+			}
+		})
+	}
+}
 
 func TestMatchDoubleStart(t *testing.T) {
 	type args struct {
