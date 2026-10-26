@@ -393,7 +393,14 @@ func (m *Auth) writeTokenWithOptions(w http.ResponseWriter, r *http.Request, use
 			return
 		}
 
-		refreshExpires = min(now.Add(tokenCfg.GetRefreshLifetime()).Unix(), options.SessionExpires)
+		// remembered sessions slide by their own idle window; standard
+		// sessions keep the fixed refresh_lifetime window from login
+		idle := tokenCfg.GetRefreshLifetime()
+		if options.RememberMe {
+			idle = tokenCfg.GetRememberIdleLifetime()
+		}
+
+		refreshExpires = min(now.Add(idle).Unix(), options.SessionExpires)
 		claimsRefresh := map[string]any{
 			"iss":         issuer,
 			"aud":         tokenAudience(options.Resources),
@@ -864,6 +871,33 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 		if sid == "" {
 			sid = jti
 		}
+
+		// remembered sessions rotate the refresh token; a rotated token
+		// presented again after the grace window means it leaked
+		if rememberMe {
+			if grace := m.cache.Snapshot().Token.GetRefreshReuseGrace(); grace > 0 {
+				reused, err := m.refreshReused(r.Context(), claims, jti, sid, exp.Time, grace)
+				if err != nil {
+					httputil.HandleError(w, AccessTokenErrorResponse{
+						Error:            "server_error",
+						ErrorDescription: err.Error(),
+						code:             http.StatusInternalServerError,
+					})
+
+					return
+				}
+				if reused {
+					httputil.HandleError(w, AccessTokenErrorResponse{
+						Error:            "invalid_grant",
+						ErrorDescription: "refresh token reuse detected",
+						code:             http.StatusUnauthorized,
+					})
+
+					return
+				}
+			}
+		}
+
 		authTime := claimInt64(claims["auth_time"])
 		if authTime == 0 {
 			authTime = claimInt64(claims["iat"])

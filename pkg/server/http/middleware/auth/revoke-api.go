@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -75,6 +76,59 @@ func claimInt64(value any) int64 {
 // oauth2resource middleware) through the issuer registry.
 func (m *Auth) TokenRevoked(ctx context.Context, jti string) bool {
 	return m.isTokenRevoked(ctx, jti)
+}
+
+// refreshUse records the first time a rotating refresh token was redeemed.
+type refreshUse struct {
+	UsedAt int64 `json:"used_at"`
+}
+
+// refreshReused marks the refresh token jti as used and reports whether it
+// had already been used before the grace window. Within the window the token
+// stays usable, so parallel tabs, replicas and apps sharing one session can
+// race a refresh. Outside it the token is treated as leaked: the whole session
+// family is revoked.
+func (m *Auth) refreshReused(ctx context.Context, claims jwt.MapClaims, jti, sid string, expiresAt time.Time, grace time.Duration) (bool, error) {
+	ttl := time.Until(expiresAt)
+	if ttl <= 0 {
+		return false, nil
+	}
+
+	now := time.Now()
+	created, err := m.store.CreateFlowCodeOnce(ctx, flowKindRefreshUsed, jti, refreshUse{UsedAt: now.Unix()}, ttl)
+	if err != nil || created {
+		return false, err
+	}
+
+	var use refreshUse
+	if err := m.store.GetFlowCode(ctx, flowKindRefreshUsed, jti, &use); err != nil {
+		if errors.Is(err, data.ErrNotFound) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	if now.Sub(time.Unix(use.UsedAt, 0)) <= grace {
+		return false, nil
+	}
+
+	sub, _ := claims["sub"].(string)
+	azp, _ := claims["azp"].(string)
+	payload := revokedToken{Subject: sub, ClientID: azp, Type: "Refresh"}
+
+	sessionTTL := ttl
+	if sessionExp := claimInt64(claims["session_exp"]); sessionExp > 0 {
+		sessionTTL = max(sessionTTL, time.Until(time.Unix(sessionExp, 0)))
+	}
+
+	if _, err := m.store.CreateFlowCodeOnce(ctx, flowKindRevokedSession, sid, payload, sessionTTL); err != nil {
+		return false, err
+	}
+
+	slog.Warn("refresh token reuse detected, session revoked", "sub", sub, "azp", azp, "sid", sid)
+
+	return true, nil
 }
 
 // TokenClaimsRevoked checks both a token and its session family. Resource

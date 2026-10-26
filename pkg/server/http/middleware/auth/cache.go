@@ -554,6 +554,14 @@ func validateTokenSettings(setting TokenSettings) error {
 	if absolute < refresh {
 		return fmt.Errorf("refresh_absolute_lifetime must be at least refresh_lifetime")
 	}
+	// a remember idle window longer than the absolute lifetime is simply
+	// capped by it, so it is not rejected
+	if _, err := parse("remember_idle_lifetime", setting.RememberIdleLifetime, 7*24*time.Hour); err != nil {
+		return err
+	}
+	if _, err := parse("refresh_reuse_grace", setting.RefreshReuseGrace, 0); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -780,6 +788,14 @@ type TokenSettings struct {
 	TokenLifetime           string `json:"token_lifetime"`
 	RefreshLifetime         string `json:"refresh_lifetime"`
 	RefreshAbsoluteLifetime string `json:"refresh_absolute_lifetime"`
+	// RememberIdleLifetime is the idle window of remembered sessions: each
+	// refresh extends the session by this much, capped by
+	// RefreshAbsoluteLifetime. Empty defaults to 7 days.
+	RememberIdleLifetime string `json:"remember_idle_lifetime"`
+	// RefreshReuseGrace enables reuse detection for rotated (remembered)
+	// refresh tokens: presenting an already rotated token later than this
+	// window revokes the whole session family. Empty disables detection.
+	RefreshReuseGrace string `json:"refresh_reuse_grace"`
 	// RolesClaim is the dot path where the scope-derived roles are written
 	// in the access token, the id_token and the userinfo response. Empty
 	// defaults to "roles" (flat top-level array). Use "realm_access.roles"
@@ -791,6 +807,8 @@ type TokenSettings struct {
 	tokenLifetime           time.Duration
 	refreshLifetime         time.Duration
 	refreshAbsoluteLifetime time.Duration
+	rememberIdleLifetime    time.Duration
+	refreshReuseGrace       time.Duration
 }
 
 func (t TokenSettings) GetTokenLifetime() time.Duration {
@@ -817,6 +835,19 @@ func (t TokenSettings) GetRefreshAbsoluteLifetime() time.Duration {
 	return 30 * 24 * time.Hour
 }
 
+// GetRememberIdleLifetime returns how long a remembered session may stay idle.
+func (t TokenSettings) GetRememberIdleLifetime() time.Duration {
+	if t.rememberIdleLifetime > 0 {
+		return t.rememberIdleLifetime
+	}
+
+	return 7 * 24 * time.Hour
+}
+
+// GetRefreshReuseGrace returns the reuse detection window; zero disables it.
+func (t TokenSettings) GetRefreshReuseGrace() time.Duration {
+	return t.refreshReuseGrace
+}
 // GetRolesClaim returns the configured dot path for the roles claim, or the
 // flat "roles" default when unset.
 func (t TokenSettings) GetRolesClaim() string {
@@ -1187,6 +1218,16 @@ func (c *Cache) Reload(ctx context.Context) error {
 	if snap.Token.RefreshAbsoluteLifetime != "" {
 		if d, err := str2duration.ParseDuration(snap.Token.RefreshAbsoluteLifetime); err == nil {
 			snap.Token.refreshAbsoluteLifetime = d
+		}
+	}
+	if snap.Token.RememberIdleLifetime != "" {
+		if d, err := str2duration.ParseDuration(snap.Token.RememberIdleLifetime); err == nil && d > 0 {
+			snap.Token.rememberIdleLifetime = d
+		}
+	}
+	if snap.Token.RefreshReuseGrace != "" {
+		if d, err := str2duration.ParseDuration(snap.Token.RefreshReuseGrace); err == nil && d > 0 {
+			snap.Token.refreshReuseGrace = d
 		}
 	}
 

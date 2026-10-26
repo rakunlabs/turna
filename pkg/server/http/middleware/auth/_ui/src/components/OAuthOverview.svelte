@@ -301,7 +301,23 @@
           oninput={(event) => setSettingString("token", ["refresh_lifetime"], event.currentTarget.value)}
         />
         <p id="refresh-lifetime-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
-          Remembered sessions slide by this window whenever a refresh succeeds. Standard sessions keep a fixed window.
+          Standard sessions end this long after login. Default 24h.
+        </p>
+      </div>
+
+      <div class="min-w-0">
+        <label class="stamp block" for="remember-idle-lifetime">Remembered idle lifetime</label>
+        <input
+          id="remember-idle-lifetime"
+          class="entry serial mt-1.5"
+          autocomplete="off"
+          aria-describedby="remember-idle-lifetime-hint"
+          placeholder="168h"
+          value={getSettingString("token", ["remember_idle_lifetime"])}
+          oninput={(event) => setSettingString("token", ["remember_idle_lifetime"], event.currentTarget.value)}
+        />
+        <p id="remember-idle-lifetime-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+          Remembered sessions stay signed in while used at least once in this window. Default 168h (7 days).
         </p>
       </div>
 
@@ -319,6 +335,22 @@
         />
         <p id="refresh-absolute-lifetime-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
           Remembered sessions cannot slide past this boundary. Default 720h (30 days).
+        </p>
+      </div>
+
+      <div class="min-w-0">
+        <label class="stamp block" for="refresh-reuse-grace">Refresh reuse grace</label>
+        <input
+          id="refresh-reuse-grace"
+          class="entry serial mt-1.5"
+          autocomplete="off"
+          aria-describedby="refresh-reuse-grace-hint"
+          placeholder="off"
+          value={getSettingString("token", ["refresh_reuse_grace"])}
+          oninput={(event) => setSettingString("token", ["refresh_reuse_grace"], event.currentTarget.value)}
+        />
+        <p id="refresh-reuse-grace-hint" class="mt-1.5 text-[12px] leading-[1.5] text-muted">
+          A rotated refresh token used again after this window revokes the whole session. Empty turns detection off. Suggested 30s.
         </p>
       </div>
     </div>

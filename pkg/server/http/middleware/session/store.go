@@ -3,9 +3,13 @@ package session
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"math"
 	"net/http"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/rakunlabs/ada/utils/sessions"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session/store"
 )
@@ -132,11 +136,24 @@ func (m *Session) setToken(w http.ResponseWriter, r *http.Request, token []byte,
 	}
 
 	// set the cookie
-	session, _ := m.store.Get(r, m.GetCookieName(r))
+	session, err := m.store.Get(r, m.GetCookieName(r))
+	if err != nil {
+		// writing a fresh session here would orphan the stored one and log
+		// the user out on every app sharing it
+		return err
+	}
+
 	session.Values[TokenKey] = cookieValue
 	session.Values[ProviderKey] = providerName
 	if method != "" {
 		session.Values[AuthenticationMethodKey] = method
+	}
+
+	if expiresAt, maxAge, ok := sessionLifetime(token, session.Options.MaxAge, time.Now()); ok {
+		session.Values[store.ExpiresAtKey] = expiresAt.Unix()
+		session.Options.MaxAge = maxAge
+	} else {
+		delete(session.Values, store.ExpiresAtKey)
 	}
 
 	if err := session.Save(r, w); err != nil {
@@ -147,6 +164,49 @@ func (m *Session) setToken(w http.ResponseWriter, r *http.Request, token []byte,
 	w.Header().Set("X-Session-Set", "true")
 
 	return nil
+}
+
+// sessionLifetime derives the session lifetime from the refresh token, so the
+// stored session lives exactly as long as it can still be refreshed. Tokens
+// from the auth middleware carry a remember_me claim; for them the cookie
+// follows the refresh expiry too: a fixed 24h window from login for standard
+// sessions, sliding up to the absolute lifetime for remembered ones. Tokens
+// without the claim (external providers) keep the configured cookie max age.
+//
+// ok is false when the refresh expiry is unknown; the configured max age then
+// applies to both the cookie and the stored record.
+func sessionLifetime(raw []byte, defaultMaxAge int, now time.Time) (time.Time, int, bool) {
+	token, err := ParseToken(raw)
+	if err != nil || token.RefreshToken == "" {
+		return time.Time{}, 0, false
+	}
+
+	var (
+		expiresAt   time.Time
+		hasRemember bool
+	)
+
+	claims := jwt.MapClaims{}
+	if _, _, err := jwt.NewParser().ParseUnverified(token.RefreshToken, claims); err == nil {
+		if exp, err := claims.GetExpirationTime(); err == nil && exp != nil {
+			expiresAt = exp.Time
+		}
+		_, hasRemember = claims["remember_me"].(bool)
+	}
+
+	if expiresAt.IsZero() && token.RefreshExpiresIn > 0 {
+		expiresAt = now.Add(time.Duration(token.RefreshExpiresIn) * time.Second)
+	}
+
+	if !expiresAt.After(now) {
+		return time.Time{}, 0, false
+	}
+
+	if hasRemember {
+		return expiresAt, int(math.Ceil(expiresAt.Sub(now).Seconds())), true
+	}
+
+	return expiresAt, defaultMaxAge, true
 }
 
 func (m *Session) GetAuthenticationMethod(r *http.Request) (string, error) {
@@ -164,7 +224,13 @@ func (m *Session) GetAuthenticationMethod(r *http.Request) (string, error) {
 }
 
 func (m *Session) DelToken(w http.ResponseWriter, r *http.Request) error {
-	session, _ := m.store.Get(r, m.GetCookieName(r))
+	session, err := m.store.Get(r, m.GetCookieName(r))
+	if errors.Is(err, store.ErrUnavailable) {
+		// the record cannot be read, so it cannot be deleted either; keep the
+		// cookie instead of silently logging out every app sharing it
+		return err
+	}
+
 	session.Options.MaxAge = -1
 
 	return session.Save(r, w)

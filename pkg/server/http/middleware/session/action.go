@@ -402,7 +402,7 @@ func (m *Session) refreshTokenData(r *http.Request, providerName string, token *
 func (m *Session) refreshTokenDataOnce(r *http.Request, providerName string, token *TokenData) ([]byte, error) {
 	provider, ok := m.GetProvider(providerName)
 	if !ok {
-		return nil, fmt.Errorf("cannot find provider %q", providerName)
+		return nil, fmt.Errorf("cannot find provider %q: %w", providerName, errProviderNotFound)
 	}
 
 	if provider.AuthMiddleware != "" {
@@ -430,14 +430,14 @@ func (m *Session) refreshTokenDataOnce(r *http.Request, providerName string, tok
 			return nil, err
 		}
 		if statusCode < 200 || statusCode > 299 {
-			return nil, fmt.Errorf("refresh token failed: %s", string(body))
+			return nil, &request.StatusError{StatusCode: statusCode, Body: "refresh token failed: " + string(body)}
 		}
 
 		return body, nil
 	}
 
 	if provider.Oauth2 == nil {
-		return nil, fmt.Errorf("cannot find provider %q", providerName)
+		return nil, fmt.Errorf("cannot find provider %q: %w", providerName, errProviderNotFound)
 	}
 
 	requestConfig := request.AuthRequestConfig{
@@ -762,16 +762,7 @@ func (m *Session) cookieClaims(w http.ResponseWriter, r *http.Request) (*claims.
 		}
 
 		if v {
-			refreshData, err := m.refreshTokenData(r, providerName, token)
-			if err != nil {
-				return nil, "", nil, err
-			}
-
-			if err := m.SetToken(w, r, refreshData, providerName); err != nil {
-				return nil, "", nil, err
-			}
-
-			token, err = ParseToken(refreshData)
+			token, err = m.refreshSession(w, r, providerName, token)
 			if err != nil {
 				return nil, "", nil, err
 			}
@@ -1032,6 +1023,12 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 		} else {
 			if err != nil {
 				slog.Error("cannot get session", "error", err.Error())
+
+				if IsUnavailable(err) {
+					m.sessionUnavailable(w, err)
+
+					return
+				}
 			}
 
 			// cookie not found, redirect browsers to the login page and
@@ -1061,26 +1058,15 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 			}
 
 			if v {
-				refreshData, err := m.refreshTokenData(r, providerName, token)
+				token, err = m.refreshSession(w, r, providerName, token)
 				if err != nil {
+					if IsUnavailable(err) {
+						m.sessionUnavailable(w, err)
+
+						return
+					}
+
 					slog.Error("cannot refresh token", "error", err.Error())
-					m.redirectToLoginOrChallenge(w, r, true, true)
-
-					return
-				}
-
-				// set new token to the store
-				if err := m.SetToken(w, r, refreshData, providerName); err != nil {
-					slog.Error("cannot set session", "error", err.Error())
-					m.redirectToLoginOrChallenge(w, r, true, true)
-
-					return
-				}
-
-				// add the access token to the request
-				token, err = ParseToken(refreshData)
-				if err != nil {
-					slog.Error("cannot parse token", "error", err.Error())
 					m.redirectToLoginOrChallenge(w, r, true, true)
 
 					return
@@ -1267,22 +1253,9 @@ func (m *Session) IsLogged(w http.ResponseWriter, r *http.Request) (*claims.Cust
 		}
 
 		if v {
-			refreshData, err := m.refreshTokenData(r, providerName, token)
+			token, err = m.refreshSession(w, r, providerName, token)
 			if err != nil {
 				slog.Error("cannot refresh token", "error", err.Error())
-				return nil, false, err
-			}
-
-			// set new token to the store
-			if err := m.SetToken(w, r, refreshData, providerName); err != nil {
-				slog.Error("cannot set session", "error", err.Error())
-				return nil, false, err
-			}
-
-			// add the access token to the request
-			token, err = ParseToken(refreshData)
-			if err != nil {
-				slog.Error("cannot parse token", "error", err.Error())
 				return nil, false, err
 			}
 		}

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -60,11 +61,14 @@ func (r Redis) Store(ctx context.Context, opts sessions.Options) (*RedisStore, e
 
 	sessionKey := []byte(r.SessionKey)
 	if len(sessionKey) == 0 {
+		warnRandomSessionKey("redis")
 		sessionKey = securecookie.GenerateRandomKey(32)
 	}
 
+	// The signed cookie only carries the session ID; the record TTL decides
+	// how long a session lives, so the signature itself does not expire.
 	codec := securecookie.New(sessionKey, nil)
-	codec.SetMaxAge(opts.MaxAge)
+	codec.SetMaxAge(0)
 
 	return &RedisStore{
 		client:    client,
@@ -105,7 +109,8 @@ func (s *RedisStore) New(r *http.Request, name string) (*sessions.Session, error
 
 	sessionID, err := s.sessionID(name, cookie.Value)
 	if err != nil {
-		return session, err
+		// tampered, foreign or old-key cookie: not logged in
+		return session, nil
 	}
 
 	// In v1 the ID is kept even when nothing is stored yet, so Save reuses it
@@ -118,7 +123,11 @@ func (s *RedisStore) New(r *http.Request, name string) (*sessions.Session, error
 
 	values, err := s.load(r.Context(), sessionID)
 	if err != nil {
-		return session, err
+		if errors.Is(err, redis.Nil) {
+			return session, nil
+		}
+
+		return session, unavailable(err)
 	}
 
 	session.ID = sessionID
@@ -177,7 +186,7 @@ func (s *RedisStore) Save(r *http.Request, w http.ResponseWriter, session *sessi
 	}
 
 	if err := s.save(r.Context(), session.ID, session.Values, session.Options.MaxAge); err != nil {
-		return fmt.Errorf("failed to save session: %w", err)
+		return unavailable(fmt.Errorf("failed to save session: %w", err))
 	}
 
 	cookieValue, err := s.cookieValue(session.Name(), session.ID)
@@ -226,12 +235,7 @@ func (s *RedisStore) save(ctx context.Context, sessionID string, values map[stri
 		return err
 	}
 
-	var expiration time.Duration
-	if maxAge > 0 {
-		expiration = time.Duration(maxAge) * time.Second
-	}
-
-	return s.client.Set(ctx, s.redisKey(sessionID), data, expiration).Err()
+	return s.client.Set(ctx, s.redisKey(sessionID), data, serverTTL(values, maxAge)).Err()
 }
 
 // TLSConfig contains options for TLS authentication.

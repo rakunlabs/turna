@@ -2,15 +2,26 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/rakunlabs/ada/utils/securecookie"
 	"github.com/rakunlabs/ada/utils/sessions"
 )
+
+var errSessionExpired = errors.New("session expired")
+
+// warnRandomSessionKey flags a configuration that logs every user out on each
+// restart and breaks sessions across replicas.
+func warnRandomSessionKey(store string) {
+	slog.Warn("session_key is empty, using a random key: sessions will not survive restarts or be shared between replicas", "store", store)
+}
 
 type File struct {
 	// SessionKey for file store.
@@ -31,6 +42,7 @@ type FileStore struct {
 func (f File) Store(opts sessions.Options) *FileStore {
 	sessionKey := []byte(f.SessionKey)
 	if len(sessionKey) == 0 {
+		warnRandomSessionKey("file")
 		sessionKey = securecookie.GenerateRandomKey(32)
 	}
 
@@ -39,8 +51,9 @@ func (f File) Store(opts sessions.Options) *FileStore {
 		storePath = os.TempDir()
 	}
 
+	// The record expiry decides the session lifetime, see RedisStore.
 	codec := securecookie.New(sessionKey, nil)
-	codec.SetMaxAge(opts.MaxAge)
+	codec.SetMaxAge(0)
 
 	return &FileStore{
 		path:      storePath,
@@ -64,12 +77,17 @@ func (s *FileStore) New(r *http.Request, name string) (*sessions.Session, error)
 
 	var sessionID string
 	if err := s.codec.Decode(name, cookie.Value, &sessionID); err != nil {
-		return session, err
+		// tampered, foreign or old-key cookie: not logged in
+		return session, nil
 	}
 
 	values, err := s.load(sessionID)
 	if err != nil {
-		return session, err
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, errSessionExpired) {
+			return session, nil
+		}
+
+		return session, unavailable(err)
 	}
 
 	session.ID = sessionID
@@ -103,7 +121,7 @@ func (s *FileStore) Save(_ *http.Request, w http.ResponseWriter, session *sessio
 	}
 
 	if err := s.save(session.ID, session.Values); err != nil {
-		return fmt.Errorf("failed to save session: %w", err)
+		return unavailable(fmt.Errorf("failed to save session: %w", err))
 	}
 
 	cookieValue, err := s.codec.Encode(session.Name(), session.ID)
@@ -124,7 +142,9 @@ func (s *FileStore) load(sessionID string) (map[string]any, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	data, err := os.ReadFile(s.filePath(sessionID))
+	path := s.filePath(sessionID)
+
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -136,6 +156,17 @@ func (s *FileStore) load(sessionID string) (map[string]any, error) {
 	values := make(map[string]any)
 	if err := json.Unmarshal(data, &values); err != nil {
 		return nil, err
+	}
+
+	// files have no TTL: enforce the same lifetime the Redis store gets
+	if exp, ok := expiresAt(values); ok {
+		if time.Now().After(exp) {
+			return nil, errSessionExpired
+		}
+	} else if s.options.MaxAge > 0 {
+		if info, err := os.Stat(path); err == nil && time.Since(info.ModTime()) > time.Duration(s.options.MaxAge)*time.Second {
+			return nil, errSessionExpired
+		}
 	}
 
 	return values, nil

@@ -145,6 +145,8 @@ export const settingTemplates = {
     token_lifetime: "15m",
     refresh_lifetime: "24h",
     refresh_absolute_lifetime: "720h",
+    remember_idle_lifetime: "168h",
+    refresh_reuse_grace: "",
   },
   admin: {
     permission: "",

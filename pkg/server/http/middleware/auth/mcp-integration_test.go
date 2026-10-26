@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestAuthMCPIntegration exercises the MCP-style OAuth stack end to end:
@@ -375,6 +376,10 @@ func TestAuthMCPIntegration(t *testing.T) {
 		rotatedClaims := decodeJWTClaims(t, rotated.RefreshToken)
 		if originalClaims["sid"] != rotatedClaims["sid"] || originalClaims["session_exp"] != rotatedClaims["session_exp"] {
 			t.Fatalf("refresh left its session family: old=%v new=%v", originalClaims, rotatedClaims)
+		}
+		// remembered refresh tokens slide by the 7 day remember idle window
+		if idle := claimInt64(rotatedClaims["exp"]) - time.Now().Unix(); idle < int64((7*24*time.Hour-time.Minute).Seconds()) || idle > int64((7*24*time.Hour).Seconds()) {
+			t.Fatalf("remembered refresh window = %ds, want ~7 days", idle)
 		}
 
 		res, err = http.DefaultClient.PostForm(server.URL+"/auth/oauth2/token", refreshForm)

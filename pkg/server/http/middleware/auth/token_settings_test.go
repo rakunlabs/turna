@@ -18,6 +18,12 @@ func TestTokenSettingsSessionLifetimes(t *testing.T) {
 	if got := defaults.GetRefreshAbsoluteLifetime(); got != 30*24*time.Hour {
 		t.Fatalf("absolute refresh lifetime = %s", got)
 	}
+	if got := defaults.GetRememberIdleLifetime(); got != 7*24*time.Hour {
+		t.Fatalf("remember idle lifetime = %s", got)
+	}
+	if err := validateTokenSettings(TokenSettings{RememberIdleLifetime: "-1h"}); err == nil {
+		t.Fatal("negative remember idle lifetime was accepted")
+	}
 
 	if err := validateTokenSettings(TokenSettings{
 		TokenLifetime:           "15m",

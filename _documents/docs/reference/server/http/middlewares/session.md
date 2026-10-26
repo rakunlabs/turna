@@ -103,11 +103,32 @@ In `v1` the cookie is unsigned, so `session_key` has no effect and a client can 
 | `cookie_name` | `auth_session` | Default session cookie name. |
 | `cookie_name_hosts` | | Override cookie name by exact host or regex. |
 | `options.path` | `/` | Cookie path. |
-| `options.max_age` | `86400` | Cookie lifetime in seconds. |
+| `options.max_age` | `86400` | Cookie lifetime in seconds for sessions whose lifetime is not known from the token (see below). |
 | `options.domain` | | Cookie domain. |
 | `options.secure` | `false` | Secure cookie flag. |
 | `options.http_only` | `false` | HttpOnly cookie flag. |
 | `options.same_site` | `0` | Go `http.SameSite`; `2` is Lax, `3` is Strict, `4` is None. |
+
+## Session Lifetime
+
+The stored session lives exactly as long as its refresh token. On every login and refresh the middleware reads the refresh token expiry (the JWT `exp` claim, or `refresh_expires_in` for opaque tokens) and sets the store record TTL to it:
+
+| Refresh token | Cookie | Store record |
+| --- | --- | --- |
+| `remember_me: true` | Persistent, expires with the refresh token and slides by `remember_idle_lifetime` (default 7 days) with every refresh, up to `refresh_absolute_lifetime`. | Until refresh token expiry. |
+| `remember_me: false` | Persistent, expires with the refresh token: a fixed `refresh_lifetime` window (default 24h) from login that survives browser restarts. | Until refresh token expiry. |
+| No `remember_me` claim (external providers) | `options.max_age` | Until refresh token expiry. |
+| No refresh token | `options.max_age` | `options.max_age` |
+
+The signed cookie only carries the session ID and does not expire on its own; the store record decides the lifetime.
+
+## Failure Handling
+
+The session is deleted only when it is definitely invalid: the provider rejects the refresh token (`400`/`401`/`403`, e.g. `invalid_grant`), or the stored token cannot be parsed. Transient failures (Redis errors, provider timeouts or `5xx`) keep the session and answer `503 Service Unavailable` with `Retry-After: 1`; the next request retries. This matters when several applications validate against the same Redis: a short outage no longer logs users out everywhere.
+
+When a refresh fails because another request, replica or application already rotated the token, the middleware re-reads the session and continues with the stored token.
+
+A tampered or foreign cookie, or a missing record, counts as "not logged in". An empty `session_key` logs a warning at startup: a random key logs everyone out on restart and breaks sessions across replicas.
 
 ## Provider
 

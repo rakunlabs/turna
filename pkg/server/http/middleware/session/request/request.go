@@ -2,7 +2,6 @@ package request
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -58,6 +57,17 @@ func (a *Auth) RawRequest(req *http.Request) ([]byte, error) {
 	return RawRequest(req, client)
 }
 
+// StatusError is a non-2xx answer of the token endpoint. Error returns the
+// response body so existing messages stay unchanged.
+type StatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *StatusError) Error() string {
+	return e.Body
+}
+
 func RawRequest(req *http.Request, client *http.Client) ([]byte, error) {
 	r, err := client.Do(req)
 	if err != nil {
@@ -69,7 +79,7 @@ func RawRequest(req *http.Request, client *http.Client) ([]byte, error) {
 	r.Body.Close()
 
 	if code := r.StatusCode; code < 200 || code > 299 {
-		return nil, errors.New(string(body))
+		return nil, &StatusError{StatusCode: code, Body: string(body)}
 	}
 
 	return body, nil

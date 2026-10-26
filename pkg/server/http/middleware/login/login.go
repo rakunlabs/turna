@@ -330,7 +330,7 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 
 					return
 				}
-				if err != nil {
+				if err != nil && !session.IsUnavailable(err) {
 					_ = m.session.DelToken(w, r)
 				}
 
