@@ -327,12 +327,62 @@ func redirectAllowed(redirectURI string, whitelist []string) bool {
 	}
 
 	for _, prefix := range whitelist {
-		if prefix != "" && strings.HasPrefix(redirectURI, prefix) {
+		if uriPrefixMatch(redirectURI, prefix) {
 			return true
 		}
 	}
 
 	return false
+}
+
+// uriPrefixMatch matches an allow-list entry as a URL prefix rather than a
+// raw string prefix: scheme, host and port must be equal and the path must
+// match on a segment boundary. A plain string prefix would let
+// "https://app.example.com" admit "https://app.example.com.evil.net/" or
+// "https://app.example.com@evil.net/".
+func uriPrefixMatch(redirectURI, prefix string) bool {
+	if prefix == "" {
+		return false
+	}
+
+	target, err := url.Parse(redirectURI)
+	if err != nil || target.User != nil {
+		return false
+	}
+
+	allow, err := url.Parse(prefix)
+	if err != nil {
+		return false
+	}
+
+	// host-less custom schemes (native apps, "com.example.app:/cb") have no
+	// authority to spoof; keep the plain prefix match within the same scheme
+	if allow.Host == "" {
+		return strings.EqualFold(target.Scheme, allow.Scheme) && strings.HasPrefix(redirectURI, prefix)
+	}
+
+	if target.Host == "" || !strings.EqualFold(target.Scheme, allow.Scheme) || !strings.EqualFold(target.Hostname(), allow.Hostname()) {
+		return false
+	}
+
+	// an entry without a port admits any port on that host (as the old
+	// string prefix did, e.g. loopback redirects of native apps)
+	if allow.Port() != "" && target.Port() != allow.Port() {
+		return false
+	}
+
+	allowPath := allow.EscapedPath()
+	targetPath := target.EscapedPath()
+	if allowPath == "" || allowPath == "/" {
+		return true
+	}
+
+	if !strings.HasPrefix(targetPath, allowPath) {
+		return false
+	}
+
+	// "/cb" must not admit "/cb-evil"; it admits "/cb", "/cb/…" and "/cb?…"
+	return strings.HasSuffix(allowPath, "/") || len(targetPath) == len(allowPath) || targetPath[len(allowPath)] == '/'
 }
 
 // APIEmailCode sends a one-time login code (and magic link) to the user's
@@ -504,6 +554,7 @@ func (m *Auth) emailCodeGrant(w http.ResponseWriter, r *http.Request, req Access
 	codeHash := hashEmailCode(req.Code)
 
 	flow := emailFlow{}
+	// Keep the email code available while the UI completes the MFA challenge.
 	if err := m.store.GetFlowCode(r.Context(), flowKindEmail, codeHash, &flow); err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_grant",
@@ -513,9 +564,6 @@ func (m *Auth) emailCodeGrant(w http.ResponseWriter, r *http.Request, req Access
 
 		return
 	}
-
-	// single use
-	_ = m.store.DeleteFlowCode(r.Context(), flowKindEmail, codeHash)
 
 	if flow.ClientID != clientID {
 		httputil.HandleError(w, AccessTokenErrorResponse{
@@ -541,5 +589,13 @@ func (m *Auth) emailCodeGrant(w http.ResponseWriter, r *http.Request, req Access
 		return
 	}
 
+	if !m.requireLoginTOTP(w, r, user.ID, req.TOTP) {
+		return
+	}
+	// Only one concurrent request may issue tokens after all factors pass.
+	if err := m.store.TakeFlowCode(r.Context(), flowKindEmail, codeHash, &flow); err != nil {
+		httputil.HandleError(w, AccessTokenErrorResponse{Error: "invalid_grant", ErrorDescription: "code not found or expired", code: http.StatusUnauthorized})
+		return
+	}
 	m.writeToken(w, r, user, clientID, flow.Scope, nil)
 }

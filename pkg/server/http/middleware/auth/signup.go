@@ -175,8 +175,8 @@ func (m *Auth) APISignup(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleError(w, httputil.NewError("a valid email is required", nil, http.StatusBadRequest))
 		return
 	}
-	if minLen := cfg.GetPasswordMinLength(); len(req.Password) < minLen {
-		httputil.HandleError(w, httputil.NewError(fmt.Sprintf("password must be at least %d characters", minLen), nil, http.StatusBadRequest))
+	if msg := cfg.passwordLengthError(req.Password); msg != "" {
+		httputil.HandleError(w, httputil.NewError(msg, nil, http.StatusBadRequest))
 		return
 	}
 
@@ -331,13 +331,10 @@ func (m *Auth) APISignupVerify(w http.ResponseWriter, r *http.Request) {
 	codeHash := hashEmailCode(code)
 
 	flow := signupFlow{}
-	if err := m.store.GetFlowCode(r.Context(), flowKindSignup, codeHash, &flow); err != nil {
+	if err := m.store.TakeFlowCode(r.Context(), flowKindSignup, codeHash, &flow); err != nil {
 		httputil.HandleError(w, httputil.NewError("code not found or expired", nil, http.StatusUnauthorized))
 		return
 	}
-
-	// single use
-	_ = m.store.DeleteFlowCode(r.Context(), flowKindSignup, codeHash)
 
 	if _, err := m.createSignupUser(r.Context(), flow.Email, flow.Name, flow.PasswordHash, cfg.DefaultRoleIDs); err != nil {
 		if errors.Is(err, data.ErrConflict) {
@@ -463,21 +460,18 @@ func (m *Auth) APIPasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 		httputil.HandleError(w, httputil.NewError("code is required", nil, http.StatusBadRequest))
 		return
 	}
-	if minLen := cfg.GetPasswordMinLength(); len(req.Password) < minLen {
-		httputil.HandleError(w, httputil.NewError(fmt.Sprintf("password must be at least %d characters", minLen), nil, http.StatusBadRequest))
+	if msg := cfg.passwordLengthError(req.Password); msg != "" {
+		httputil.HandleError(w, httputil.NewError(msg, nil, http.StatusBadRequest))
 		return
 	}
 
 	codeHash := hashEmailCode(code)
 
 	flow := resetFlow{}
-	if err := m.store.GetFlowCode(r.Context(), flowKindPasswordReset, codeHash, &flow); err != nil {
+	if err := m.store.TakeFlowCode(r.Context(), flowKindPasswordReset, codeHash, &flow); err != nil {
 		httputil.HandleError(w, httputil.NewError("code not found or expired", nil, http.StatusUnauthorized))
 		return
 	}
-
-	// single use
-	_ = m.store.DeleteFlowCode(r.Context(), flowKindPasswordReset, codeHash)
 
 	if err := m.store.UpdateUserPassword(data.WithContextUserName(r.Context(), "password-reset"), flow.UserID, req.Password); err != nil {
 		httputil.HandleError(w, httputil.NewError("cannot update password", err, http.StatusInternalServerError))

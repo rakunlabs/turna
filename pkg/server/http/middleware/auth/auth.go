@@ -215,6 +215,7 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 	m.uiFS = uiMiddleware(nil).ServeHTTP
 
 	registry.GlobalReg.OnStop(ctx, name+" auth db", db.Close)
+	registry.GlobalReg.OnStop(ctx, name+" auth ldap", m.closeLDAP)
 
 	go m.cache.Watch(ctx, m.Database.DSN, CacheWatchConfig{
 		DisableNotificationListener: m.Cache.DisableNotificationListener,
@@ -232,7 +233,7 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 	return func(next http.Handler) http.Handler {
 		mux.NotFound(next.ServeHTTP)
 
-		return mux
+		return m.csrfGuard(mux)
 	}, nil
 }
 
@@ -326,6 +327,8 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 	mux.PATCH(prefix+"/v1/users/{id}", admin(m.PatchUserAPI))
 	mux.DELETE(prefix+"/v1/users/{id}", admin(m.DeleteUserAPI))
 	mux.POST(prefix+"/v1/users/{id}/access", admin(m.AccessUserAPI))
+	mux.GET(prefix+"/v1/users/{id}/federated-identities", admin(m.ListFederatedIdentitiesAPI))
+	mux.DELETE(prefix+"/v1/users/{id}/federated-identities", admin(m.DeleteFederatedIdentityAPI))
 
 	// iam: service accounts
 	mux.GET(prefix+"/v1/service-accounts", admin(m.GetServiceAccountsAPI))
@@ -387,9 +390,9 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 	mux.POST(prefix+"/v1/encryption/rotate", admin(m.RotateEncryptionAPI))
 
 	// passkey management (X-User plane)
-	mux.POST(prefix+"/v1/passkey/register", m.PasskeyRegisterAPI)
+	mux.POST(prefix+"/v1/passkey/register", m.interactiveOnly(m.PasskeyRegisterAPI))
 	mux.GET(prefix+"/v1/passkey/credentials", m.PasskeyCredentialsAPI)
-	mux.DELETE(prefix+"/v1/passkey/credentials/{id}", m.PasskeyCredentialDeleteAPI)
+	mux.DELETE(prefix+"/v1/passkey/credentials/{id}", m.interactiveOnly(m.PasskeyCredentialDeleteAPI))
 
 	// api key management (X-User plane + principal admin); the X-User plane
 	// opens up to non-admins when the api_key.self_service setting is on.
@@ -405,19 +408,19 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 
 	// totp management (X-User plane)
 	mux.GET(prefix+"/v1/totp", m.TOTPStatusAPI)
-	mux.POST(prefix+"/v1/totp/register", m.TOTPRegisterAPI)
-	mux.POST(prefix+"/v1/totp/confirm", m.TOTPConfirmAPI)
-	mux.POST(prefix+"/v1/totp/recovery", m.TOTPRecoveryAPI)
-	mux.DELETE(prefix+"/v1/totp", m.TOTPDeleteAPI)
+	mux.POST(prefix+"/v1/totp/register", m.interactiveOnly(m.TOTPRegisterAPI))
+	mux.POST(prefix+"/v1/totp/confirm", m.interactiveOnly(m.TOTPConfirmAPI))
+	mux.POST(prefix+"/v1/totp/recovery", m.interactiveOnly(m.TOTPRecoveryAPI))
+	mux.DELETE(prefix+"/v1/totp", m.interactiveOnly(m.TOTPDeleteAPI))
 
 	// self-service account (X-User plane)
 	mux.GET(prefix+"/v1/me", m.MeAPI)
-	mux.POST(prefix+"/v1/me/password", m.MePasswordAPI)
+	mux.POST(prefix+"/v1/me/password", m.interactiveOnly(m.MePasswordAPI))
 	mux.POST(prefix+"/v1/me/check", m.CheckUserAPI)
 
 	// device flow approval (X-User plane)
 	mux.GET(prefix+"/v1/device/{user_code}", m.DeviceInfoAPI)
-	mux.POST(prefix+"/v1/device", m.DeviceApproveAPI)
+	mux.POST(prefix+"/v1/device", m.interactiveOnly(m.DeviceApproveAPI))
 
 	// saml config
 	mux.GET(prefix+"/v1/saml/providers", admin(m.ListSAMLProviders))

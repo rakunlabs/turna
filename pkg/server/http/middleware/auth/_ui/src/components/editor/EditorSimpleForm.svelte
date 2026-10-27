@@ -2,6 +2,7 @@
   import Section from "../ui/Section.svelte";
   import TemporaryAccessPanel from "./TemporaryAccessPanel.svelte";
   import PasskeyPanel from "./PasskeyPanel.svelte";
+  import FederatedIdentityPanel from "./FederatedIdentityPanel.svelte";
   import CodeStorePinned from "../CodeStorePinned.svelte";
   import ConfigPinned from "../ui/ConfigPinned.svelte";
   import HeldEntry from "../ui/HeldEntry.svelte";
@@ -20,7 +21,7 @@
     set: (value: string) => void;
     placeholder?: string;
     hint?: string;
-    type?: "text" | "number";
+    type?: "text" | "number" | "password";
     min?: string;
     mono?: boolean;
     wide?: boolean;
@@ -295,6 +296,7 @@
           })}
           {@render line({
             label: "Redis password",
+            type: "password",
             value: editor.getPathString(["code_store", "redis", "password"]),
             set: (value) => editor.setPathValue(["code_store", "redis", "password"], value),
             placeholder: "optional",
@@ -422,6 +424,8 @@
     <div class="grid gap-6 sm:grid-cols-2">
       {@render line({
         label: "Client secret",
+        type: "password",
+        hint: "Write-only. Leave blank to keep the stored secret; enter a new value to replace it.",
         value: editor.getString("client_secret"),
         set: (value) => editor.setString("client_secret", value),
         placeholder: "optional",
@@ -469,6 +473,8 @@
       })}
       {@render line({
         label: "Upstream client secret",
+        type: "password",
+        hint: "Write-only. Leave blank to keep the stored secret; enter a new value to replace it.",
         value: editor.getString("client_secret"),
         set: (value) => editor.setString("client_secret", value),
         placeholder: "change-me",
@@ -554,6 +560,27 @@
         on: editor.getPathBool(["claim_mapping", "use_lmap"]),
         set: (value) => editor.setPathValue(["claim_mapping", "use_lmap"], value),
       })}
+      {@render toggle({
+        label: "Require a verified email",
+        on: editor.getPathBool(["claim_mapping", "require_email_verified"]),
+        set: (value) => editor.setPathValue(["claim_mapping", "require_email_verified"], value),
+        hint: "When the login alias is the email claim, refuse it unless the provider reports email_verified.",
+      })}
+      {@render toggle({
+        label: "Attach to existing local accounts",
+        on: editor.getPathBool(["claim_mapping", "link_local_users"]),
+        set: (value) => editor.setPathValue(["claim_mapping", "link_local_users"], value),
+        consequential: true,
+        hint: "Lets a first login sign in as the local (password) account with the same alias. Only for providers you trust to own those addresses.",
+      })}
+      {@render line({
+        label: "Subject claim",
+        value: editor.getPathString(["claim_mapping", "subject_claim"]),
+        set: (value) => editor.setPathValue(["claim_mapping", "subject_claim"], value),
+        placeholder: "sub",
+        mono: true,
+        hint: "Stable account id each login is linked by. \"-\" turns linking off.",
+      })}
       {@render line({
         label: "Roles claim",
         value: editor.getPathString(["claim_mapping", "roles_claim"]),
@@ -610,8 +637,8 @@
         lazy: true,
         jsonKey: "claim_mapping",
         rows: 8,
-        placeholder: '{\n  "roles_claim": "groups",\n  "use_lmap": true,\n  "role_map": {},\n  "register": true\n}',
-        hint: "Maps SAML assertion attributes onto synced roles. role_map values are role names or IDs.",
+        placeholder: '{\n  "roles_claim": "groups",\n  "use_lmap": true,\n  "role_map": {},\n  "register": true,\n  "link_local_users": false,\n  "subject_claim": ""\n}',
+        hint: "Maps SAML assertion attributes onto synced roles. role_map values are role names or IDs. Logins are linked by a persistent NameID (or subject_claim); link_local_users allows attaching to local accounts.",
       })}
       {@render note(
         `Register this provider's SP metadata at ${session.oauthBase}/saml/${encodeURIComponent(editor.id.trim() || "provider")}/metadata. Less common SAML options live in the raw document.`,
@@ -663,6 +690,8 @@
       })}
       {@render line({
         label: "Bind password",
+        type: "password",
+        hint: "Write-only. Leave blank to keep the stored password.",
         value: editor.getNestedString("bind", "password"),
         set: (value) => editor.setNestedString("bind", "password", value),
         placeholder: "change-me",
@@ -834,10 +863,11 @@
             : " *"
         }`,
         value: editor.getNestedString("details", "secret"),
+        type: "password",
         set: (value) => editor.setNestedString("details", "secret", value),
         placeholder: "optional for mTLS-only clients",
         hint: editor.loadedID
-          ? "This is the stored client secret. Change it here to rotate the credential."
+          ? "Write-only. Leave blank to keep the stored secret; enter a new value to rotate it."
           : "Either a secret or an mTLS certificate binding is required.",
       })}
       {@render line({
@@ -1201,5 +1231,6 @@
 {#if editor.kind === "users" && editor.loadedID}
   {#key editor.loadedID}
     <PasskeyPanel userID={editor.loadedID} />
+    <FederatedIdentityPanel userID={editor.loadedID} />
   {/key}
 {/if}

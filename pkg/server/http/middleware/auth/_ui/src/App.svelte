@@ -4,6 +4,7 @@
   import Masthead from "./components/Masthead.svelte";
   import IndexRail from "./components/IndexRail.svelte";
   import Docket from "./components/Docket.svelte";
+  import BreakSeal from "./components/ui/BreakSeal.svelte";
 
   import OverviewTab from "./components/OverviewTab.svelte";
   import FlowsTab from "./components/FlowsTab.svelte";
@@ -36,11 +37,21 @@
   import { editor } from "./lib/state/editor.svelte";
   import { route } from "./lib/state/route.svelte";
   import { theme } from "./lib/state/theme.svelte";
+  import { settings } from "./lib/state/settings.svelte";
+  import { issuedSecrets } from "./lib/state/issued-secrets.svelte";
 
   let menuOpen = $state(false);
   let search = $state("");
+  let discardSettingsOpen = $state(false);
   let rail = $state<ReturnType<typeof IndexRail> | null>(null);
   let menuRail = $state<ReturnType<typeof IndexRail> | null>(null);
+
+  $effect(() => {
+    if (!session.loading && session.capabilities) route.enforce();
+  });
+  $effect(() => {
+    if (session.capabilities) issuedSecrets.bindPrincipal(session.capabilities.x_user ?? "");
+  });
 
   // Self-service visitors never learn the admin plane exists; capability
   // decides what is in the index, not what is disabled inside it.
@@ -62,6 +73,7 @@
   async function refresh() {
     await session.run(async () => {
       await session.loadCapabilities();
+      route.enforce();
       if (!session.isAdmin) {
         registry.loaded = false;
         return;
@@ -130,7 +142,8 @@
 
     const onHash = () => {
       if (!editor.confirmDiscard()) {
-        history.pushState(history.state, "", settledHash || window.location.pathname);
+        // replace, not push: a pushed entry would make Back loop on this prompt
+        history.replaceState(history.state, "", settledHash || window.location.pathname);
         return;
       }
       settledHash = window.location.hash;
@@ -139,12 +152,18 @@
       if (route.recordID && route.isResource(route.tab)) {
         void editor.load(route.tab, route.recordID);
       } else {
-        selectTab(route.tab);
+        // discard was already confirmed above; selectTab would ask again and a
+        // Cancel there left the old editor open under the new tab
+        route.select(route.tab);
+        menuOpen = false;
       }
     };
 
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (editor.dirty) event.preventDefault();
+      if (editor.dirty || settings.dirtyNamespaces.length > 0 || issuedSecrets.pending || session.busy) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
     };
 
     window.addEventListener("hashchange", onHash);
@@ -208,6 +227,44 @@
               Set one under Platform → Admin once the first role exists.
             </span>
           </p>
+        {/if}
+
+        {#if session.isAdmin && settings.dirtyNamespaces.length > 0}
+          <p class="border-b border-rule px-5 py-2.5 text-[13px] text-muted sm:px-8 lg:px-10" role="status">
+            Unsaved settings: <span class="serial">{settings.dirtyNamespaces.join(", ")}</span>.
+            Drafts stay in this tab until committed; re-reading does not discard them.
+            <button type="button" class="act act-quiet ml-2" disabled={session.busy} onclick={() => (discardSettingsOpen = !discardSettingsOpen)}>
+              {discardSettingsOpen ? "Keep drafts" : "Discard drafts…"}
+            </button>
+          </p>
+          {#if settings.dirtyNamespaces.some((namespace) => settings.conflicts[namespace])}
+            <p class="border-b border-rule px-5 py-3 text-[13px] text-seal sm:px-8 lg:px-10" role="alert">
+              Settings changed on the server. Your draft was not saved or discarded. Copy the edits you want to keep,
+              use Re-read to get current server values, then Discard drafts and reapply your changes.
+            </p>
+          {/if}
+          {#if discardSettingsOpen}
+            <div class="px-5 py-4 sm:px-8 lg:px-10">
+              <BreakSeal
+                consequence="Discarding removes every unsaved settings edit in this tab and restores the last values read from the server. Nothing on the server is changed."
+                action="Discard settings drafts"
+                disabled={session.busy}
+                onconfirm={() => { settings.discardDrafts(); discardSettingsOpen = false; }}
+              />
+            </div>
+          {/if}
+        {/if}
+
+        {#if issuedSecrets.pending}
+          <div class="border-b border-rule px-5 py-3 text-[13px] text-ink sm:px-8 lg:px-10" role="status">
+            Credentials are waiting to be stored. They stay available while you change pages, but closing or reloading this tab loses them.
+            {#if issuedSecrets.adminKey && session.isAdmin}
+              <button type="button" class="act act-quiet ml-2" onclick={() => selectTab("api-keys")}>Return to issued API key</button>
+            {/if}
+            {#if issuedSecrets.ownKey || issuedSecrets.recoveryCodes.length || issuedSecrets.totpSecret}
+              <button type="button" class="act act-quiet ml-2" onclick={() => selectTab("account")}>Return to account credentials</button>
+            {/if}
+          </div>
         {/if}
 
         {#if route.tab === "overview"}

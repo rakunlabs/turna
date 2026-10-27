@@ -9,8 +9,11 @@ import {
   splitValues,
   validateJSON,
 } from "../records";
-import { docket, session } from "./session.svelte";
+import { docket, session, statusOf } from "./session.svelte";
+import { recordRevision, revisionHeaders } from "../revisions";
 import { registry } from "./registry.svelte";
+import { editableUserRecord, userPatch } from "../user-patch";
+import { missingStoredSecrets, sameRecord } from "../settings-record";
 
 /**
  * The editor drafts one instrument at a time. The draft is always the raw JSON
@@ -27,6 +30,8 @@ class Editor {
   advanced = $state(false);
   /** Who last amended the loaded record, and when. Empty for a new draft. */
   custody = $state("");
+  revision = $state("");
+  conflict = $state(false);
   /** Field-level JSON that did not parse; held here so Commit cannot drop it silently. */
   invalidFields = $state<Record<string, string>>({});
 
@@ -53,7 +58,8 @@ class Editor {
   requirementError = $derived(this.#requirementError());
 
   canCommit = $derived(
-    !session.busy &&
+      !session.busy &&
+      !this.conflict &&
       !this.jsonError &&
       !this.requirementError &&
       Object.keys(this.invalidFields).length === 0 &&
@@ -68,12 +74,13 @@ class Editor {
 
   canGrantTemp = $derived(
     !session.busy &&
+      !this.jsonError &&
       Boolean(this.loadedID) &&
       this.tempSelected &&
       Boolean(this.temp.expiresIn.trim() || this.temp.expiresAt.trim()),
   );
 
-  canRemoveTemp = $derived(!session.busy && Boolean(this.loadedID) && this.tempSelected);
+  canRemoveTemp = $derived(!session.busy && !this.jsonError && Boolean(this.loadedID) && this.tempSelected);
 
   isReservedNamespace(id: string) {
     return Boolean(kindSpecs.settings.namespaceExamples?.[id.trim()]);
@@ -106,7 +113,7 @@ class Editor {
    * problem beside the field instead of as a 400 after commit.
    */
   #requirementError() {
-    if (this.loadedID || this.jsonError) return "";
+    if (this.jsonError) return "";
 
     let record: AnyRecord;
     try {
@@ -117,6 +124,10 @@ class Editor {
       return "";
     }
 
+    if (this.spec.body === "config" && this.loadedID && this.id.trim() !== this.loadedID && missingStoredSecrets(record, {}).length) {
+      return "Re-enter stored credentials before copying this record to another identifier; blank secrets can only be retained on the original record";
+    }
+
     const detailsValue = record.details;
     const details =
       detailsValue && typeof detailsValue === "object" && !Array.isArray(detailsValue)
@@ -125,15 +136,16 @@ class Editor {
 
     if (this.kind === "users") {
       if (fieldList(record.alias).length === 0) return "An alias is required — it is what the user logs in with";
-      if (record.local !== false && fieldText(details.name) === "") return "Local users need a name";
-      if (record.local !== false && fieldText(details.password) === "") return "Local users need a password";
+      if (!this.loadedID && record.local !== false && fieldText(details.name) === "") return "Local users need a name";
+      if (record.local !== false && fieldText(details.password) === "" && details.password_set !== true) return "Local users need a password";
     }
 
     if (this.kind === "service-accounts") {
       if (fieldList(record.alias).length === 0) return "An alias is required — the first one becomes the client ID";
-      if (fieldText(details.name) === "") return "Service accounts need a name";
+      if (!this.loadedID && fieldText(details.name) === "") return "Service accounts need a name";
       if (
         fieldText(details.secret) === "" &&
+        details.secret_set !== true &&
         fieldText(details.cert_fingerprint) === "" &&
         fieldText(details.cert_subject) === ""
       ) {
@@ -301,8 +313,8 @@ class Editor {
 
   setNestedString(parent: string, key: string, value: string) {
     const nested = { ...this.nested(parent), [key]: value };
-    // An emptied password means "keep the stored one"; sending "" would replace it.
-    if (parent === "details" && key === "password" && value === "") delete nested.password;
+    // An emptied password or client secret means "keep the stored one".
+    if (parent === "details" && (key === "password" || key === "secret") && value === "") delete nested[key];
     this.setRecord({ ...this.record(), [parent]: nested });
   }
 
@@ -476,6 +488,7 @@ class Editor {
 
   async patchTemporaryAccess(remove = false) {
     if (!this.loadedID || (this.kind !== "users" && this.kind !== "service-accounts")) return;
+    if (this.jsonError) { docket.reject("Fix the raw record JSON before changing temporary access"); return; }
 
     const roleIDs = splitValues(this.temp.roleIDs);
     const permissionIDs = splitValues(this.temp.permissionIDs);
@@ -499,6 +512,7 @@ class Editor {
 
     const kind = this.kind;
     const id = this.loadedID;
+    const sequence = this.#loadSeq;
 
     const ok = await session.run(async () => {
       await session.request(`${this.spec.listPath}/${encodeURIComponent(id)}/access`, {
@@ -509,7 +523,7 @@ class Editor {
       await registry.loadKind(kind);
     });
 
-    if (ok) {
+    if (ok && sequence === this.#loadSeq) {
       if (this.dirty) {
         // Keep the operator's other edits; only the grants changed on the server.
         await this.#mergeTemporaryAccess(kind, id);
@@ -522,12 +536,26 @@ class Editor {
   }
 
   async #mergeTemporaryAccess(kind: ResourceKind, id: string) {
+    const sequence = this.#loadSeq;
     await session.run(async () => {
       const res = await session.request<Record<string, unknown>>(
         `${kindSpecs[kind].listPath}/${encodeURIComponent(id)}`,
       );
-      if (this.loadedID !== id) return;
+      if (this.loadedID !== id || this.kind !== kind || sequence !== this.#loadSeq) return;
+      if (this.jsonError) {
+        docket.reject("Temporary access was saved. Fix the raw JSON, then reload to read the updated access; your draft was kept.");
+        return;
+      }
       const payload = res.payload ?? {};
+      // A temporary grant made by this editor also advances the revision. It
+      // is safe to adopt that revision only if every other editable field is
+      // unchanged from our baseline; otherwise keep the stale condition.
+      const withoutTemporary = (record: AnyRecord) => {
+        const { tmp_role_ids: _roles, tmp_permission_ids: _permissions, ...rest } = editableUserRecord(record);
+        return rest;
+      };
+      const baseline = JSON.parse(this.#loadedJSON) as AnyRecord;
+      if (sameRecord(withoutTemporary(baseline), withoutTemporary(payload))) this.revision = recordRevision(payload);
       const pick = (record: AnyRecord) => ({
         ...record,
         tmp_role_ids: payload.tmp_role_ids,
@@ -545,6 +573,7 @@ class Editor {
   /* --- lifecycle ---------------------------------------------------------- */
 
   reset(kind: ResourceKind) {
+    ++this.#loadSeq;
     const spec = kindSpecs[kind];
     this.kind = kind;
     this.loadedID = "";
@@ -552,11 +581,15 @@ class Editor {
     this.enabled = true;
     this.advanced = false;
     this.custody = "";
+    this.revision = "";
+    this.conflict = false;
     this.json = pretty(spec.example);
     this.invalidFields = {};
     this.resetTemp();
     this.applyNamespaceExample();
     this.#loadedJSON = this.json;
+    this.#loadedID = this.id;
+    this.#loadedEnabled = this.enabled;
   }
 
   startCreate(kind: ResourceKind) {
@@ -602,6 +635,8 @@ class Editor {
       this.id = nextID;
       this.json = pretty(example);
       this.#loadedJSON = this.json;
+      this.#loadedID = this.id;
+      this.#loadedEnabled = this.enabled;
     }
   }
 
@@ -626,8 +661,9 @@ class Editor {
     let current = false;
 
     const ok = await session.run(async () => {
+      const query = kind === "users" || kind === "service-accounts" ? "?add_roles=false&add_permissions=false" : "";
       const res = await session.request<Record<string, unknown>>(
-        `${spec.listPath}/${encodeURIComponent(id)}`,
+        `${spec.listPath}/${encodeURIComponent(id)}${query}`,
       );
 
       // A later load (double click, hash change) owns the draft now.
@@ -641,6 +677,8 @@ class Editor {
       this.loadedID = id;
       this.advanced = false;
       this.custody = custodyLine(payload);
+      this.revision = recordRevision(payload);
+      this.conflict = false;
       this.resetTemp();
 
       if (spec.body === "value") {
@@ -649,10 +687,13 @@ class Editor {
         this.enabled = Boolean(payload.enabled);
         this.json = pretty(payload.config);
       } else {
-        this.json = pretty(payload);
+        const { revision: _revision, ...editable } = payload;
+        this.json = pretty(kind === "users" || kind === "service-accounts" ? editableUserRecord(payload) : editable);
       }
       this.#loadedJSON = this.json;
       this.invalidFields = {};
+      this.#loadedID = this.id;
+      this.#loadedEnabled = this.enabled;
     });
 
     if (ok && current) this.open = true;
@@ -664,11 +705,13 @@ class Editor {
   /* --- unsaved changes ----------------------------------------------------- */
 
   #loadedJSON = $state("");
+  #loadedID = $state("");
+  #loadedEnabled = $state(true);
 
   /** True when the draft differs from what was loaded (or from the blank template). */
   get dirty() {
     if (!this.open) return false;
-    return this.json !== this.#loadedJSON;
+    return this.json !== this.#loadedJSON || this.id !== this.#loadedID || this.enabled !== this.#loadedEnabled;
   }
 
   /** Ask before a navigation throws an edited draft away. */
@@ -678,6 +721,9 @@ class Editor {
 
   async commit(onCommitted: () => Promise<void>) {
     const spec = this.spec;
+    const sequence = this.#loadSeq;
+    if (this.conflict) { docket.reject("This record changed on the server. Reload it and review your edits before saving."); return; }
+    if (this.jsonError) { docket.reject(this.jsonError); return; }
 
     let parsed: unknown;
     try {
@@ -710,17 +756,25 @@ class Editor {
     const created = this.isNew;
 
     const ok = await session.run(async () => {
+      try {
       if (spec.body === "raw") {
+        const patchUser = Boolean(this.loadedID) && (this.kind === "users" || this.kind === "service-accounts");
+        const body = patchUser ? userPatch(JSON.parse(this.#loadedJSON), parsed as AnyRecord) : parsed;
         await session.request(
           this.loadedID ? `${spec.listPath}/${encodeURIComponent(this.loadedID)}` : spec.listPath,
-          { method: this.loadedID ? "PUT" : "POST", body: JSON.stringify(parsed) },
+          { method: this.loadedID ? (patchUser ? "PATCH" : "PUT") : "POST", headers: revisionHeaders(this.loadedID ? this.revision : undefined), body: JSON.stringify(body) },
         );
       } else {
         const body = spec.body === "value" ? { value: parsed } : { enabled: this.enabled, config: parsed };
         await session.request(`${spec.listPath}/${encodeURIComponent(this.id.trim())}`, {
           method: "PUT",
+          headers: revisionHeaders(this.loadedID && this.id.trim() === this.loadedID ? this.revision : "absent"),
           body: JSON.stringify(body),
         });
+      }
+      } catch (err) {
+        if (statusOf(err) === 412 && sequence === this.#loadSeq) this.conflict = true;
+        throw err;
       }
     });
 
@@ -728,15 +782,20 @@ class Editor {
 
     // The write landed. Close before re-reading, so a failed reload cannot leave
     // a "new" draft open whose second Commit would issue a duplicate record.
-    this.open = false;
-    this.#loadedJSON = this.json;
+    if (sequence === this.#loadSeq) {
+      this.open = false;
+      this.#loadedJSON = this.json;
+      this.#loadedID = this.id;
+      this.#loadedEnabled = this.enabled;
+    }
     docket.commit(created ? `${spec.title} record issued` : `${spec.title} record amended`);
     await session.run(onCommitted, "Committed, but the register could not be re-read");
   }
 
   async remove(kind: ResourceKind, id: string, onRemoved: () => Promise<void>) {
+    const revision = registry.rows(kind).find((row) => row.id === id)?.revision;
     const ok = await session.run(async () => {
-      await session.request(`${kindSpecs[kind].listPath}/${encodeURIComponent(id)}`, { method: "DELETE" });
+      await session.request(`${kindSpecs[kind].listPath}/${encodeURIComponent(id)}`, { method: "DELETE", headers: revisionHeaders(revision) });
       await onRemoved();
     });
 

@@ -81,12 +81,18 @@ The code expires in {{.ExpiresIn}}.`;
       };
     }
 
+    if (!from && !username) {
+      return {
+        state: "held" as const,
+        label: "Sender missing",
+        detail: `No From address and no SMTP username are set, so every send to ${host}:${port} will fail. Set a From address below.`,
+      };
+    }
+
     return {
       state: "endorsed" as const,
       label: "Delivering",
-      detail: from || username
-        ? `Codes are sent from ${from || username} through ${host}:${port}.`
-        : `No From address and no SMTP username are set, so every send to ${host}:${port} will fail. Set a From address below.`,
+      detail: `Codes are sent from ${from || username} through ${host}:${port}.`,
     };
   });
 
@@ -208,6 +214,7 @@ The code expires in {{.ExpiresIn}}.`;
       <Entry
         label="SMTP password"
         type="password"
+        hint={getSettingBool("email", ["smtp", "password_set"]) ? "A password is stored. Leave blank to keep it." : "Write-only. Leave blank to keep any stored password."}
         placeholder={noAuth ? "not used while auth is skipped" : "optional"}
         disabled={noAuth}
         bind:value={

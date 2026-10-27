@@ -86,6 +86,8 @@ func parseBoolDefault(q *query.Query, key string, def bool) bool {
 
 func handleIAMError(w http.ResponseWriter, err error, msg string) {
 	switch {
+	case errors.Is(err, errPrecondition):
+		httputil.HandleError(w, httputil.NewError(msg, err, http.StatusPreconditionFailed))
 	case errors.Is(err, data.ErrNotFound):
 		httputil.HandleError(w, httputil.NewError(msg, err, http.StatusNotFound))
 	case errors.Is(err, data.ErrConflict):
@@ -227,7 +229,7 @@ func (m *Auth) GetUserAPI(w http.ResponseWriter, r *http.Request) {
 		// never expose the stored password hash to the management UI; an
 		// absent password on update means "keep current" (see PutUser).
 		Sanitize:      true,
-		IncludeSecret: isServiceAccount(r),
+		IncludeSecret: false,
 	}
 
 	user, err := m.cache.GetUser(req)
@@ -236,6 +238,7 @@ func (m *Auth) GetUserAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setRecordETag(w, user.Revision)
 	httputil.JSON(w, http.StatusOK, data.Response[*data.UserExtended]{Payload: user})
 }
 
@@ -520,6 +523,7 @@ func (m *Auth) GetRoleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setRecordETag(w, role.Revision)
 	httputil.JSON(w, http.StatusOK, data.Response[*data.RoleExtended]{Payload: role})
 }
 
@@ -689,6 +693,7 @@ func (m *Auth) GetPermissionAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setRecordETag(w, permission.Revision)
 	httputil.JSON(w, http.StatusOK, data.Response[*data.PermissionExtended]{Payload: permission})
 }
 
@@ -829,6 +834,7 @@ func (m *Auth) GetLMapAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setRecordETag(w, lmap.Revision)
 	httputil.JSON(w, http.StatusOK, data.Response[*data.LMap]{Payload: lmap})
 }
 

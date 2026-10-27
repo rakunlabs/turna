@@ -1,11 +1,13 @@
 package auth
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"html/template"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
@@ -24,6 +26,12 @@ type authorizeFlow struct {
 	CodeChallenge       string   `json:"code_challenge,omitempty"`
 	CodeChallengeMethod string   `json:"code_challenge_method,omitempty"`
 	Resources           []string `json:"resources,omitempty"`
+	// ConsentToken is a random value rendered into the consent form and
+	// required back on submit. The flow id alone is not secret to the party
+	// that started the flow, so without it an attacker could start a flow and
+	// auto-submit "approve" from their own page with the victim's session
+	// cookie attached. Stored in the flow, so every replica can check it.
+	ConsentToken string `json:"consent_token,omitempty"`
 }
 
 // lookupClient resolves client metadata without authenticating it; configured
@@ -32,6 +40,9 @@ func (m *Auth) lookupClient(clientID string) (*AccessClient, bool) {
 	sn := m.cache.Snapshot()
 
 	if client, ok := sn.OAuthClients[clientID]; ok {
+		if dynamicClientExpired(client, sn.Registration.GetClientLifetime(), time.Now()) {
+			return nil, false
+		}
 		return &client, true
 	}
 
@@ -79,7 +90,7 @@ func resourcesAllowed(requested, allowed []string) bool {
 	for _, res := range requested {
 		ok := false
 		for _, allow := range allowed {
-			if allow != "" && strings.HasPrefix(res, allow) {
+			if uriPrefixMatch(res, allow) {
 				ok = true
 
 				break
@@ -161,6 +172,10 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	if !client.allowsGrant("authorization_code") {
+		httputil.HandleError(w, AccessTokenErrorResponse{Error: "unauthorized_client", ErrorDescription: "authorization_code is not allowed for this client", code: http.StatusBadRequest})
+		return
+	}
 
 	redirectURI := query.Get("redirect_uri")
 	if !client.redirectURIAllowedForClient(redirectURI) {
@@ -220,6 +235,13 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	consentToken, err := randomHex(32)
+	if err != nil {
+		m.authorizeErrorRedirect(w, r, redirectURI, state, "server_error", err.Error())
+
+		return
+	}
+
 	flow := authorizeFlow{
 		ClientID:            clientID,
 		ClientName:          client.ClientName,
@@ -230,6 +252,7 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
 		Resources:           resources,
+		ConsentToken:        consentToken,
 	}
 
 	if err := m.store.CreateFlowCode(r.Context(), flowKindAuthorize, flowID, flow, cfg.GetFlowLifetime()); err != nil {
@@ -319,6 +342,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
 {{- end}}
 <form method="post" action="{{.Action}}">
 <input type="hidden" name="flow" value="{{.Flow}}">
+<input type="hidden" name="consent_token" value="{{.ConsentToken}}">
 {{- if .RememberMe}}
 <label class="remember">
 <input type="checkbox" name="remember_me" value="true" aria-describedby="remember-description">
@@ -340,13 +364,14 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
 `))
 
 type consentPageData struct {
-	ClientName string
-	User       string
-	Scopes     []string
-	Resources  []string
-	Flow       string
-	Action     string
-	Error      string
+	ClientName   string
+	User         string
+	Scopes       []string
+	Resources    []string
+	Flow         string
+	ConsentToken string
+	Action       string
+	Error        string
 	// RememberMe shows the remember-me checkbox on the consent form.
 	RememberMe bool
 }
@@ -354,6 +379,9 @@ type consentPageData struct {
 func (m *Auth) renderConsent(w http.ResponseWriter, code int, data consentPageData) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	// the consent page must never be framed (clickjacking the Allow button)
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 	w.WriteHeader(code)
 
 	_ = consentTemplate.Execute(w, data)
@@ -426,13 +454,14 @@ func (m *Auth) ConsentAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m.renderConsent(w, http.StatusOK, consentPageData{
-		ClientName: clientName,
-		User:       userAlias,
-		Scopes:     flow.Scope,
-		Resources:  flow.Resources,
-		Flow:       flowID,
-		Action:     m.PrefixPath + "/oauth2/consent",
-		RememberMe: !m.cache.Snapshot().Authorize.DisableRememberMe,
+		ClientName:   clientName,
+		User:         userAlias,
+		Scopes:       flow.Scope,
+		Resources:    flow.Resources,
+		Flow:         flowID,
+		ConsentToken: flow.ConsentToken,
+		Action:       m.PrefixPath + "/oauth2/consent",
+		RememberMe:   !m.cache.Snapshot().Authorize.DisableRememberMe,
 	})
 }
 
@@ -458,6 +487,14 @@ func (m *Auth) ConsentDecisionAPI(w http.ResponseWriter, r *http.Request) {
 	// logged-in consent page
 	userAlias := m.consentUser(w, r, flowID, false)
 	if userAlias == "" {
+		return
+	}
+
+	// flows created before the token existed carry none; they expire within
+	// the flow lifetime, so refusing them is only a one-time "start over"
+	if flow.ConsentToken == "" || subtle.ConstantTimeCompare([]byte(flow.ConsentToken), []byte(r.PostFormValue("consent_token"))) != 1 {
+		m.renderConsent(w, http.StatusForbidden, consentPageData{Error: "This consent form is no longer valid. Start over from the application."})
+
 		return
 	}
 

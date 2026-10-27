@@ -19,12 +19,18 @@
     setSettingNumber,
     getSettingValue,
     setSettingValue,
+    saveSetting,
     saveSettings,
   } from "../lib/state/settings.svelte";
   import { fieldText } from "../lib/records";
 
-  /** Everything that decides what a token is and who may ask for one. */
-  const namespaces = ["token", "oauth2", "authorize", "registration", "password", "passkey", "jwt"] as const;
+  /**
+   * Everything that decides what a token is and who may ask for one. The
+   * signing key (jwt) is left out on purpose: re-sending the copy loaded with
+   * the page would silently undo a rotation made since, so it has its own
+   * commit in the Signing key section.
+   */
+  const namespaces = ["token", "oauth2", "authorize", "registration", "password", "passkey"] as const;
   const schema = $derived(getSettingString("oauth2", ["schema"]) || "https");
   const publishedOAuth = $derived(session.info?.oauth2);
   const editedBaseURL = $derived(getSettingString("oauth2", ["base_url"]).trim());
@@ -250,7 +256,7 @@
 
 <Instrument
   title="OAuth2"
-  note="Token lifetimes, the redirect surface for upstream code flows, which credentials the token endpoint accepts, and the key everything is signed with. Commit all applies every section on this page."
+  note="Token lifetimes, the redirect surface for upstream code flows, which credentials the token endpoint accepts, and the key everything is signed with. Commit all applies every section except the signing key, which commits on its own."
 >
   {#snippet actions()}
     <button
@@ -266,7 +272,7 @@
 
   {#snippet custody()}
     <span class="stamp">
-      Namespaces <span class="serial stamp-raw">token · oauth2 · authorize · registration · password · passkey · jwt</span>
+      Namespaces <span class="serial stamp-raw">token · oauth2 · authorize · registration · password · passkey</span>
     </span>
     <span class="serial stamp-raw">{session.oauthIssuer}/token</span>
   {/snippet}
@@ -955,8 +961,18 @@
 
   <Section
     title="Signing key"
-    note="The RSA key every access and refresh token is signed with. It is stored encrypted in the jwt namespace, generated on first start, and its public half is published through JWKS."
+    note="The RSA key every access and refresh token is signed with. It is stored encrypted in the jwt namespace, generated on first start, and its public half is published through JWKS. Commit all does not touch it; use Commit signing key."
   >
+    {#snippet aside()}
+      <button
+        type="button"
+        class="act"
+        disabled={session.busy}
+        onclick={() => void saveSetting("jwt")}
+      >
+        Commit signing key
+      </button>
+    {/snippet}
     <div class="flex flex-wrap items-end gap-x-12 gap-y-6 border-b border-rule pb-7">
       <div class="min-w-0">
         <Serial value={publishedKid} size="md" />
@@ -1013,6 +1029,7 @@
           oninput={(event) => setSettingString("jwt", ["private_key"], event.currentTarget.value)}
         ></textarea>
         <p id="jwt-private-key-hint" class="mt-2 max-w-[70ch] text-[12px] leading-[1.55] text-muted">
+          The stored key is never returned. Leave blank to keep it.
           PEM, PKCS#8 or PKCS#1. The public key is derived from it and republished. Committing a
           different key has the same effect as rotating: every outstanding access and refresh token
           stops verifying. Changes apply without a restart.

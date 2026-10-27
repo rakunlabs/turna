@@ -257,6 +257,7 @@ func (m *Auth) APIRegister(w http.ResponseWriter, r *http.Request) {
 		ClientName:        req.ClientName,
 		Public:            authMethod == "none",
 		Dynamic:           true,
+		GrantTypes:        grantTypes,
 		RegistrationToken: sha256Hex(registrationToken),
 		CreatedAt:         now.Unix(),
 	}
@@ -355,15 +356,23 @@ func (m *Auth) registrationResponse(clientID string, client *AccessClient, r *ht
 	if client.Public {
 		authMethod = "none"
 	}
+	grants := client.GrantTypes
+	if len(grants) == 0 {
+		grants = []string{"authorization_code", "refresh_token"}
+	}
+	expires := int64(0)
+	if lifetime := m.cache.Snapshot().Registration.GetClientLifetime(); lifetime > 0 && client.CreatedAt > 0 {
+		expires = time.Unix(client.CreatedAt, 0).Add(lifetime).Unix()
+	}
 
 	return ClientRegistrationResponse{
 		ClientID:                clientID,
 		ClientSecret:            client.ClientSecret,
 		ClientIDIssuedAt:        client.CreatedAt,
-		ClientSecretExpiresAt:   0,
+		ClientSecretExpiresAt:   expires,
 		RedirectURIs:            client.RedirectURIs,
 		TokenEndpointAuthMethod: authMethod,
-		GrantTypes:              []string{"authorization_code", "refresh_token"},
+		GrantTypes:              grants,
 		ResponseTypes:           []string{"code"},
 		ClientName:              client.ClientName,
 		Scope:                   strings.Join(client.Scope, " "),
@@ -422,6 +431,18 @@ func (m *Auth) APIRegisterUpdate(w http.ResponseWriter, r *http.Request) {
 
 	if req.Scope != "" {
 		client.Scope = splitFields(req.Scope)
+	}
+	if req.GrantTypes != nil {
+		for _, grant := range req.GrantTypes {
+			if !registrationGrantTypes[grant] {
+				httputil.HandleError(w, AccessTokenErrorResponse{Error: "invalid_client_metadata", ErrorDescription: "unsupported grant type", code: http.StatusBadRequest})
+				return
+			}
+		}
+		if len(req.GrantTypes) == 0 {
+			req.GrantTypes = []string{"authorization_code", "refresh_token"}
+		}
+		client.GrantTypes = req.GrantTypes
 	}
 
 	clientRaw, err := json.Marshal(client)

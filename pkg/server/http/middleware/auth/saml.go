@@ -307,6 +307,11 @@ func samlClaims(assertion *saml.Assertion) map[string]any {
 
 	if assertion.Subject != nil && assertion.Subject.NameID != nil && assertion.Subject.NameID.Value != "" {
 		claims["name_id"] = assertion.Subject.NameID.Value
+		// transient/email NameIDs change or can be reassigned; only a
+		// persistent one identifies the account for linking
+		if assertion.Subject.NameID.Format == samlPersistentNameID {
+			claims["persistent_name_id"] = assertion.Subject.NameID.Value
+		}
 	}
 
 	return claims

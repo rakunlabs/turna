@@ -135,6 +135,10 @@ func (m *Auth) APIDeviceAuthorization(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if client, ok := m.lookupClient(clientID); ok && !client.allowsGrant(grantTypeDeviceCode) {
+		httputil.HandleError(w, AccessTokenErrorResponse{Error: "unauthorized_client", ErrorDescription: "device grant is not allowed for this client", code: http.StatusBadRequest})
+		return
+	}
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
@@ -375,11 +379,24 @@ func (m *Auth) deviceCodeGrant(w http.ResponseWriter, r *http.Request, req Acces
 
 		return
 	case deviceStatusApproved:
-		userReq := data.GetUserRequest{ID: flow.UserID, AddScopeRoles: true}
-		if flow.UserID == "" {
+		// atomic take: two concurrent polls must not both redeem the code
+		approved := deviceFlow{}
+		if err := m.store.TakeFlowCode(r.Context(), flowKindDevice, req.DeviceCode, &approved); err != nil {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "expired_token",
+				ErrorDescription: "device code not found or expired",
+				code:             http.StatusBadRequest,
+			})
+
+			return
+		}
+		_ = m.store.DeleteFlowCode(r.Context(), flowKindDeviceUser, approved.UserCode)
+
+		userReq := data.GetUserRequest{ID: approved.UserID, AddScopeRoles: true}
+		if approved.UserID == "" {
 			// Existing pending flows stored before user_id was added still carry
 			// the alias and remain redeemable until they expire.
-			userReq.Alias = flow.UserAlias
+			userReq.Alias = approved.UserAlias
 		}
 		user, err := m.cache.GetUser(userReq)
 		if err != nil {
@@ -392,10 +409,7 @@ func (m *Auth) deviceCodeGrant(w http.ResponseWriter, r *http.Request, req Acces
 			return
 		}
 
-		_ = m.store.DeleteFlowCode(r.Context(), flowKindDevice, req.DeviceCode)
-		_ = m.store.DeleteFlowCode(r.Context(), flowKindDeviceUser, flow.UserCode)
-
-		m.writeToken(w, r, user, clientID, flow.Scope, nil)
+		m.writeToken(w, r, user, clientID, approved.Scope, nil)
 
 		return
 	default:

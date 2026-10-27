@@ -163,6 +163,13 @@ func (m *Auth) GetSetting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	redacted, err := redactSecrets(setting.Value)
+	if err != nil {
+		httputil.HandleError(w, httputil.NewError("cannot read setting", err, http.StatusInternalServerError))
+		return
+	}
+	setting.Value = redacted
+	setRecordETag(w, setting.Revision)
 	httputil.JSON(w, http.StatusOK, Response[*Setting]{Payload: setting})
 }
 
@@ -265,12 +272,27 @@ func (m *Auth) PutSetting(w http.ResponseWriter, r *http.Request) {
 
 	// the jwt namespace carries the signing key; reject broken material early
 	if namespace == jwtSettingNamespace {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(req.Value, &fields) == nil && string(fields["private_key"]) == "null" {
+			httputil.HandleError(w, httputil.NewError("private_key cannot be cleared; rotate or replace it", nil, http.StatusBadRequest))
+			return
+		}
 		var setting jwtSetting
 		if err := json.Unmarshal(req.Value, &setting); err != nil {
 			httputil.HandleError(w, httputil.NewError("cannot decode jwt setting", err, http.StatusBadRequest))
 			return
 		}
 
+		// Validate retained key material without putting it into the write body.
+		if setting.PrivateKey == "" {
+			current, readErr := m.store.GetSetting(r.Context(), jwtSettingNamespace)
+			if readErr == nil {
+				var stored jwtSetting
+				if json.Unmarshal(current.Value, &stored) == nil {
+					setting.PrivateKey = stored.PrivateKey
+				}
+			}
+		}
 		if err := validateJWTSetting(setting); err != nil {
 			httputil.HandleError(w, httputil.NewError("invalid jwt setting", err, http.StatusBadRequest))
 			return
@@ -383,7 +405,7 @@ func (m *Auth) PutSetting(w http.ResponseWriter, r *http.Request) {
 
 	version, err := m.store.PutSetting(r.Context(), namespace, req.Value, getUserName(r))
 	if err != nil {
-		httputil.HandleError(w, httputil.NewError("cannot save auth setting", err, http.StatusInternalServerError))
+		writeError(w, err, "cannot save auth setting")
 		return
 	}
 
@@ -436,7 +458,7 @@ func (m *Auth) DeleteSetting(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		httputil.HandleError(w, httputil.NewError("cannot delete auth setting", err, http.StatusInternalServerError))
+		writeError(w, err, "cannot delete auth setting")
 		return
 	}
 

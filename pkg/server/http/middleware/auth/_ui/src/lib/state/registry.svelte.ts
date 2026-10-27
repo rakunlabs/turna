@@ -36,6 +36,7 @@ class Registry {
   standingByKind = $state<Partial<Record<ResourceKind, ListStanding>>>({});
   jwks = $state<AnyRecord[]>([]);
   loaded = $state(false);
+  #loadSeq = new Map<ResourceKind, number>();
 
   rows(kind: ResourceKind) {
     return this.rowsByKind[kind] ?? [];
@@ -51,15 +52,21 @@ class Registry {
   samlCount = $derived(this.rows("saml").length);
 
   async loadKind(kind: ResourceKind) {
+    const seq = (this.#loadSeq.get(kind) ?? 0) + 1;
+    this.#loadSeq.set(kind, seq);
     const spec = kindSpecs[kind];
+    const requested = this.standing(kind);
     let query = "";
 
     if (spec.paginated) {
-      const standing = this.standing(kind);
+      const standing = requested;
       const params = new URLSearchParams();
 
       // Identity lists skip role expansion so the index stays light.
-      if (kind === "users" || kind === "service-accounts") params.set("add_roles", "false");
+      if (kind === "users" || kind === "service-accounts") {
+        params.set("add_roles", "false");
+        params.set("add_permissions", "false");
+      }
       params.set("_limit", String(PAGE_SIZE));
       if (standing.offset > 0) params.set("_offset", String(standing.offset));
       if (standing.search) params.set("search", standing.search);
@@ -73,6 +80,7 @@ class Registry {
     }
 
     const res = await session.request<Record<string, unknown>[]>(`${spec.listPath}${query}`);
+    if (seq !== this.#loadSeq.get(kind)) return;
 
     let rows = (res.payload ?? []).map((item) => rowFromItem(kind, item));
     if (kind === "settings") {
@@ -82,7 +90,7 @@ class Registry {
     this.rowsByKind = { ...this.rowsByKind, [kind]: rows };
 
     if (spec.paginated) {
-      const standing = this.standing(kind);
+      const standing = requested;
       const total = res.meta?.total_item_count ?? 0;
 
       // A delete can strand the offset past the end (an empty page with
@@ -137,8 +145,17 @@ class Registry {
 
   async loadAll() {
     const kinds = Object.keys(kindSpecs) as ResourceKind[];
-    await Promise.all(kinds.map((kind) => this.loadKind(kind)));
-    await Promise.all([settings.loadAll(), this.loadJWKS()]);
+    // settings load independently of the registers: a failing register must
+    // not leave every settings page on template defaults
+    const results = await Promise.allSettled([
+      ...kinds.map((kind) => this.loadKind(kind)),
+      settings.loadAll(),
+      this.loadJWKS(),
+    ]);
+    // stays unloaded on failure so the next ensureLoaded() retries
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure) throw (failure as PromiseRejectedResult).reason;
+
     this.loaded = true;
   }
 

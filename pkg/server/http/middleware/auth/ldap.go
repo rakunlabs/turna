@@ -7,6 +7,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"reflect"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,6 +51,155 @@ func ldapAliases(u ldap.LdapUser, fallback string) []string {
 	}
 
 	return aliases
+}
+
+// ldapDNKey stores the LDAP entry DN in user details; it is the stable
+// identity used to match a stored user even when uid or mail change.
+const ldapDNKey = "ldap_dn"
+
+// ldapUserIndex resolves the stored user behind an LDAP entry.
+type ldapUserIndex struct {
+	sn   *Snapshot
+	byDN map[string]*data.User
+}
+
+func newLDAPUserIndex(sn *Snapshot) ldapUserIndex {
+	byDN := make(map[string]*data.User)
+	for _, id := range sn.UserIDs {
+		user := sn.Users[id]
+		if dn, _ := user.Details[ldapDNKey].(string); dn != "" {
+			byDN[strings.ToLower(dn)] = user
+		}
+	}
+
+	return ldapUserIndex{sn: sn, byDN: byDN}
+}
+
+// find matches by DN first, then by the looked-up identifier and every
+// alias the LDAP entry carries, so a user stored under uid is still found
+// when the lookup comes in with a mail added later.
+func (x ldapUserIndex) find(member string, u *ldap.LdapUser) *data.User {
+	if u != nil && u.DN != "" {
+		if user := x.byDN[strings.ToLower(u.DN)]; user != nil && ldapManaged(user) {
+			return user
+		}
+	}
+
+	candidates := []string{member}
+	if u != nil {
+		candidates = append(candidates, ldapAliases(*u, "")...)
+	}
+
+	for _, alias := range candidates {
+		if alias == "" {
+			continue
+		}
+
+		if user := x.sn.UserByAlias(alias); user != nil && ldapManaged(user) {
+			return user
+		}
+	}
+
+	return nil
+}
+
+// ldapManaged reports whether a stored user may be bound to an LDAP entry.
+// Local accounts (e.g. self signup with a directory user's email) and
+// service accounts must never receive directory roles through alias matching.
+func ldapManaged(user *data.User) bool {
+	return !user.ServiceAccount && !user.Local
+}
+
+// ldapMergeAliases returns the user's aliases updated from the LDAP entry:
+// previously synced uid/mail values that LDAP no longer reports are dropped,
+// current ones are added, manually assigned aliases are kept. Aliases owned
+// by another user are skipped and returned as conflicts.
+func ldapMergeAliases(sn *Snapshot, user *data.User, u ldap.LdapUser) (aliases, conflicts []string) {
+	current := normalizedAliases(ldapAliases(u, ""))
+
+	stale := make(map[string]struct{}, 2)
+	for _, key := range []string{"email", "uid"} {
+		if v, _ := user.Details[key].(string); normalizeAlias(v) != "" && !slices.Contains(current, normalizeAlias(v)) {
+			stale[normalizeAlias(v)] = struct{}{}
+		}
+	}
+
+	aliases = make([]string, 0, len(user.Alias)+len(current))
+	for _, alias := range user.Alias {
+		alias = normalizeAlias(alias)
+		if _, ok := stale[alias]; ok {
+			continue
+		}
+
+		aliases = append(aliases, alias)
+	}
+
+	for _, alias := range current {
+		if owner := sn.UserByAlias(alias); owner != nil && owner.ID != user.ID {
+			conflicts = append(conflicts, alias)
+			continue
+		}
+
+		aliases = append(aliases, alias)
+	}
+
+	// never leave a user without any alias
+	if len(aliases) == 0 {
+		aliases = append(aliases, user.Alias...)
+	}
+
+	return slicesUnique(aliases), conflicts
+}
+
+// ldapUpdateUser refreshes aliases and details of an existing user from its
+// LDAP entry. Without force it only writes when the aliases or DN changed.
+func (m *Auth) ldapUpdateUser(ctx context.Context, sn *Snapshot, user *data.User, u ldap.LdapUser, roleIDs []string, force bool) error {
+	aliases, conflicts := ldapMergeAliases(sn, user, u)
+	if len(conflicts) > 0 {
+		slog.Warn("ldap alias owned by another user, skipped",
+			slog.String("id", user.ID), slog.Any("aliases", conflicts), slog.String("dn", u.DN))
+	}
+
+	dn, _ := user.Details[ldapDNKey].(string)
+	changed := !data.CompareSlices(user.Alias, aliases) || (u.DN != "" && dn != u.DN)
+	if !changed && !force {
+		return nil
+	}
+
+	if err := m.store.UpdateUserLDAP(ctx, user.ID, aliases, ldapDetails(nil, u), roleIDs); err != nil {
+		if errors.Is(err, data.ErrConflict) {
+			slog.Warn("ldap user update conflict", slog.String("id", user.ID), slog.String("error", err.Error()))
+			return nil
+		}
+
+		return fmt.Errorf("failed updating user: %w", err)
+	}
+
+	if changed {
+		slog.Info("ldap user aliases updated", slog.String("id", user.ID), slog.Any("aliases", aliases))
+	}
+
+	return nil
+}
+
+// ldapDetails returns a copy of details with the LDAP attributes applied;
+// the snapshot map is shared and must not be mutated.
+func ldapDetails(details map[string]any, u ldap.LdapUser) map[string]any {
+	out := make(map[string]any, len(details)+6)
+	for k, v := range details {
+		out[k] = v
+	}
+
+	out["email"] = u.Email
+	out["uid"] = u.UID
+	out["name"] = u.Name
+	out["family_name"] = u.FamilyName
+	out["given_name"] = u.GivenName
+	if u.DN != "" {
+		out[ldapDNKey] = u.DN
+	}
+
+	return out
 }
 
 type ldapManager struct {
@@ -108,6 +260,9 @@ func (m *Auth) ldapRuntime() *ldap.Ldap {
 	}
 
 	if len(sn.LDAP) == 0 {
+		if m.ldap.runtime != nil {
+			m.ldap.runtime.Close()
+		}
 		m.ldap.runtime = nil
 		m.ldap.cfg = nil
 		m.ldap.version = sn.Version
@@ -119,6 +274,19 @@ func (m *Auth) ldapRuntime() *ldap.Ldap {
 	if m.LDAP.Addr != "" {
 		cfg.Addr = m.LDAP.Addr
 	}
+
+	// every IAM write bumps the snapshot version; keep the runtime (and its
+	// open connections) unless the effective LDAP config actually changed
+	if m.ldap.runtime != nil && m.ldap.cfg != nil && reflect.DeepEqual(*m.ldap.cfg, cfg) {
+		m.ldap.version = sn.Version
+
+		return m.ldap.runtime
+	}
+
+	if m.ldap.runtime != nil {
+		m.ldap.runtime.Close()
+	}
+
 	m.ldap.runtime = cfg.runtime()
 	m.ldap.cfg = &cfg
 	m.ldap.version = sn.Version
@@ -128,6 +296,17 @@ func (m *Auth) ldapRuntime() *ldap.Ldap {
 
 func (m *Auth) ldapEnabled() bool {
 	return m.ldapRuntime() != nil
+}
+
+func (m *Auth) closeLDAP() error {
+	m.ldap.m.Lock()
+	defer m.ldap.m.Unlock()
+
+	if m.ldap.runtime != nil {
+		m.ldap.runtime.Close()
+	}
+
+	return nil
 }
 
 func (m *Auth) LdapCheckPassword(username, password string) (bool, error) {
@@ -221,6 +400,8 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 	}
 
 	sn := m.cache.Snapshot()
+	index := newLDAPUserIndex(sn)
+
 	ldapUser := func(member string) (ldap.LdapUser, bool) {
 		if user, ok := ldapUsers[member]; ok {
 			return user, true
@@ -248,7 +429,28 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 	for member, groupNames := range users {
 		roleIDs := roleIDsFor(groupNames)
 
-		userDB := sn.UserByAlias(member)
+		// the LDAP entry is already at hand for a single-user sync; a full
+		// sync only fetches it when needed so it stays one query per group
+		entry, hasEntry := ldapUsers[member]
+		if !hasEntry && force {
+			entry, hasEntry = ldapUser(member)
+		}
+
+		var entryRef *ldap.LdapUser
+		if hasEntry {
+			entryRef = &entry
+		}
+
+		userDB := index.find(member, entryRef)
+		if userDB == nil && !hasEntry {
+			// not found by the member key; fetch the entry and retry with
+			// its DN, uid and mail before treating the user as new
+			if entry, hasEntry = ldapUser(member); hasEntry {
+				entryRef = &entry
+				userDB = index.find(member, entryRef)
+			}
+		}
+
 		if userDB != nil {
 			if !data.CompareSlices(userDB.SyncRoleIDs, roleIDs) {
 				if err := m.store.UpdateUserSyncRoles(ctx, userDB.ID, roleIDs); err != nil {
@@ -256,53 +458,32 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 				}
 			}
 
-			if !force {
+			if !hasEntry {
 				continue
 			}
 
-			u, ok := ldapUser(member)
-			if !ok {
-				continue
-			}
-
-			userPut := *userDB
-			if userPut.Details == nil {
-				userPut.Details = map[string]any{}
-			}
-
-			userPut.Alias = ldapAliases(u, member)
-			userPut.Details["email"] = u.Email
-			userPut.Details["uid"] = u.UID
-			userPut.Details["name"] = u.Name
-			userPut.Details["family_name"] = u.FamilyName
-			userPut.Details["given_name"] = u.GivenName
-			userPut.SyncRoleIDs = roleIDs
-
-			if err := m.store.PutUser(ctx, userPut); err != nil {
-				return fmt.Errorf("failed updating user: %w", err)
+			if err := m.ldapUpdateUser(ctx, sn, userDB, entry, roleIDs, force); err != nil {
+				return err
 			}
 
 			continue
 		}
 
-		// user not found, fetch and create
-		u, ok := ldapUser(member)
-		if !ok {
+		// user not found, create
+		if !hasEntry {
 			continue
 		}
 
+		u := entry
 		if _, err := m.store.CreateUser(ctx, data.User{
 			SyncRoleIDs: roleIDs,
 			Alias:       ldapAliases(u, member),
-			Details: map[string]any{
-				"email":       u.Email,
-				"uid":         u.UID,
-				"name":        u.Name,
-				"family_name": u.FamilyName,
-				"given_name":  u.GivenName,
-			},
+			Details:     ldapDetails(nil, u),
 		}); err != nil {
 			if errors.Is(err, data.ErrConflict) {
+				slog.Warn("ldap user create conflict",
+					slog.String("member", member), slog.String("dn", u.DN), slog.String("error", err.Error()))
+
 				continue
 			}
 

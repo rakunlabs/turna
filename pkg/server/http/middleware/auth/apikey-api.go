@@ -345,12 +345,7 @@ func (m *Auth) UpdateAPIKeyAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := m.store.UpdateAPIKey(r.Context(), user.ID, r.PathValue("id"), update); err != nil {
-		code := http.StatusInternalServerError
-		if errors.Is(err, data.ErrNotFound) {
-			code = http.StatusNotFound
-		}
-
-		httputil.HandleError(w, httputil.NewError("cannot update api key", err, code))
+		handleIAMError(w, err, "cannot update api key")
 
 		return
 	}
@@ -366,6 +361,10 @@ func (m *Auth) UpdateAPIKeyAPI(w http.ResponseWriter, r *http.Request) {
 func (m *Auth) UpdateAPIKeyPrincipalAPI(w http.ResponseWriter, r *http.Request) {
 	meta, err := m.store.GetAPIKeyMeta(r.Context(), r.PathValue("id"))
 	if err != nil {
+		if _, conditional := r.Context().Value(writeConditionKey{}).(writeCondition); conditional && errors.Is(err, data.ErrNotFound) {
+			handleIAMError(w, errPrecondition, "cannot update api key")
+			return
+		}
 		code := http.StatusInternalServerError
 		if errors.Is(err, data.ErrNotFound) {
 			code = http.StatusNotFound
@@ -417,11 +416,7 @@ func (m *Auth) UpdateAPIKeyPrincipalAPI(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := m.store.UpdateAPIKeyByID(r.Context(), meta.ID, update); err != nil {
-		code := http.StatusInternalServerError
-		if errors.Is(err, data.ErrNotFound) {
-			code = http.StatusNotFound
-		}
-		httputil.HandleError(w, httputil.NewError("cannot update api key", err, code))
+		handleIAMError(w, err, "cannot update api key")
 		return
 	}
 
@@ -485,12 +480,7 @@ func (m *Auth) DeleteAPIKeyAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := m.store.DeleteAPIKey(r.Context(), user.ID, r.PathValue("id")); err != nil {
-		code := http.StatusInternalServerError
-		if errors.Is(err, data.ErrNotFound) {
-			code = http.StatusNotFound
-		}
-
-		httputil.HandleError(w, httputil.NewError("cannot delete api key", err, code))
+		handleIAMError(w, err, "cannot delete api key")
 
 		return
 	}
@@ -503,11 +493,7 @@ func (m *Auth) DeleteAPIKeyAPI(w http.ResponseWriter, r *http.Request) {
 // DeleteAPIKeyPrincipalAPI deletes an api key without X-User ownership scoping.
 func (m *Auth) DeleteAPIKeyPrincipalAPI(w http.ResponseWriter, r *http.Request) {
 	if err := m.store.DeleteAPIKeyByID(r.Context(), r.PathValue("id")); err != nil {
-		code := http.StatusInternalServerError
-		if errors.Is(err, data.ErrNotFound) {
-			code = http.StatusNotFound
-		}
-		httputil.HandleError(w, httputil.NewError("cannot delete api key", err, code))
+		handleIAMError(w, err, "cannot delete api key")
 		return
 	}
 

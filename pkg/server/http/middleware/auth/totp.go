@@ -61,11 +61,16 @@ func totpCode(secret string, counter uint64) (string, error) {
 
 // validateTOTP checks the code against the secret allowing +/- skew periods.
 func validateTOTP(secret, code string, skew int, now time.Time) bool {
+	_, ok := matchingTOTPCounter(secret, code, skew, now)
+	return ok
+}
+
+func matchingTOTPCounter(secret, code string, skew int, now time.Time) (int64, bool) {
 	if len(code) != totpDigits {
-		return false
+		return 0, false
 	}
 	if _, err := strconv.Atoi(code); err != nil {
-		return false
+		return 0, false
 	}
 
 	counter := uint64(now.Unix() / totpPeriod) //nolint:gosec // unix time is positive
@@ -78,15 +83,15 @@ func validateTOTP(secret, code string, skew int, now time.Time) bool {
 
 		expected, err := totpCode(secret, uint64(c))
 		if err != nil {
-			return false
+			return 0, false
 		}
 
 		if subtle.ConstantTimeCompare([]byte(expected), []byte(code)) == 1 {
-			return true
+			return c, true
 		}
 	}
 
-	return false
+	return 0, false
 }
 
 // totpProvisioningURL builds the otpauth:// URL for authenticator apps.
@@ -113,14 +118,23 @@ func (s *Store) UpsertTOTPSecret(ctx context.Context, userID, secret string) err
 		return err
 	}
 
-	_, err = s.db.ExecContext(ctx, `INSERT INTO auth_totp_secrets (user_id, secret_encrypted, confirmed)
+	res, err := s.db.ExecContext(ctx, `INSERT INTO auth_totp_secrets (user_id, secret_encrypted, confirmed)
 		VALUES ($1, $2, false)
 		ON CONFLICT (user_id) DO UPDATE SET
 			secret_encrypted = EXCLUDED.secret_encrypted,
 			confirmed = false,
-			updated_at = now()`, userID, encrypted)
-
-	return err
+			last_counter = -1, failed_attempts = 0, locked_until = NULL,
+			updated_at = now()
+		WHERE NOT auth_totp_secrets.confirmed`, userID, encrypted)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return data.ErrConflict
+	}
+	return nil
 }
 
 // GetTOTPSecret loads the user's totp secret and confirmation state.

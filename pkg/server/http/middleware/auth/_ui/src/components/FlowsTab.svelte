@@ -4,7 +4,7 @@
   import Seal from "./ui/Seal.svelte";
   import { registry } from "../lib/state/registry.svelte";
   import { route } from "../lib/state/route.svelte";
-  import { getSettingBool } from "../lib/state/settings.svelte";
+  import { getLiveSettingBool as getSettingBool } from "../lib/state/settings.svelte";
   import { hrefOf, labelOf, plainClick, type Tab } from "../lib/navigation";
 
   /**

@@ -364,6 +364,13 @@ func (m *Auth) APIIntrospect(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	sub, _ := claims["sub"].(string)
+	typ, _ := claims["typ"].(string)
+	user, userErr := m.cache.GetUser(data.GetUserRequest{ID: sub})
+	if userErr != nil || user.Disabled || (typ != "Bearer" && typ != "Refresh") {
+		httputil.JSON(w, http.StatusOK, inactive)
+		return
+	}
 
 	response := map[string]any{
 		"active":     true,

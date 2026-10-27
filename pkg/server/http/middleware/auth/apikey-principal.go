@@ -12,9 +12,9 @@ import (
 var errAPIKeyOwnerRequired = errors.New("api key owner is required")
 
 // apiKeyUser builds the API key principal as a virtual service-account user.
-// A key with an explicit role or permission list carries exactly that list; a
-// key with neither acts as its owner and inherits the owner's access live, so
-// granting or revoking on the owner applies to the key on the next request.
+// Explicit access on an owned key is bounded by the owner's current expanded
+// access; an empty key inherits the owner's access live. Ownerless system keys
+// carry their administrator-assigned access independently.
 func (m *Auth) apiKeyUser(meta *APIKeyMeta, owner *data.UserExtended) *data.UserExtended {
 	details := make(map[string]any, len(meta.Details)+4)
 	for k, v := range meta.Details {
@@ -51,6 +51,29 @@ func (m *Auth) apiKeyUser(meta *APIKeyMeta, owner *data.UserExtended) *data.User
 		user.TmpRoleIDs = owner.TmpRoleIDs
 		user.PermissionIDs = owner.PermissionIDs
 		user.TmpPermissionIDs = owner.TmpPermissionIDs
+	} else if owner != nil && owner.User != nil {
+		// Temporary or revoked grants must not become permanent through a key.
+		current := m.cache.Snapshot().extendUser(true, true, false, false, owner.User)
+		allowedRoles := make(map[string]bool, len(current.Roles))
+		for _, role := range current.Roles {
+			allowedRoles[role.ID] = true
+		}
+		allowedPerms := make(map[string]bool, len(current.Permissions))
+		for _, perm := range current.Permissions {
+			allowedPerms[perm.ID] = true
+		}
+		user.RoleIDs = nil
+		for _, id := range meta.RoleIDs {
+			if allowedRoles[id] {
+				user.RoleIDs = append(user.RoleIDs, id)
+			}
+		}
+		user.PermissionIDs = nil
+		for _, id := range meta.PermissionIDs {
+			if allowedPerms[id] {
+				user.PermissionIDs = append(user.PermissionIDs, id)
+			}
+		}
 	}
 
 	ext := m.cache.Snapshot().extendUser(true, true, false, true, user)
@@ -139,9 +162,12 @@ func (m *Auth) apiKeyClaims(meta *APIKeyMeta, owner *data.UserExtended) map[stri
 		name = subject
 	}
 
-	email := strings.TrimSpace(castString(meta.Details["email"]))
-	if email == "" && owner != nil && owner.User != nil {
+	email := ""
+	if owner != nil && owner.User != nil {
 		email = strings.TrimSpace(castString(owner.Details["email"]))
+	} else {
+		// Ownerless principals are administrator-managed, not self-service.
+		email = strings.TrimSpace(castString(meta.Details["email"]))
 	}
 
 	claims := map[string]any{

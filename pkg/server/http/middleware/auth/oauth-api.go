@@ -34,7 +34,7 @@ type AccessTokenRequest struct {
 	Password     string `form:"password"      json:"password"`
 	RememberMe   bool   `form:"remember_me"   json:"remember_me"`
 	Scope        string `form:"scope"         json:"scope"`
-	// TOTP second factor for the password grant.
+	// TOTP (or a recovery code) for password and email-code grants.
 	TOTP string `form:"totp" json:"totp"`
 	// DeviceCode for the RFC 8628 device flow.
 	DeviceCode string `form:"device_code" json:"device_code"`
@@ -212,6 +212,9 @@ type tokenIssueOptions struct {
 	SessionExpires  int64
 	RefreshToken    string
 	RefreshExpires  int64
+	// NoRefresh issues no refresh token (token exchange results must not
+	// outlive or be renewed independently of the subject token's session).
+	NoRefresh bool
 }
 
 // writeTokenExt issues access+refresh tokens for the user, optionally
@@ -381,7 +384,7 @@ func (m *Auth) writeTokenWithOptions(w http.ResponseWriter, r *http.Request, use
 
 	refreshToken := options.RefreshToken
 	refreshExpires := options.RefreshExpires
-	if refreshToken == "" || options.RememberMe {
+	if !options.NoRefresh && (refreshToken == "" || options.RememberMe) {
 		refreshJTI, err := randomHex(32)
 		if err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
@@ -435,6 +438,7 @@ func (m *Auth) writeTokenWithOptions(w http.ResponseWriter, r *http.Request, use
 	if _, ok := scopeMap["openid"]; ok {
 		claimsID := map[string]any{
 			"iss":                m.issuerURL(r),
+			"typ":                "ID",
 			"aud":                clientID,
 			"azp":                clientID,
 			"sub":                user.ID,
@@ -515,6 +519,11 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			code:             http.StatusBadRequest,
 		})
 
+		return
+	}
+
+	if client, ok := m.lookupClient(clientID); ok && !client.allowsGrant(accessTokenRequest.GrantType) {
+		httputil.HandleError(w, AccessTokenErrorResponse{Error: "unauthorized_client", ErrorDescription: "grant type is not allowed for this client", code: http.StatusBadRequest})
 		return
 	}
 
@@ -728,31 +737,8 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// second factor: users with a confirmed totp secret must send one
-		if totpCfg := m.cache.Snapshot().TOTP; !totpCfg.Disabled {
-			if secret, confirmed, err := m.store.GetTOTPSecret(r.Context(), user.ID); err == nil && confirmed {
-				if accessTokenRequest.TOTP == "" {
-					httputil.HandleError(w, AccessTokenErrorResponse{
-						Error:            "mfa_required",
-						ErrorDescription: "totp code required",
-						code:             http.StatusUnauthorized,
-					})
-
-					return
-				}
-
-				// a single-use recovery code is accepted in place of the totp code
-				if !validateTOTP(secret, accessTokenRequest.TOTP, totpCfg.GetSkew(), time.Now()) &&
-					!m.store.ConsumeTOTPRecoveryCode(r.Context(), user.ID, accessTokenRequest.TOTP) {
-					httputil.HandleError(w, AccessTokenErrorResponse{
-						Error:            "invalid_grant",
-						ErrorDescription: "totp code invalid",
-						code:             http.StatusUnauthorized,
-					})
-
-					return
-				}
-			}
+		if !m.requireLoginTOTP(w, r, user.ID, accessTokenRequest.TOTP) {
+			return
 		}
 
 		if !resourcesAllowed(reqResources, accessClient.Resources) {
@@ -1100,10 +1086,12 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			resources = []string{accessTokenRequest.Resource}
 		}
 
-		user, err := m.GetOrCreateUser(r.Context(), data.GetUserRequest{
-			Alias:         codeValue.Alias,
-			AddScopeRoles: true,
-		})
+		userReq := data.GetUserRequest{Alias: codeValue.Alias, AddScopeRoles: true}
+		if codeValue.UserID != "" {
+			userReq = data.GetUserRequest{ID: codeValue.UserID, AddScopeRoles: true}
+		}
+
+		user, err := m.GetOrCreateUser(r.Context(), userReq)
 		if err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
@@ -1251,7 +1239,7 @@ func (m *Auth) APIUserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, err := m.cache.GetUser(data.GetUserRequest{ID: sub})
-	if err != nil {
+	if err != nil || user.Disabled {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_token",
 			ErrorDescription: "user not found",
@@ -1981,8 +1969,27 @@ func (m *Auth) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// claim mapping: auto-register and role sync, same model as LDAP
-	if err := m.syncFederatedUser(r.Context(), alias, claims, providerCfg.ClaimMapping); err != nil {
+	// bind the login to a local user (provider+subject link, alias policy,
+	// optional register) and sync mapped roles
+	user, err := m.resolveFederatedUser(r.Context(), federatedLogin{
+		Provider: "oauth2:" + providerName,
+		Subject:  federatedSubject(claims, providerCfg.ClaimMapping, "sub"),
+		Alias:    alias,
+		Claims:   claims,
+		Mapping:  providerCfg.ClaimMapping,
+	})
+	if err != nil {
+		if errors.Is(err, errFederatedRefused) {
+			slog.Warn("federated login refused", slog.String("provider", providerName), slog.String("alias", alias), slog.String("error", err.Error()))
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "access_denied",
+				ErrorDescription: "this account cannot sign in here",
+				code:             http.StatusForbidden,
+			})
+
+			return
+		}
+
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "server_error",
 			ErrorDescription: err.Error(),
@@ -2005,6 +2012,7 @@ func (m *Auth) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 
 	codeValue, err := oauth2store.Encode(oauth2store.Code{
 		Alias:               alias,
+		UserID:              user.ID,
 		Scope:               stateValue.Scope,
 		Nonce:               stateValue.Nonce,
 		CodeChallenge:       stateValue.CodeChallenge,

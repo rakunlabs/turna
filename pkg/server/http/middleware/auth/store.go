@@ -23,12 +23,14 @@ type Store struct {
 }
 
 type SettingMeta struct {
+	Revision  string     `json:"revision"`
 	Namespace string     `json:"namespace"`
 	UpdatedAt types.Time `json:"updated_at"`
 	UpdatedBy string     `json:"updated_by"`
 }
 
 type Setting struct {
+	Revision  string        `json:"revision"`
 	Namespace string        `json:"namespace"`
 	Value     types.RawJSON `json:"value"`
 	UpdatedAt types.Time    `json:"updated_at"`
@@ -49,7 +51,7 @@ func (s *Store) Version(ctx context.Context) (uint64, error) {
 }
 
 func (s *Store) ListSettings(ctx context.Context) ([]SettingMeta, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT namespace, updated_at, updated_by FROM auth_settings ORDER BY namespace`)
+	rows, err := s.db.QueryContext(ctx, `SELECT namespace, updated_at, updated_by, revision FROM auth_settings ORDER BY namespace`)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +60,7 @@ func (s *Store) ListSettings(ctx context.Context) ([]SettingMeta, error) {
 	settings := []SettingMeta{}
 	for rows.Next() {
 		var setting SettingMeta
-		if err := rows.Scan(&setting.Namespace, &setting.UpdatedAt, &setting.UpdatedBy); err != nil {
+		if err := rows.Scan(&setting.Namespace, &setting.UpdatedAt, &setting.UpdatedBy, &setting.Revision); err != nil {
 			return nil, err
 		}
 
@@ -73,8 +75,8 @@ func (s *Store) GetSetting(ctx context.Context, namespace string) (*Setting, err
 	setting := Setting{Namespace: namespace}
 
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT value_encrypted, updated_at, updated_by FROM auth_settings WHERE namespace = $1`, namespace,
-	).Scan(&encrypted, &setting.UpdatedAt, &setting.UpdatedBy); err != nil {
+		`SELECT value_encrypted, updated_at, updated_by, revision FROM auth_settings WHERE namespace = $1`, namespace,
+	).Scan(&encrypted, &setting.UpdatedAt, &setting.UpdatedBy, &setting.Revision); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("setting %s not found; %w", namespace, ErrNotFound)
 		}
@@ -97,16 +99,37 @@ func (s *Store) PutSetting(ctx context.Context, namespace string, value json.Raw
 		return 0, errors.New("setting value must be valid json")
 	}
 
-	encrypted, err := s.cipher.EncryptString(string(value))
-	if err != nil {
-		return 0, err
-	}
-
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback() //nolint:errcheck
+	if err := checkWriteCondition(ctx, tx, "auth_settings", "namespace", namespace); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "auth_settings:"+namespace); err != nil {
+		return 0, err
+	}
+	var previous string
+	err = tx.QueryRowContext(ctx, `SELECT value_encrypted FROM auth_settings WHERE namespace = $1 FOR UPDATE`, namespace).Scan(&previous)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	var plain string
+	if previous != "" {
+		plain, err = s.cipher.DecryptString(previous)
+		if err != nil {
+			return 0, err
+		}
+	}
+	value, err = mergeSecrets(value, []byte(plain))
+	if err != nil {
+		return 0, err
+	}
+	encrypted, err := s.cipher.EncryptString(string(value))
+	if err != nil {
+		return 0, err
+	}
 
 	if _, err := tx.ExecContext(ctx, `INSERT INTO auth_settings (namespace, value_encrypted, updated_by)
 		VALUES ($1, $2, $3)
@@ -144,6 +167,9 @@ func (s *Store) DeleteSetting(ctx context.Context, namespace string) (uint64, er
 		return 0, err
 	}
 	defer tx.Rollback() //nolint:errcheck
+	if err := checkWriteCondition(ctx, tx, "auth_settings", "namespace", namespace); err != nil {
+		return 0, err
+	}
 
 	res, err := tx.ExecContext(ctx, `DELETE FROM auth_settings WHERE namespace = $1`, namespace)
 	if err != nil {

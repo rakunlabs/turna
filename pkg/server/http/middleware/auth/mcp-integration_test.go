@@ -6,10 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -220,8 +222,30 @@ func TestAuthMCPIntegration(t *testing.T) {
 
 		flowID := consentURL[strings.Index(consentURL, "flow=")+len("flow="):]
 
+		consentToken := ""
+		if m := regexp.MustCompile(`name="consent_token" value="([^"]+)"`).FindStringSubmatch(string(page[:n])); m != nil {
+			consentToken = m[1]
+		}
+		if consentToken == "" {
+			t.Fatal("consent page misses the consent token")
+		}
+
+		// a forged submit (flow id known, consent token not) must be refused
+		forged := url.Values{"flow": {flowID}, "action": {"approve"}}
+		req, _ = http.NewRequest(http.MethodPost, server.URL+"/auth/oauth2/consent", strings.NewReader(forged.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-User", "mcp-it-user")
+		res, err = client.Do(req)
+		if err != nil {
+			t.Fatalf("consent forged: %v", err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusForbidden {
+			t.Fatalf("forged consent status: %d", res.StatusCode)
+		}
+
 		// approve
-		form := url.Values{"flow": {flowID}, "action": {"approve"}}
+		form := url.Values{"flow": {flowID}, "consent_token": {consentToken}, "action": {"approve"}}
 		req, _ = http.NewRequest(http.MethodPost, server.URL+"/auth/oauth2/consent", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("X-User", "mcp-it-user")
@@ -512,7 +536,21 @@ func reAuthorize(t *testing.T, baseURL string, client *http.Client, clientID, re
 	consentURL := res.Header.Get("Location")
 	flowID := consentURL[strings.Index(consentURL, "flow=")+len("flow="):]
 
-	form := url.Values{"flow": {flowID}, "action": {"approve"}, "remember_me": {"true"}}
+	page, _ := http.NewRequest(http.MethodGet, baseURL+consentURL, nil)
+	page.Header.Set("X-User", "mcp-it-user")
+	res, err = client.Do(page)
+	if err != nil {
+		t.Fatalf("re-consent page: %v", err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+
+	match := regexp.MustCompile(`name="consent_token" value="([^"]+)"`).FindSubmatch(body)
+	if match == nil {
+		t.Fatal("re-consent page misses the consent token")
+	}
+
+	form := url.Values{"flow": {flowID}, "consent_token": {string(match[1])}, "action": {"approve"}, "remember_me": {"true"}}
 	req, _ := http.NewRequest(http.MethodPost, baseURL+"/auth/oauth2/consent", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("X-User", "mcp-it-user")

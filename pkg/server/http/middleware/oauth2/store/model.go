@@ -27,9 +27,12 @@ type State struct {
 }
 
 type Code struct {
-	Alias string   `json:"alias"`
-	Scope []string `json:"scope"`
-	Nonce string   `json:"nonce"`
+	Alias string `json:"alias"`
+	// UserID pins the code to a resolved user (federated logins); when set it
+	// takes precedence over Alias at the token endpoint.
+	UserID string   `json:"user_id,omitempty"`
+	Scope  []string `json:"scope"`
+	Nonce  string   `json:"nonce"`
 	// PKCE (RFC 7636) challenge to verify at the token endpoint.
 	CodeChallenge       string `json:"code_challenge,omitempty"`
 	CodeChallengeMethod string `json:"code_challenge_method,omitempty"`

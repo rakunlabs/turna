@@ -65,6 +65,17 @@ func validIDsWithTmpID(ids []data.TmpID) []data.TmpID {
 }
 
 func normalizeUser(u *data.User) {
+	u.Alias = normalizedAliases(u.Alias)
+	// Management-only presence flags must not become persisted profile data.
+	if u.Details != nil {
+		details := make(map[string]any, len(u.Details))
+		for key, value := range u.Details {
+			if key != "password_set" && key != "secret_set" {
+				details[key] = value
+			}
+		}
+		u.Details = details
+	}
 	u.RoleIDs = slicesUnique(u.RoleIDs)
 	u.SyncRoleIDs = slicesUnique(u.SyncRoleIDs)
 	u.PermissionIDs = slicesUnique(u.PermissionIDs)

@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -54,6 +55,11 @@ func TestAuthMethodsIntegration(t *testing.T) {
 	// mtls via trusted header
 	if _, err := m.store.PutSetting(ctx, "mtls", json.RawMessage(`{"enabled":true,"cert_header":"ssl-client-cert","cert_verify_header":"ssl-client-verify","trusted_proxy_cidrs":["127.0.0.0/8"]}`), "it"); err != nil {
 		t.Fatalf("put mtls setting: %v", err)
+	}
+	// permissions in this test carry no hosts and checks send none, as in
+	// the other integration suites
+	if _, err := m.store.PutSetting(ctx, "check", json.RawMessage(`{"no_host_check":true}`), "it"); err != nil {
+		t.Fatalf("put check setting: %v", err)
 	}
 	// email login enabled (delivery is not exercised here)
 	if _, err := m.store.PutSetting(ctx, "email", json.RawMessage(`{"smtp":{"host":"localhost"}}`), "it"); err != nil {
@@ -418,7 +424,7 @@ func TestAuthMethodsIntegration(t *testing.T) {
 		if claims["sub"] != apiKeyPrincipalSubject(created.Payload.ID) {
 			t.Fatalf("api key subject = %v", claims["sub"])
 		}
-		if claims["preferred_username"] != "it-key" || claims["name"] != "it-key" || claims["email"] != "it-key@example.com" {
+		if claims["preferred_username"] != "it-key" || claims["name"] != "it-key" || claims["email"] != "it-m-user@example.com" {
 			t.Fatalf("api key identity claims = %#v", claims)
 		}
 		if !claimStringSliceContains(claims["roles"], createdRole.Payload.ID) || !claimStringSliceContains(claims["roles"], roleName) {
@@ -798,6 +804,21 @@ func TestAuthMethodsIntegration(t *testing.T) {
 		if exchanged.IssuedTokenType != tokenTypeAccessToken {
 			t.Fatalf("issued_token_type = %q", exchanged.IssuedTokenType)
 		}
+		if exchanged.RefreshToken != "" {
+			t.Fatal("token exchange must not issue a refresh token")
+		}
+
+		// an exchange can narrow but never widen the subject token's scope
+		status, _, fail = tokenCall(t, url.Values{
+			"grant_type":    {grantTypeTokenExchange},
+			"client_id":     {"it-m-client"},
+			"client_secret": {"it-m-secret"},
+			"subject_token": {subject.AccessToken},
+			"scope":         {subject.Scope + " it-widened-scope"},
+		}, nil)
+		if status != http.StatusBadRequest || fail.Error != "invalid_scope" {
+			t.Fatalf("widened exchange status=%d error=%s", status, fail.Error)
+		}
 
 		// refresh token must not be exchangeable
 		status, _, fail = tokenCall(t, url.Values{
@@ -846,8 +867,14 @@ func TestAuthMethodsIntegration(t *testing.T) {
 			t.Fatalf("expected mfa_required, got status=%d error=%s", status, fail.Error)
 		}
 
-		// with code: ok
-		code, _ = totpCode(reg.Payload.Secret, uint64(time.Now().Unix()/totpPeriod))
+		// Enrollment consumed the current counter; reusing it must fail.
+		passwordForm.Set("totp", code)
+		status, _, fail = tokenCall(t, passwordForm, nil)
+		if status == http.StatusOK {
+			t.Fatal("enrollment code was reusable for login")
+		}
+		// The next counter is accepted within the configured +1 skew window.
+		code, _ = totpCode(reg.Payload.Secret, uint64(time.Now().Unix()/totpPeriod)+1)
 		passwordForm.Set("totp", code)
 		status, tokenRes, fail := tokenCall(t, passwordForm, nil)
 		if status != http.StatusOK || tokenRes.AccessToken == "" {
@@ -1092,6 +1119,7 @@ func TestAuthMethodsIntegration(t *testing.T) {
 		}
 
 		claims := map[string]any{
+			"sub":   "idp-sub-1",
 			"email": "it-fed@example.com",
 			"name":  "Fed User",
 			"realm_access": map[string]any{
@@ -1099,8 +1127,18 @@ func TestAuthMethodsIntegration(t *testing.T) {
 			},
 		}
 
+		login := func(alias string) (*data.User, error) {
+			return m.resolveFederatedUser(ctx, federatedLogin{
+				Provider: "oauth2:it-idp",
+				Subject:  federatedSubject(claims, mapping, "sub"),
+				Alias:    alias,
+				Claims:   claims,
+				Mapping:  mapping,
+			})
+		}
+
 		// first login: registers the user with the mapped role
-		if err := m.syncFederatedUser(ctx, "it-fed@example.com", claims, mapping); err != nil {
+		if _, err := login("it-fed@example.com"); err != nil {
 			t.Fatalf("federated sync: %v", err)
 		}
 
@@ -1122,13 +1160,42 @@ func TestAuthMethodsIntegration(t *testing.T) {
 
 		// roles dropped at the IdP are dropped here too
 		claims["realm_access"] = map[string]any{"roles": []any{"unmapped"}}
-		if err := m.syncFederatedUser(ctx, "it-fed@example.com", claims, mapping); err != nil {
+		if _, err := login("it-fed@example.com"); err != nil {
 			t.Fatalf("federated re-sync: %v", err)
 		}
 
 		user = m.cache.Snapshot().UserByAlias("it-fed@example.com")
 		if user == nil || len(user.SyncRoleIDs) != 0 {
 			t.Fatalf("sync roles after drop = %v, want empty", user.SyncRoleIDs)
+		}
+
+		// the link survives an upstream email change
+		claims["email"] = "renamed@example.com"
+		got, err := login("renamed@example.com")
+		if err != nil || got.ID != user.ID {
+			t.Fatalf("linked login after email change: user=%v err=%v", got, err)
+		}
+
+		// a different upstream account with the linked user's alias is refused
+		claims["sub"] = "idp-sub-2"
+		claims["email"] = "it-fed@example.com"
+		if _, err := login("it-fed@example.com"); !errors.Is(err, errFederatedRefused) {
+			t.Fatalf("second account takeover: err=%v, want refused", err)
+		}
+
+		// local accounts are not attached without link_local_users
+		claims["sub"] = "idp-sub-3"
+		claims["email"] = "it-m-user"
+		if _, err := login("it-m-user"); !errors.Is(err, errFederatedRefused) {
+			t.Fatalf("local account attach: err=%v, want refused", err)
+		}
+
+		// require_email_verified
+		mapping.RequireEmailVerified = true
+		claims["sub"] = "idp-sub-4"
+		claims["email"] = "unverified@example.com"
+		if _, err := login("unverified@example.com"); !errors.Is(err, errFederatedRefused) {
+			t.Fatalf("unverified email: err=%v, want refused", err)
 		}
 	})
 

@@ -2,6 +2,8 @@ package auth
 
 import (
 	"encoding/xml"
+	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 
@@ -158,9 +160,30 @@ func (m *Auth) SAMLACS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// claim mapping: auto-register and role sync, same model as LDAP
-	if err := m.syncFederatedUser(r.Context(), alias, samlClaims(assertion), cfg.ClaimMapping); err != nil {
+	// bind the login to a local user (provider+subject link, alias policy,
+	// optional register) and sync mapped roles
+	claims := samlClaims(assertion)
+	mapping := cfg.ClaimMapping
+	// SAML assertions carry no email_verified claim
+	mapping.RequireEmailVerified = false
+
+	user, err := m.resolveFederatedUser(r.Context(), federatedLogin{
+		Provider: "saml:" + providerName,
+		Subject:  federatedSubject(claims, mapping, "persistent_name_id"),
+		Alias:    alias,
+		Claims:   claims,
+		Mapping:  mapping,
+	})
+	if err != nil {
+		if errors.Is(err, errFederatedRefused) {
+			slog.Warn("federated login refused", slog.String("provider", providerName), slog.String("alias", alias), slog.String("error", err.Error()))
+			httputil.HandleError(w, httputil.NewError("this account cannot sign in here", nil, http.StatusForbidden))
+
+			return
+		}
+
 		httputil.HandleError(w, httputil.NewError("cannot sync federated user", err, http.StatusInternalServerError))
+
 		return
 	}
 
@@ -179,6 +202,7 @@ func (m *Auth) SAMLACS(w http.ResponseWriter, r *http.Request) {
 
 	codeValue, err := oauth2store.Encode(oauth2store.Code{
 		Alias:               alias,
+		UserID:              user.ID,
 		Scope:               relay.Scope,
 		CodeChallenge:       relay.CodeChallenge,
 		CodeChallengeMethod: relay.CodeChallengeMethod,

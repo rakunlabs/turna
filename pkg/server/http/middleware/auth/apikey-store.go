@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -326,6 +327,11 @@ func applyAPIKeyUpdate(meta *APIKeyMeta, update APIKeyUpdate) {
 }
 
 func (s *Store) updateAPIKeyMeta(ctx context.Context, meta *APIKeyMeta, ownerScoped bool) error {
+	if condition, ok := ctx.Value(writeConditionKey{}).(writeCondition); ok {
+		if condition.createOnly || condition.revision != "keyrev-"+strconv.FormatInt(meta.Revision, 10) {
+			return errPrecondition
+		}
+	}
 	rolesRaw, err := marshalAPIKeyJSON(meta.RoleIDs)
 	if err != nil {
 		return err
@@ -348,10 +354,10 @@ func (s *Store) updateAPIKeyMeta(ctx context.Context, meta *APIKeyMeta, ownerSco
 		disabled = $7,
 		revision = revision + 1,
 		updated_at = now()
-		WHERE id = $1`
-	args := []any{meta.ID, meta.Name, meta.Description, rolesRaw, permissionsRaw, detailsRaw, meta.Disabled}
+		WHERE id = $1 AND revision = $8`
+	args := []any{meta.ID, meta.Name, meta.Description, rolesRaw, permissionsRaw, detailsRaw, meta.Disabled, meta.Revision}
 	if ownerScoped {
-		query += " AND user_id = $8"
+		query += " AND user_id = $9"
 		args = append(args, meta.UserID)
 	}
 
@@ -359,8 +365,14 @@ func (s *Store) updateAPIKeyMeta(ctx context.Context, meta *APIKeyMeta, ownerSco
 	if err != nil {
 		return err
 	}
-	if count, err := res.RowsAffected(); err == nil && count == 0 {
-		return fmt.Errorf("api key %s not found; %w", meta.ID, data.ErrNotFound)
+	count, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	// Compare-and-swap protects the read/merge/write gap too, even when the
+	// caller has not opted into HTTP preconditions.
+	if count == 0 {
+		return errPrecondition
 	}
 
 	return nil
@@ -381,6 +393,9 @@ func (s *Store) UpdateAPIKey(ctx context.Context, userID, id string, update APIK
 		}
 	}
 	if meta == nil {
+		if _, conditional := ctx.Value(writeConditionKey{}).(writeCondition); conditional {
+			return errPrecondition
+		}
 		return fmt.Errorf("api key %s not found; %w", id, data.ErrNotFound)
 	}
 
@@ -393,6 +408,9 @@ func (s *Store) UpdateAPIKey(ctx context.Context, userID, id string, update APIK
 func (s *Store) UpdateAPIKeyByID(ctx context.Context, id string, update APIKeyUpdate) error {
 	meta, err := s.GetAPIKeyMeta(ctx, id)
 	if err != nil {
+		if _, conditional := ctx.Value(writeConditionKey{}).(writeCondition); conditional && errors.Is(err, data.ErrNotFound) {
+			return errPrecondition
+		}
 		return err
 	}
 	applyAPIKeyUpdate(meta, update)
@@ -402,26 +420,42 @@ func (s *Store) UpdateAPIKeyByID(ctx context.Context, id string, update APIKeyUp
 
 // DeleteAPIKey removes an api key owned by the user.
 func (s *Store) DeleteAPIKey(ctx context.Context, userID, id string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM auth_api_keys WHERE id = $1 AND user_id = $2`, id, userID)
-	if err != nil {
-		return err
-	}
-
-	if count, err := res.RowsAffected(); err == nil && count == 0 {
-		return fmt.Errorf("api key %s not found; %w", id, data.ErrNotFound)
-	}
-
-	return nil
+	return s.deleteAPIKey(ctx, id, &userID)
 }
 
 // DeleteAPIKeyByID removes an api key without owner scoping.
 func (s *Store) DeleteAPIKeyByID(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM auth_api_keys WHERE id = $1`, id)
+	return s.deleteAPIKey(ctx, id, nil)
+}
+
+func (s *Store) deleteAPIKey(ctx context.Context, id string, owner *string) error {
+	query := `DELETE FROM auth_api_keys WHERE id = $1`
+	args := []any{id}
+	if owner != nil {
+		args = append(args, *owner)
+		query += fmt.Sprintf(" AND user_id = $%d", len(args))
+	}
+	condition, conditional := ctx.Value(writeConditionKey{}).(writeCondition)
+	if conditional {
+		if condition.createOnly {
+			return errPrecondition
+		}
+		args = append(args, condition.revision)
+		query += fmt.Sprintf(" AND ('keyrev-' || revision::text) = $%d", len(args))
+	}
+	res, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return err
 	}
 
-	if count, err := res.RowsAffected(); err == nil && count == 0 {
+	count, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		if conditional {
+			return errPrecondition
+		}
 		return fmt.Errorf("api key %s not found; %w", id, data.ErrNotFound)
 	}
 

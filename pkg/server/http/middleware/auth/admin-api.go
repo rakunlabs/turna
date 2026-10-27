@@ -108,8 +108,13 @@ func (m *Auth) adminOnly(next http.HandlerFunc) http.HandlerFunc {
 		if !m.requireAdmin(w, r) {
 			return
 		}
+		conditional, err := conditionalRequest(r)
+		if err != nil {
+			httputil.HandleError(w, httputil.NewError("invalid write precondition", err, http.StatusBadRequest))
+			return
+		}
 
-		next(w, r)
+		next(w, conditional)
 	}
 }
 
@@ -120,8 +125,15 @@ func (m *Auth) adminOnly(next http.HandlerFunc) http.HandlerFunc {
 func (m *Auth) apiKeySelfOrAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg := m.cache.Snapshot().APIKey
-		if cfg.SelfService && !cfg.Disabled && requestPrincipal(r) != "" {
-			next(w, r)
+		// an API key acting through self-service could mint keys wider than
+		// itself (inheriting the owner); key principals need admin here
+		if principal := requestPrincipal(r); cfg.SelfService && !cfg.Disabled && principal != "" && !isAPIKeyPrincipal(principal) {
+			conditional, err := conditionalRequest(r)
+			if err != nil {
+				httputil.HandleError(w, httputil.NewError("invalid write precondition", err, http.StatusBadRequest))
+				return
+			}
+			next(w, conditional)
 
 			return
 		}
@@ -130,8 +142,32 @@ func (m *Auth) apiKeySelfOrAdmin(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
+		conditional, err := conditionalRequest(r)
+		if err != nil {
+			httputil.HandleError(w, httputil.NewError("invalid write precondition", err, http.StatusBadRequest))
+			return
+		}
+		next(w, conditional)
+	}
+}
+
+// interactiveOnly guards credential and second-factor management on the
+// X-User plane: an API key resolves to its owner there, so without this a
+// narrowly scoped key could register a passkey, approve a device login or
+// remove the owner's MFA and escalate to full interactive access.
+func (m *Auth) interactiveOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if isAPIKeyPrincipal(requestPrincipal(r)) {
+			httputil.HandleError(w, httputil.NewError("not allowed for api key principals", nil, http.StatusForbidden))
+			return
+		}
+
 		next(w, r)
 	}
+}
+
+func isAPIKeyPrincipal(principal string) bool {
+	return strings.HasPrefix(principal, apiKeyPrincipalPrefix)
 }
 
 func (m *Auth) adminOnlyHandler(next http.Handler) http.Handler {

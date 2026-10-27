@@ -2,6 +2,7 @@ package auth
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
@@ -111,6 +112,19 @@ func (m *Auth) tokenExchangeGrant(w http.ResponseWriter, r *http.Request, req Ac
 		return
 	}
 
+	// RFC 8693 lets the exchanging client differ from the one the subject
+	// token was issued to (a downstream service acting for the user); the
+	// allow-list narrows that down when configured
+	if subjectClient, _ := claims["azp"].(string); subjectClient != clientID && !m.cache.Snapshot().TokenExchange.clientAllowed(clientID) {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "unauthorized_client",
+			ErrorDescription: "client is not allowed to exchange this token",
+			code:             http.StatusBadRequest,
+		})
+
+		return
+	}
+
 	userID, _ := claims["sub"].(string)
 	user, err := m.cache.GetUser(data.GetUserRequest{ID: userID, AddScopeRoles: true})
 	if err != nil {
@@ -123,15 +137,22 @@ func (m *Auth) tokenExchangeGrant(w http.ResponseWriter, r *http.Request, req Ac
 		return
 	}
 
-	// requested scope falls back to the subject token's scope
-	scope := splitFields(req.Scope)
-	if len(scope) == 0 {
-		subjectScope, _ := claims["scope"].(string)
-		scope = splitFields(subjectScope)
+	// an exchange may narrow the subject token's scope, never widen it
+	subjectScope, _ := claims["scope"].(string)
+	scope, ok := exchangeScope(splitFields(req.Scope), splitFields(subjectScope))
+	if !ok {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_scope",
+			ErrorDescription: "requested scope exceeds the subject token's scope",
+			code:             http.StatusBadRequest,
+		})
+
+		return
 	}
 
 	// RFC 8707: an explicit resource wins, otherwise the subject token's
-	// resource audiences carry over to the issued token
+	// resource audiences carry over; either way the exchanging client must
+	// be allowed to target them
 	resources := audienceResources(claims["aud"])
 	if req.Resource != "" {
 		if err := validateResource(req.Resource); err != nil {
@@ -144,18 +165,51 @@ func (m *Auth) tokenExchangeGrant(w http.ResponseWriter, r *http.Request, req Ac
 			return
 		}
 
-		if !resourcesAllowed([]string{req.Resource}, accessClient.Resources) {
-			httputil.HandleError(w, AccessTokenErrorResponse{
-				Error:            "invalid_target",
-				ErrorDescription: "requested resource not allowed",
-				code:             http.StatusBadRequest,
-			})
-
-			return
-		}
-
 		resources = []string{req.Resource}
 	}
 
-	m.writeTokenExt(w, r, user, clientID, scope, accessClient.Scope, tokenTypeAccessToken, "", resources)
+	if !resourcesAllowed(resources, accessClient.Resources) {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_target",
+			ErrorDescription: "requested resource not allowed",
+			code:             http.StatusBadRequest,
+		})
+
+		return
+	}
+
+	// stay inside the subject token's session: same sid (so revoking the
+	// session revokes the exchanged token), same auth_time and lifetime cap,
+	// and no refresh token that could outlive it
+	sessionExpires := claimInt64(claims["session_exp"])
+	if sessionExpires == 0 {
+		sessionExpires = claimInt64(claims["exp"])
+	}
+	sid, _ := claims["sid"].(string)
+
+	m.writeTokenWithOptions(w, r, user, clientID, scope, nil, tokenIssueOptions{
+		IssuedTokenType: tokenTypeAccessToken,
+		Resources:       resources,
+		SID:             sid,
+		AuthTime:        claimInt64(claims["auth_time"]),
+		SessionExpires:  sessionExpires,
+		NoRefresh:       true,
+	})
+}
+
+// exchangeScope returns the scope for an exchanged token: the subject's
+// scope when none is requested, otherwise the requested scope provided it is
+// a subset of the subject's.
+func exchangeScope(requested, subject []string) ([]string, bool) {
+	if len(requested) == 0 {
+		return subject, true
+	}
+
+	for _, s := range requested {
+		if !slices.Contains(subject, s) {
+			return nil, false
+		}
+	}
+
+	return requested, true
 }

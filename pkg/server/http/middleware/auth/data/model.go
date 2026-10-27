@@ -35,6 +35,7 @@ type Token struct {
 
 // Permission is a struct that represents a permission table in the database.
 type Permission struct {
+	Revision    string              `json:"revision,omitempty"`
 	ID          string              `json:"id"          badgerhold:"unique"`
 	Name        string              `json:"name"        badgerhold:"index"`
 	Resources   []Resource          `json:"resources"`
@@ -77,6 +78,7 @@ type Resource struct {
 
 // Role is a struct that represents a role table in the database.
 type Role struct {
+	Revision      string         `json:"revision,omitempty"`
 	ID            string         `json:"id"             badgerhold:"unique"`
 	Name          string         `json:"name"           badgerhold:"index"`
 	PermissionIDs []string       `json:"permission_ids"`
@@ -138,6 +140,7 @@ type MixID struct {
 
 // User is a struct that represents a user table in the database.
 type User struct {
+	Revision       string         `json:"revision,omitempty"`
 	ID             string         `json:"id"              badgerhold:"unique"`
 	Alias          []string       `json:"alias"`
 	RoleIDs        []string       `json:"role_ids"`
@@ -173,8 +176,12 @@ type UserPatch struct {
 	SyncRoleIDs   *[]string       `json:"sync_role_ids"`
 	PermissionIDs *[]string       `json:"permission_ids"`
 	Details       *map[string]any `json:"details"`
-	Description   *string         `json:"description"`
-	IsActive      *bool           `json:"is_active"`
+	// DetailsPatch updates only named profile fields; null removes a field.
+	// The original details replacement behavior remains unchanged.
+	DetailsPatch map[string]any `json:"details_patch"`
+	Local        *bool          `json:"local"`
+	Description  *string        `json:"description"`
+	IsActive     *bool          `json:"is_active"`
 }
 
 type UserAccess struct {
@@ -245,8 +252,9 @@ type UserInfo struct {
 }
 
 type LMap struct {
-	Name    string   `json:"name"     badgerhold:"unique"`
-	RoleIDs []string `json:"role_ids"`
+	Revision string   `json:"revision,omitempty"`
+	Name     string   `json:"name"     badgerhold:"unique"`
+	RoleIDs  []string `json:"role_ids"`
 
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`

@@ -7,10 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"slices"
+	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/lib/pq"
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/access"
@@ -29,10 +30,23 @@ func (s *Store) writeTx(ctx context.Context, topic, action, entityID string, fn 
 		return 0, err
 	}
 	defer tx.Rollback() //nolint:errcheck
+	if table := map[string]string{"users": "auth_users", "roles": "auth_roles", "permissions": "auth_permissions", "lmaps": "auth_lmaps"}[topic]; table != "" {
+		key := "id"
+		if topic == "lmaps" {
+			key = "name"
+		}
+		if err := checkWriteCondition(ctx, tx, table, key, entityID); err != nil {
+			return 0, err
+		}
+	}
 
 	if err := fn(tx); err != nil {
 		if errors.Is(err, errNoStoreChange) {
 			return 0, nil
+		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return 0, fmt.Errorf("record already exists; %w", data.ErrConflict)
 		}
 
 		return 0, err
@@ -130,20 +144,23 @@ func isBcryptBase64(v string) bool {
 	return err == nil
 }
 
-func hashUserPassword(details map[string]any) {
+// hashUserPassword bcrypt-hashes a plaintext password in place. It fails
+// rather than leaving the plaintext behind (bcrypt rejects >72 bytes).
+func hashUserPassword(details map[string]any) error {
 	if details == nil {
-		return
+		return nil
 	}
 
 	if v := cast.ToString(details["password"]); v != "" && !isBcryptBase64(v) {
 		hashPassword, err := access.ToBcrypt([]byte(v))
 		if err != nil {
-			slog.Error("cannot hash password", slog.String("error", err.Error()))
-			return
+			return fmt.Errorf("cannot hash password: %w; %w", err, data.ErrInvalidRequest)
 		}
 
 		details["password"] = hashPassword
 	}
+
+	return nil
 }
 
 func (s *Store) txUserByID(ctx context.Context, tx *sql.Tx, id string) (*data.User, error) {
@@ -186,13 +203,19 @@ func (s *Store) txUpdateUser(ctx context.Context, tx *sql.Tx, user *data.User) e
 }
 
 func (s *Store) txAliasConflict(ctx context.Context, tx *sql.Tx, alias []string, excludeID string) error {
+	alias = normalizedAliases(alias)
+	for _, value := range alias {
+		if strings.HasPrefix(value, apiKeyPrincipalPrefix) {
+			return fmt.Errorf("reserved alias prefix; %w", data.ErrInvalidRequest)
+		}
+	}
 	if len(alias) == 0 {
 		return nil
 	}
 
 	var foundID string
 	err := tx.QueryRowContext(ctx,
-		`SELECT id FROM auth_users WHERE alias && $1::text[] AND id <> $2 LIMIT 1`,
+		`SELECT user_id FROM auth_user_aliases WHERE alias = ANY($1::text[]) AND user_id <> $2 LIMIT 1`,
 		pq.Array(alias), excludeID,
 	).Scan(&foundID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -211,7 +234,9 @@ func (s *Store) txAliasConflict(ctx context.Context, tx *sql.Tx, alias []string,
 func (s *Store) CreateUser(ctx context.Context, user data.User) (string, error) {
 	user.ID = ulid.Make().String()
 
-	hashUserPassword(user.Details)
+	if err := hashUserPassword(user.Details); err != nil {
+		return "", err
+	}
 	normalizeUser(&user)
 
 	user.CreatedAt = time.Now().Format(time.RFC3339)
@@ -243,7 +268,9 @@ func (s *Store) CreateUser(ctx context.Context, user data.User) (string, error) 
 }
 
 func (s *Store) PutUser(ctx context.Context, user data.User) error {
-	hashUserPassword(user.Details)
+	if err := hashUserPassword(user.Details); err != nil {
+		return err
+	}
 	normalizeUser(&user)
 
 	user.UpdatedAt = time.Now().Format(time.RFC3339)
@@ -276,7 +303,9 @@ func (s *Store) PutUser(ctx context.Context, user data.User) error {
 			if user.Details == nil {
 				user.Details = map[string]any{}
 			}
-			if user.Details["secret"] == nil {
+			// as with passwords, an emptied secret means "keep": storing "" would
+			// silently stop the account from authenticating
+			if v, ok := user.Details["secret"].(string); user.Details["secret"] == nil || (ok && v == "") {
 				user.Details["secret"] = found.Details["secret"]
 			}
 		}
@@ -303,16 +332,42 @@ func (s *Store) PatchUser(ctx context.Context, id string, patch data.UserPatch) 
 		}
 
 		if patch.Details != nil {
-			hashUserPassword(*patch.Details)
+			if err := hashUserPassword(*patch.Details); err != nil {
+				return err
+			}
 
 			if v, ok := (*patch.Details)["password"].(string); user.Details != nil && user.Details["password"] != nil && ((*patch.Details)["password"] == nil || (ok && v == "")) {
 				(*patch.Details)["password"] = user.Details["password"]
 			}
-			if user.ServiceAccount && user.Details != nil && user.Details["secret"] != nil && (*patch.Details)["secret"] == nil {
+			if v, ok := (*patch.Details)["secret"].(string); user.ServiceAccount && user.Details != nil && user.Details["secret"] != nil && ((*patch.Details)["secret"] == nil || (ok && v == "")) {
 				(*patch.Details)["secret"] = user.Details["secret"]
 			}
 
 			user.Details = *patch.Details
+		}
+		if patch.DetailsPatch != nil {
+			if user.Details == nil {
+				user.Details = map[string]any{}
+			}
+			if err := hashUserPassword(patch.DetailsPatch); err != nil {
+				return err
+			}
+			for key, value := range patch.DetailsPatch {
+				if key == "password_set" || key == "secret_set" {
+					continue
+				}
+				if (key == "password" || key == "secret") && (value == nil || value == "") {
+					continue
+				}
+				if value == nil {
+					delete(user.Details, key)
+				} else {
+					user.Details[key] = value
+				}
+			}
+		}
+		if patch.Local != nil {
+			user.Local = *patch.Local
 		}
 
 		if patch.Description != nil {
@@ -455,6 +510,39 @@ func (s *Store) UpdateUserSyncRoles(ctx context.Context, id string, roleIDs []st
 	return err
 }
 
+// UpdateUserLDAP refreshes the directory-owned parts of a user (aliases,
+// LDAP detail keys, sync roles) on the current row, so admin changes made
+// meanwhile (disabled flag, roles, other details) are not overwritten.
+func (s *Store) UpdateUserLDAP(ctx context.Context, id string, alias []string, details map[string]any, syncRoleIDs []string) error {
+	_, err := s.writeTx(ctx, "users", "update", id, func(tx *sql.Tx) error {
+		user, err := s.txUserByID(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+
+		if err := s.txAliasConflict(ctx, tx, alias, id); err != nil {
+			return err
+		}
+
+		if user.Details == nil {
+			user.Details = map[string]any{}
+		}
+		for k, v := range details {
+			user.Details[k] = v
+		}
+
+		user.Alias = alias
+		user.SyncRoleIDs = syncRoleIDs
+		normalizeUser(user)
+		user.UpdatedAt = time.Now().Format(time.RFC3339)
+		user.UpdatedBy = data.CtxUserName(ctx)
+
+		return s.txUpdateUser(ctx, tx, user)
+	})
+
+	return err
+}
+
 // UpdateUserPassword sets only the password detail of a user; the plaintext
 // password is bcrypt hashed in place. Other details stay untouched.
 func (s *Store) UpdateUserPassword(ctx context.Context, id string, password string) error {
@@ -469,7 +557,9 @@ func (s *Store) UpdateUserPassword(ctx context.Context, id string, password stri
 		}
 
 		user.Details["password"] = password
-		hashUserPassword(user.Details)
+		if err := hashUserPassword(user.Details); err != nil {
+			return err
+		}
 
 		normalizeUser(user)
 		user.UpdatedAt = time.Now().Format(time.RFC3339)

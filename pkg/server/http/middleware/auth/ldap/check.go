@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/go-ldap/ldap/v3"
-	"github.com/rakunlabs/into"
 )
 
 var ErrExceedPasswordRetryLimit = errors.New("exceed password retry limit")
@@ -23,8 +22,6 @@ func (l *Ldap) CheckPassword(username, password string) (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("failed connecting to LDAP server: %w", err)
 		}
-
-		into.ShutdownAdd(conn.Close, "ldap-user")
 
 		l.connUser = conn
 	}

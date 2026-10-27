@@ -11,6 +11,7 @@ export type ApiResponse<T> = {
 };
 
 export type Row = {
+  revision?: string;
   id: string;
   sub: string;
   enabled: boolean;
@@ -230,6 +231,7 @@ export const settingTemplates = {
   },
   token_exchange: {
     disabled: false,
+    allowed_clients: [],
   },
   totp: {
     disabled: false,
@@ -368,6 +370,9 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
         use_lmap: false,
         role_map: {},
         register: false,
+        link_local_users: false,
+        require_email_verified: false,
+        subject_claim: "",
       },
     },
   },
@@ -394,6 +399,9 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
         use_lmap: false,
         role_map: {},
         register: false,
+        link_local_users: false,
+        require_email_verified: false,
+        subject_claim: "",
       },
     },
   },
@@ -596,6 +604,7 @@ export function rowFromItem(kind: ResourceKind, item: Record<string, unknown>): 
     case "settings":
       return {
         id: String(item.namespace ?? ""),
+        revision: typeof item.revision === "string" ? item.revision : undefined,
         sub: `by ${item.updated_by ?? "unknown"}`,
         enabled: true,
         updated: String(item.updated_at ?? ""),
@@ -606,6 +615,7 @@ export function rowFromItem(kind: ResourceKind, item: Record<string, unknown>): 
     case "ldap":
       return {
         id: String(item.id ?? ""),
+        revision: typeof item.revision === "string" ? item.revision : undefined,
         sub: `by ${item.updated_by ?? "unknown"}`,
         enabled: Boolean(item.enabled),
         updated: String(item.updated_at ?? ""),
@@ -616,6 +626,7 @@ export function rowFromItem(kind: ResourceKind, item: Record<string, unknown>): 
       return {
         id: String(item.id ?? ""),
         sub: alias,
+        revision: typeof item.revision === "string" ? item.revision : undefined,
         enabled: Boolean(item.is_active),
         updated: String(item.updated_at ?? ""),
       };
@@ -625,12 +636,14 @@ export function rowFromItem(kind: ResourceKind, item: Record<string, unknown>): 
       return {
         id: String(item.id ?? ""),
         sub: String(item.name ?? ""),
+        revision: typeof item.revision === "string" ? item.revision : undefined,
         enabled: true,
         updated: String(item.updated_at ?? ""),
       };
     case "lmaps":
       return {
         id: String(item.name ?? ""),
+        revision: typeof item.revision === "string" ? item.revision : undefined,
         sub: Array.isArray(item.role_ids) ? (item.role_ids as string[]).join(", ") : "",
         enabled: true,
         updated: String(item.updated_at ?? ""),

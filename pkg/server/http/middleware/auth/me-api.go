@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
@@ -105,8 +104,8 @@ func (m *Auth) MePasswordAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if minLen := m.cache.Snapshot().Signup.GetPasswordMinLength(); len(req.NewPassword) < minLen {
-		httputil.HandleError(w, httputil.NewError(fmt.Sprintf("new password must be at least %d characters", minLen), nil, http.StatusBadRequest))
+	if msg := m.cache.Snapshot().Signup.passwordLengthError(req.NewPassword); msg != "" {
+		httputil.HandleError(w, httputil.NewError("new "+msg, nil, http.StatusBadRequest))
 		return
 	}
 

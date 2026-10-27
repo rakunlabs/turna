@@ -3,6 +3,7 @@
   import Section from "./ui/Section.svelte";
   import Switch from "./ui/Switch.svelte";
   import Seal from "./ui/Seal.svelte";
+  import BreakSeal from "./ui/BreakSeal.svelte";
   import EditorSimpleForm from "./editor/EditorSimpleForm.svelte";
   import { editor } from "../lib/state/editor.svelte";
   import { session } from "../lib/state/session.svelte";
@@ -71,11 +72,29 @@
     {/if}
   {/snippet}
 
+  {#if editor.conflict}
+    <div class="mb-6" role="alert">
+      <p class="mb-3 text-[13px] leading-[1.6] text-seal">
+        This record changed on the server. Nothing was overwritten and your draft is still here.
+        Copy any edits you want to keep, then reload the current record and reapply them.
+      </p>
+      <BreakSeal
+        consequence="Reloading replaces this draft with the current server record. Unsaved edits in this editor will be discarded; the server is not changed."
+        action="Reload current record"
+        disabled={session.busy}
+        onconfirm={() => void editor.load(editor.kind, editor.loadedID || editor.id)}
+      />
+    </div>
+  {/if}
+
+  <fieldset disabled={session.busy} class="min-w-0">
   <Section
     title="Instrument"
     note={editor.isNew
       ? "Nothing is written until you commit. Until then this draft exists only in this browser."
-      : "Committing replaces the stored record with what stands here."}
+      : editor.kind === "users" || editor.kind === "service-accounts"
+        ? "Only edited account fields are committed. Unchanged LDAP and temporary access stay as stored."
+        : "Committing replaces the stored record with what stands here."}
     first
   >
     <div class="grid gap-6 sm:grid-cols-2">
@@ -276,4 +295,5 @@
   {:else}
     <EditorSimpleForm />
   {/if}
+  </fieldset>
 </Instrument>

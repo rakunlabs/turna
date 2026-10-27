@@ -8,9 +8,13 @@
   import BreakSeal from "./ui/BreakSeal.svelte";
   import type { AnyRecord } from "../lib/api";
   import { formatStamp, joinValues, splitValues } from "../lib/records";
-  import { docket, session } from "../lib/state/session.svelte";
+  import { docket, messageOf, session, statusOf } from "../lib/state/session.svelte";
+  import { issuedSecrets } from "../lib/state/issued-secrets.svelte";
+  import { runMutation } from "../lib/mutation";
+  import { apiKeyRevisionHeaders } from "../lib/revisions";
   import {
     getSettingBool,
+    getLiveSettingBool,
     setSettingBool,
     getSettingString,
     setSettingString,
@@ -62,7 +66,10 @@
 
   let owners = $state<Owner[]>([]);
   let keys = $state<APIKeyMeta[]>([]);
-  let createdKey = $state("");
+  let loadError = $state("");
+  let surveyed = $state(false);
+  let ownerDetailError = $state("");
+  let editConflict = $state(false);
   let selectedOwnerID = $state("");
   let keyName = $state("");
   let keyDescription = $state("");
@@ -85,8 +92,8 @@
   const ownerByID = $derived(new Map(owners.map((owner) => [owner.id, owner])));
   const selectableOwners = $derived(owners.filter((owner) => owner.service_account));
   const selectedOwner = $derived(ownerByID.get(selectedOwnerID) ?? null);
-  const apiKeysDisabled = $derived(getSettingBool("api_key", ["disabled"]));
-  const maxLifetime = $derived(getSettingString("api_key", ["max_lifetime"]));
+  const apiKeysDisabled = $derived(getLiveSettingBool("api_key", ["disabled"]));
+  const maxLifetime = $derived(String(settings.pathValue("api_key", ["max_lifetime"], true) ?? ""));
 
   /**
    * The owner index is read whole but light — names and aliases only. The
@@ -95,9 +102,12 @@
    */
   let ownerDetail = $state<Owner | null>(null);
   let ownerDetailLoading = $state(false);
+  let ownerLoadSeq = 0;
 
   async function loadOwnerDetail(id: string) {
+    const seq = ++ownerLoadSeq;
     ownerDetail = null;
+    ownerDetailError = "";
     // Only the selection drives this read; reloading the owner index after an
     // unrelated write must not blank and refetch the detail.
     const owner = untrack(() => ownerByID.get(id));
@@ -113,11 +123,11 @@
       const res = await session.request<Owner>(
         `${base}/${encodeURIComponent(id)}?add_roles=true&add_permissions=true`,
       );
-      if (selectedOwnerID === id) ownerDetail = res.payload;
-    } catch {
-      // display only — a real fault surfaces when the key is issued
+      if (seq === ownerLoadSeq && selectedOwnerID === id) ownerDetail = res.payload;
+    } catch (err) {
+      if (seq === ownerLoadSeq && selectedOwnerID === id) ownerDetailError = messageOf(err, "Cannot read the owner's access");
     } finally {
-      if (selectedOwnerID === id) ownerDetailLoading = false;
+      if (seq === ownerLoadSeq && selectedOwnerID === id) ownerDetailLoading = false;
     }
   }
 
@@ -191,26 +201,31 @@
 
   /** The bare read, so a write that reloads reports under its own wording. */
   async function fetchAll() {
-    const [userOwners, serviceOwners, keyList] = await Promise.all([
-      session.request<Owner[]>("users?add_roles=false&_limit=0"),
-      session.request<Owner[]>("service-accounts?add_roles=false&_limit=0"),
-      session.request<APIKeyMeta[]>("api-key-principals"),
-    ]);
+    try {
+      const [userOwners, serviceOwners, keyList] = await Promise.all([
+        session.request<Owner[]>("users?add_roles=false&add_permissions=false&_limit=0"),
+        session.request<Owner[]>("service-accounts?add_roles=false&add_permissions=false&_limit=0"),
+        session.request<APIKeyMeta[]>("api-key-principals"),
+      ]);
 
-    owners = [...(userOwners.payload ?? []), ...(serviceOwners.payload ?? [])];
-    keys = decorateKeys(keyList.payload ?? []);
-  }
-
-  async function load() {
-    const ok = await session.run(fetchAll, "Cannot load API key principals");
-    if (!ok) {
-      owners = [];
-      keys = [];
+      owners = [...(userOwners.payload ?? []), ...(serviceOwners.payload ?? [])];
+      keys = decorateKeys(keyList.payload ?? []);
+      surveyed = true;
+      loadError = "";
+    } catch (err) {
+      loadError = messageOf(err, "Cannot load API key principals");
+      throw err;
     }
   }
 
+  async function load() {
+    await session.run(fetchAll, "Cannot load API key principals");
+  }
+
   async function createKey() {
-    const ok = await session.run(async () => {
+    if (session.busy || issuedSecrets.adminKey || !surveyed || loadError || apiKeysDisabled || ownerDetailLoading || ownerDetailError) return;
+    const generation = issuedSecrets.generation;
+    await runMutation(async () => {
       const res = await session.request<{ id: string; key: string; expires_at?: string }>(
         "api-key-principals",
         {
@@ -219,7 +234,7 @@
             user_id: selectedOwnerID,
             name: keyName.trim(),
             description: keyDescription.trim(),
-            details: { email: keyEmail.trim() },
+            details: selectedOwnerID ? {} : { email: keyEmail.trim() },
             expires_in: expiresIn.trim(),
             role_ids: splitValues(keyRoleIDs),
             permission_ids: splitValues(keyPermissionIDs),
@@ -227,23 +242,20 @@
         },
       );
 
-      createdKey = res.payload.key;
+      if (generation !== issuedSecrets.generation) throw new Error("The account changed while the key was being issued; its secret was not exposed to the new account");
+      issuedSecrets.adminKey = res.payload.key;
       keyName = "";
       keyDescription = "";
       keyEmail = "";
       keyRoleIDs = "";
       keyPermissionIDs = "";
-      await fetchAll();
-    }, "API key create failed");
-
-    if (!ok) return;
-
-    view = "list";
-    pendingRevoke = "";
-    docket.commit("API key issued. Copy it now — it is not stored and cannot be shown again.");
+      view = "list";
+      pendingRevoke = "";
+    }, fetchAll, "API key issued. Copy it now — it is not stored and cannot be shown again.", "API key create failed");
   }
 
   async function saveKey(key: APIKeyMeta) {
+    if (session.busy || editConflict) return;
     const body: AnyRecord = {
       name: (key.draft_name ?? "").trim(),
       description: (key.draft_description ?? "").trim(),
@@ -257,35 +269,33 @@
     if (roleIDs.join("\n") !== (key.role_ids ?? []).join("\n")) body.role_ids = roleIDs;
     if (permissionIDs.join("\n") !== (key.permission_ids ?? []).join("\n")) body.permission_ids = permissionIDs;
 
-    const ok = await session.run(async () => {
-      await session.request(`api-key-principals/${encodeURIComponent(key.id)}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      });
-
-      await fetchAll();
-    }, "API key update failed");
-
-    if (!ok) return;
-
-    view = "list";
-    editKey = null;
-    docket.commit("API key updated. The change applies to the next request that uses it.");
+    await runMutation(async () => {
+      try {
+        await session.request(`api-key-principals/${encodeURIComponent(key.id)}`, {
+          method: "PATCH",
+          headers: apiKeyRevisionHeaders(key.revision),
+          body: JSON.stringify(body),
+        });
+      } catch (err) {
+        if (statusOf(err) === 412) editConflict = true;
+        throw err;
+      }
+      view = "list";
+      editKey = null;
+    }, fetchAll, "API key updated. The change applies to the next request that uses it.", "API key update failed");
   }
 
   async function revokeKey(id: string) {
+    if (session.busy) return;
     pendingRevoke = "";
 
-    const ok = await session.run(async () => {
-      await session.request(`api-key-principals/${encodeURIComponent(id)}`, { method: "DELETE" });
-      await fetchAll();
-    }, "API key revoke failed");
-
-    if (!ok) return;
-
-    view = "list";
-    editKey = null;
-    docket.commit("API key revoked. Anything still sending it is refused from now on.");
+    const key = keys.find((key) => key.id === id);
+    await runMutation(async () => {
+      await session.request(`api-key-principals/${encodeURIComponent(id)}`, { method: "DELETE", headers: apiKeyRevisionHeaders(key?.revision) });
+      keys = keys.filter((key) => key.id !== id);
+      view = "list";
+      editKey = null;
+    }, fetchAll, "API key revoked. Anything still sending it is refused from now on.", "API key revoke failed");
   }
 
   function resetDraft(key: APIKeyMeta) {
@@ -298,14 +308,15 @@
   }
 
   function openCreate() {
-    // createdKey is the only copy of the last issued key; it is cleared only
-    // by "I have stored it", never by starting another issue.
+    if (issuedSecrets.adminKey) { docket.reject("Store and acknowledge the displayed key before issuing another one"); return; }
+    // Only explicit acknowledgment clears the tab's copy of an issued key.
     pendingRevoke = "";
     docket.clearRejections();
     view = "create";
   }
 
   function openEdit(key: APIKeyMeta) {
+    editConflict = false;
     editKey = key;
     pendingRevoke = "";
     docket.clearRejections();
@@ -320,8 +331,7 @@
 
   function backToList() {
     if (view === "edit" && editKey) resetDraft(editKey);
-    // Uncommitted settings must not change what the list says is in force.
-    if (view === "settings") void session.run(() => settings.load("api_key"));
+    // The list reads committed settings; its draft is preserved independently.
     editKey = null;
     pendingRevoke = "";
     docket.clearRejections();
@@ -355,7 +365,7 @@
       <button
         type="button"
         class="act act-primary"
-        disabled={session.busy || apiKeysDisabled}
+        disabled={session.busy || apiKeysDisabled || Boolean(issuedSecrets.adminKey) || !surveyed || Boolean(loadError)}
         onclick={openCreate}
       >
         Issue a key
@@ -369,7 +379,7 @@
       <button
         type="button"
         class="act act-primary"
-        disabled={session.busy || apiKeysDisabled}
+        disabled={session.busy || apiKeysDisabled || Boolean(issuedSecrets.adminKey) || !surveyed || Boolean(loadError) || ownerDetailLoading || Boolean(ownerDetailError)}
         onclick={() => void createKey()}
       >
         {session.busy ? "Issuing…" : "Issue key"}
@@ -379,7 +389,7 @@
       <button
         type="button"
         class="act act-primary"
-        disabled={session.busy}
+        disabled={session.busy || editConflict}
         onclick={() => editKey && void saveKey(editKey)}
       >
         {session.busy ? "Committing…" : "Commit"}
@@ -407,7 +417,7 @@
   {/snippet}
 
   <!-- The one-time instrument. While it is on the sheet it is the page. -->
-  {#if createdKey}
+  {#if issuedSecrets.adminKey}
     <div class="guilloche stamp-in mb-12 max-w-[104ch] border-2 border-seal bg-sheet">
       <div class="hatch flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-seal/40 px-5 py-3">
         <span class="stamp text-seal">Issued once</span>
@@ -421,19 +431,19 @@
         <p
           class="serial mt-3 break-all text-[19px] font-semibold leading-[1.4] text-ink sm:text-[25px] sm:leading-[1.35]"
         >
-          {createdKey}
+          {issuedSecrets.adminKey}
         </p>
 
         <div class="mt-7 flex flex-wrap items-center gap-3">
           <button
             type="button"
             class="act act-primary"
-            onclick={() => void copyText(createdKey, "API key")}
+            onclick={() => void copyText(issuedSecrets.adminKey, "API key")}
           >
             {@render copyGlyph()}
             Copy key
           </button>
-          <button type="button" class="act" onclick={() => (createdKey = "")}>
+          <button type="button" class="act" onclick={() => (issuedSecrets.adminKey = "")}>
             I have stored it
           </button>
         </div>
@@ -444,6 +454,20 @@
           meant to use this one.
         </p>
       </div>
+    </div>
+  {/if}
+
+  {#if loadError}
+    <div class="mb-6 border border-dashed border-seal/60 px-5 py-4" role="alert">
+      <p class="text-[13px] leading-[1.6] text-ink">{loadError}</p>
+      <p class="mt-2 text-[12px] text-muted">{surveyed ? "The last successfully read list is kept below; it may be out of date." : "The key list could not be read. This does not mean there are no keys."}</p>
+      <button type="button" class="act mt-3" disabled={session.busy} onclick={() => void load()}>Try again</button>
+    </div>
+  {/if}
+
+  {#if view === "edit" && editConflict}
+    <div class="mb-6 border border-dashed border-seal/60 px-5 py-4" role="alert">
+      <p class="text-[13px] leading-[1.6] text-ink">This key changed on the server. Your draft is kept and nothing was overwritten. Copy any edits you want to keep, then discard this draft, refresh the list and reopen the key.</p>
     </div>
   {/if}
 
@@ -458,7 +482,11 @@
       </p>
     {/if}
 
-    {#if keys.length === 0}
+    {#if !surveyed && !loadError}
+      <p class="text-[13px] text-muted">Reading API keys…</p>
+    {:else if !surveyed || (loadError && keys.length === 0)}
+      <!-- The load error above is not an empty key registry. -->
+    {:else if keys.length === 0}
       <div class="border border-dashed border-rule px-6 py-14 text-center">
         <p class="text-[15px] font-semibold text-ink">No API keys issued</p>
         <p class="mx-auto mt-2 max-w-[58ch] text-[13px] leading-[1.6] text-muted">
@@ -468,7 +496,7 @@
         <button
           type="button"
           class="act act-primary mt-6"
-          disabled={session.busy || apiKeysDisabled}
+          disabled={session.busy || apiKeysDisabled || Boolean(issuedSecrets.adminKey) || Boolean(loadError)}
           onclick={openCreate}
         >
           Issue a key
@@ -580,6 +608,11 @@
           <p class="mt-5 text-[12.5px] text-muted" role="status" aria-live="polite">
             Reading their access…
           </p>
+        {:else if ownerDetailError}
+          <div role="alert" class="text-[13px] text-seal">
+            <p>{ownerDetailError}</p>
+            <button type="button" class="act mt-2" disabled={session.busy} onclick={() => void loadOwnerDetail(selectedOwnerID)}>Read owner access again</button>
+          </div>
         {:else if ownerDetail}
           <dl class="mt-5 max-w-[80ch] divide-y divide-rule border-y border-rule">
             <div class="grid gap-x-4 gap-y-0.5 py-2 sm:grid-cols-[9rem_minmax(0,1fr)]">
@@ -635,11 +668,12 @@
             class="entry mt-1.5"
             type="email"
             placeholder="robot@example.com"
+            disabled={Boolean(selectedOwnerID)}
             autocomplete="off"
             bind:value={keyEmail}
           />
           <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
-            Optional X-User identity. Empty uses the owner's email, then the key name.
+            {selectedOwnerID ? "Owned keys use the owner's account email; overrides are not accepted." : "Optional email claim for this administrator-managed system key."}
           </p>
         </div>
 
@@ -729,10 +763,14 @@
             id="edit-key-email"
             class="entry mt-1.5"
             type="email"
-            placeholder="owner email fallback"
+            placeholder={editKey.user_id ? "Uses owner email" : "Optional system-key email"}
+            disabled={Boolean(editKey.user_id)}
             autocomplete="off"
             bind:value={editKey.draft_email}
           />
+          {#if editKey.user_id}
+            <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">The email claim comes from the owner, not key metadata.</p>
+          {/if}
         </div>
 
         <div class="min-w-0 sm:col-span-2">

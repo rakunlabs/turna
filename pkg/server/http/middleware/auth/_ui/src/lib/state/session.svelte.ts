@@ -1,4 +1,5 @@
 import type { ApiResponse, Capabilities, Dashboard, InfoPayload, InstanceConfig } from "../api";
+import { jsonRequestInit } from "../http";
 
 /**
  * The docket is the console's record of what just happened. Entries are stamped
@@ -102,19 +103,12 @@ class Session {
   /** Derive the API base from the served path so `prefix_path` stays free. */
   deriveApiBase() {
     const path = window.location.pathname;
-    const uiIndex = path.indexOf("/ui");
+    const uiIndex = path.lastIndexOf("/ui");
     this.apiBase = uiIndex > -1 ? `${path.slice(0, uiIndex)}/v1` : "/auth/v1";
   }
 
   async request<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
-    const res = await fetch(`${this.apiBase}/${path}`, {
-      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-      ...init,
-    });
-
-    if (!res.ok) throw new HttpError(res.status, await errorTextOf(res));
-
-    return res.json();
+    return this.raw<ApiResponse<T>>(path, init);
   }
 
   /**
@@ -122,10 +116,7 @@ class Session {
    * (`POST /v1/check` is the notable one). This returns the body as-is.
    */
   async raw<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${this.apiBase}/${path}`, {
-      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-      ...init,
-    });
+    const res = await fetch(`${this.apiBase}/${path}`, jsonRequestInit(init));
 
     if (!res.ok) throw new HttpError(res.status, await errorTextOf(res));
 
@@ -192,7 +183,12 @@ export async function errorTextOf(res: Response) {
     const body = (await res.json()) as Record<string, unknown>;
     const message = body.message;
 
-    if (typeof message === "string" && message.trim()) return message;
+    // {message, error}: the message names the operation, the error carries
+    // the reason (alias conflict, invalid origin, …); show both
+    if (typeof message === "string" && message.trim()) {
+      const reason = typeof body.error === "string" ? body.error.trim() : "";
+      return reason && reason !== message ? `${message}: ${reason}` : message;
+    }
 
     if (message && typeof message === "object") {
       const detail = message as Record<string, unknown>;
@@ -202,7 +198,10 @@ export async function errorTextOf(res: Response) {
       }
     }
 
-    if (typeof body.error === "string" && body.error.trim()) return body.error;
+    if (typeof body.error === "string" && body.error.trim()) {
+      const description = typeof body.error_description === "string" ? body.error_description.trim() : "";
+      return description ? `${body.error}: ${description}` : body.error;
+    }
   } catch {
     // fall through to the status line
   }

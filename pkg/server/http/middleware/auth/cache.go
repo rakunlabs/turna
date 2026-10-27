@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -46,6 +47,9 @@ type AccessClient struct {
 	Public bool `json:"public,omitempty"`
 	// Dynamic marks a client created through RFC 7591 dynamic registration.
 	Dynamic bool `json:"dynamic,omitempty"`
+	// GrantTypes restricts the grants this client may use. Old dynamic clients
+	// without this field are limited to the historic registration defaults.
+	GrantTypes []string `json:"grant_types,omitempty"`
 	// SkipConsent auto-approves the consent step for trusted first-party
 	// clients; the user still has to be logged in.
 	SkipConsent bool `json:"skip_consent,omitempty"`
@@ -57,6 +61,16 @@ type AccessClient struct {
 	RegistrationToken string `json:"registration_token,omitempty"`
 	// CreatedAt unix seconds; used to expire dynamic registrations.
 	CreatedAt int64 `json:"created_at,omitempty"`
+}
+
+func (c AccessClient) allowsGrant(grant string) bool {
+	if len(c.GrantTypes) > 0 {
+		return slices.Contains(c.GrantTypes, grant)
+	}
+	if c.Dynamic {
+		return grant == "authorization_code" || grant == "refresh_token"
+	}
+	return true
 }
 
 // redirectURIAllowedForClient checks a redirect target against the client's
@@ -607,6 +621,13 @@ func (r RegistrationSettings) GetMaxClients() int {
 type TokenExchangeSettings struct {
 	// Disabled turns off the token exchange grant.
 	Disabled bool `json:"disabled"`
+	// AllowedClients limits which clients may exchange tokens. Empty keeps
+	// the grant open to every confidential client.
+	AllowedClients []string `json:"allowed_clients"`
+}
+
+func (t TokenExchangeSettings) clientAllowed(clientID string) bool {
+	return len(t.AllowedClients) == 0 || slices.Contains(t.AllowedClients, clientID)
 }
 
 // TOTPSettings is the decoded "totp" setting namespace.
@@ -746,6 +767,21 @@ func (s SignupSettings) GetEmailVerification() bool {
 	return true
 }
 
+// maxPasswordBytes is bcrypt's input limit; longer passwords cannot be hashed.
+const maxPasswordBytes = 72
+
+// passwordLengthError reports a password outside the accepted length range.
+func (s SignupSettings) passwordLengthError(password string) string {
+	if minLen := s.GetPasswordMinLength(); len(password) < minLen {
+		return fmt.Sprintf("password must be at least %d characters", minLen)
+	}
+	if len(password) > maxPasswordBytes {
+		return fmt.Sprintf("password must be at most %d bytes", maxPasswordBytes)
+	}
+
+	return ""
+}
+
 // GetPasswordMinLength returns the configured minimum password length, or the
 // built-in default (minPasswordLength) when unset.
 func (s SignupSettings) GetPasswordMinLength() int {
@@ -848,6 +884,7 @@ func (t TokenSettings) GetRememberIdleLifetime() time.Duration {
 func (t TokenSettings) GetRefreshReuseGrace() time.Duration {
 	return t.refreshReuseGrace
 }
+
 // GetRolesClaim returns the configured dot path for the roles claim, or the
 // flat "roles" default when unset.
 func (t TokenSettings) GetRolesClaim() string {
@@ -1133,7 +1170,7 @@ func (c *Cache) Reload(ctx context.Context) error {
 		snap.UserIDs = append(snap.UserIDs, user.ID)
 
 		for _, alias := range user.Alias {
-			snap.Alias[alias] = user.ID
+			snap.Alias[normalizeAlias(alias)] = user.ID
 		}
 	}
 	sort.Strings(snap.UserIDs)
@@ -1630,7 +1667,7 @@ func (sn *Snapshot) roleIDsByPermissionIDs(permIDs []string) []string {
 // users
 
 func (sn *Snapshot) UserByAlias(alias string) *data.User {
-	if id, ok := sn.Alias[alias]; ok {
+	if id, ok := sn.Alias[normalizeAlias(alias)]; ok {
 		return sn.Users[id]
 	}
 
@@ -1842,8 +1879,10 @@ func sanitizedUser(user *data.User, includeSecret bool) *data.User {
 	}
 
 	delete(details, "password")
+	details["password_set"] = user.Details["password"] != nil && user.Details["password"] != ""
 	if !includeSecret {
 		delete(details, "secret")
+		details["secret_set"] = user.Details["secret"] != nil && user.Details["secret"] != ""
 	}
 
 	userCopy.Details = details

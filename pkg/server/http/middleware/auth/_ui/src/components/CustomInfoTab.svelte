@@ -7,7 +7,8 @@
   import type { AnyRecord, SettingNamespace } from "../lib/api";
   import { pretty } from "../lib/records";
   import { docket, messageOf, session } from "../lib/state/session.svelte";
-  import { saveSetting, setSettingRecord, settingRecord } from "../lib/state/settings.svelte";
+  import { saveSetting } from "../lib/state/settings.svelte";
+  import { syncSettingForm } from "../lib/state/setting-form.svelte";
 
   type ClaimRow = { id: number; key: string; tmpl: string };
   type SetRow = { id: number; name: string; claims: ClaimRow[] };
@@ -25,20 +26,7 @@
   let held = $state(false);
   let sets = $state<SetRow[]>([]);
 
-  /**
-   * The editable model is local: typing must not write through to the canonical
-   * record, or every keystroke would be a pending change. Re-sync only when the
-   * record itself is replaced — initial load, and again after a commit.
-   */
-  let syncedFrom: AnyRecord | null = null;
-
-  $effect(() => {
-    const record = settingRecord(ns);
-    if (record === syncedFrom) return;
-
-    syncedFrom = record;
-    syncFromRecord(record);
-  });
+  syncSettingForm(ns, buildRecord, syncFromRecord);
 
   function asRecord(value: unknown): Record<string, unknown> {
     return value && typeof value === "object" && !Array.isArray(value)
@@ -70,12 +58,12 @@
   }
 
   function buildRecord(): AnyRecord {
-    const out: Record<string, unknown> = {};
+    const out: Record<string, unknown> = Object.create(null);
     for (const set of sets) {
       const name = set.name.trim();
       if (!name) continue;
 
-      const claims: Record<string, string> = {};
+      const claims: Record<string, string> = Object.create(null);
       for (const claim of set.claims) {
         const key = claim.key.trim();
         if (!key) continue;
@@ -111,18 +99,7 @@
 
   async function save() {
     if (duplicates.length) return;
-    // Stage the draft only for the request; a rejected commit must not leave
-    // it in the shared store or rebuild the rows the operator is editing.
-    const previous = settingRecord(ns);
-    setSettingRecord(ns, buildRecord());
-    // The store wraps what it is given in a proxy; remember that object so the
-    // sync effect does not rebuild the rows from the staged draft.
-    syncedFrom = settingRecord(ns);
-    const ok = await saveSetting(ns);
-    if (!ok) {
-      syncedFrom = previous;
-      setSettingRecord(ns, previous);
-    }
+    await saveSetting(ns, buildRecord());
   }
 
   /** Names the record is keyed by; a repeat would silently drop a row. */
@@ -331,7 +308,7 @@
 
     <Section
       title="Template sets"
-      note="A set's name is the URL segment. Edits here are local until you commit — leave the page to discard them."
+      note="A set's name is the URL segment. Edits stay in this tab when you change pages. Commit to apply them, or use Discard drafts to restore the last server values."
     >
       {#snippet aside()}
         <button type="button" class="act act-quiet" onclick={addSet}>Add set</button>

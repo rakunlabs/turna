@@ -113,6 +113,13 @@ func (m *Auth) getConfigResource(w http.ResponseWriter, r *http.Request, fn getC
 		return
 	}
 
+	redacted, err := redactSecrets(resource.Config)
+	if err != nil {
+		httputil.HandleError(w, httputil.NewError(msg, err, http.StatusInternalServerError))
+		return
+	}
+	resource.Config = redacted
+	setRecordETag(w, resource.Revision)
 	httputil.JSON(w, http.StatusOK, Response[*ConfigResource]{Payload: resource})
 }
 
@@ -135,7 +142,7 @@ func (m *Auth) putConfigResource(w http.ResponseWriter, r *http.Request, fn putC
 
 	version, err := fn(r.Context(), r.PathValue("id"), req.Config, enabled, getUserName(r))
 	if err != nil {
-		httputil.HandleError(w, httputil.NewError(msg, err, http.StatusInternalServerError))
+		writeError(w, err, msg)
 		return
 	}
 
@@ -155,7 +162,7 @@ func (m *Auth) deleteConfigResource(w http.ResponseWriter, r *http.Request, fn d
 			return
 		}
 
-		httputil.HandleError(w, httputil.NewError(msg, err, http.StatusInternalServerError))
+		writeError(w, err, msg)
 		return
 	}
 

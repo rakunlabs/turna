@@ -1,9 +1,9 @@
 package auth
 
 import (
+	"database/sql"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
@@ -48,6 +48,16 @@ func (m *Auth) TOTPRegisterAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// re-registering would reset a confirmed secret to unconfirmed and turn
+	// the second factor off at once; it has to be disabled explicitly first
+	if _, confirmed, err := m.store.GetTOTPSecret(r.Context(), user.ID); err == nil && confirmed {
+		httputil.HandleError(w, httputil.NewError("totp is already enabled; disable it first", nil, http.StatusConflict))
+		return
+	} else if err != nil && !errors.Is(err, data.ErrNotFound) {
+		httputil.HandleError(w, httputil.NewError("cannot check totp", err, http.StatusInternalServerError))
+		return
+	}
+
 	secret, err := generateTOTPSecret()
 	if err != nil {
 		httputil.HandleError(w, httputil.NewError("cannot generate totp secret", err, http.StatusInternalServerError))
@@ -55,7 +65,11 @@ func (m *Auth) TOTPRegisterAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := m.store.UpsertTOTPSecret(r.Context(), user.ID, secret); err != nil {
-		httputil.HandleError(w, httputil.NewError("cannot save totp secret", err, http.StatusInternalServerError))
+		status := http.StatusInternalServerError
+		if errors.Is(err, data.ErrConflict) {
+			status = http.StatusConflict
+		}
+		httputil.HandleError(w, httputil.NewError("cannot save totp secret", err, status))
 		return
 	}
 	label := user.ID
@@ -86,19 +100,23 @@ func (m *Auth) TOTPConfirmAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	secret, _, err := m.store.GetTOTPSecret(r.Context(), user.ID)
+	ok, err := m.store.ConsumeTOTP(r.Context(), user.ID, req.Code, cfg.GetSkew(), true)
 	if err != nil {
-		httputil.HandleError(w, httputil.NewError("totp not registered", err, http.StatusNotFound))
+		status := http.StatusInternalServerError
+		if errors.Is(err, errTOTPLocked) {
+			status = http.StatusTooManyRequests
+		}
+		if errors.Is(err, data.ErrConflict) {
+			status = http.StatusConflict
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			status = http.StatusNotFound
+		}
+		httputil.HandleError(w, httputil.NewError("cannot confirm totp", err, status))
 		return
 	}
-
-	if !validateTOTP(secret, req.Code, cfg.GetSkew(), time.Now()) {
+	if !ok {
 		httputil.HandleError(w, httputil.NewError("totp code invalid", nil, http.StatusBadRequest))
-		return
-	}
-
-	if err := m.store.ConfirmTOTPSecret(r.Context(), user.ID); err != nil {
-		httputil.HandleError(w, httputil.NewError("cannot confirm totp", err, http.StatusInternalServerError))
 		return
 	}
 

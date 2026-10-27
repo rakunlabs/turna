@@ -11,6 +11,8 @@
   import type { AnyRecord } from "../lib/api";
   import { fieldText, formatStamp } from "../lib/records";
   import { docket, messageOf, session } from "../lib/state/session.svelte";
+  import { issuedSecrets } from "../lib/state/issued-secrets.svelte";
+  import { apiKeyRevisionHeaders } from "../lib/revisions";
 
   /**
    * The only page a person who is not an operator ever opens. It is written for
@@ -72,10 +74,7 @@
   let confirmPassword = $state("");
 
   // totp
-  let totpSecret = $state("");
-  let totpURL = $state("");
   let totpCode = $state("");
-  let recoveryCodes = $state<string[]>([]);
 
   // passkeys
   let passkeys = $state<PasskeyMeta[]>([]);
@@ -88,6 +87,7 @@
     name: string;
     description: string;
     disabled: boolean;
+    revision?: number;
     expires_at?: string;
     created_at: string;
     last_used_at?: string;
@@ -96,9 +96,7 @@
   let ownKeys = $state<OwnKeyMeta[]>([]);
   let ownKeyName = $state("");
   let ownKeyDescription = $state("");
-  let ownKeyEmail = $state("");
   let ownKeyExpires = $state("720h");
-  let createdOwnKey = $state("");
   let pendingKeyRevoke = $state("");
 
   const ownKeyPresets = [
@@ -175,6 +173,8 @@
   }
 
   async function createOwnKey() {
+    if (session.busy || issuedSecrets.ownKey) return;
+    const generation = issuedSecrets.generation;
     const ok = await session.run(async () => {
       const res = await session.request<{ id: string; key: string; expires_at?: string }>(
         "api-keys",
@@ -183,16 +183,15 @@
           body: JSON.stringify({
             name: ownKeyName.trim(),
             description: ownKeyDescription.trim(),
-            details: { email: ownKeyEmail.trim() },
             expires_in: ownKeyExpires.trim(),
           }),
         },
       );
 
-      createdOwnKey = res.payload.key;
+      if (generation !== issuedSecrets.generation) throw new Error("The account changed while the key was being issued");
+      issuedSecrets.ownKey = res.payload.key;
       ownKeyName = "";
       ownKeyDescription = "";
-      ownKeyEmail = "";
       await loadOwnKeys();
     }, "Access key create failed");
 
@@ -205,7 +204,8 @@
     pendingKeyRevoke = "";
 
     const ok = await session.run(async () => {
-      await session.request(`api-keys/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const key = ownKeys.find((key) => key.id === id);
+      await session.request(`api-keys/${encodeURIComponent(id)}`, { method: "DELETE", headers: apiKeyRevisionHeaders(key?.revision) });
       await loadOwnKeys();
     }, "Access key revoke failed");
 
@@ -255,31 +255,36 @@
   // totp
 
   async function totpRegister() {
+    if (session.busy || issuedSecrets.totpSecret || issuedSecrets.recoveryCodes.length) return;
+    const generation = issuedSecrets.generation;
     const ok = await session.run(async () => {
       const res = await session.request<{ secret: string; url: string }>("totp/register", {
         method: "POST",
         body: "{}",
       });
 
-      totpSecret = res.payload.secret;
-      totpURL = res.payload.url;
-      recoveryCodes = [];
+      if (generation !== issuedSecrets.generation) throw new Error("The account changed during TOTP setup");
+      issuedSecrets.totpSecret = res.payload.secret;
+      issuedSecrets.totpURL = res.payload.url;
     }, "TOTP register failed");
 
     if (ok) docket.commit("Add the secret to your authenticator app, then enter a code to finish.");
   }
 
   async function totpConfirm() {
+    const generation = issuedSecrets.generation;
     const ok = await session.run(async () => {
       const res = await session.request<{ recovery_codes?: string[] }>("totp/confirm", {
         method: "POST",
         body: JSON.stringify({ code: totpCode.trim() }),
       });
 
-      recoveryCodes = res.payload.recovery_codes ?? [];
-      totpSecret = "";
-      totpURL = "";
+      if (generation !== issuedSecrets.generation) throw new Error("The account changed during TOTP confirmation");
+      issuedSecrets.recoveryCodes = res.payload.recovery_codes ?? [];
+      issuedSecrets.totpSecret = "";
+      issuedSecrets.totpURL = "";
       totpCode = "";
+      if (me) me.totp_enabled = true;
       await loadMe();
     }, "TOTP confirm failed");
 
@@ -287,13 +292,16 @@
   }
 
   async function totpRecovery() {
+    if (session.busy || issuedSecrets.recoveryCodes.length) return;
+    const generation = issuedSecrets.generation;
     const ok = await session.run(async () => {
       const res = await session.request<{ recovery_codes?: string[] }>("totp/recovery", {
         method: "POST",
         body: "{}",
       });
 
-      recoveryCodes = res.payload.recovery_codes ?? [];
+      if (generation !== issuedSecrets.generation) throw new Error("The account changed while recovery codes were being issued");
+      issuedSecrets.recoveryCodes = res.payload.recovery_codes ?? [];
     }, "Recovery regenerate failed");
 
     if (ok) docket.commit("New recovery codes issued. The previous set no longer works.");
@@ -302,13 +310,14 @@
   async function totpDisable() {
     const ok = await session.run(async () => {
       await session.request("totp", { method: "DELETE" });
-      totpSecret = "";
-      totpURL = "";
-      recoveryCodes = [];
+      issuedSecrets.totpSecret = "";
+      issuedSecrets.totpURL = "";
+      issuedSecrets.recoveryCodes = [];
+      if (me) me.totp_enabled = false;
       await loadMe();
     }, "TOTP disable failed");
 
-    if (ok) docket.commit("Two-step codes are off. Signing in now needs your password only.");
+    if (ok) docket.commit("Two-step codes are off. Password and email-code sign-in no longer require this second factor.");
   }
 
   // ////////////////////////////////////////////////////////////////
@@ -669,7 +678,7 @@
         <Seal state={totpOn ? "endorsed" : "void"} label={totpOn ? "On" : "Off"} />
       {/snippet}
 
-      {#if recoveryCodes.length > 0}
+      {#if issuedSecrets.recoveryCodes.length > 0}
         <div class="guilloche stamp-in mb-8 border border-seal bg-sheet">
           <div class="hatch flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-seal/40 px-5 py-3">
             <span class="stamp text-seal">Shown once</span>
@@ -685,7 +694,7 @@
             </p>
 
             <ul class="mt-5 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3 lg:grid-cols-4">
-              {#each recoveryCodes as code, i (i)}
+              {#each issuedSecrets.recoveryCodes as code, i (i)}
                 <li class="serial break-all border-b border-rule py-1.5 text-[13.5px] font-medium text-ink">
                   {code}
                 </li>
@@ -696,12 +705,12 @@
               <button
                 type="button"
                 class="act act-primary"
-                onclick={() => void copyText(recoveryCodes.join("\n"), "Recovery codes")}
+                onclick={() => void copyText(issuedSecrets.recoveryCodes.join("\n"), "Recovery codes")}
               >
                 {@render copyGlyph()}
                 Copy all codes
               </button>
-              <button type="button" class="act" onclick={() => (recoveryCodes = [])}>
+              <button type="button" class="act" onclick={() => (issuedSecrets.recoveryCodes = [])}>
                 I have stored them
               </button>
             </div>
@@ -709,7 +718,7 @@
         </div>
       {/if}
 
-      {#if totpSecret}
+      {#if issuedSecrets.totpSecret}
         <div class="border border-rule bg-sheet">
           <div class="border-b border-rule px-5 py-4">
             <p class="stamp stamp-ink">Step 1 — add the secret to your app</p>
@@ -718,15 +727,15 @@
               secret below. The long link does the same thing if your app accepts one.
             </p>
 
-            <p class="serial mt-4 break-all text-[15px] font-semibold text-ink">{totpSecret}</p>
-            <p class="serial mt-2 break-all text-[12px] leading-[1.55] text-muted">{totpURL}</p>
+            <p class="serial mt-4 break-all text-[15px] font-semibold text-ink">{issuedSecrets.totpSecret}</p>
+            <p class="serial mt-2 break-all text-[12px] leading-[1.55] text-muted">{issuedSecrets.totpURL}</p>
 
             <div class="mt-4 flex flex-wrap gap-2">
-              <button type="button" class="act" onclick={() => void copyText(totpSecret, "Secret")}>
+              <button type="button" class="act" onclick={() => void copyText(issuedSecrets.totpSecret, "Secret")}>
                 {@render copyGlyph()}
                 Copy secret
               </button>
-              <button type="button" class="act" onclick={() => void copyText(totpURL, "Setup link")}>
+              <button type="button" class="act" onclick={() => void copyText(issuedSecrets.totpURL, "Setup link")}>
                 {@render copyGlyph()}
                 Copy setup link
               </button>
@@ -764,7 +773,7 @@
         </div>
       {:else if me.totp_enabled}
         <p class="max-w-[70ch] text-[13px] leading-[1.6] text-ink">
-          Two-step codes are on. When you sign in with your password you will also be asked for the
+          Two-step codes are on. When you sign in with your password or an email code you will also be asked for the
           current code from your authenticator app, or for one of your recovery codes.
         </p>
 
@@ -778,7 +787,7 @@
               <BreakSeal
                 consequence="Issuing a new set invalidates every recovery code you were given before. Any copy you printed or saved stops working the moment the new set appears, and the old codes cannot be brought back."
                 action="Issue new recovery codes"
-                disabled={session.busy}
+                disabled={session.busy || issuedSecrets.recoveryCodes.length > 0}
                 onconfirm={() => void totpRecovery()}
               />
             </div>
@@ -916,7 +925,7 @@
       {/if}
     </Section>
 
-    {#if patEnabled}
+    {#if patEnabled || issuedSecrets.ownKey}
       <Section
         title="Personal access keys"
         note="A static key for your scripts and tools. It acts as you, carries at most your own access, and is checked against the database on every request — revoking it stops access immediately."
@@ -925,7 +934,7 @@
           <span class="stamp">{ownKeys.length} on record</span>
         {/snippet}
 
-        {#if createdOwnKey}
+        {#if issuedSecrets.ownKey}
           <div class="guilloche stamp-in mb-8 border border-seal bg-sheet">
             <div class="hatch flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-seal/40 px-5 py-3">
               <span class="stamp text-seal">Issued once</span>
@@ -935,18 +944,18 @@
             </div>
 
             <div class="px-5 py-6">
-              <p class="serial break-all text-[15px] font-semibold text-ink">{createdOwnKey}</p>
+              <p class="serial break-all text-[15px] font-semibold text-ink">{issuedSecrets.ownKey}</p>
 
               <div class="mt-5 flex flex-wrap gap-2">
                 <button
                   type="button"
                   class="act act-primary"
-                  onclick={() => void copyText(createdOwnKey, "Access key")}
+                  onclick={() => void copyText(issuedSecrets.ownKey, "Access key")}
                 >
                   {@render copyGlyph()}
                   Copy key
                 </button>
-                <button type="button" class="act" onclick={() => (createdOwnKey = "")}>
+                <button type="button" class="act" onclick={() => (issuedSecrets.ownKey = "")}>
                   I have stored it
                 </button>
               </div>
@@ -1036,17 +1045,10 @@
           </div>
 
           <div class="min-w-0 flex-1 basis-64">
-            <label class="stamp block" for="own-key-email">Email for X-User</label>
-            <input
-              id="own-key-email"
-              class="entry mt-1.5"
-              type="email"
-              placeholder={profileEmail || "you@example.com"}
-              autocomplete="off"
-              bind:value={ownKeyEmail}
-            />
+            <span class="stamp block">Account email</span>
+            <p class="serial mt-1.5 break-all text-[13px] text-ink">{profileEmail || "No account email"}</p>
             <p class="mt-1.5 text-[12px] leading-[1.5] text-muted">
-              Optional override. Empty uses your account email, then the key name.
+              Your keys use your account email. A key cannot override this identity claim.
             </p>
           </div>
 
@@ -1078,7 +1080,7 @@
           <button
             type="button"
             class="act act-primary shrink-0"
-            disabled={session.busy}
+            disabled={session.busy || Boolean(issuedSecrets.ownKey) || !patEnabled}
             onclick={() => void createOwnKey()}
           >
             {session.busy ? "Issuing…" : "Issue a key"}

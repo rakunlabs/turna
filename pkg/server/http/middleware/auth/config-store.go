@@ -11,6 +11,7 @@ import (
 )
 
 type ConfigMeta struct {
+	Revision  string     `json:"revision"`
 	ID        string     `json:"id"`
 	Enabled   bool       `json:"enabled"`
 	UpdatedAt types.Time `json:"updated_at"`
@@ -18,6 +19,7 @@ type ConfigMeta struct {
 }
 
 type ConfigResource struct {
+	Revision  string        `json:"revision"`
 	ID        string        `json:"id"`
 	Enabled   bool          `json:"enabled"`
 	Config    types.RawJSON `json:"config"`
@@ -102,7 +104,7 @@ func (s *Store) DeleteSAMLProvider(ctx context.Context, id string) (uint64, erro
 }
 
 func (s *Store) listConfigResources(ctx context.Context, kind configKind) ([]ConfigMeta, error) {
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`SELECT id, enabled, updated_at, updated_by FROM %s ORDER BY id`, kind.table))
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`SELECT id, enabled, updated_at, updated_by, revision FROM %s ORDER BY id`, kind.table))
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +113,7 @@ func (s *Store) listConfigResources(ctx context.Context, kind configKind) ([]Con
 	resources := []ConfigMeta{}
 	for rows.Next() {
 		var resource ConfigMeta
-		if err := rows.Scan(&resource.ID, &resource.Enabled, &resource.UpdatedAt, &resource.UpdatedBy); err != nil {
+		if err := rows.Scan(&resource.ID, &resource.Enabled, &resource.UpdatedAt, &resource.UpdatedBy, &resource.Revision); err != nil {
 			return nil, err
 		}
 
@@ -126,8 +128,8 @@ func (s *Store) getConfigResource(ctx context.Context, kind configKind, id strin
 	resource := ConfigResource{ID: id}
 
 	if err := s.db.QueryRowContext(ctx,
-		fmt.Sprintf(`SELECT config_encrypted, enabled, updated_at, updated_by FROM %s WHERE id = $1`, kind.table), id,
-	).Scan(&encrypted, &resource.Enabled, &resource.UpdatedAt, &resource.UpdatedBy); err != nil {
+		fmt.Sprintf(`SELECT config_encrypted, enabled, updated_at, updated_by, revision FROM %s WHERE id = $1`, kind.table), id,
+	).Scan(&encrypted, &resource.Enabled, &resource.UpdatedAt, &resource.UpdatedBy, &resource.Revision); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("config resource %s not found; %w", id, ErrNotFound)
 		}
@@ -153,16 +155,38 @@ func (s *Store) putConfigResource(ctx context.Context, kind configKind, id strin
 		return 0, errors.New("config must be valid json")
 	}
 
-	encrypted, err := s.cipher.EncryptString(string(config))
-	if err != nil {
-		return 0, err
-	}
-
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback() //nolint:errcheck
+	if err := checkWriteCondition(ctx, tx, kind.table, "id", id); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, kind.table+":"+id); err != nil {
+		return 0, err
+	}
+	// Lock the current record while merging omitted write-only credentials.
+	var previous string
+	err = tx.QueryRowContext(ctx, fmt.Sprintf(`SELECT config_encrypted FROM %s WHERE id = $1 FOR UPDATE`, kind.table), id).Scan(&previous)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	var plain string
+	if previous != "" {
+		plain, err = s.cipher.DecryptString(previous)
+		if err != nil {
+			return 0, err
+		}
+	}
+	config, err = mergeSecrets(config, []byte(plain))
+	if err != nil {
+		return 0, err
+	}
+	encrypted, err := s.cipher.EncryptString(string(config))
+	if err != nil {
+		return 0, err
+	}
 
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`INSERT INTO %s (id, config_encrypted, enabled, updated_by)
 		VALUES ($1, $2, $3, $4)
@@ -201,6 +225,9 @@ func (s *Store) deleteConfigResource(ctx context.Context, kind configKind, id st
 		return 0, err
 	}
 	defer tx.Rollback() //nolint:errcheck
+	if err := checkWriteCondition(ctx, tx, kind.table, "id", id); err != nil {
+		return 0, err
+	}
 
 	res, err := tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE id = $1`, kind.table), id)
 	if err != nil {

@@ -76,7 +76,7 @@ func TestAPIKeyClaimsIdentity(t *testing.T) {
 		t.Fatalf("GetUser() error = %v", err)
 	}
 
-	t.Run("key email overrides owner", func(t *testing.T) {
+	t.Run("owned keys cannot impersonate another email", func(t *testing.T) {
 		claims := m.apiKeyClaims(&APIKeyMeta{
 			ID:     "key-1",
 			UserID: owner.ID,
@@ -89,7 +89,7 @@ func TestAPIKeyClaimsIdentity(t *testing.T) {
 		if claims["sub"] != "api-key:key-1" || claims["preferred_username"] != "deploy-key" {
 			t.Fatalf("identity claims = %#v", claims)
 		}
-		if claims["email"] != "robot@example.com" {
+		if claims["email"] != "my@user.com" {
 			t.Fatalf("email = %v", claims["email"])
 		}
 	})

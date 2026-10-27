@@ -36,7 +36,8 @@ export function fieldList(value: unknown) {
 
 export function validateJSON(value: string) {
   try {
-    JSON.parse(value);
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "The record must be a JSON object";
     return "";
   } catch (err) {
     return err instanceof Error ? `Invalid JSON — ${err.message}` : "Invalid JSON";

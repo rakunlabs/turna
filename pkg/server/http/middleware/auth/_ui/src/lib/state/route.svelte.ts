@@ -77,7 +77,7 @@ class Route {
   /** Drop to an allowed page when capabilities say this one is not ours. */
   enforce() {
     if (this.allows(this.tab)) return;
-    this.go(this.fallback());
+    this.select(this.fallback());
   }
 
   go(tab: Tab, onEnter?: (tab: Tab) => void) {
@@ -102,7 +102,9 @@ class Route {
    */
   select(tab: Tab) {
     this.go(tab, (next) => {
-      editor.open = false;
+      // Closing also invalidates an in-flight record load before it can
+      // reopen an old editor underneath the new tab.
+      editor.close();
       if (this.isResource(next)) editor.reset(next);
     });
   }

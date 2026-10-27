@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/go-ldap/ldap/v3"
-	"github.com/rakunlabs/into"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 )
 
@@ -87,8 +86,6 @@ func (l *Ldap) Connect() (*ldap.Conn, error) {
 		return nil, fmt.Errorf("failed connecting to LDAP server: %w", err)
 	}
 
-	into.ShutdownAdd(conn.Close, "ldap")
-
 	req := ldap.NewSimpleBindRequest(l.Bind.Simple.Username, l.Bind.Simple.Password, nil)
 	_, err = conn.SimpleBind(req)
 	if err != nil {
@@ -98,6 +95,24 @@ func (l *Ldap) Connect() (*ldap.Conn, error) {
 	slog.Info("LDAP connection established")
 
 	return conn, nil
+}
+
+// Close closes the runtime's open connections; a closed runtime reconnects
+// on next use.
+func (l *Ldap) Close() {
+	l.m.Lock()
+	if l.conn != nil {
+		_ = l.conn.Close()
+		l.conn = nil
+	}
+	l.m.Unlock()
+
+	l.mUser.Lock()
+	if l.connUser != nil {
+		_ = l.connUser.Close()
+		l.connUser = nil
+	}
+	l.mUser.Unlock()
 }
 
 func (l *Ldap) ConnectWithCheck() (*ldap.Conn, error) {

@@ -7,6 +7,7 @@
   import Serial from "./ui/Serial.svelte";
   import { docket, messageOf, session, statusOf } from "../lib/state/session.svelte";
   import { route } from "../lib/state/route.svelte";
+  import { normalizeDeviceCode as normalize, deviceLookupCurrent } from "../lib/device-code";
 
   type DeviceInfo = { client_id: string; scope: string; status: string };
 
@@ -36,11 +37,6 @@
 
   const pending = $derived(info?.status === "pending");
 
-  function normalize(value: string) {
-    const flat = value.toUpperCase().replace(/[\s-]+/g, "");
-    return flat.length === 8 ? `${flat.slice(0, 4)}-${flat.slice(4)}` : value.toUpperCase();
-  }
-
   async function lookup() {
     if (!complete || busy) return;
 
@@ -53,9 +49,11 @@
     const code = normalize(userCode);
     try {
       const res = await session.request<DeviceInfo>(`device/${encodeURIComponent(code)}`);
+      if (!deviceLookupCurrent(code, userCode)) return;
       info = res.payload;
       lookedUp = code;
     } catch (err) {
+      if (!deviceLookupCurrent(code, userCode)) return;
       notFound = statusOf(err) === 404;
       docket.reject(messageOf(err, "That code was not found"));
     } finally {
@@ -64,7 +62,7 @@
   }
 
   async function decide(action: "approve" | "deny") {
-    if (busy || !lookedUp) return;
+    if (busy || !lookedUp || !deviceLookupCurrent(lookedUp, userCode) || !pending) return;
 
     working = action;
 
@@ -136,6 +134,7 @@
           autocomplete="off"
           autocapitalize="characters"
           spellcheck="false"
+          disabled={busy}
           aria-describedby="device-user-code-hint"
           aria-invalid={notFound || undefined}
           style={notFound ? "border-bottom-color: var(--w-seal)" : undefined}

@@ -86,9 +86,9 @@
     },
     {
       label: "Mail relay configured",
-      done: Boolean(String(settings.pathValue("email", ["smtp", "host"]) ?? "").trim()),
-      detail: String(settings.pathValue("email", ["smtp", "host"]) ?? "").trim()
-        ? String(settings.pathValue("email", ["smtp", "host"]))
+      done: Boolean(String(settings.pathValue("email", ["smtp", "host"], true) ?? "").trim()),
+      detail: String(settings.pathValue("email", ["smtp", "host"], true) ?? "").trim()
+        ? String(settings.pathValue("email", ["smtp", "host"], true))
         : "Optional — needed for email login, magic links and signup",
       tab: "email" as Tab,
     },

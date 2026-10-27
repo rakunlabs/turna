@@ -6,7 +6,9 @@
 
   import type { AnyRecord, SettingNamespace } from "../lib/api";
   import { session } from "../lib/state/session.svelte";
-  import { saveSetting, setSettingRecord, settingRecord } from "../lib/state/settings.svelte";
+  import { saveSetting, settings } from "../lib/state/settings.svelte";
+  import { syncSettingForm } from "../lib/state/setting-form.svelte";
+  import { missingStoredSecrets } from "../lib/settings-record";
 
   const ns: SettingNamespace = "session_providers";
 
@@ -66,20 +68,7 @@
   let inheritProvider = $state("");
   let openGroups = $state<Record<string, boolean>>({});
 
-  /**
-   * The editable model is local: typing must not write through to the
-   * canonical record, or every keystroke would be a pending change. Re-sync
-   * only when the record itself is replaced — initial load and after commit.
-   */
-  let syncedFrom: AnyRecord | null = null;
-
-  $effect(() => {
-    const record = settingRecord(ns);
-    if (record === syncedFrom) return;
-
-    syncedFrom = record;
-    syncFromRecord(record);
-  });
+  syncSettingForm(ns, buildRecord, syncFromRecord);
 
   function asRecord(value: unknown): Record<string, unknown> {
     return value && typeof value === "object" && !Array.isArray(value)
@@ -204,14 +193,14 @@
   }
 
   function buildRecord(): AnyRecord {
-    const out: Record<string, unknown> = {};
+    const out: Record<string, unknown> = Object.create(null);
     const groups: Record<
       string,
       { providers: Record<string, unknown>; inherit: Record<string, unknown> }
-    > = {};
+    > = Object.create(null);
 
     function groupRecord(name: string) {
-      return (groups[name] ??= { providers: {}, inherit: {} });
+      return (groups[name] ??= { providers: Object.create(null), inherit: Object.create(null) });
     }
 
     for (const row of providers) {
@@ -248,7 +237,7 @@
       const xUser = splitList(row.xUser);
       if (xUser.length) provider.x_user = xUser;
 
-      const claimHeader: Record<string, string> = {};
+      const claimHeader: Record<string, string> = Object.create(null);
       for (const item of row.claimHeaders) {
         const header = item.header.trim();
         if (!header) continue;
@@ -348,18 +337,7 @@
 
   async function save() {
     if (commitBlocked) return;
-    // Stage the draft only for the request: a rejected commit must not leave
-    // it in the shared store, where it would read as live and rebuild the form.
-    const previous = settingRecord(ns);
-    setSettingRecord(ns, buildRecord());
-    // The store wraps what it is given in a proxy; remember that object so the
-    // sync effect does not rebuild the rows from the staged draft.
-    syncedFrom = settingRecord(ns);
-    const ok = await saveSetting(ns);
-    if (!ok) {
-      syncedFrom = previous;
-      setSettingRecord(ns, previous);
-    }
+    await saveSetting(ns, buildRecord());
   }
 
   const named = $derived(providers.filter((row) => row.key.trim()).length);
@@ -417,6 +395,7 @@
       const identity = `${group}\u0000${key}`;
       if (!group || !canonical.has(key)) problems.add(`${group || "(no group)"}/${key || "(no provider)"}`);
       if (seen.has(identity)) problems.add(`${group}/${key}`);
+      if (providers.some((provider) => provider.group.trim() === group && provider.key.trim() === key)) problems.add(`${group}/${key}`);
       seen.add(identity);
     }
     return [...problems].sort();
@@ -455,11 +434,20 @@
     ].sort(),
   );
 
+  const credentialsToEnter = $derived(missingStoredSecrets(buildRecord(), settings.liveRecord(ns)));
+
   const commitBlocked = $derived(
-    duplicateKeys.length > 0 || inheritedProblems.length > 0 || invalidGroups.length > 0,
+    duplicateKeys.length > 0 || inheritedProblems.length > 0 || invalidGroups.length > 0 || credentialsToEnter.length > 0,
   );
 
   const standing = $derived.by(() => {
+    if (credentialsToEnter.length) {
+      return {
+        state: "held" as const,
+        label: "Credential required",
+        detail: `Moving or renaming a provider cannot copy its write-only secret. Re-enter these credentials before committing: ${credentialsToEnter.join(", ")}.`,
+      };
+    }
     if (invalidGroups.length) {
       return {
         state: "held" as const,
@@ -692,8 +680,9 @@
                   </label>
                   <input
                     id="sp-client-secret-{provider.id}"
+                    type="password"
                     class="entry serial mt-1.5"
-                    placeholder="optional for public clients"
+                    placeholder="blank keeps the stored secret"
                     autocomplete="off"
                     spellcheck="false"
                     bind:value={provider.oauth2.client_secret}
