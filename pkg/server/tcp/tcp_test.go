@@ -27,6 +27,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/proxyprotocol"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/ratelimit"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/redirect"
+	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/sniallowlist"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/snirouter"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/telemetry"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/tlsterminate"
@@ -403,6 +404,36 @@ func TestSNIRouter(t *testing.T) {
 
 	if _, err := tls.Dial("tcp", addr, &tls.Config{ServerName: "other.example.com", InsecureSkipVerify: true}); err == nil { //nolint:gosec // test
 		t.Fatal("unknown sni should be rejected")
+	}
+}
+
+func TestSNIAllowList(t *testing.T) {
+	up := echoServer(t, "up:")
+
+	addr := startChain(t,
+		mw(t, &sniallowlist.SNIAllowList{SNI: []string{"*.example.com"}}),
+		mw(t, &tlsterminate.TLSTerminate{}),
+		mw(t, &redirect.Redirect{Address: up}),
+	)
+
+	conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: "a.example.com", InsecureSkipVerify: true}) //nolint:gosec // test
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := roundTrip(t, conn, "hi")
+	conn.Close()
+
+	if err != nil || got != "up:hi" {
+		t.Fatalf("got %q %v", got, err)
+	}
+
+	if _, err := tls.Dial("tcp", addr, &tls.Config{ServerName: "other.org", InsecureSkipVerify: true}); err == nil { //nolint:gosec // test
+		t.Fatal("unknown sni should be rejected")
+	}
+
+	if _, err := dialRoundTrip(t, addr, "plain"); err == nil {
+		t.Fatal("plain connection should be rejected")
 	}
 }
 

@@ -11,11 +11,16 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/basicauth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/block"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/bodylimit"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/cache"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/canary"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/circuitbreaker"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/compress"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/concurrencylimit"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/cors"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/csrf"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/decompress"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/dnspath"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/faultinjection"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/filemanager"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/forward"
@@ -30,12 +35,15 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/info"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/inject"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/ipfilter"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/jwt"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/log"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/login"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/maintenance"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2resource"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/path"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/print"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/ratelimit"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/realip"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/redirectcontinue"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/redirection"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/regexpath"
@@ -43,6 +51,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/requestid"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/role"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/scope"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/secureheaders"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/service"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/sessioninfo"
@@ -56,6 +65,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/try"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/url"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/view"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/webhooksignature"
 
 	"github.com/rakunlabs/turna/pkg/server/registry"
 )
@@ -114,6 +124,16 @@ type HTTPMiddleware struct {
 	IPFilter                   *ipfilter.IPFilter                    `cfg:"ip_filter"`
 	BodyLimit                  *bodylimit.BodyLimit                  `cfg:"body_limit"`
 	Timeout                    *timeout.Timeout                      `cfg:"timeout"`
+	CircuitBreaker             *circuitbreaker.CircuitBreaker        `cfg:"circuit_breaker"`
+	ConcurrencyLimit           *concurrencylimit.ConcurrencyLimit    `cfg:"concurrency_limit"`
+	RealIP                     *realip.RealIP                        `cfg:"real_ip"`
+	SecureHeaders              *secureheaders.SecureHeaders          `cfg:"secure_headers"`
+	Cache                      *cache.Cache                          `cfg:"cache"`
+	Maintenance                *maintenance.Maintenance              `cfg:"maintenance"`
+	WebhookSignature           *webhooksignature.WebhookSignature    `cfg:"webhook_signature"`
+	JWT                        *jwt.JWT                              `cfg:"jwt"`
+	Canary                     *canary.Canary                        `cfg:"canary"`
+	FaultInjection             *faultinjection.FaultInjection        `cfg:"fault_injection"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
@@ -245,6 +265,36 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	case h.Timeout != nil:
 		m, err := h.Timeout.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.CircuitBreaker != nil:
+		m, err := h.CircuitBreaker.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.ConcurrencyLimit != nil:
+		m, err := h.ConcurrencyLimit.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.RealIP != nil:
+		m, err := h.RealIP.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.SecureHeaders != nil:
+		m, err := h.SecureHeaders.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.Cache != nil:
+		m, err := h.Cache.Middleware(ctx)
+		return []MiddlewareFunc{m}, err
+	case h.Maintenance != nil:
+		m, err := h.Maintenance.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.WebhookSignature != nil:
+		m, err := h.WebhookSignature.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.JWT != nil:
+		m, err := h.JWT.Middleware(ctx)
+		return []MiddlewareFunc{m}, err
+	case h.Canary != nil:
+		m, err := h.Canary.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.FaultInjection != nil:
+		m, err := h.FaultInjection.Middleware()
 		return []MiddlewareFunc{m}, err
 	case h.Auth != nil:
 		m, err := h.Auth.Middleware(ctx, name)

@@ -28,4 +28,14 @@ server:
 | `value` | Name of a loaded `map[string]any`. Each key is replaced with its value. |
 | `delay` | Optional duration to sleep before applying this replacement. |
 
+## Filters
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `content_types` | all | Rewrite only these media types, e.g. `text/html`. `text/*` matches a whole type. |
+| `statuses` | all | Rewrite only responses with these statuses. |
+| `max_body_size` | `10MB` | Larger responses pass unchanged. |
+
+Responses that are not rewritten stream through without buffering. Server-sent events and encodings other than gzip are never rewritten.
+
 `inject` can read and rewrite gzip responses when the upstream response has `Content-Encoding: gzip`; it recompresses the body before returning it.

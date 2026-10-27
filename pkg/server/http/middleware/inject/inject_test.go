@@ -65,3 +65,51 @@ func TestInject_Middleware(t *testing.T) {
 		})
 	}
 }
+
+func TestInjectFilters(t *testing.T) {
+	s := &Inject{
+		PathMap:      map[string][]InjectContent{"/**": {{Old: "World", New: "Mars"}}},
+		ContentTypes: []string{"text/*"},
+		Statuses:     []int{http.StatusOK},
+		MaxBodySize:  "20B",
+	}
+
+	mw, err := s.Middleware()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name        string
+		contentType string
+		status      int
+		body        string
+		want        string
+	}{
+		{"rewritten", "text/html; charset=utf-8", http.StatusOK, "Hello World", "Hello Mars"},
+		{"other type", "application/json", http.StatusOK, "Hello World", "Hello World"},
+		{"other status", "text/html", http.StatusNotFound, "Hello World", "Hello World"},
+		{"too large", "text/plain", http.StatusOK, "Hello World, Hello World", "Hello World, Hello World"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", tt.contentType)
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+			if rec.Code != tt.status || rec.Body.String() != tt.want {
+				t.Fatalf("got %d %q, want %d %q", rec.Code, rec.Body.String(), tt.status, tt.want)
+			}
+		})
+	}
+
+	if _, err := (&Inject{MaxBodySize: "nope"}).Middleware(); err == nil {
+		t.Fatal("expected error")
+	}
+}

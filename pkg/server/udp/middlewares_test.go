@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rakunlabs/turna/pkg/server/netlb"
+	"github.com/rakunlabs/turna/pkg/server/udp/middleware/bandwidth"
 	"github.com/rakunlabs/turna/pkg/server/udp/middleware/ipdenylist"
 	"github.com/rakunlabs/turna/pkg/server/udp/middleware/loadbalancer"
 	"github.com/rakunlabs/turna/pkg/server/udp/middleware/log"
@@ -225,6 +226,30 @@ func TestUDPRateLimitAndDenyList(t *testing.T) {
 	}
 }
 
+func TestUDPBandwidthLimit(t *testing.T) {
+	up := startUDP(t, &bandwidth.BandwidthLimit{Upload: 1, Burst: 4}, echoFactory{})
+	client := dialUDP(t, up)
+
+	if _, err := exchange(t, client, "1234", 2*time.Second); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := exchange(t, client, "1234", 300*time.Millisecond); err == nil {
+		t.Fatal("upload over limit answered")
+	}
+
+	down := startUDP(t, &bandwidth.BandwidthLimit{Download: 1, Burst: 4}, echoFactory{})
+	client = dialUDP(t, down)
+
+	if _, err := exchange(t, client, "1234", 2*time.Second); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := exchange(t, client, "1234", 300*time.Millisecond); err == nil {
+		t.Fatal("reply over download limit sent")
+	}
+}
+
 func TestUDPLogAndTelemetry(t *testing.T) {
 	addr := startUDP(t, &log.Log{}, &telemetry.Telemetry{}, echoFactory{})
 
@@ -240,6 +265,7 @@ func TestUDPConfigErrors(t *testing.T) {
 		"load_balancer": &loadbalancer.LoadBalancer{},
 		"health_check":  &loadbalancer.LoadBalancer{Servers: []netlb.Server{{Address: "127.0.0.1:1"}}, HealthCheck: &loadbalancer.HealthCheck{}},
 		"log":           &log.Log{Level: "loud"},
+		"bandwidth":     &bandwidth.BandwidthLimit{},
 	} {
 		if _, err := f.Middleware(t.Context(), "test"); err == nil {
 			t.Errorf("%s: expected config error", name)

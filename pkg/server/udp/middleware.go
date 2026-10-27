@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/rakunlabs/turna/pkg/server/registry"
+	"github.com/rakunlabs/turna/pkg/server/udp/middleware/bandwidth"
 	"github.com/rakunlabs/turna/pkg/server/udp/middleware/block"
 	"github.com/rakunlabs/turna/pkg/server/udp/middleware/dns"
 	"github.com/rakunlabs/turna/pkg/server/udp/middleware/ipallowlist"
@@ -14,6 +15,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/udp/middleware/mirror"
 	"github.com/rakunlabs/turna/pkg/server/udp/middleware/ratelimit"
 	"github.com/rakunlabs/turna/pkg/server/udp/middleware/redirect"
+	"github.com/rakunlabs/turna/pkg/server/udp/middleware/sessionlimit"
 	"github.com/rakunlabs/turna/pkg/server/udp/middleware/telemetry"
 )
 
@@ -28,6 +30,8 @@ type UDPMiddleware struct {
 	LogMiddleware          *log.Log                   `cfg:"log"`
 	TelemetryMiddleware    *telemetry.Telemetry       `cfg:"telemetry"`
 	BlockMiddleware        *block.Block               `cfg:"block"`
+	SessionLimitMiddleware *sessionlimit.SessionLimit `cfg:"session_limit"`
+	BandwidthMiddleware    *bandwidth.BandwidthLimit  `cfg:"bandwidth_limit"`
 }
 
 type middlewareFactory interface {
@@ -50,6 +54,8 @@ func (h *UDPMiddleware) getFirstFound(ctx context.Context, name string) ([]Handl
 		{"log", h.LogMiddleware, h.LogMiddleware != nil},
 		{"telemetry", h.TelemetryMiddleware, h.TelemetryMiddleware != nil},
 		{"block", h.BlockMiddleware, h.BlockMiddleware != nil},
+		{"session limit", h.SessionLimitMiddleware, h.SessionLimitMiddleware != nil},
+		{"bandwidth limit", h.BandwidthMiddleware, h.BandwidthMiddleware != nil},
 	} {
 		if !f.set {
 			continue

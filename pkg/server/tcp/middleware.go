@@ -7,6 +7,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/registry"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/bandwidth"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/block"
+	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/circuitbreaker"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/connlimit"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/httpconnect"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/idletimeout"
@@ -14,9 +15,11 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/ipdenylist"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/loadbalancer"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/log"
+	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/mirror"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/proxyprotocol"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/ratelimit"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/redirect"
+	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/sniallowlist"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/snirouter"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/socks5"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/sshserver"
@@ -26,23 +29,26 @@ import (
 )
 
 type TCPMiddleware struct {
-	RedirectMiddleware       *redirect.Redirect           `cfg:"redirect"`
-	Socks5Middleware         *socks5.Socks5               `cfg:"socks5"`
-	IPAllowListMiddleware    *ipallowlist.IPAllowList     `cfg:"ip_allow_list"`
-	IPDenyListMiddleware     *ipdenylist.IPDenyList       `cfg:"ip_deny_list"`
-	ConnLimitMiddleware      *connlimit.ConnLimit         `cfg:"conn_limit"`
-	RateLimitMiddleware      *ratelimit.RateLimit         `cfg:"rate_limit"`
-	IdleTimeoutMiddleware    *idletimeout.IdleTimeout     `cfg:"idle_timeout"`
-	BandwidthLimitMiddleware *bandwidth.BandwidthLimit    `cfg:"bandwidth_limit"`
-	ProxyProtocolMiddleware  *proxyprotocol.ProxyProtocol `cfg:"proxy_protocol"`
-	TLSTerminateMiddleware   *tlsterminate.TLSTerminate   `cfg:"tls_terminate"`
-	SNIRouterMiddleware      *snirouter.SNIRouter         `cfg:"sni_router"`
-	LoadBalancerMiddleware   *loadbalancer.LoadBalancer   `cfg:"load_balancer"`
-	LogMiddleware            *log.Log                     `cfg:"log"`
-	TelemetryMiddleware      *telemetry.Telemetry         `cfg:"telemetry"`
-	HTTPConnectMiddleware    *httpconnect.HTTPConnect     `cfg:"http_connect"`
-	SSHServerMiddleware      *sshserver.SSHServer         `cfg:"ssh_server"`
-	BlockMiddleware          *block.Block                 `cfg:"block"`
+	RedirectMiddleware       *redirect.Redirect             `cfg:"redirect"`
+	Socks5Middleware         *socks5.Socks5                 `cfg:"socks5"`
+	IPAllowListMiddleware    *ipallowlist.IPAllowList       `cfg:"ip_allow_list"`
+	IPDenyListMiddleware     *ipdenylist.IPDenyList         `cfg:"ip_deny_list"`
+	ConnLimitMiddleware      *connlimit.ConnLimit           `cfg:"conn_limit"`
+	RateLimitMiddleware      *ratelimit.RateLimit           `cfg:"rate_limit"`
+	IdleTimeoutMiddleware    *idletimeout.IdleTimeout       `cfg:"idle_timeout"`
+	BandwidthLimitMiddleware *bandwidth.BandwidthLimit      `cfg:"bandwidth_limit"`
+	ProxyProtocolMiddleware  *proxyprotocol.ProxyProtocol   `cfg:"proxy_protocol"`
+	TLSTerminateMiddleware   *tlsterminate.TLSTerminate     `cfg:"tls_terminate"`
+	SNIRouterMiddleware      *snirouter.SNIRouter           `cfg:"sni_router"`
+	LoadBalancerMiddleware   *loadbalancer.LoadBalancer     `cfg:"load_balancer"`
+	LogMiddleware            *log.Log                       `cfg:"log"`
+	TelemetryMiddleware      *telemetry.Telemetry           `cfg:"telemetry"`
+	HTTPConnectMiddleware    *httpconnect.HTTPConnect       `cfg:"http_connect"`
+	SSHServerMiddleware      *sshserver.SSHServer           `cfg:"ssh_server"`
+	BlockMiddleware          *block.Block                   `cfg:"block"`
+	CircuitBreakerMiddleware *circuitbreaker.CircuitBreaker `cfg:"circuit_breaker"`
+	MirrorMiddleware         *mirror.Mirror                 `cfg:"mirror"`
+	SNIAllowListMiddleware   *sniallowlist.SNIAllowList     `cfg:"sni_allow_list"`
 }
 
 type middlewareFactory interface {
@@ -76,6 +82,9 @@ func (h *TCPMiddleware) factories() []struct {
 		{"http connect", h.HTTPConnectMiddleware, h.HTTPConnectMiddleware != nil},
 		{"ssh server", h.SSHServerMiddleware, h.SSHServerMiddleware != nil},
 		{"block", h.BlockMiddleware, h.BlockMiddleware != nil},
+		{"circuit breaker", h.CircuitBreakerMiddleware, h.CircuitBreakerMiddleware != nil},
+		{"mirror", h.MirrorMiddleware, h.MirrorMiddleware != nil},
+		{"sni allow list", h.SNIAllowListMiddleware, h.SNIAllowListMiddleware != nil},
 	}
 }
 

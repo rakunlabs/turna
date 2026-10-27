@@ -297,8 +297,10 @@ func serveLoop(ctx context.Context, wg *sync.WaitGroup, entrypoint string, conn 
 			defer wg.Done()
 			defer func() { <-sem }()
 
+			c := &udpmw.Conn{PacketConn: conn}
+
 			for _, m := range middlewares {
-				if err := m.Conn(conn, addr, data); err != nil {
+				if err := m.Conn(c, addr, data); err != nil {
 					if errors.Is(err, udpmw.ErrReject) {
 						slog.Debug("middleware ["+m.Name+"] dropped packet", "remote", addr.String(), "err", err.Error())
 

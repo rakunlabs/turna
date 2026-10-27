@@ -10,9 +10,8 @@ import (
 	"strings"
 	"time"
 
-	adaproxy "github.com/rakunlabs/ada/middleware/auth/proxy"
-
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/internal/requestkey"
 )
 
 type RateLimit struct {
@@ -36,22 +35,7 @@ type RateLimit struct {
 	FailClosed bool `cfg:"fail_closed"`
 }
 
-type keyPart func(r *http.Request) string
-
 func (m *RateLimit) keyFunc() (func(r *http.Request) string, error) {
-	policy, err := adaproxy.New(m.TrustedProxies...)
-	if err != nil {
-		return nil, fmt.Errorf("rate_limit trusted_proxies: %w", err)
-	}
-
-	clientIP := func(r *http.Request) string {
-		if ip, err := policy.ClientIP(r); err == nil {
-			return ip
-		}
-
-		return adaproxy.RealIP(r)
-	}
-
 	keys := m.Key
 	if len(keys) == 0 {
 		switch strings.ToLower(strings.TrimSpace(m.LimitType)) {
@@ -60,72 +44,12 @@ func (m *RateLimit) keyFunc() (func(r *http.Request) string, error) {
 		case "realip":
 			keys = []string{"realip"}
 		case "", "all":
-			return func(*http.Request) string { return "*" }, nil
 		default:
 			return nil, fmt.Errorf("rate_limit limit_type %q is unknown, expected all, ip or realip", m.LimitType)
 		}
 	}
 
-	parts := make([]keyPart, 0, len(keys))
-	for _, k := range keys {
-		kind, name, _ := strings.Cut(strings.TrimSpace(k), ":")
-		kind = strings.ToLower(kind)
-
-		if (kind == "header" || kind == "query" || kind == "cookie") == (name == "") {
-			return nil, fmt.Errorf("rate_limit key %q is invalid", k)
-		}
-
-		var part keyPart
-		switch kind {
-		case "ip":
-			part = clientIP
-		case "realip":
-			part = adaproxy.UnsafeRealIP
-		case "path":
-			part = func(r *http.Request) string { return r.URL.Path }
-		case "host":
-			part = func(r *http.Request) string { return r.Host }
-		case "method":
-			part = func(r *http.Request) string { return r.Method }
-		case "header":
-			part = func(r *http.Request) string { return r.Header.Get(name) }
-		case "query":
-			part = func(r *http.Request) string { return r.URL.Query().Get(name) }
-		case "cookie":
-			part = func(r *http.Request) string {
-				c, err := r.Cookie(name)
-				if err != nil {
-					return ""
-				}
-
-				return c.Value
-			}
-		default:
-			return nil, fmt.Errorf("rate_limit key %q is unknown", k)
-		}
-
-		parts = append(parts, part)
-	}
-
-	return func(r *http.Request) string {
-		var b strings.Builder
-		for i, part := range parts {
-			v := part(r)
-			if v == "" {
-				// omitting a header must not escape the limit
-				v = "ip=" + clientIP(r)
-			}
-
-			if i > 0 {
-				b.WriteByte(0)
-			}
-			b.WriteString(strconv.Itoa(len(v)))
-			b.WriteByte(':')
-			b.WriteString(v)
-		}
-
-		return b.String()
-	}, nil
+	return requestkey.New("rate_limit", keys, m.TrustedProxies)
 }
 
 func (m *RateLimit) Middleware(ctx context.Context) (func(http.Handler) http.Handler, error) {

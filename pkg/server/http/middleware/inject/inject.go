@@ -5,12 +5,16 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/dustin/go-humanize"
 	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/model"
@@ -18,6 +22,17 @@ import (
 
 type Inject struct {
 	PathMap map[string][]InjectContent `cfg:"path_map"`
+
+	// ContentTypes limits rewriting to responses with these media types,
+	// e.g. text/html; a trailing /* matches a whole type. Default all.
+	ContentTypes []string `cfg:"content_types"`
+	// Statuses limits rewriting to responses with these statuses, default all.
+	Statuses []int `cfg:"statuses"`
+	// MaxBodySize is the largest body rewritten, larger responses pass
+	// unchanged. Default 10MB.
+	MaxBodySize string `cfg:"max_body_size"`
+
+	maxBody int64
 }
 
 type InjectContent struct {
@@ -63,6 +78,17 @@ func (s *Inject) values(loadName string) ([]oldNew, error) {
 }
 
 func (s *Inject) Middleware() (func(http.Handler) http.Handler, error) {
+	maxBody := s.MaxBodySize
+	if maxBody == "" {
+		maxBody = "10MB"
+	}
+
+	size, err := humanize.ParseBytes(maxBody)
+	if err != nil || size == 0 || size > 1<<40 {
+		return nil, fmt.Errorf("inject max_body_size %q is invalid", s.MaxBodySize)
+	}
+	s.maxBody = int64(size)
+
 	if s.PathMap != nil {
 		for pathValue := range s.PathMap {
 			for i, injectContent := range s.PathMap[pathValue] {
@@ -103,33 +129,32 @@ func (s *Inject) Middleware() (func(http.Handler) http.Handler, error) {
 			rec := &customResponseRecorder{
 				ResponseWriter: w,
 				body:           new(bytes.Buffer),
+				rewrite:        s.rewritable,
+				limit:          s.maxBody,
 			}
 
 			next.ServeHTTP(rec, r)
+			rec.decide(http.StatusOK)
+
+			if !rec.buffering {
+				return
+			}
 
 			bodyBytes := rec.body.Bytes()
 
-			// check header gzip
 			encoding := rec.Header().Get("Content-Encoding")
-			if encoding != "" {
-				switch encoding {
-				case "gzip":
-					gzipReader, err := gzip.NewReader(bytes.NewReader(bodyBytes))
-					if err != nil {
-						httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
+			if encoding == "gzip" {
+				gzipReader, err := gzip.NewReader(bytes.NewReader(bodyBytes))
+				if err != nil {
+					httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
 
-						return
-					}
+					return
+				}
 
-					bodyBytes, err = io.ReadAll(gzipReader)
-					gzipReader.Close()
-					if err != nil {
-						httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
-
-						return
-					}
-				default:
-					httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: fmt.Sprintf("unknown Content-Encoding %s", encoding)})
+				bodyBytes, err = io.ReadAll(gzipReader)
+				_ = gzipReader.Close()
+				if err != nil {
+					httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
 
 					return
 				}
@@ -172,31 +197,24 @@ func (s *Inject) Middleware() (func(http.Handler) http.Handler, error) {
 				}
 			}
 
-			if encoding != "" {
-				switch encoding {
-				case "gzip":
-					var buf bytes.Buffer
-					gzipWriter := gzip.NewWriter(&buf)
-					_, err := gzipWriter.Write(bodyBytes)
-					if err != nil {
-						httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
-
-						return
-					}
-					gzipWriter.Close()
-
-					bodyBytes = buf.Bytes()
-				default:
-					httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: fmt.Sprintf("unknown Content-Encoding %s", encoding)})
+			if encoding == "gzip" {
+				var buf bytes.Buffer
+				gzipWriter := gzip.NewWriter(&buf)
+				_, err := gzipWriter.Write(bodyBytes)
+				if err == nil {
+					err = gzipWriter.Close()
+				}
+				if err != nil {
+					httputil.JSON(w, http.StatusInternalServerError, model.MetaData{Message: err.Error()})
 
 					return
 				}
+
+				bodyBytes = buf.Bytes()
 			}
 
 			rec.ResponseWriter.Header().Set(httputil.HeaderContentLength, strconv.Itoa(len(bodyBytes)))
-			if rec.status != 0 {
-				rec.ResponseWriter.WriteHeader(rec.status)
-			}
+			rec.ResponseWriter.WriteHeader(rec.status)
 
 			_, _ = rec.ResponseWriter.Write(bodyBytes)
 		})
@@ -229,23 +247,109 @@ func (s *Inject) isNotNeed(r *http.Request) bool {
 	return !isNeed
 }
 
+// rewritable reports whether a response is buffered to be rewritten.
+func (s *Inject) rewritable(status int, h http.Header) bool {
+	if len(s.Statuses) > 0 && !slices.Contains(s.Statuses, status) {
+		return false
+	}
+
+	// only gzip can be decoded
+	if enc := h.Get("Content-Encoding"); enc != "" && enc != "gzip" {
+		return false
+	}
+
+	if cl, err := strconv.ParseInt(h.Get(httputil.HeaderContentLength), 10, 64); err == nil && cl > s.maxBody {
+		return false
+	}
+
+	if len(s.ContentTypes) > 0 {
+		mediaType, _, _ := mime.ParseMediaType(h.Get("Content-Type"))
+
+		matched := false
+		for _, ct := range s.ContentTypes {
+			ct = strings.ToLower(strings.TrimSpace(ct))
+			if ct == mediaType || (strings.HasSuffix(ct, "/*") && strings.HasPrefix(mediaType, strings.TrimSuffix(ct, "*"))) {
+				matched = true
+
+				break
+			}
+		}
+
+		if !matched {
+			return false
+		}
+	}
+
+	return !strings.HasPrefix(h.Get("Content-Type"), "text/event-stream")
+}
+
+// customResponseRecorder buffers a response when rewrite accepts it, else
+// passes it through. A buffered body over limit is flushed and the rest
+// streamed unchanged.
 type customResponseRecorder struct {
 	http.ResponseWriter
 	body *bytes.Buffer
 
-	status int
+	rewrite func(status int, h http.Header) bool
+	limit   int64
+
+	status    int
+	decided   bool
+	buffering bool
+}
+
+func (r *customResponseRecorder) decide(code int) {
+	if r.decided {
+		return
+	}
+
+	r.decided = true
+	r.status = code
+	r.buffering = r.rewrite(code, r.Header())
+
+	if !r.buffering {
+		r.ResponseWriter.WriteHeader(code)
+	}
 }
 
 func (r *customResponseRecorder) Write(b []byte) (int, error) {
+	r.decide(http.StatusOK)
+
+	if !r.buffering {
+		return r.ResponseWriter.Write(b)
+	}
+
+	if int64(r.body.Len()+len(b)) > r.limit {
+		r.buffering = false
+		r.ResponseWriter.WriteHeader(r.status)
+
+		if _, err := r.ResponseWriter.Write(r.body.Bytes()); err != nil {
+			return 0, err
+		}
+
+		r.body.Reset()
+
+		return r.ResponseWriter.Write(b)
+	}
+
 	return r.body.Write(b)
 }
 
 func (r *customResponseRecorder) WriteHeader(code int) {
-	r.status = code
+	// 1xx responses are followed by the final one, 101 is final
+	if code >= 100 && code < 200 && code != http.StatusSwitchingProtocols {
+		r.ResponseWriter.WriteHeader(code)
+
+		return
+	}
+
+	r.decide(code)
 }
 
 func (r *customResponseRecorder) Flush() {
-	// no-op
+	if r.decided && !r.buffering {
+		_ = http.NewResponseController(r.ResponseWriter).Flush()
+	}
 }
 
 // Unwrap lets http.ResponseController reach the underlying writer,

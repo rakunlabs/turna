@@ -43,6 +43,12 @@ func New(ctx context.Context, r float64, burst int) *Limiter {
 
 // Allow reports whether an event for key may happen now.
 func (l *Limiter) Allow(key string) bool {
+	return l.AllowN(key, 1)
+}
+
+// AllowN reports whether n events for key may happen now. n larger than the
+// burst is never allowed.
+func (l *Limiter) AllowN(key string, n int) bool {
 	now := time.Now()
 
 	l.mu.Lock()
@@ -54,7 +60,12 @@ func (l *Limiter) Allow(key string) bool {
 	e.lastSeen = now
 	l.mu.Unlock()
 
-	return e.limiter.AllowN(now, 1)
+	return e.limiter.AllowN(now, n)
+}
+
+// Burst returns the bucket size.
+func (l *Limiter) Burst() int {
+	return l.burst
 }
 
 // idleTTL is the time after which a key has a full bucket again.
