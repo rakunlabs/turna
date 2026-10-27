@@ -5,17 +5,17 @@ go 1.27
 toolchain go1.27.3
 
 require (
-	cloud.google.com/go/parametermanager v0.4.0
-	cloud.google.com/go/secretmanager v1.16.0
-	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1
+	cloud.google.com/go/parametermanager v1.2.0
+	cloud.google.com/go/secretmanager v1.23.0
+	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.15.0
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets v1.5.0
 	github.com/BurntSushi/toml v1.6.0
 	github.com/abbot/go-http-auth v0.4.1-0.20220112235402-e1cee1c72f2f
 	github.com/ajg/form v1.9.0
-	github.com/andybalholm/brotli v1.1.1
-	github.com/aws/aws-sdk-go-v2/config v1.32.19
-	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.8
-	github.com/aws/aws-sdk-go-v2/service/ssm v1.68.7
+	github.com/andybalholm/brotli v1.2.6
+	github.com/aws/aws-sdk-go-v2/config v1.33.12
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.50.7
+	github.com/aws/aws-sdk-go-v2/service/ssm v1.81.1
 	github.com/bmatcuk/doublestar/v4 v4.10.2
 	github.com/creack/pty v1.1.24
 	github.com/crewjam/saml v0.5.1
@@ -25,31 +25,31 @@ require (
 	github.com/go-ldap/ldap/v3 v3.4.14
 	github.com/goccy/go-yaml v1.19.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/hashicorp/consul/api v1.34.5
+	github.com/hashicorp/consul/api v1.35.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/vault/api v1.23.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
-	github.com/klauspost/compress v1.18.7
+	github.com/klauspost/compress v1.20.3
 	github.com/lib/pq v1.12.3
 	github.com/miekg/dns v1.1.73
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/pkg/sftp v1.13.11
-	github.com/rakunlabs/ada v0.5.3
-	github.com/rakunlabs/ada/handler/swagger v0.5.4-1
-	github.com/rakunlabs/ada/middleware/auth v0.5.3
-	github.com/rakunlabs/ada/middleware/encoding v0.5.3
-	github.com/rakunlabs/ada/middleware/telemetry v0.5.3
+	github.com/rakunlabs/ada v0.5.4
+	github.com/rakunlabs/ada/handler/swagger v0.5.4
+	github.com/rakunlabs/ada/middleware/auth v0.5.4
+	github.com/rakunlabs/ada/middleware/encoding v0.5.4
+	github.com/rakunlabs/ada/middleware/telemetry v0.5.4
 	github.com/rakunlabs/cache v0.5.0
 	github.com/rakunlabs/cache/store/redis v0.5.0
-	github.com/rakunlabs/chu v0.5.0
-	github.com/rakunlabs/chu/loader/external/loaderawssecrets v0.0.0-20260831101252-0c6a77e06f7f
-	github.com/rakunlabs/chu/loader/external/loaderawsssm v0.0.0-20260831101252-0c6a77e06f7f
-	github.com/rakunlabs/chu/loader/external/loaderazurekeyvault v0.0.0-20260831101252-0c6a77e06f7f
-	github.com/rakunlabs/chu/loader/external/loaderconsul v0.0.0-20260831101252-0c6a77e06f7f
-	github.com/rakunlabs/chu/loader/external/loadergcpparameter v0.0.0-20260831101252-0c6a77e06f7f
-	github.com/rakunlabs/chu/loader/external/loadergcpsecret v0.0.0-20260831101252-0c6a77e06f7f
-	github.com/rakunlabs/chu/loader/external/loadervault v0.0.0-20260831101252-0c6a77e06f7f
+	github.com/rakunlabs/chu v0.5.1
+	github.com/rakunlabs/chu/loader/external/loaderawssecrets v0.0.0-20261027215840-cda2502637e3
+	github.com/rakunlabs/chu/loader/external/loaderawsssm v0.0.0-20261027215840-cda2502637e3
+	github.com/rakunlabs/chu/loader/external/loaderazurekeyvault v0.0.0-20261027215840-cda2502637e3
+	github.com/rakunlabs/chu/loader/external/loaderconsul v0.0.0-20261027215840-cda2502637e3
+	github.com/rakunlabs/chu/loader/external/loadergcpparameter v0.0.0-20261027215840-cda2502637e3
+	github.com/rakunlabs/chu/loader/external/loadergcpsecret v0.0.0-20261027215840-cda2502637e3
+	github.com/rakunlabs/chu/loader/external/loadervault v0.0.0-20261027215840-cda2502637e3
 	github.com/rakunlabs/gofret v0.2.1
 	github.com/rakunlabs/into v0.6.0
 	github.com/rakunlabs/logi v0.4.6
@@ -72,14 +72,14 @@ require (
 	go.opentelemetry.io/otel/metric v1.46.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa
-	golang.org/x/net v0.60.0
-	golang.org/x/oauth2 v0.36.0
+	golang.org/x/net v0.62.0
+	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sync v0.24.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
-	golang.org/x/time v0.15.0
-	google.golang.org/api v0.273.1
-	google.golang.org/grpc v1.83.2
+	golang.org/x/time v0.16.0
+	google.golang.org/api v0.309.0
+	google.golang.org/grpc v1.85.0
 	k8s.io/api v0.36.1
 	k8s.io/apimachinery v0.36.1
 	k8s.io/client-go v0.36.1
@@ -87,34 +87,34 @@ require (
 )
 
 require (
-	cloud.google.com/go/auth v0.18.2 // indirect
-	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
-	cloud.google.com/go/compute/metadata v0.9.0 // indirect
-	cloud.google.com/go/iam v1.6.0 // indirect
+	cloud.google.com/go/auth v0.24.1-0.20261001053825-dbc26066f70a // indirect
+	cloud.google.com/go/auth/oauth2adapt v0.3.0 // indirect
+	cloud.google.com/go/compute/metadata v0.10.0 // indirect
+	cloud.google.com/go/iam v1.12.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.1 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/internal v1.12.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.3 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.13.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/internal v1.2.0 // indirect
 	github.com/Azure/go-ntlmssp v0.1.1 // indirect
-	github.com/AzureAD/microsoft-authentication-library-for-go v1.7.0 // indirect
+	github.com/AzureAD/microsoft-authentication-library-for-go v1.10.1 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.41.8 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.18 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.24 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.24 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.24 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.25 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.9 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.24 // indirect
-	github.com/aws/aws-sdk-go-v2/service/signin v1.1.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.30.18 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.42.2 // indirect
-	github.com/aws/smithy-go v1.25.1 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.47.5 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.20.12 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.5 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.8 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.8 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.8 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.23 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.8 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.12.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.39.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.44.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.51.6 // indirect
+	github.com/aws/smithy-go v1.28.7 // indirect
 	github.com/beevik/etree v1.6.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
@@ -124,7 +124,7 @@ require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.6 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
-	github.com/envoyproxy/go-control-plane/envoy v1.39.0 // indirect
+	github.com/envoyproxy/go-control-plane/envoy v1.39.1-0.20260819172001-e6e3fd93e4be // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.3 // indirect
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
@@ -154,10 +154,10 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/gomarkdown/markdown v0.0.0-20260824154242-13c5cf49db8d // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
-	github.com/google/s2a-go v0.1.9 // indirect
+	github.com/google/s2a-go v0.1.11 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/googleapis/enterprise-certificate-proxy v0.3.14 // indirect
-	github.com/googleapis/gax-go/v2 v2.20.0 // indirect
+	github.com/googleapis/enterprise-certificate-proxy v0.3.23 // indirect
+	github.com/googleapis/gax-go/v2 v2.26.2 // indirect
 	github.com/greatcloak/decimal v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -227,12 +227,12 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/tools v0.51.0 // indirect
-	google.golang.org/genproto v0.0.0-20260319201613-d00831a3d3e7 // indirect
+	google.golang.org/genproto v0.0.0-20260715232425-e75dac1f907d // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260825221802-da73d73af1c5 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
