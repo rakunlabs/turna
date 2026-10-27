@@ -4,7 +4,7 @@
   export let value = "";
   export let required = false;
   export let minlength: number | null = null;
-  export let autocomplete = "current-password";
+  export let autocomplete: AutoFill = "current-password";
   export let placeholder = "";
   export let describedby: string | undefined = undefined;
 

@@ -12,7 +12,7 @@ export function bufferToBase64URL(buf: ArrayBuffer | Uint8Array): string {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-export function base64URLToBuffer(s: string): Uint8Array {
+export function base64URLToBuffer(s: string): Uint8Array<ArrayBuffer> {
   const padded = s
     .replace(/-/g, "+")
     .replace(/_/g, "/")
