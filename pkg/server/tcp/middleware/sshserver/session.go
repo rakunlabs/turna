@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/kballard/go-shellquote"
 	"github.com/pkg/sftp"
@@ -61,6 +62,7 @@ func (s *connectionSession) handleSessionChannel(ctx context.Context, newChannel
 		started bool
 		ptyCfg  *ptyRequest
 		term    terminal
+		output  <-chan struct{}
 		cmd     *exec.Cmd
 		env     = make(map[string]string)
 	)
@@ -110,13 +112,13 @@ func (s *connectionSession) handleSessionChannel(ctx context.Context, newChannel
 			ok := !started && s.user.Shell != nil && s.user.Shell.Enabled
 			if ok {
 				started = true
-				cmd, term, err = s.startCommand(ctx, channel, "", false, ptyCfg, env)
+				cmd, term, output, err = s.startCommand(ctx, channel, "", false, ptyCfg, env)
 				ok = err == nil
 			}
 			mu.Unlock()
 			reply(req, ok)
 			if ok {
-				go waitCommand(channel, cmd, term, s.user.Name, "shell")
+				go waitCommand(channel, cmd, term, output, s.user.Name, "shell")
 			}
 
 		case "exec":
@@ -126,14 +128,14 @@ func (s *connectionSession) handleSessionChannel(ctx context.Context, newChannel
 				ssh.Unmarshal(req.Payload, &requested) == nil
 			if ok {
 				started = true
-				cmd, term, err = s.startCommand(ctx, channel, requested.Command, true, ptyCfg, env)
+				cmd, term, output, err = s.startCommand(ctx, channel, requested.Command, true, ptyCfg, env)
 				ok = err == nil
 			}
 			mu.Unlock()
 			reply(req, ok)
 			if ok {
 				slog.Info("ssh command started", "user", s.user.Name, "command", requested.Command)
-				go waitCommand(channel, cmd, term, s.user.Name, requested.Command)
+				go waitCommand(channel, cmd, term, output, s.user.Name, requested.Command)
 			}
 
 		case "subsystem":
@@ -172,10 +174,10 @@ func (s *connectionSession) startCommand(
 	isExec bool,
 	ptyCfg *ptyRequest,
 	env map[string]string,
-) (*exec.Cmd, terminal, error) {
+) (*exec.Cmd, terminal, <-chan struct{}, error) {
 	parts, err := shellquote.Split(s.user.Shell.Command)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse shell command: %w", err)
+		return nil, nil, nil, fmt.Errorf("parse shell command: %w", err)
 	}
 	if len(parts) == 0 {
 		parts = []string{defaultShell()}
@@ -196,30 +198,44 @@ func (s *connectionSession) startCommand(
 		cmd.Env = append(os.Environ(), cmd.Env...)
 	}
 	if err := setCommandUser(cmd, s.user.Shell.OSUser); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if ptyCfg != nil {
 		term, err := startPTY(cmd, ptyCfg.Cols, ptyCfg.Rows)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
+		output := make(chan struct{})
 		go func() { _, _ = io.Copy(term, channel) }()
-		go func() { _, _ = io.Copy(channel, term) }()
-		return cmd, term, nil
+		go func() {
+			defer close(output)
+			_, _ = io.Copy(channel, term)
+		}()
+		return cmd, term, output, nil
 	}
 
 	cmd.Stdin = channel
 	cmd.Stdout = channel
 	cmd.Stderr = channel.Stderr()
 	if err := cmd.Start(); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return cmd, nil, nil
+	return cmd, nil, nil, nil
 }
 
-func waitCommand(channel ssh.Channel, cmd *exec.Cmd, term terminal, user, operation string) {
+// ptyDrainTimeout bounds how long to wait for buffered PTY output after the
+// command exits, in case a background process keeps the terminal open.
+const ptyDrainTimeout = 2 * time.Second
+
+func waitCommand(channel ssh.Channel, cmd *exec.Cmd, term terminal, output <-chan struct{}, user, operation string) {
 	err := cmd.Wait()
+	if output != nil {
+		select {
+		case <-output:
+		case <-time.After(ptyDrainTimeout):
+		}
+	}
 	if term != nil {
 		_ = term.Close()
 	}

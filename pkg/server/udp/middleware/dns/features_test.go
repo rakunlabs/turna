@@ -22,7 +22,28 @@ func startUpstream(t *testing.T, ip string, ttl uint32) (string, *atomic.Int64) 
 
 	var count atomic.Int64
 
-	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	// tcp on the same port for tcp:// upstreams and truncation retries;
+	// the udp port may already be taken on tcp, so retry with a new one
+	var (
+		pc  net.PacketConn
+		l   net.Listener
+		err error
+	)
+
+	for range 20 {
+		pc, err = net.ListenPacket("udp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		l, err = net.Listen("tcp", pc.LocalAddr().String())
+		if err == nil {
+			break
+		}
+
+		_ = pc.Close()
+	}
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,12 +61,6 @@ func startUpstream(t *testing.T, ip string, ttl uint32) (string, *atomic.Int64) 
 
 		_ = w.WriteMsg(m)
 	})
-
-	// tcp on the same port for tcp:// upstreams and truncation retries
-	l, err := net.Listen("tcp", pc.LocalAddr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	for _, srv := range []*dns.Server{{PacketConn: pc, Handler: handler}, {Listener: l, Handler: handler}} {
 		go func() { _ = srv.ActivateAndServe() }()

@@ -9,7 +9,7 @@ import (
 )
 
 func TestTTYRejectsFilters(t *testing.T) {
-	for _, s := range []Service{
+	for _, s := range []*Service{
 		{Name: "filter", TTY: true, Filters: [][]byte{[]byte("secret")}},
 		{Name: "filter-values", TTY: true, FiltersValues: []string{"secrets"}},
 	} {
