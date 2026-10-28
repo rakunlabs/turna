@@ -84,7 +84,7 @@ suite() {
 	# the suite runs in the kind network to reach the LoadBalancer addresses
 	log "running profiles $PROFILES"
 	docker rm -f turna-conformance >/dev/null 2>&1 || true
-	docker create --name turna-conformance --network kind -e KUBECONFIG=/work/kubeconfig -w /work alpine:3.24.1 \
+	docker create --name turna-conformance --network kind -e KUBECONFIG=/work/kubeconfig -w /work alpine:3.24.3 \
 		/work/conformance.test -test.v -test.timeout 90m -test.run '^TestConformance$' \
 		-gateway-class=turna \
 		-supported-features="$features" \
