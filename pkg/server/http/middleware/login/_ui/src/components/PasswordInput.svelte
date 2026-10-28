@@ -22,7 +22,7 @@
     aria-describedby={describedby}
     type={show ? "text" : "password"}
     {value}
-    class="field pr-11"
+    class="field pr-10"
   />
   <button
     type="button"
@@ -30,12 +30,12 @@
     aria-pressed={show}
     aria-controls={id}
     on:click={() => (show = !show)}
-    class="absolute inset-y-0 end-0 flex w-11 items-center justify-center rounded-e-md text-muted transition hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+    class="absolute inset-y-0 end-0 flex w-10 items-center justify-center rounded-e-md text-muted transition hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
   >
     <svg
       class="shrink-0"
-      width="18"
-      height="18"
+      width="16"
+      height="16"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

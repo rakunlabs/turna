@@ -9,8 +9,8 @@ body {
 }
 
 // Color tokens: space-separated RGB triplets consumed by the semantic colors
-// in tailwind.config.js. Light is indigo on cool grey; dark is true black
-// (OLED) with a white primary and orange links.
+// in tailwind.config.js. Both themes share the indigo primary; dark sits on
+// soft near-black greys.
 :root {
   --canvas: 249 250 251;
   --surface: 255 255 255;
@@ -33,18 +33,18 @@ body {
 }
 
 html.dark {
-  --canvas: 0 0 0;
-  --surface: 10 10 10;
-  --field: 0 0 0;
-  --hover: 24 24 24;
-  --line: 44 44 44;
-  --divider: 30 30 30;
-  --ink: 245 245 245;
-  --muted: 140 140 140;
-  --brand: 255 255 255;
-  --brand-hover: 230 230 230;
-  --brand-on: 0 0 0;
-  --brand-link: 255 138 76;
+  --canvas: 9 9 11;
+  --surface: 18 18 21;
+  --field: 12 12 14;
+  --hover: 30 30 35;
+  --line: 52 52 60;
+  --divider: 38 38 44;
+  --ink: 237 237 240;
+  --muted: 145 145 155;
+  --brand: 97 95 255;
+  --brand-hover: 120 118 255;
+  --brand-on: 255 255 255;
+  --brand-link: 165 163 255;
   --success: 134 208 160;
   --success-bg: 22 44 32;
   --success-line: 50 95 70;
@@ -71,12 +71,12 @@ html.dark {
 
 @layer components {
   .field {
-    @apply mt-1 block w-full rounded-md border border-line bg-field px-3 py-2 text-ink placeholder-muted/70
+    @apply mt-1 block h-9 w-full rounded-md border border-line bg-field px-3 py-1.5 text-base text-ink placeholder-muted/70 sm:text-sm
       focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25 disabled:bg-hover;
   }
 
   .btn {
-    @apply flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2 text-center font-semibold transition
+    @apply flex h-9 w-full items-center justify-center gap-2 rounded-md border px-3 text-center text-sm font-medium transition
       focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface
       disabled:cursor-not-allowed disabled:opacity-60;
   }

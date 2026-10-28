@@ -411,48 +411,47 @@
 </script>
 
 <div class="login-bg relative flex min-h-screen w-full flex-col items-center bg-canvas sm:pt-16">
-  <button
-    type="button"
-    on:click={cycleTheme}
-    aria-label={`Theme: ${themeLabel[theme]}. Switch theme`}
-    title={`Theme: ${themeLabel[theme]}`}
-    class="absolute right-3 top-3 z-10 flex h-9 items-center gap-2 rounded-md px-2.5 text-sm text-muted transition hover:bg-hover hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-  >
-    <!-- lucide sun / moon / monitor -->
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      {#if theme === "light"}
-        <circle cx="12" cy="12" r="4"></circle>
-        <path d="M12 2v2"></path>
-        <path d="M12 20v2"></path>
-        <path d="m4.93 4.93 1.41 1.41"></path>
-        <path d="m17.66 17.66 1.41 1.41"></path>
-        <path d="M2 12h2"></path>
-        <path d="M20 12h2"></path>
-        <path d="m6.34 17.66-1.41 1.41"></path>
-        <path d="m19.07 4.93-1.41 1.41"></path>
-      {:else if theme === "dark"}
-        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
-      {:else}
-        <rect width="20" height="14" x="2" y="3" rx="2"></rect>
-        <line x1="8" x2="16" y1="21" y2="21"></line>
-        <line x1="12" x2="12" y1="17" y2="21"></line>
-      {/if}
-    </svg>
-    <span class="hidden sm:inline">{themeLabel[theme]}</span>
-  </button>
+  <main class="mx-auto w-full pt-8 sm:max-w-[23rem] sm:p-5 sm:pt-0">
+    <div class="login-card relative border-y border-divider bg-surface px-5 py-5 text-ink shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_-12px_rgb(0_0_0/0.12)] sm:rounded-lg sm:border sm:px-6 sm:py-6">
+      <button
+        type="button"
+        on:click={cycleTheme}
+        aria-label={`Theme: ${themeLabel[theme]}. Switch theme`}
+        title={`Theme: ${themeLabel[theme]}`}
+        class="absolute right-3 top-4 flex h-8 w-8 sm:right-4 sm:top-5 items-center justify-center rounded-md text-muted transition hover:bg-hover hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+      >
+        <!-- lucide sun / moon / monitor -->
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          {#if theme === "light"}
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2"></path>
+            <path d="M12 20v2"></path>
+            <path d="m4.93 4.93 1.41 1.41"></path>
+            <path d="m17.66 17.66 1.41 1.41"></path>
+            <path d="M2 12h2"></path>
+            <path d="M20 12h2"></path>
+            <path d="m6.34 17.66-1.41 1.41"></path>
+            <path d="m19.07 4.93-1.41 1.41"></path>
+          {:else if theme === "dark"}
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+          {:else}
+            <rect width="20" height="14" x="2" y="3" rx="2"></rect>
+            <line x1="8" x2="16" y1="21" y2="21"></line>
+            <line x1="12" x2="12" y1="17" y2="21"></line>
+          {/if}
+        </svg>
+      </button>
 
-  <main class="mx-auto w-full pt-14 sm:max-w-[26rem] sm:p-5 sm:pt-0">
-    <div class="login-card border-y border-divider bg-surface px-5 py-6 text-ink shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_-12px_rgb(0_0_0/0.12)] sm:rounded-lg sm:border sm:px-7 sm:py-8">
       {#if view === "passkey-enrollment"}
         <div class="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-brand/10 text-brand">
           <svg
@@ -479,14 +478,14 @@
         </div>
       {/if}
 
-      <h1 class="text-2xl font-bold tracking-tight [line-height:1.2] [text-wrap:balance]">
+      <h1 class="pr-10 text-xl font-semibold tracking-tight [line-height:1.2] [text-wrap:balance]">
         <span class={loaded ? "" : "invisible"}>{heading}</span>
       </h1>
       {#if subtitle}
-        <p class="mt-2 text-sm leading-6 text-muted [overflow-wrap:anywhere]">{subtitle}</p>
+        <p class="mt-1 text-sm leading-6 text-muted [overflow-wrap:anywhere]">{subtitle}</p>
       {/if}
 
-      <div class="mt-6">
+      <div class="mt-5">
         {#if notice != ""}
           <div
             role="status"
@@ -517,7 +516,7 @@
         {#if !loaded}
           <p role="status" class="py-6 text-center text-sm text-muted">Loading sign-in options…</p>
         {:else if loadError && view === "signin"}
-          <div role="alert" class="space-y-4">
+          <div role="alert" class="space-y-3">
             <p class="text-sm leading-6 text-muted">{loadError}</p>
             <button type="button" class="btn btn-secondary" on:click={retryInfo}>Try again</button>
           </div>
@@ -527,7 +526,7 @@
           </p>
         {:else if view === "signin"}
           {#if hasPassword}
-            <form on:submit|preventDefault|stopPropagation={signin} class="space-y-4">
+            <form on:submit|preventDefault|stopPropagation={signin} class="space-y-3">
               {#if (authInfo.provider.password?.length ?? 0) > 1}
                 <div>
                   <label class="block text-sm font-medium" for="provider">Sign in with</label>
@@ -567,7 +566,7 @@
               {#if showRememberMe}
                 <RememberMe bind:checked={rememberMe} />
               {/if}
-              <button type="submit" class="btn btn-primary !mt-6" disabled={working}>
+              <button type="submit" class="btn btn-primary !mt-5" disabled={working}>
                 {working ? "Signing in…" : "Sign in"}
               </button>
             </form>
@@ -577,7 +576,7 @@
 
           {#if passkeys.length || codes.length}
             {#if hasPassword}
-              <div class="my-6 flex items-center gap-3 text-xs text-muted" role="separator">
+              <div class="my-5 flex items-center gap-3 text-xs text-muted" role="separator">
                 <span class="h-px flex-1 bg-divider"></span>
                 Or continue with
                 <span class="h-px flex-1 bg-divider"></span>
@@ -585,7 +584,7 @@
             {:else}
               <div class="mt-5"></div>
             {/if}
-            <div class="space-y-2.5">
+            <div class="space-y-2">
               {#each passkeys as provider}
                 <button
                   type="button"
@@ -619,13 +618,13 @@
           {/if}
 
           {#if canSignup}
-            <p class="mt-7 text-center text-sm text-muted">
+            <p class="mt-5 text-center text-sm text-muted">
               New here?
               <button type="button" class="link" on:click={() => switchView("signup")}>Create an account</button>
             </p>
           {/if}
         {:else if view === "signup"}
-          <form on:submit|preventDefault|stopPropagation={signup} class="space-y-4">
+          <form on:submit|preventDefault|stopPropagation={signup} class="space-y-3">
             <div>
               <label class="block text-sm font-medium" for="signup-name">
                 Name <span class="font-normal text-muted">(optional)</span>
@@ -650,7 +649,7 @@
                 At least {passwordMinLength} characters.
               </p>
             </div>
-            <button type="submit" class="btn btn-primary !mt-6" disabled={working}>
+            <button type="submit" class="btn btn-primary !mt-5" disabled={working}>
               {working ? "Creating account…" : "Create account"}
             </button>
           </form>
@@ -659,7 +658,7 @@
             <button type="button" class="link" on:click={() => switchView("verify")}>I have a code</button>
           </div>
         {:else if view === "verify"}
-          <form on:submit|preventDefault|stopPropagation={signupVerify} class="space-y-4">
+          <form on:submit|preventDefault|stopPropagation={signupVerify} class="space-y-3">
             <div>
               <label class="block text-sm font-medium" for="verify-code">Verification code</label>
               <input
@@ -675,7 +674,7 @@
                 use:focusOnMount
               />
             </div>
-            <button type="submit" class="btn btn-primary !mt-6" disabled={working}>
+            <button type="submit" class="btn btn-primary !mt-5" disabled={working}>
               {working ? "Verifying…" : "Verify email"}
             </button>
           </form>
@@ -683,12 +682,12 @@
             <button type="button" class="link" on:click={() => switchView("signin")}>Back to sign in</button>
           </div>
         {:else if view === "reset"}
-          <form on:submit|preventDefault|stopPropagation={resetRequest} class="space-y-4">
+          <form on:submit|preventDefault|stopPropagation={resetRequest} class="space-y-3">
             <div>
               <label class="block text-sm font-medium" for="reset-email">Email</label>
               <input id="reset-email" type="email" name="email" required autocomplete="email" class="field" use:focusOnMount />
             </div>
-            <button type="submit" class="btn btn-primary !mt-6" disabled={working}>
+            <button type="submit" class="btn btn-primary !mt-5" disabled={working}>
               {working ? "Sending…" : "Send reset code"}
             </button>
           </form>
@@ -697,7 +696,7 @@
             <button type="button" class="link" on:click={() => switchView("reset-confirm")}>I have a code</button>
           </div>
         {:else if view === "reset-confirm"}
-          <form on:submit|preventDefault|stopPropagation={resetConfirm} class="space-y-4">
+          <form on:submit|preventDefault|stopPropagation={resetConfirm} class="space-y-3">
             <div>
               <label class="block text-sm font-medium" for="reset-code">Reset code</label>
               <input
@@ -727,7 +726,7 @@
                 At least {passwordMinLength} characters.
               </p>
             </div>
-            <button type="submit" class="btn btn-primary !mt-6" disabled={working}>
+            <button type="submit" class="btn btn-primary !mt-5" disabled={working}>
               {working ? "Saving…" : "Set new password"}
             </button>
           </form>
