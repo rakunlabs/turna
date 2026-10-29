@@ -83,7 +83,7 @@ func (c AccessClient) redirectURIAllowedForClient(redirectURI string) bool {
 
 	if len(c.RedirectURIs) > 0 {
 		for _, uri := range c.RedirectURIs {
-			if uri == redirectURI {
+			if uri == redirectURI || loopbackRedirectMatch(uri, redirectURI) {
 				return true
 			}
 		}
@@ -92,6 +92,44 @@ func (c AccessClient) redirectURIAllowedForClient(redirectURI string) bool {
 	}
 
 	return redirectAllowed(redirectURI, c.WhitelistURLs)
+}
+
+// loopbackRedirectMatch compares http loopback redirect URIs ignoring the
+// port: native clients listen on an ephemeral port, so RFC 8252 §7.3 makes
+// the authorization server accept any port at request time. Client metadata
+// documents (e.g. opencode's) register http://127.0.0.1/mcp/oauth/callback and
+// redirect to http://127.0.0.1:19876/mcp/oauth/callback.
+func loopbackRedirectMatch(registered, requested string) bool {
+	reg, err := url.Parse(registered)
+	if err != nil {
+		return false
+	}
+
+	req, err := url.Parse(requested)
+	if err != nil {
+		return false
+	}
+
+	if reg.Scheme != "http" || req.Scheme != "http" || reg.User != nil || req.User != nil {
+		return false
+	}
+
+	host := reg.Hostname()
+	if !isLoopbackHost(host) || !strings.EqualFold(host, req.Hostname()) {
+		return false
+	}
+
+	return reg.EscapedPath() == req.EscapedPath() && reg.RawQuery == req.RawQuery && reg.Fragment == "" && req.Fragment == ""
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+
+	ip := net.ParseIP(host)
+
+	return ip != nil && ip.IsLoopback()
 }
 
 // ProviderConfig is the decoded OAuth provider config stored in auth_oauth_providers.

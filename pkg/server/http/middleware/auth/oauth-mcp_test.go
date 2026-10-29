@@ -279,6 +279,40 @@ func TestRedirectURIAllowedForClient(t *testing.T) {
 	}
 }
 
+func TestRedirectURIAllowedLoopbackAnyPort(t *testing.T) {
+	// opencode's client metadata document registers port-less loopback
+	// callbacks and redirects to an ephemeral port (RFC 8252 §7.3)
+	client := AccessClient{RedirectURIs: []string{
+		"http://127.0.0.1/mcp/oauth/callback",
+		"http://localhost/callback",
+		"https://app.example.com/callback",
+	}}
+
+	for _, uri := range []string{
+		"http://127.0.0.1:19876/mcp/oauth/callback",
+		"http://127.0.0.1/mcp/oauth/callback",
+		"http://localhost:53280/callback",
+	} {
+		if !client.redirectURIAllowedForClient(uri) {
+			t.Errorf("%s should be allowed", uri)
+		}
+	}
+
+	for _, uri := range []string{
+		"http://127.0.0.1:19876/other",
+		"http://localhost:53280/callback?x=1",
+		"http://127.0.0.2:19876/mcp/oauth/callback",
+		"https://127.0.0.1:19876/mcp/oauth/callback",
+		"https://app.example.com:8443/callback",
+		"http://evil.example.com:19876/mcp/oauth/callback",
+		"http://user@127.0.0.1:19876/mcp/oauth/callback",
+	} {
+		if client.redirectURIAllowedForClient(uri) {
+			t.Errorf("%s should be rejected", uri)
+		}
+	}
+}
+
 func TestTokenAudience(t *testing.T) {
 	if aud := tokenAudience(nil); aud != "turna-auth" {
 		t.Errorf("tokenAudience(nil) = %v, want turna-auth", aud)
