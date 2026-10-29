@@ -639,6 +639,13 @@ type RegistrationSettings struct {
 	DefaultScope []string `json:"default_scope"`
 	// MaxClients caps the number of stored dynamic clients. Default 1000.
 	MaxClients int `json:"max_clients"`
+	// ClientMetadataDisabled stops accepting URL client_ids (OAuth Client ID
+	// Metadata Documents): discovery no longer advertises
+	// client_id_metadata_document_supported and no metadata document is
+	// fetched. Clients then fall back to dynamic registration, which needs
+	// no outbound access; use it when this instance cannot reach the
+	// internet. Stored records with a URL id keep working.
+	ClientMetadataDisabled bool `json:"client_metadata_disabled"`
 
 	clientLifetime time.Duration
 }

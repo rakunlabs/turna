@@ -248,7 +248,7 @@ func (m *Auth) APIRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := m.resolveClient(clientID, clientSecret); err != nil {
+	if _, err := m.authorizationClient(r.Context(), clientID, clientSecret); err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_client",
 			ErrorDescription: err.Error(),
@@ -311,7 +311,7 @@ func (m *Auth) APIIntrospect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := m.resolveClient(clientID, clientSecret); err != nil {
+	if _, err := m.authorizationClient(r.Context(), clientID, clientSecret); err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_client",
 			ErrorDescription: err.Error(),

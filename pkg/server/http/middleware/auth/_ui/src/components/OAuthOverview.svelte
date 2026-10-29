@@ -608,6 +608,17 @@
         }
       />
     </div>
+
+    <div class="mt-5">
+      <Switch
+        label="Disable client metadata documents"
+        hint="Stops advertising client_id_metadata_document_supported and never fetches URL client IDs such as https://opencode.ai/oauth/opencode/client.json. Clients like OpenCode and Claude Code then register dynamically instead. Turn on when this instance has no internet access."
+        bind:checked={
+          () => getSettingBool("registration", ["client_metadata_disabled"]),
+          (value: boolean) => setSettingBool("registration", ["client_metadata_disabled"], value)
+        }
+      />
+    </div>
   </Section>
 
   <Section

@@ -1424,7 +1424,7 @@ func (m *Auth) serverMetadata(r *http.Request, custom string) map[string]any {
 		"subject_types_supported":               []string{"public"},
 		"id_token_signing_alg_values_supported": []string{alg},
 		"code_challenge_methods_supported":      []string{"S256", "plain"},
-		"client_id_metadata_document_supported": true,
+		"client_id_metadata_document_supported": !sn.Registration.ClientMetadataDisabled,
 		"scopes_supported":                      []string{"openid"},
 		"token_endpoint_auth_methods_supported": []string{
 			"client_secret_basic", "client_secret_post", "none",

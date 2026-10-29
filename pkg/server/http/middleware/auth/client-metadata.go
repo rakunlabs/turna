@@ -56,10 +56,23 @@ func publicClientMetadataHTTPClient() *http.Client {
 			if err != nil {
 				return nil, err
 			}
+			// try every public address: a host without an IPv6 route must
+			// still reach dual-stack metadata hosts over IPv4
+			var lastErr error
 			for _, ip := range ips {
-				if ip.IsGlobalUnicast() && !ip.IsPrivate() && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() {
-					return dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+				if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+					continue
 				}
+
+				conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+				if err == nil {
+					return conn, nil
+				}
+				lastErr = err
+			}
+
+			if lastErr != nil {
+				return nil, lastErr
 			}
 
 			return nil, fmt.Errorf("client metadata host does not resolve to a public address")
@@ -185,8 +198,23 @@ func overlayStoredClient(fetched, stored *AccessClient) *AccessClient {
 // fetch fails, a stored record (carrying its own redirect_uris or
 // whitelist_urls) keeps the client usable as a full fallback.
 func (m *Auth) metadataClient(ctx context.Context, clientID string) (*AccessClient, error) {
-	storedValue, hasStored := m.cache.Snapshot().OAuthClients[clientID]
+	sn := m.cache.Snapshot()
+	storedValue, hasStored := sn.OAuthClients[clientID]
 	stored := &storedValue
+
+	// Without metadata documents only an administrator-stored record of the
+	// URL id is accepted; nothing is fetched.
+	if sn.Registration.ClientMetadataDisabled {
+		if !hasStored {
+			return nil, fmt.Errorf("client metadata documents are disabled; register the client dynamically")
+		}
+		if stored.ClientSecret != "" {
+			return nil, fmt.Errorf("stored metadata client must not contain a client secret")
+		}
+		stored.Public = true
+
+		return stored, nil
+	}
 
 	fetched, err := fetchClientMetadata(ctx, clientID)
 	if err != nil {

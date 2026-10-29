@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -164,9 +165,10 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 
 	client, err := m.authorizationRequestClient(r.Context(), clientID)
 	if err != nil {
+		slog.Warn("authorize client lookup failed", slog.String("client_id", clientID), slog.String("error", err.Error()))
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_request",
-			ErrorDescription: fmt.Sprintf("client %q not found", clientID),
+			ErrorDescription: fmt.Sprintf("client %q not found: %v", clientID, err),
 			code:             http.StatusBadRequest,
 		})
 

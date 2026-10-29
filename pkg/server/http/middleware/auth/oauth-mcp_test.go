@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -159,6 +160,38 @@ func TestAuthorizationRequestClientDoesNotRequireSecret(t *testing.T) {
 	}
 	if client.ClientSecret != "secret" {
 		t.Fatalf("client = %+v", client)
+	}
+}
+
+func TestMetadataClientDisabled(t *testing.T) {
+	// an unroutable id proves nothing is fetched: a fetch would fail on the
+	// private address rather than with the disabled error
+	clientID := "https://127.0.0.1/client.json"
+	cache := NewCache(nil)
+	cache.snap.Store(&Snapshot{Registration: RegistrationSettings{ClientMetadataDisabled: true}})
+	m := &Auth{cache: cache}
+
+	_, err := m.authorizationRequestClient(t.Context(), clientID)
+	if err == nil || !strings.Contains(err.Error(), "disabled") {
+		t.Fatalf("disabled metadata documents must refuse URL clients without fetching, got %v", err)
+	}
+
+	// an administrator-stored record of the URL id keeps working offline
+	cache.snap.Store(&Snapshot{
+		Registration: RegistrationSettings{ClientMetadataDisabled: true},
+		OAuthClients: map[string]AccessClient{clientID: {RedirectURIs: []string{"http://127.0.0.1/callback"}}},
+	})
+	client, err := m.authorizationRequestClient(t.Context(), clientID)
+	if err != nil || !client.Public || !client.redirectURIAllowedForClient("http://127.0.0.1:3118/callback") {
+		t.Fatalf("stored URL client = %+v, error = %v", client, err)
+	}
+
+	cache.snap.Store(&Snapshot{
+		Registration: RegistrationSettings{ClientMetadataDisabled: true},
+		OAuthClients: map[string]AccessClient{clientID: {ClientSecret: "secret"}},
+	})
+	if _, err := m.authorizationRequestClient(t.Context(), clientID); err == nil {
+		t.Fatal("stored URL client with a secret must be refused")
 	}
 }
 

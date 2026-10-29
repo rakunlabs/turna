@@ -125,6 +125,30 @@ func TestAuthMCPIntegration(t *testing.T) {
 				t.Errorf("%s: MCP authorization metadata flags missing", path)
 			}
 		}
+
+		// offline instances turn metadata documents off; clients then use DCR
+		if _, err := m.store.PutSetting(ctx, "registration", json.RawMessage(`{"enabled":true,"client_metadata_disabled":true}`), "it"); err != nil {
+			t.Fatalf("put registration setting: %v", err)
+		}
+		if err := m.cache.Reload(ctx); err != nil {
+			t.Fatalf("cache reload: %v", err)
+		}
+		res, err := http.DefaultClient.Get(server.URL + "/auth/oauth2/.well-known/oauth-authorization-server")
+		if err != nil {
+			t.Fatalf("metadata: %v", err)
+		}
+		disabled := map[string]any{}
+		_ = json.NewDecoder(res.Body).Decode(&disabled)
+		res.Body.Close()
+		if disabled["client_id_metadata_document_supported"] != false || disabled["registration_endpoint"] == nil {
+			t.Errorf("disabled metadata documents: supported=%v registration=%v", disabled["client_id_metadata_document_supported"], disabled["registration_endpoint"])
+		}
+		if _, err := m.store.PutSetting(ctx, "registration", json.RawMessage(`{"enabled":true}`), "it"); err != nil {
+			t.Fatalf("put registration setting: %v", err)
+		}
+		if err := m.cache.Reload(ctx); err != nil {
+			t.Fatalf("cache reload: %v", err)
+		}
 	})
 
 	// --- RFC 7591 dynamic client registration ---------------------------

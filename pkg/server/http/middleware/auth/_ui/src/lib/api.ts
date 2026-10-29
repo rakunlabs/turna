@@ -168,6 +168,7 @@ export const settingTemplates = {
     client_lifetime: "720h",
     default_scope: [],
     max_clients: 1000,
+    client_metadata_disabled: false,
   },
   check: {
     default_hosts: [],
