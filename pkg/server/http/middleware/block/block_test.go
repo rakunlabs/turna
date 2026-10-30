@@ -73,3 +73,30 @@ func TestBlockInvalidRegex(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestBlockAll(t *testing.T) {
+	mw, err := (&Block{All: true}).Middleware()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	mw(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/any", nil))
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d", rec.Code)
+	}
+
+	// an empty block passes everything
+	mw, err = (&Block{}).Middleware()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec = httptest.NewRecorder()
+	mw(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/any", nil))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d", rec.Code)
+	}
+}

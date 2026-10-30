@@ -10,12 +10,14 @@ import (
 )
 
 type Block struct {
+	// All blocks every request.
+	All     bool     `cfg:"all"`
 	Methods []string `cfg:"methods"`
 	// RegexPath blocks paths matching any of the regular expressions.
 	RegexPath []string `cfg:"regex_path"`
 	// StatusCode of blocked requests, default is 403.
 	StatusCode int `cfg:"status_code"`
-	// Message of the error body, default is "method not allowed" or "path not allowed".
+	// Message of the error body, default is "not allowed", "method not allowed" or "path not allowed".
 	Message string `cfg:"message"`
 }
 
@@ -50,6 +52,12 @@ func (m *Block) Middleware() (func(http.Handler) http.Handler, error) {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if m.All {
+				reject(w, "not allowed")
+
+				return
+			}
+
 			if _, ok := methodsSet[r.Method]; ok {
 				reject(w, "method not allowed")
 

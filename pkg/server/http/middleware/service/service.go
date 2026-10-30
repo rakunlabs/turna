@@ -107,6 +107,7 @@ type LoadBalancer struct {
 
 type balancerBuilder struct {
 	states  map[string]*targetState
+	sockets unixSockets
 	health  *healthChecker
 	passive *PassiveHealthCheck
 }
@@ -124,6 +125,13 @@ func (b *balancerBuilder) targets(servers []Server) ([]*ProxyTarget, error) {
 			return nil, fmt.Errorf("weight of %s must not be negative", server.URL)
 		}
 
+		name := u.String()
+		if isUnixURL(u) {
+			if u, err = b.sockets.rewrite(server.URL, u); err != nil {
+				return nil, err
+			}
+		}
+
 		// same upstream in different groups shares health and connection state
 		state, ok := b.states[u.String()]
 		if !ok {
@@ -132,7 +140,7 @@ func (b *balancerBuilder) targets(servers []Server) ([]*ProxyTarget, error) {
 		}
 
 		targets = append(targets, &ProxyTarget{
-			Name:   u.String(),
+			Name:   name,
 			URL:    u,
 			Weight: server.Weight,
 			state:  state,
@@ -167,6 +175,7 @@ func (m *Service) getBalancer(transport http.RoundTripper) (ProxyBalancer, *bala
 
 	builder := &balancerBuilder{
 		states:  make(map[string]*targetState),
+		sockets: make(unixSockets),
 		passive: lb.PassiveHealthCheck,
 	}
 
@@ -268,13 +277,6 @@ func (m *Service) Middleware(ctx context.Context) ([]func(http.Handler) http.Han
 	cfg.RetryCount = m.Retry
 	cfg.passive = m.LoadBalancer.PassiveHealthCheck
 
-	if builder.health != nil {
-		for rawURL, state := range builder.states {
-			u, _ := url.Parse(rawURL)
-			go builder.health.run(ctx, u, state)
-		}
-	}
-
 	mirrorTransport := transport
 	if m.Mirror != nil && m.Mirror.TLS != nil {
 		tlsConfig, err := m.Mirror.TLS.config()
@@ -286,9 +288,21 @@ func (m *Service) Middleware(ctx context.Context) ([]func(http.Handler) http.Han
 		mirrorTransport.TLSClientConfig = tlsConfig
 	}
 
-	mirror, err := m.Mirror.build(mirrorTransport)
+	mirror, err := m.Mirror.build(mirrorTransport, builder.sockets)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create mirror: %w", err)
+	}
+
+	builder.sockets.wrap(transport)
+	if mirrorTransport != transport {
+		builder.sockets.wrap(mirrorTransport)
+	}
+
+	if builder.health != nil {
+		for rawURL, state := range builder.states {
+			u, _ := url.Parse(rawURL)
+			go builder.health.run(ctx, u, state)
+		}
 	}
 
 	checkHost := func(next http.Handler) http.Handler {

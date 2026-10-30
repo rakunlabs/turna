@@ -7,7 +7,7 @@ import (
 
 func TestMirrorSelectsOneServiceEndpoint(t *testing.T) {
 	m := &Mirror{Servers: []MirrorServer{{Endpoints: []string{"http://one:80", "http://two:80"}}}}
-	mr, err := m.build(http.DefaultTransport)
+	mr, err := m.build(http.DefaultTransport, make(unixSockets))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestMirrorIndependentTargets(t *testing.T) {
 		{Endpoints: []string{"http://two:80", "http://three:80"}},
 		{Endpoints: []string{"http://disabled:80"}, Percent: &zero},
 	}}
-	mr, err := m.build(http.DefaultTransport)
+	mr, err := m.build(http.DefaultTransport, make(unixSockets))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestMirrorIndependentTargets(t *testing.T) {
 func TestMirrorPercentageSelectsAtMostOneEndpoint(t *testing.T) {
 	percent := 50.0
 	m := &Mirror{Servers: []MirrorServer{{Endpoints: []string{"http://one:80", "http://two:80"}, Percent: &percent}}}
-	mr, err := m.build(http.DefaultTransport)
+	mr, err := m.build(http.DefaultTransport, make(unixSockets))
 	if err != nil {
 		t.Fatal(err)
 	}

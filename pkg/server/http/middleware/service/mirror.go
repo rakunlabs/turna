@@ -54,7 +54,7 @@ type mirror struct {
 	client      *http.Client
 }
 
-func (m *Mirror) build(transport http.RoundTripper) (*mirror, error) {
+func (m *Mirror) build(transport http.RoundTripper, sockets unixSockets) (*mirror, error) {
 	if m == nil || len(m.Servers) == 0 {
 		return nil, nil
 	}
@@ -99,8 +99,13 @@ func (m *Mirror) build(transport http.RoundTripper) (*mirror, error) {
 			if err != nil {
 				return nil, fmt.Errorf("cannot parse mirror url %s: %w", endpoint, err)
 			}
+			if isUnixURL(u) {
+				if u, err = sockets.rewrite(endpoint, u); err != nil {
+					return nil, err
+				}
+			}
 			if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-				return nil, fmt.Errorf("mirror url must be an absolute HTTP(S) URL: %s", endpoint)
+				return nil, fmt.Errorf("mirror url must be an absolute HTTP(S) or unix URL: %s", endpoint)
 			}
 			urls = append(urls, u)
 		}
@@ -311,10 +316,13 @@ func (m *Mirror) MirrorMiddleware() (func(http.Handler) http.Handler, error) {
 
 		transport.TLSClientConfig = tlsConfig
 	}
-	mr, err := m.build(transport)
+	sockets := make(unixSockets)
+	mr, err := m.build(transport, sockets)
 	if err != nil {
 		return nil, err
 	}
+
+	sockets.wrap(transport)
 
 	if mr == nil {
 		return func(next http.Handler) http.Handler { return next }, nil
