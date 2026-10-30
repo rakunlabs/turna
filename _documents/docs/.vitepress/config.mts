@@ -209,6 +209,7 @@ export default defineConfig({
               { text: 'File Server', link: '/examples/folder' },
               { text: 'TLS', link: '/examples/tls' },
               { text: 'View', link: '/examples/view' },
+              { text: 'Single Page App', link: '/examples/spa' },
             ],
           },
           {
@@ -223,6 +224,7 @@ export default defineConfig({
           {
             text: 'Config & Processes',
             items: [
+              { text: 'Wrap an Application', link: '/examples/wrap' },
               { text: 'Environment Values', link: '/examples/env' },
               { text: 'Preprocess', link: '/examples/preprocess' },
             ],

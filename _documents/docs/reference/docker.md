@@ -40,7 +40,7 @@ services:
 Requests for `app.example.com` are balanced over both replicas on their only exposed port. Containers without `turna.enable=true` are ignored unless `exposed_by_default` is set.
 
 ::: warning Docker socket
-Access to the Docker socket is equivalent to root on the host. Mount it read-only, or point `endpoint` to a socket proxy such as `tecnativa/docker-socket-proxy` that only allows `GET` requests on `/version`, `/containers`, `/events`, `/networks`, `/services` and `/tasks`. A read-only mount does not limit API calls, only a filtering proxy does.
+Access to the Docker socket is equivalent to root on the host. A read-only mount does not limit API calls, only a filtering proxy does. Turna can be that proxy itself, see [Socket proxy](#socket-proxy).
 :::
 
 ## Configuration
@@ -274,6 +274,84 @@ providers:
 ```
 
 Turna must be attached to the networks of the services it routes to. Swarm only reports published ports, not the ports exposed by the image, so set `port` on services unless the service publishes exactly one port.
+
+## Socket proxy
+
+The Turna that serves public traffic does not need the Docker socket. Run a second, internal Turna next to it that owns the socket and only lets through the read requests the provider makes. The public instance then points `endpoint` to it.
+
+The [`service`](./server/http/middlewares/service#unix-sockets) middleware talks to the socket directly with a `unix://` URL. The routers decide what reaches it: only the read paths below pass, write methods and every other path get `403`.
+
+```yaml
+# docker-proxy.yaml
+server:
+  entrypoints:
+    docker:
+      address: ":2375"
+  http:
+    middlewares:
+      read_only:
+        block:
+          methods: [POST, PUT, PATCH, DELETE]
+      docker_api:
+        service:
+          loadbalancer:
+            servers:
+              - url: unix:///var/run/docker.sock
+      deny:
+        block:
+          all: true
+    routers:
+      docker:
+        entrypoints: [docker]
+        path:
+          - /_ping
+          - /version
+          - /{version}/version
+          - /{version}/events
+          - /{version}/containers/json
+          - /{version}/networks
+          - /{version}/services
+          - /{version}/tasks
+        middlewares: [read_only, docker_api]
+      deny:
+        entrypoints: [docker]
+        path: /*
+        middlewares: [deny]
+```
+
+```yaml
+# compose.yaml
+services:
+  docker-proxy:
+    image: ghcr.io/rakunlabs/turna:latest
+    environment:
+      CONFIG_FILE: /docker-proxy.yaml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker-proxy.yaml:/docker-proxy.yaml:ro
+    networks: [docker-api]
+
+  turna:
+    image: ghcr.io/rakunlabs/turna:latest
+    ports: ["80:80"]
+    volumes:
+      - ./turna.yaml:/turna.yaml:ro
+    networks: [docker-api, default]
+
+networks:
+  docker-api:
+    internal: true
+```
+
+```yaml
+# turna.yaml
+providers:
+  docker:
+    enabled: true
+    endpoint: http://docker-proxy:2375
+```
+
+The paths are the ones the provider calls: `/version` once to learn the API version, then `/v<version>/containers/json`, `/networks`, `/events`, and `/services` and `/tasks` in Swarm mode. Container inspect, `exec`, image and volume endpoints never reach the socket. Keep `docker-api` an internal network so only Turna can reach the proxy; add [`ip_filter`](./server/http/middlewares/ip_filter) to the `docker` router when the network is shared. In Swarm, run the socket proxy on a manager node with `placement.constraints: [node.role == manager]`.
 
 ## Runtime behavior
 

@@ -10,14 +10,14 @@ server:
         webhook_signature:
           preset: github
           secrets:
-            - ${GITHUB_WEBHOOK_SECRET}
+            - change-me-github-secret
       partner_webhook:
         webhook_signature:
           header: X-Signature
           prefix: "sha256="
           timestamp_header: X-Timestamp
           secrets:
-            - ${PARTNER_SECRET}
+            - change-me-partner-secret
 ```
 
 | Field | Default | Description |

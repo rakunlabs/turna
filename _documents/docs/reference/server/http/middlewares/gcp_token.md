@@ -20,7 +20,7 @@ server:
         gcp_token:
           format: raw            # or managed_kafka
           client_id: console
-          client_secret: ${GCP_TOKEN_CLIENT_SECRET}
+          client_secret: change-me
           credentials: |
             {
               "type": "external_account",

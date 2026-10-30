@@ -16,8 +16,10 @@ server:
           database:
             dsn: postgres://turna:turna@localhost:5432/turna?sslmode=disable
           encryption:
-            key: ${AUTH_ENCRYPTION_KEY}
+            key: change-me-encryption-key
 ```
+
+Configuration values are not expanded from environment variables. Keep a configuration that holds the DSN password and the encryption key in Vault or another secret source, see [application config sources](../../../config#application-config-sources). The [Auth example](/examples/auth) shows a complete identity service with session, login, logout and a permission endpoint for other applications.
 
 ## Fields
 
@@ -702,7 +704,7 @@ middlewares:
       database:
         dsn: postgres://...
       encryption:
-        key: ${AUTH_ENCRYPTION_KEY}
+        key: change-me-encryption-key
   session:
     session:
       store:

@@ -18,7 +18,7 @@ server:
           database:
             dsn: postgres://turna:turna@localhost:5432/turna?sslmode=disable
           encryption:
-            key: ${AUTH_ENCRYPTION_KEY}
+            key: change-me-encryption-key
       mcp-guard:
         oauth2_resource:
           auth_middleware: "auth"

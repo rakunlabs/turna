@@ -34,7 +34,7 @@ server:
 | `utc` | `false` | Render browse timestamps in UTC. |
 | `prefix_path` | | Prefix stripped before filesystem lookup. |
 | `file_path_regex` | | Regex replacements applied to the cleaned filesystem path. |
-| `cache_regex` | | Regex-based `Cache-Control` rules. |
+| `cache_regex` | | Regex-based `Cache-Control` rules, matched against the file name (`main.js`, not the path). The first match wins. |
 | `browse_cache` | `no-cache` | `Cache-Control` value for browse pages. |
 | `disable_folder_slash_redirect` | `false` | Disable automatic slash redirect for directories. |
 | `etag` | | ETag generation for files: `weak` or `strong`. Empty disables it. |

@@ -25,7 +25,7 @@ server:
 | `h2c` | `false` | Use HTTP/2 without TLS for `http://` upstreams, required for plain text gRPC servers. |
 | `pass_host_header` | | When explicitly `false`, clear `r.Host` before proxying. |
 | `proxy` | | Optional HTTP or HTTPS forward proxy URL used for upstream requests. Credentials may be included in the URL. |
-| `loadbalancer.servers` | | Upstream list; each entry has `url` and optional `weight` (default `1`). |
+| `loadbalancer.servers` | | Upstream list; each entry has `url` (`http://`, `https://` or `unix:///path.sock`) and optional `weight` (default `1`). |
 | `loadbalancer.strategy` | `round_robin` | `round_robin` (smooth weighted), `random` (weighted) or `least_conn` (active requests / weight). |
 | `loadbalancer.sticky.cookie` | | Session affinity cookie, see below. |
 | `loadbalancer.health_check` | | Active health check, see below. |
@@ -46,6 +46,19 @@ server:
 `service` proxies WebSocket (`Connection: Upgrade`) and streaming responses (SSE) transparently. WebSocket upgrades are forwarded over the same transport as regular requests, so `wss://`/`https://` upstreams work, honoring `insecure_skip_verify`. Path rewrites and the `pass_host_header` setting apply to upgrades too.
 
 WebSocket upgrades use HTTP/1.1 to the upstream; backends that only speak HTTP/2 cannot accept them.
+
+## Unix sockets
+
+An upstream written as `unix:///path/to.sock` is reached over that unix socket and spoken to with plain HTTP. The request path is sent unchanged, the socket path is not part of it.
+
+```yaml
+service:
+  loadbalancer:
+    servers:
+      - url: unix:///var/run/docker.sock
+```
+
+Health checks, retries, `h2c` and mirror servers work the same way, and `proxy` is not used for socket upstreams. The socket must be reachable by the Turna process, so mount it into the container. See the [Docker socket proxy](../../../docker#socket-proxy) for a complete example.
 
 ## Prefix Balancer
 

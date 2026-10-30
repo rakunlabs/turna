@@ -45,7 +45,7 @@ server:
         gcp_token:
           format: raw              # use managed_kafka for Google Managed Service for Apache Kafka
           client_id: console
-          client_secret: ${GCP_TOKEN_CLIENT_SECRET}
+          client_secret: change-me
           credentials_file: /etc/certs/gcp/wif-credentials.json
           cert_file: /etc/certs/kafka/client-cert.pem
           key_file: /etc/certs/kafka/client-key.pem

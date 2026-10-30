@@ -15,7 +15,7 @@ server:
           allow_paths:
             - /health
           bypass_header: X-Maintenance-Bypass
-          bypass_value: ${MAINTENANCE_TOKEN}
+          bypass_value: change-me
           message: |
             <!doctype html>
             <title>Maintenance</title>

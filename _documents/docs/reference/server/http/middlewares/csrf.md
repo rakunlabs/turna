@@ -45,7 +45,7 @@ server:
 csrf:
   token:
     enabled: true
-    secret: ${CSRF_SECRET}
+    secret: change-me-32-byte-random-value
 ```
 
 The cookie is not `HttpOnly`, so the frontend can read it and send it back:

@@ -96,3 +96,4 @@ services:
 - Read the [server reference](/reference/server/server) for entrypoints, routers, TLS, and middleware chains.
 - Read the [HTTP middleware index](/reference/server/http/middlewares/) for all supported middleware keys.
 - Read [services](/reference/services) for command execution and dependency behavior.
+- See [Wrap an Application](/examples/wrap) to run Turna as the entrypoint of an existing image with its config in Consul or Vault.
