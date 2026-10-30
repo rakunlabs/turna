@@ -84,13 +84,14 @@ export async function moveTo(entry: Pick<Entry, "path" | "dir">, to: string, ove
   if (!(await leaveDirty(entry.path))) return false;
   try {
     const res = await api.move(entry.path, to, overwrite);
-    await app.refresh(entry.path, res.path);
-    app.toast(`Moved to ${res.path}`);
     const cur = router.path;
+    // leave the old path first, so the open view never sees its file vanish
     if (cur === entry.path || cur.startsWith(entry.path + "/")) {
       app.dirty = false;
       router.go(res.path + cur.slice(entry.path.length));
     }
+    await app.refresh(entry.path, res.path);
+    app.toast(`Moved to ${res.path}`);
     return true;
   } catch (e) {
     if (e instanceof ApiError && e.status === 409 && !entry.dir && !overwrite) {

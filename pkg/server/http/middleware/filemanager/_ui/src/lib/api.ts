@@ -5,6 +5,9 @@ export type Entry = {
   size: number;
   mod_time: string;
   type?: string;
+  /** Only from stat. */
+  etag?: string;
+  etag_mode?: "weak" | "strong" | "hash";
 };
 
 export type Info = {
@@ -63,11 +66,34 @@ export const api = {
     return { data: await res.arrayBuffer(), etag: res.headers.get("ETag") ?? "" };
   },
 
+  /** Reads the file only when it differs from etag; null means unchanged. */
+  async readIfChanged(path: string, etag: string): Promise<{ data: ArrayBuffer; etag: string } | null> {
+    const res = await fetch(url("file", { path }), { headers: etag ? { "If-None-Match": etag } : {} });
+    if (res.status === 304) return null;
+    await check(res);
+    return { data: await res.arrayBuffer(), etag: res.headers.get("ETag") ?? "" };
+  },
+
   fileURL: (path: string) => url("file", { path }),
 
   /** First bytes of a file, to tell text from binary without downloading it all. */
   async head(path: string, bytes = 8192): Promise<ArrayBuffer> {
     const res = await check(await fetch(url("file", { path }), { headers: { Range: `bytes=0-${bytes - 1}` } }));
+    // a server or proxy that ignores Range sends the whole file; only sample the start
+    if (res.status === 200 && res.body) {
+      const reader = res.body.getReader();
+      const out = new Uint8Array(bytes);
+      let n = 0;
+      while (n < bytes) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const take = Math.min(value.length, bytes - n);
+        out.set(value.subarray(0, take), n);
+        n += take;
+      }
+      reader.cancel().catch(() => {});
+      return out.slice(0, n).buffer;
+    }
     return res.arrayBuffer();
   },
 

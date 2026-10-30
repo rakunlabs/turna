@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { Save, ArrowRightLeft, Trash2, Download, LoaderCircle, FileWarning, RotateCcw, Lock, WrapText, FileAudio, PanelRightClose, PanelRightOpen } from "@lucide/svelte";
+  import { onMount, untrack } from "svelte";
+  import { Save, ArrowRightLeft, Trash2, Download, LoaderCircle, FileWarning, RotateCcw, Lock, WrapText, FileAudio, PanelRightClose, PanelRightOpen, Wand } from "@lucide/svelte";
   import { api, ApiError, type Entry } from "../lib/api";
   import { app, router } from "../lib/state.svelte";
   import { dialog } from "../lib/dialog.svelte";
-  import { createEditor, detectLanguage, languageLabels, validate, type EditorHandle } from "../lib/editor";
+  import { createEditor, detectLanguage, languageLabels, type EditorHandle } from "../lib/editor";
+  import { diagnose, formatText, lintLanguage, type Problem } from "../lib/lint";
   import { decodeText, formatDate, formatRelative, formatSize, kindLabel, parentOf, baseName, previewKind, looksLikeText, binaryGroup, MAX_EDIT_SIZE, MAX_TABLE_SIZE, type Preview } from "../lib/format";
   import { renderMarkdown } from "../lib/markdown";
   import { move, remove } from "../lib/actions";
@@ -20,15 +21,19 @@
   let meta = $state<Entry | null>(null);
   let status = $state<"loading" | "text" | "large" | "unplayable" | "error" | Exclude<Preview, "text" | "csv" | "unknown">>("loading");
   let errorText = $state("");
-  let original = "";
   let etag = "";
   let lang = $state("text");
   let saving = $state(false);
-  let problem = $state<string | null>(null);
+  let problems = $state<Problem[]>([]);
   let cursor = $state({ line: 1, col: 1 });
   let lines = $state(0);
   let wrap = $state(false);
   let now = $state(Date.now());
+  let formatting = $state(false);
+  const errors = $derived(problems.filter((p) => p.severity === "error"));
+  const warnings = $derived(problems.length - errors.length);
+  const firstProblem = $derived(errors[0] ?? problems[0] ?? null);
+  const lintLang = $derived(lintLanguage(lang, path));
   // Wide screens: the panel sits beside the editor and the choice is remembered.
   // Narrow screens: it is an overlay that starts closed.
   let detailsHidden = $state(localStorage.getItem("turna-fm-details-hidden") === "1");
@@ -58,6 +63,13 @@
   let token = 0;
 
   const readOnly = $derived(app.info.read_only);
+  const etagHelp: Record<string, string> = {
+    weak: "from modified time and size",
+    strong: "from modified time and size, downloads can resume",
+    hash: "SHA-256 of the content, downloads can resume",
+  };
+  // a compress middleware in front may add W/ to the header but not to the stat body
+  const sameTag = (a?: string, b?: string) => !!a && !!b && a.replace(/^W\//, "") === b.replace(/^W\//, "");
   const isMarkdown = $derived(status === "text" && lang === "markdown");
   const showTable = $derived(status === "text" && isCsv && csvView === "table");
   const showEditor = $derived(status === "text" && !showTable && (!isMarkdown || mode !== "preview"));
@@ -79,18 +91,24 @@
 
   onMount(() => {
     editor = createEditor(host!, {
-      onChange: (text) => {
-        app.dirty = text !== original;
-        lines = editor?.view.state.doc.lines ?? 0;
-        scheduleValidate(text);
-        schedulePreview(text);
+      onChange: () => {
+        if (!editor) return;
+        app.dirty = editor.isDirty();
+        lines = editor.view.state.doc.lines;
+        // only previews need the whole text; plain editing never serialises the document
+        if (isMarkdown || isCsv) schedulePreview();
       },
       onSave: () => save(),
-      onCursor: (line, col) => (cursor = { line, col }),
+      onFormat: () => format(),
+      onCursor: (line, col) => {
+        if (cursor.line !== line || cursor.col !== col) cursor = { line, col };
+      },
+      onProblems: (list) => (problems = list),
     });
     const t = setInterval(() => (now = Date.now()), 30_000);
     return () => {
       clearInterval(t);
+      clearTimeout(pTimer);
       editor?.destroy();
       app.dirty = false;
     };
@@ -100,32 +118,67 @@
     editor?.setReadOnly(readOnly);
   });
 
+  // Opening another path is a full load. Later bumps of app.version (saves, moves, reloads)
+  // only refresh in place so the editor never flashes or loses its cursor.
+  let loadedPath = "";
   $effect(() => {
     void app.version;
-    load(path);
+    const p = path;
+    untrack(() => {
+      if (p !== loadedPath || status === "loading" || status === "error") load(p);
+      else if (status === "text") refreshInPlace(p);
+      else refreshMeta(p);
+    });
   });
+
+  /** Previews (video, images, PDF) restart when reloaded, so only reload them when the file really changed. */
+  async function refreshMeta(p: string) {
+    const my = ++token;
+    try {
+      const stat = await api.stat(p);
+      if (my !== token) return;
+      const changed = !sameTag(meta?.etag, stat.etag) || meta?.size !== stat.size;
+      meta = stat;
+      if (changed) {
+        loadedPath = "";
+        load(p);
+      }
+    } catch (e) {
+      if (my !== token) return;
+      if (e instanceof ApiError && e.status === 404) {
+        errorText = "This file no longer exists.";
+        status = "error";
+      }
+    }
+  }
 
   $effect(() => {
     editor?.setWrap(wrap);
   });
 
-  let vTimer: ReturnType<typeof setTimeout>;
-  function scheduleValidate(text: string) {
-    clearTimeout(vTimer);
-    vTimer = setTimeout(async () => (problem = await validate(lang, text)), 250);
-  }
+  $effect(() => {
+    const l = lintLang;
+    untrack(() => editor?.setLint(status === "text" ? l : null));
+  });
 
   let pTimer: ReturnType<typeof setTimeout>;
-  function schedulePreview(text: string) {
+  function schedulePreview() {
     clearTimeout(pTimer);
-    pTimer = setTimeout(() => (liveText = text), 150);
+    pTimer = setTimeout(() => {
+      if (editor) liveText = editor.getText();
+    }, 150);
   }
+
+  // switching to a preview shows what is in the editor now, not what was loaded
+  $effect(() => {
+    if (showPreview || showTable) untrack(() => editor && status === "text" && (liveText = editor.getText()));
+  });
 
   async function load(p: string) {
     if (app.dirty) return;
     const my = ++token;
     status = "loading";
-    problem = null;
+    problems = [];
     try {
       const stat = await api.stat(p);
       if (my !== token) return;
@@ -143,10 +196,14 @@
       }
 
       if (kind !== "text") {
+        editor?.setLint(null);
+        loadedPath = p;
         status = kind;
         return;
       }
       if (stat.size > MAX_EDIT_SIZE) {
+        editor?.setLint(null);
+        loadedPath = p;
         status = "large";
         return;
       }
@@ -156,18 +213,20 @@
       etag = file.etag;
       const text = decodeText(file.data);
       if (text === null) {
+        editor?.setLint(null);
+        loadedPath = p;
         status = "binary";
         return;
       }
-      original = text;
       liveText = text;
+      editor?.setLint(lintLanguage(lang, p));
       await editor?.setDoc(text, lang);
       if (my !== token) return;
       lines = editor?.view.state.doc.lines ?? 0;
       app.dirty = false;
+      loadedPath = p;
       status = "text";
       if (lang === "markdown") mode = readOnly ? "preview" : "split";
-      problem = await validate(lang, text);
     } catch (e) {
       if (my !== token) return;
       if (e instanceof ApiError && e.status === 404) {
@@ -180,44 +239,86 @@
     }
   }
 
+  /** Picks up changes made elsewhere without a loading state; edits in progress are never replaced. */
+  async function refreshInPlace(p: string) {
+    if (saving) return;
+    const my = ++token;
+    try {
+      const stat = await api.stat(p);
+      if (my !== token) return;
+      meta = stat;
+      if (app.dirty || saving) return;
+      // the stat tag already says whether the content moved; skip the download when it did not
+      if (etag && sameTag(stat.etag, etag)) return;
+      const file = await api.readIfChanged(p, etag);
+      if (my !== token || !file || app.dirty || saving) return;
+      if (file.etag && sameTag(file.etag, etag)) return;
+      const text = decodeText(file.data);
+      if (text === null) return load(p);
+      etag = file.etag;
+      liveText = text;
+      editor?.replaceText(text);
+      editor?.markClean();
+      app.dirty = false;
+    } catch (e) {
+      if (my !== token) return;
+      if (e instanceof ApiError && e.status === 404) {
+        // keep unsaved edits on screen; saving will ask and then recreate the file
+        if (app.dirty) {
+          app.toast("This file was deleted on disk. Save to recreate it.", "error");
+          return;
+        }
+        errorText = "This file no longer exists.";
+        status = "error";
+      }
+    }
+  }
+
   async function save(force = false) {
     if (status !== "text" || readOnly || saving || !editor) return;
     if (!app.dirty && !force) return;
-    const text = editor.getText();
-    if (problem && !force) {
-      const ok = await dialog.confirm({
-        title: `Save invalid ${languageLabels[lang]}?`,
-        description: `${problem}. Clients reading this file may fail to parse it.`,
-        confirm: "Save anyway",
-        danger: true,
-      });
-      if (!ok) return;
+    // snapshot the document object: typing during the request must stay unsaved
+    const doc = editor.view.state.doc;
+    const text = doc.toString();
+    if (!force) {
+      const found = (await diagnose(lintLang, text)).filter((p) => p.severity === "error");
+      if (found.length) {
+        const ok = await dialog.confirm({
+          title: `Save invalid ${languageLabels[lang]}?`,
+          description: `${found[0].message}. Clients reading this file may fail to parse it.`,
+          confirm: "Save anyway",
+          danger: true,
+        });
+        if (!ok) return;
+      }
     }
     saving = true;
+    let retry = false;
     try {
       const res = await api.write(path, text, { etag: force ? undefined : etag });
       etag = res.etag;
-      meta = { ...res.entry, dir: false };
-      original = text;
-      app.dirty = editor.getText() !== original;
+      meta = { ...meta, ...res.entry, dir: false, etag: res.etag };
+      editor.markCleanAt(doc);
+      app.dirty = editor.isDirty();
       app.toast("Saved");
-      await app.refresh(parentOf(path));
+      // only the listing changes; the open file is already up to date
+      app.refreshQuiet(parentOf(path)).catch(() => {});
     } catch (e) {
       if (e instanceof ApiError && e.status === 412) {
-        const ok = await dialog.confirm({
+        saving = false;
+        retry = await dialog.confirm({
           title: "File changed on disk",
           description: "Someone else saved this file after you opened it. Overwrite their version with yours?",
           confirm: "Overwrite",
           danger: true,
         });
-        saving = false;
-        if (ok) return save(true);
-        return;
+      } else {
+        app.error(e);
       }
-      app.error(e);
     } finally {
       saving = false;
     }
+    if (retry) return save(true);
   }
 
   async function revert() {
@@ -230,26 +331,33 @@
     });
     if (!ok) return;
     app.dirty = false;
-    load(path);
+    // fetch again and swap the text in place; Ctrl Z can still bring the edits back
+    etag = "";
+    refreshInPlace(path);
   }
 
   async function changeLang(next: string) {
     lang = next;
-    const text = editor?.getText() ?? "";
-    const dirty = app.dirty;
-    await editor?.setDoc(text, next);
-    app.dirty = dirty;
-    problem = await validate(next, text);
+    await editor?.setLanguage(next);
   }
 
   async function format() {
-    if (lang !== "json" || !editor) return;
+    if (!lintLang || readOnly || !editor || formatting) return;
+    formatting = true;
     try {
-      const pretty = JSON.stringify(JSON.parse(editor.getText()), null, 2) + "\n";
-      editor.view.dispatch({ changes: { from: 0, to: editor.view.state.doc.length, insert: pretty } });
+      editor.replaceText(await formatText(lintLang, editor.getText()));
     } catch (e) {
       app.toast(`Cannot format: ${(e as Error).message}`, "error");
+    } finally {
+      formatting = false;
     }
+  }
+
+  function jumpToProblem() {
+    if (!editor || !firstProblem) return;
+    const view = editor.view;
+    view.dispatch({ selection: { anchor: firstProblem.from }, scrollIntoView: true });
+    view.focus();
   }
 
   function beforeUnload(e: BeforeUnloadEvent) {
@@ -306,8 +414,10 @@
             <option value={k}>{v}</option>
           {/each}
         </select>
-        {#if lang === "json" && !readOnly}
-          <button class="btn h-7 text-[12px]" onclick={format}>Format</button>
+        {#if lintLang && !readOnly}
+          <button class="btn h-7 text-[12px]" onclick={format} disabled={formatting} title="Format document (Shift Alt F)">
+            <Wand class="size-3.5" /> Format
+          </button>
         {/if}
         <button
           class={["icon-btn", wrap && "bg-hover text-ink", showTable && "hidden"]}
@@ -425,11 +535,22 @@
 
     {#if status === "text" && !showTable}
       <div class="code-status tnum flex h-7 shrink-0 items-center gap-4 px-4 text-[12px]">
-        {#if problem}
-          <span class="flex min-w-0 items-center gap-1.5 text-[var(--code-error)]" title={problem}>
-            <span class="size-1.5 shrink-0 rounded-full bg-[var(--code-error)]"></span>
-            <span class="truncate">{problem}</span>
-          </span>
+        {#if firstProblem}
+          <button
+            class={[
+              "flex min-w-0 items-center gap-1.5 hover:underline",
+              errors.length ? "text-[var(--code-error)]" : "text-[var(--code-accent)]",
+            ]}
+            title="{firstProblem.message} (Ctrl Shift M lists all)"
+            onclick={jumpToProblem}
+          >
+            <span class={["size-1.5 shrink-0 rounded-full", errors.length ? "bg-[var(--code-error)]" : "bg-[var(--code-accent)]"]}></span>
+            <span class="whitespace-nowrap">
+              {#if errors.length}{errors.length} {errors.length === 1 ? "error" : "errors"}{/if}{#if errors.length && warnings}, {/if}{#if warnings}{warnings} {warnings === 1 ? "warning" : "warnings"}{/if}
+            </span>
+            <span class="truncate opacity-80 max-sm:hidden">· {firstProblem.message}</span>
+          </button>
+          {#if app.dirty}<span class="whitespace-nowrap text-[var(--code-accent)] max-md:hidden">Unsaved</span>{/if}
         {:else if app.dirty}
           <span class="flex items-center gap-1.5 text-[var(--code-accent)]"><span class="size-1.5 rounded-full bg-[var(--code-accent)]"></span>Unsaved changes</span>
         {:else}
@@ -460,6 +581,16 @@
         <dd class="tnum" title={formatDate(meta.mod_time)}>{formatRelative(meta.mod_time, now)}</dd>
         <dt class="text-muted">Type</dt>
         <dd class="truncate font-mono text-[12px] leading-5" title={meta.type}>{meta.type?.split(";")[0] || kindLabel(path)}</dd>
+        {#if meta.etag_mode}
+          <dt class="text-muted">ETag</dt>
+          <dd class="flex min-w-0 flex-col gap-0.5">
+            <span class="w-fit rounded border border-line-strong px-1 font-mono text-[11px] leading-4">{meta.etag_mode}</span>
+            <span class="text-[12px] text-muted">{etagHelp[meta.etag_mode]}</span>
+            {#if meta.etag}
+              <span class="truncate font-mono text-[11px] text-faint" title={meta.etag}>{meta.etag}</span>
+            {/if}
+          </dd>
+        {/if}
       </dl>
       <RawURL {path} type={meta.type} />
       <a class="btn w-full justify-center" href={api.downloadURL(path)}><Download class="size-3.5" /> Download</a>

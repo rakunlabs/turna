@@ -162,8 +162,10 @@
   }
 
   async function reload() {
-    for (const k of Object.keys(app.dirs)) delete app.dirs[k];
-    await app.loadDir("/").catch((e) => app.error(e));
+    // refresh in place: unchanged folders keep their arrays, so nothing collapses or flashes
+    const cached = Object.keys(app.dirs);
+    await Promise.all(cached.map((k) => app.loadDir(k, true).catch(() => delete app.dirs[k])));
+    if (!app.dirs["/"]) await app.loadDir("/").catch((e) => app.error(e));
     app.version++;
   }
 </script>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { Folder, FolderPlus, FilePlus, Upload, ArrowRightLeft, Trash2, Download, LoaderCircle, FolderOpen } from "@lucide/svelte";
   import type { Entry } from "../lib/api";
   import { api } from "../lib/api";
@@ -19,10 +20,13 @@
 
   const entries = $derived(app.dirs[path]);
 
+  // FolderView is keyed by path, so this runs once; reloads must not clear what the user typed
   $effect(() => {
-    error = null;
-    filter = "";
-    app.loadDir(path).catch((e) => (error = e.message));
+    if (app.dirs[path]) return;
+    untrack(() => {
+      error = null;
+      app.loadDir(path).catch((e) => (error = e.message));
+    });
   });
 
   $effect(() => {

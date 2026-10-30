@@ -12,7 +12,7 @@ class AppState {
   loading = $state<Record<string, boolean>>({});
   toasts = $state<Toast[]>([]);
   dirty = $state(false);
-  /** Bumped after mutations so open views can refresh. */
+  /** Bumped after mutations and manual reloads so open views can refresh. */
   version = $state(0);
 
   rawURL(path: string): string {
@@ -24,15 +24,29 @@ class AppState {
     this.loading[path] = true;
     try {
       const res = await api.list(path);
-      this.dirs[path] = res.entries;
-      return res.entries;
+      const prev = this.dirs[path];
+      // keep the same array when nothing changed so lists and the tree do not re-render
+      if (!prev || !sameEntries(prev, res.entries)) this.dirs[path] = res.entries;
+      return this.dirs[path];
     } finally {
       delete this.loading[path];
     }
   }
 
-  /** Reload every cached directory affected by a change at path. */
+  /**
+   * Reload every cached directory affected by a change at path.
+   * notify bumps version so open views re-check their content; a save of the
+   * open file does not need it, the editor already has the new text.
+   */
   async refresh(...paths: string[]) {
+    return this.refreshDirs(paths, true);
+  }
+
+  async refreshQuiet(...paths: string[]) {
+    return this.refreshDirs(paths, false);
+  }
+
+  private async refreshDirs(paths: string[], notify: boolean) {
     const targets = new Set<string>();
     for (const p of paths) {
       targets.add(p);
@@ -48,7 +62,7 @@ class AppState {
     await Promise.all(
       [...targets].filter((p) => this.dirs[p]).map((p) => this.loadDir(p, true).catch(() => delete this.dirs[p])),
     );
-    this.version++;
+    if (notify) this.version++;
   }
 
   expandTo(path: string) {
@@ -77,6 +91,16 @@ class AppState {
 }
 
 export const app = new AppState();
+
+function sameEntries(a: Entry[], b: Entry[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (x.path !== y.path || x.dir !== y.dir || x.size !== y.size || x.mod_time !== y.mod_time || x.type !== y.type) return false;
+  }
+  return true;
+}
 
 /** Hash router: #/path/to/file */
 class Router {

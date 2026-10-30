@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
@@ -146,9 +147,15 @@ type FileManager struct {
 	Title string `cfg:"title"`
 	// CacheControl is set on raw file responses. Default is no-cache.
 	CacheControl string `cfg:"cache_control"`
+	// ETag selects the validator sent with files: "weak" (default) and
+	// "strong" derive it from modification time and size, "hash" hashes the content.
+	ETag string `cfg:"etag"`
+	// ETagRules override ETag for files matching a pattern; the first match wins.
+	ETagRules []ETagRule `cfg:"etag_rules"`
 
-	root *os.Root
-	ui   http.Handler
+	root      *os.Root
+	ui        http.Handler
+	etagCache sync.Map
 }
 
 type entry struct {
@@ -158,6 +165,9 @@ type entry struct {
 	Size    int64     `json:"size"`
 	ModTime time.Time `json:"mod_time"`
 	Type    string    `json:"type,omitempty"`
+	// ETag and ETagMode are filled by stat only, for the details panel.
+	ETag     string `json:"etag,omitempty"`
+	ETagMode string `json:"etag_mode,omitempty"`
 }
 
 type apiError struct {
@@ -209,6 +219,10 @@ func (m *FileManager) Middleware() (func(http.Handler) http.Handler, error) {
 
 	if m.CacheControl == "" {
 		m.CacheControl = "no-cache"
+	}
+
+	if err := m.initETag(); err != nil {
+		return nil, fmt.Errorf("file_manager: %w", err)
 	}
 
 	if !m.DisableUI {
@@ -313,10 +327,6 @@ func contentType(name string) string {
 	return ""
 }
 
-func etag(info fs.FileInfo) string {
-	return `W/"` + strconv.FormatInt(info.ModTime().UnixNano(), 36) + "-" + strconv.FormatInt(info.Size(), 36) + `"`
-}
-
 func (m *FileManager) serveRaw(w http.ResponseWriter, r *http.Request, p string) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
@@ -367,7 +377,9 @@ func (m *FileManager) serveFile(w http.ResponseWriter, r *http.Request, name str
 	}
 
 	w.Header().Set("Cache-Control", m.CacheControl)
-	w.Header().Set("ETag", etag(info))
+	if tag := m.etag(name, info); tag != "" {
+		w.Header().Set("ETag", tag)
+	}
 
 	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }
@@ -441,7 +453,11 @@ func (m *FileManager) apiStat(w http.ResponseWriter, r *http.Request) {
 	if !e.Dir {
 		e.Size = info.Size()
 		e.Type = contentType(name)
-		w.Header().Set("ETag", etag(info))
+		e.ETagMode = m.etagMode(name)
+		if tag := m.etag(name, info); tag != "" {
+			e.ETag = tag
+			w.Header().Set("ETag", tag)
+		}
 	}
 
 	writeJSON(w, http.StatusOK, e)
@@ -548,15 +564,16 @@ func (m *FileManager) apiWrite(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if match := r.Header.Get("If-Match"); match != "" && match != etag(info) {
-			writeJSON(w, http.StatusPreconditionFailed, apiError{Error: "file changed since it was opened"})
+		var current string
+		if r.Header.Get("If-Match") != "" || r.Header.Get("If-None-Match") != "" {
+			current = m.etag(name, info)
+		}
 
+		if !checkPreconditions(w, r, current) {
 			return
 		}
 	case errors.Is(err, fs.ErrNotExist):
-		if r.Header.Get("If-Match") != "" {
-			writeJSON(w, http.StatusPreconditionFailed, apiError{Error: "file no longer exists"})
-
+		if !checkPreconditions(w, r, "") {
 			return
 		}
 	default:
@@ -578,7 +595,9 @@ func (m *FileManager) apiWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("ETag", etag(info))
+	if tag := m.etag(name, info); tag != "" {
+		w.Header().Set("ETag", tag)
+	}
 	writeJSON(w, http.StatusOK, entry{
 		Name:    info.Name(),
 		Path:    toPublic(name),
@@ -625,6 +644,9 @@ func (m *FileManager) writeFile(name string, body io.Reader) error {
 		return err
 	}
 
+	// the new file can share modtime and size with the old one, so the cached hash cannot be trusted
+	m.forgetETags(name)
+
 	return nil
 }
 
@@ -647,6 +669,8 @@ func (m *FileManager) apiDelete(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
+	m.forgetETags(name)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -746,6 +770,9 @@ func (m *FileManager) apiMove(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
+	m.forgetETags(from)
+	m.forgetETags(to)
 
 	writeJSON(w, http.StatusOK, map[string]string{"path": toPublic(to)})
 }

@@ -1,4 +1,4 @@
-import { EditorState, Compartment, type Extension } from "@codemirror/state";
+import { EditorState, Compartment, Transaction, type Extension, type Text } from "@codemirror/state";
 import {
   EditorView,
   keymap,
@@ -20,24 +20,12 @@ import {
   foldKeymap,
 } from "@codemirror/language";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import { linter, lintGutter, lintKeymap } from "@codemirror/lint";
 import { tags as t } from "@lezer/highlight";
+import { diagnose, type Problem } from "./lint";
 
 export { languageLabels, detectLanguage, loadLanguage } from "./languages";
 import { loadLanguage } from "./languages";
-
-/** Returns a problem description when the text does not parse, null when fine or not checkable. */
-export async function validate(lang: string, text: string): Promise<string | null> {
-  if (!text.trim()) return null;
-  if (lang === "json") {
-    try {
-      JSON.parse(text);
-      return null;
-    } catch (e) {
-      return (e as Error).message;
-    }
-  }
-  return null;
-}
 
 // Vesper, the theme the turna docs use for code blocks. Code stays dark in both page themes.
 const highlight = HighlightStyle.define([
@@ -137,27 +125,89 @@ const theme = EditorView.theme(
       borderRadius: "6px",
     },
     ".cm-specialChar": { color: "var(--code-error)" },
+    ".cm-gutter-lint": { width: "14px" },
+    ".cm-gutter-lint .cm-gutterElement": { padding: "0 0 0 4px" },
+    ".cm-lint-marker": { width: "8px", height: "8px", marginTop: "7px", borderRadius: "50%", content: "none" },
+    ".cm-lint-marker-error": { content: "none", backgroundColor: "var(--code-error)" },
+    ".cm-lint-marker-warning": { content: "none", backgroundColor: "var(--code-accent)" },
+    ".cm-lintRange-error": {
+      backgroundImage: "none",
+      textDecoration: "underline wavy var(--code-error)",
+      textDecorationSkipInk: "none",
+      textUnderlineOffset: "3px",
+    },
+    ".cm-lintRange-warning": {
+      backgroundImage: "none",
+      textDecoration: "underline wavy var(--code-accent)",
+      textDecorationSkipInk: "none",
+      textUnderlineOffset: "3px",
+    },
+    ".cm-lintPoint-error:after": { borderBottomColor: "var(--code-error)" },
+    ".cm-lintPoint-warning:after": { borderBottomColor: "var(--code-accent)" },
+    ".cm-tooltip-lint": { padding: "2px 0", maxWidth: "520px" },
+    ".cm-diagnostic": { fontFamily: "var(--font-sans)", fontSize: "12px", padding: "4px 10px", borderLeftWidth: "3px" },
+    ".cm-diagnostic-error": { borderLeftColor: "var(--code-error)" },
+    ".cm-diagnostic-warning": { borderLeftColor: "var(--code-accent)" },
+    ".cm-panel.cm-panel-lint ul [aria-selected]": { backgroundColor: "var(--code-selection)" },
   },
   { dark: true },
 );
 
 export type EditorHandle = {
   view: EditorView;
+  /** Opens a new document: resets undo history, selection and scroll. */
   setDoc(text: string, lang: string): Promise<void>;
+  /** Replaces the text in place, keeping undo history; the cursor stays as close as it can. */
+  replaceText(text: string): void;
+  setLanguage(lang: string): Promise<void>;
+  /** Language whose parser checks the text; null turns linting off. */
+  setLint(lang: string | null): void;
   setReadOnly(readOnly: boolean): void;
   setWrap(wrap: boolean): void;
   getText(): string;
+  /** Remembers the current text as saved; isDirty compares against it. */
+  markClean(): void;
+  /** Remembers doc, an earlier snapshot, as saved; edits made since stay dirty. */
+  markCleanAt(doc: Text): void;
+  isDirty(): boolean;
   destroy(): void;
 };
 
 export function createEditor(
   parent: HTMLElement,
-  opts: { onChange: (text: string) => void; onSave: () => void; onCursor: (line: number, col: number) => void },
+  opts: {
+    /** Called on every edit; read the text lazily with getText, it can be megabytes. */
+    onChange: () => void;
+    onSave: () => void;
+    onFormat: () => void;
+    onCursor: (line: number, col: number) => void;
+    onProblems: (problems: Problem[]) => void;
+  },
 ): EditorHandle {
   const language = new Compartment();
   const readOnly = new Compartment();
   const wrapping = new Compartment();
+  const linting = new Compartment();
   let wrap = false;
+  let ro = false;
+  let lintLang: string | null = null;
+  let langToken = 0;
+
+  const lintExt = (lang: string | null): Extension =>
+    lang
+      ? [
+          lintGutter(),
+          linter(
+            async (view) => {
+              const doc = view.state.doc;
+              const problems = await diagnose(lang, doc.toString(), doc);
+              if (view.state.doc === doc) opts.onProblems(problems);
+              return problems;
+            },
+            { delay: 300 },
+          ),
+        ]
+      : [];
 
   const base = (): Extension[] => [
     lineNumbers(),
@@ -176,18 +226,21 @@ export function createEditor(
     syntaxHighlighting(highlight),
     keymap.of([
       { key: "Mod-s", preventDefault: true, run: () => (opts.onSave(), true) },
+      { key: "Shift-Alt-f", preventDefault: true, run: () => (opts.onFormat(), true) },
       indentWithTab,
       ...defaultKeymap,
       ...historyKeymap,
       ...foldKeymap,
       ...searchKeymap,
+      ...lintKeymap,
     ]),
     theme,
     language.of([]),
-    readOnly.of([]),
+    readOnly.of(ro ? [EditorState.readOnly.of(true)] : []),
     wrapping.of(wrap ? EditorView.lineWrapping : []),
+    linting.of(lintExt(lintLang)),
     EditorView.updateListener.of((u) => {
-      if (u.docChanged) opts.onChange(u.state.doc.toString());
+      if (u.docChanged) opts.onChange();
       if (u.selectionSet || u.docChanged) {
         const head = u.state.selection.main.head;
         const line = u.state.doc.lineAt(head);
@@ -197,18 +250,52 @@ export function createEditor(
   ];
 
   const view = new EditorView({ parent, state: EditorState.create({ doc: "", extensions: base() }) });
+  let clean: Text = view.state.doc;
 
-  let ro = false;
+  async function setLanguage(lang: string) {
+    const my = ++langToken;
+    const ext = await loadLanguage(lang);
+    if (my !== langToken) return;
+    view.dispatch({ effects: language.reconfigure(ext) });
+  }
 
   return {
     view,
     async setDoc(text, lang) {
+      const my = ++langToken;
       const ext = await loadLanguage(lang);
+      if (my !== langToken) return;
       view.setState(EditorState.create({ doc: text, extensions: base() }));
-      view.dispatch({
-        effects: [language.reconfigure(ext), readOnly.reconfigure(ro ? [EditorState.readOnly.of(true)] : [])],
-      });
+      view.dispatch({ effects: language.reconfigure(ext) });
+      clean = view.state.doc;
       opts.onCursor(1, 1);
+    },
+    replaceText(text) {
+      const state = view.state;
+      const old = state.doc.toString();
+      if (old === text) return;
+      // touch only the changed middle so the cursor, scroll and folds stay put
+      let start = 0;
+      const max = Math.min(old.length, text.length);
+      while (start < max && old.charCodeAt(start) === text.charCodeAt(start)) start++;
+      let endOld = old.length;
+      let endNew = text.length;
+      while (endOld > start && endNew > start && old.charCodeAt(endOld - 1) === text.charCodeAt(endNew - 1)) {
+        endOld--;
+        endNew--;
+      }
+      view.dispatch({
+        changes: { from: start, to: endOld, insert: text.slice(start, endNew) },
+        annotations: Transaction.userEvent.of("input.format"),
+        scrollIntoView: false,
+      });
+    },
+    setLanguage,
+    setLint(lang) {
+      if (lang === lintLang) return;
+      lintLang = lang;
+      view.dispatch({ effects: linting.reconfigure(lintExt(lang)) });
+      if (!lang) opts.onProblems([]);
     },
     setReadOnly(value) {
       ro = value;
@@ -219,6 +306,16 @@ export function createEditor(
       view.dispatch({ effects: wrapping.reconfigure(value ? EditorView.lineWrapping : []) });
     },
     getText: () => view.state.doc.toString(),
+    markClean() {
+      clean = view.state.doc;
+    },
+    markCleanAt(doc) {
+      clean = doc;
+    },
+    isDirty() {
+      const doc = view.state.doc;
+      return doc !== clean && (doc.length !== clean.length || !doc.eq(clean));
+    },
     destroy: () => view.destroy(),
   };
 }
