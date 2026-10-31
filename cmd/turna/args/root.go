@@ -88,6 +88,7 @@ func Execute(ctx context.Context) error {
 	)
 
 	rootCmd.AddCommand(apiCmd)
+	rootCmd.AddCommand(whoamiCmd)
 
 	return rootCmd.ExecuteContext(ctx) //nolint:wrapcheck // no need
 }

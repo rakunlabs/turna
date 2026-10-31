@@ -408,6 +408,8 @@ func (h HTTPMiddleware) refs() []string {
 		add(h.Gateway.Refs()...)
 	case h.Canary != nil:
 		add(h.Canary.Refs()...)
+	case h.Errors != nil:
+		add(h.Errors.Refs()...)
 	case h.InfoMiddleware != nil:
 		add(h.InfoMiddleware.SessionMiddleware)
 	case h.SessionInfoMiddleware != nil:

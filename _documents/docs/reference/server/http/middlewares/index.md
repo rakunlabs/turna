@@ -45,10 +45,12 @@ A single named middleware can hold only one middleware type. If you need both he
 | `csrf` | Reject cross-site requests; optional double-submit token. |
 | `decompress` | Decompress gzip, Brotli or zstd request bodies. |
 | `dns_path` | Route to DNS-resolved instances selected from the path. |
+| `errors` | Replace error responses with custom pages from config, a directory or a service. |
 | `fault_injection` | Delay or fail a share of requests for resilience testing. |
 | `file_manager` | Browse, edit, upload and move files in a directory through a UI; serve them by path. |
 | `folder` | Serve files and SPA assets from a directory. |
 | `forward` | Forward proxy for HTTP and CONNECT requests. |
+| `forward_auth` | Ask an external auth service (Authelia, oauth2-proxy, …) whether a request may pass. |
 | `gateway` | Route by path, method, header and query with Gateway API style filters and weighted backends. |
 | `gcp_token` | Google Cloud token via X.509 workload identity federation (OAuth2 endpoint or header inject). |
 | `grpcui` | Browser UI for gRPC services. |
@@ -57,6 +59,7 @@ A single named middleware can hold only one middleware type. If you need both he
 | `hello` | Return a static or templated response. |
 | `iam_check` | Check request authorization through an IAM API. |
 | `iam_forward_auth` | Forward-auth endpoint for external proxies. |
+| `idempotency` | Answer repeated requests with the same `Idempotency-Key` with the stored response. |
 | `info` | Return cookie or session value content. |
 | `inject` | Rewrite response bodies by path. |
 | `ip_filter` | Allow or deny requests by client IP or CIDR. |
@@ -74,6 +77,7 @@ A single named middleware can hold only one middleware type. If you need both he
 | `regex_path` | Rewrite the URL path with a regex. |
 | `request` | Make an outbound HTTP request and return its response. |
 | `request_id` | Ensure `X-Request-Id` exists. |
+| `retry` | Send a request again with backoff when the upstream fails. |
 | `role` | Role authorization (global and per path/method) and role based data after `session`. |
 | `scope` | Check scopes in parsed claims. |
 | `secure_headers` | HSTS, CSP with nonces and other security headers with safe defaults. |
@@ -81,6 +85,7 @@ A single named middleware can hold only one middleware type. If you need both he
 | `session` | Validate bearer/session tokens and set identity headers. |
 | `session_info` | Return selected claims from a session token. |
 | `set` | Set Turna request-context values for other middlewares. |
+| `signed_url` | Allow requests with a valid, unexpired HMAC signature in the query. |
 | `splitter` | Select a sub-chain using expressions. |
 | `strip_prefix` | Remove one of several path prefixes. |
 | `telemetry` | OpenTelemetry traces and metrics of requests. |
@@ -91,3 +96,4 @@ A single named middleware can hold only one middleware type. If you need both he
 | `url` | Modify scheme, host, path, query, fragment, and port by rule. |
 | `view` | Serve a combined Swagger/API documentation UI. |
 | `webhook_signature` | Verify HMAC signatures of webhooks (GitHub, Stripe, Slack, Shopify, Standard Webhooks). |
+| `whoami` | Echo server, host and request details, like `traefik/whoami`. |

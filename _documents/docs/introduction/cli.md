@@ -34,6 +34,25 @@ Flags:
 | `-k`, `--insecure` | `false` | Skip TLS certificate verification. |
 | `-s`, `--silent` | `false` | Suppress response body output. |
 
+## Whoami Command
+
+```sh
+turna whoami --address :8080 --name app
+```
+
+The `whoami` command runs a server that answers with host and request details, like `traefik/whoami`. It does not load configuration. Endpoints are described in the [`whoami` middleware](../reference/server/http/middlewares/whoami#endpoints).
+
+Flags:
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `-a`, `--address` | `:80` | Listen address. |
+| `-n`, `--name` | | Name printed in responses. |
+| `--env` | `false` | Allow printing the environment with `?env=true`. |
+| `--cert` | | TLS certificate file. Requires `--key`. |
+| `--key` | | TLS key file. Requires `--cert`. |
+| `--max-wait` | `30s` | Upper bound for `?wait`. |
+
 ## Shell Completion
 
 Cobra provides completion subcommands through `turna completion`. Run `turna completion --help` for the supported shells.

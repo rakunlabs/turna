@@ -89,7 +89,7 @@ var (
 		"add_prefix", "strip_prefix", "regex_path", "headers", "cors", "basic_auth",
 		"block", "gzip", "compress", "decompress", "rate_limit", "redirection",
 		"request_id", "access_log", "log", "url", "csrf", "ip_filter", "body_limit", "timeout",
-		"circuit_breaker", "concurrency_limit", "real_ip", "secure_headers",
+		"circuit_breaker", "concurrency_limit", "real_ip", "secure_headers", "retry",
 	}
 	DefaultTCPMiddlewares = []string{
 		"ip_allow_list", "ip_deny_list", "conn_limit", "rate_limit", "idle_timeout",

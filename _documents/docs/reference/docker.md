@@ -29,15 +29,19 @@ services:
       - ./turna.yaml:/turna.yaml:ro
 
   app:
-    image: traefik/whoami
+    image: ghcr.io/rakunlabs/turna:latest
+    command: ["whoami"]
     deploy:
       replicas: 2
     labels:
       turna.enable: "true"
       turna.http.routers.app.host: app.example.com
+      turna.http.services.app.port: "80"
 ```
 
-Requests for `app.example.com` are balanced over both replicas on their only exposed port. Containers without `turna.enable=true` are ignored unless `exposed_by_default` is set.
+Requests for `app.example.com` are balanced over both replicas on port 80. Without a `port` label the container's only exposed port is used. Containers without `turna.enable=true` are ignored unless `exposed_by_default` is set.
+
+The `app` container runs [`turna whoami`](../introduction/cli#whoami-command), which answers with its hostname, so each response shows which replica served it.
 
 ::: warning Docker socket
 Access to the Docker socket is equivalent to root on the host. A read-only mount does not limit API calls, only a filtering proxy does. Turna can be that proxy itself, see [Socket proxy](#socket-proxy).
@@ -180,11 +184,11 @@ Labels can be set by anyone who can start a container, so only middlewares that 
 
 | Kind | Allowed by default |
 | --- | --- |
-| HTTP | `add_prefix`, `strip_prefix`, `regex_path`, `headers`, `cors`, `basic_auth`, `block`, `gzip`, `compress`, `decompress`, `rate_limit`, `redirection`, `request_id`, `access_log`, `log`, `url`, `csrf`, `ip_filter`, `body_limit`, `timeout`, `circuit_breaker`, `concurrency_limit`, `real_ip`, `secure_headers` |
+| HTTP | `add_prefix`, `strip_prefix`, `regex_path`, `headers`, `cors`, `basic_auth`, `block`, `gzip`, `compress`, `decompress`, `rate_limit`, `redirection`, `request_id`, `access_log`, `log`, `url`, `csrf`, `ip_filter`, `body_limit`, `timeout`, `circuit_breaker`, `concurrency_limit`, `real_ip`, `secure_headers`, `retry` |
 | TCP | `ip_allow_list`, `ip_deny_list`, `conn_limit`, `rate_limit`, `idle_timeout`, `bandwidth_limit`, `proxy_protocol`, `log`, `block`, `circuit_breaker`, `sni_allow_list` |
 | UDP | `ip_allow_list`, `ip_deny_list`, `rate_limit`, `log`, `block`, `session_limit`, `bandwidth_limit` |
 
-Types that read files or loaded data of Turna (`folder`, `template`, `inject`, `view`), hold credentials (`auth`, `login`, `session`, `gcp_token`) or reach other hosts (`service`, `forward`, `request`, `cache`, `jwt`, TCP `mirror`) need an explicit allow. `rate_limit.redis` is always rejected in labels, since it would connect Turna to an address chosen by the container. Prefer defining them in the static configuration and listing them in `static_middlewares`.
+Types that read files or loaded data of Turna (`folder`, `template`, `inject`, `view`), hold credentials (`auth`, `login`, `session`, `gcp_token`) or reach other hosts (`service`, `forward`, `forward_auth`, `request`, `cache`, `jwt`, TCP `mirror`) need an explicit allow. `rate_limit.redis` and `idempotency.redis` are always rejected in labels, since they would connect Turna to an address chosen by the container. Prefer defining them in the static configuration and listing them in `static_middlewares`.
 
 ### TCP and UDP
 
@@ -241,7 +245,8 @@ services:
         constraints: [node.role == manager]
 
   api:
-    image: traefik/whoami
+    image: ghcr.io/rakunlabs/turna:latest
+    command: ["whoami"]
     networks: [app]
     deploy:
       replicas: 3

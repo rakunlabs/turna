@@ -211,6 +211,21 @@ func TestTranslateRejects(t *testing.T) {
 			err:    "rate_limit redis is not allowed",
 		},
 		{
+			name:   "idempotency redis in labels",
+			cfg:    Config{HTTP: Protocol{Middlewares: []string{"idempotency"}}},
+			labels: map[string]string{"turna.http.middlewares.f.idempotency.redis.address": "evil:6379"},
+			err:    "idempotency redis is not allowed",
+		},
+		{
+			name:   "forward auth needs an allow",
+			labels: map[string]string{"turna.http.middlewares.f.forward_auth.address": "http://evil"},
+			err:    "type forward_auth is not allowed",
+		},
+		{
+			name:   "retry allowed",
+			labels: map[string]string{"turna.http.middlewares.f.retry.attempts": "3", "turna.http.middlewares.f.retry.statuses": "502,503"},
+		},
+		{
 			name: "new filter middlewares allowed",
 			labels: map[string]string{
 				"turna.http.middlewares.f.ip_filter.allow":     "10.0.0.0/8,192.168.0.0/16",

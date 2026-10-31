@@ -20,10 +20,12 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/csrf"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/decompress"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/dnspath"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/errorpages"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/faultinjection"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/filemanager"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/forward"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/forwardauth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/gateway"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/gcptoken"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/grpcui"
@@ -32,6 +34,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/hello"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iamcheck"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/iamforwardauth"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/idempotency"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/info"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/inject"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/ipfilter"
@@ -49,6 +52,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/regexpath"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/request"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/requestid"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/retry"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/role"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/scope"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/secureheaders"
@@ -56,6 +60,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/sessioninfo"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/set"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/signedurl"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/splitter"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/stripprefix"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/telemetry"
@@ -66,6 +71,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/url"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/view"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/webhooksignature"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/whoami"
 
 	"github.com/rakunlabs/turna/pkg/server/registry"
 )
@@ -76,6 +82,7 @@ type HTTPMiddleware struct {
 	AddPrefixMiddleware        *addprefix.AddPrefix                  `cfg:"add_prefix"`
 	InjectMiddleware           *inject.Inject                        `cfg:"inject"`
 	HelloMiddleware            *hello.Hello                          `cfg:"hello"`
+	Whoami                     *whoami.Whoami                        `cfg:"whoami"`
 	TemplateMiddleware         *template.Template                    `cfg:"template"`
 	InfoMiddleware             *info.Info                            `cfg:"info"`
 	SetMiddleware              *set.Set                              `cfg:"set"`
@@ -134,6 +141,11 @@ type HTTPMiddleware struct {
 	JWT                        *jwt.JWT                              `cfg:"jwt"`
 	Canary                     *canary.Canary                        `cfg:"canary"`
 	FaultInjection             *faultinjection.FaultInjection        `cfg:"fault_injection"`
+	Idempotency                *idempotency.Idempotency              `cfg:"idempotency"`
+	ForwardAuth                *forwardauth.ForwardAuth              `cfg:"forward_auth"`
+	Errors                     *errorpages.Errors                    `cfg:"errors"`
+	Retry                      *retry.Retry                          `cfg:"retry"`
+	SignedURL                  *signedurl.SignedURL                  `cfg:"signed_url"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
@@ -145,6 +157,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	case h.HelloMiddleware != nil:
 		m, err := h.HelloMiddleware.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.Whoami != nil:
+		m, err := h.Whoami.Middleware()
 		return []MiddlewareFunc{m}, err
 	case h.TemplateMiddleware != nil:
 		m, err := h.TemplateMiddleware.Middleware()
@@ -295,6 +310,21 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	case h.FaultInjection != nil:
 		m, err := h.FaultInjection.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.Idempotency != nil:
+		m, err := h.Idempotency.Middleware(ctx)
+		return []MiddlewareFunc{m}, err
+	case h.ForwardAuth != nil:
+		m, err := h.ForwardAuth.Middleware(ctx)
+		return []MiddlewareFunc{m}, err
+	case h.Errors != nil:
+		m, err := h.Errors.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.Retry != nil:
+		m, err := h.Retry.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.SignedURL != nil:
+		m, err := h.SignedURL.Middleware()
 		return []MiddlewareFunc{m}, err
 	case h.Auth != nil:
 		m, err := h.Auth.Middleware(ctx, name)

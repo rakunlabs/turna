@@ -54,7 +54,7 @@ keycloak: ## Run keycloak server
 
 .PHONY: whoami
 whoami: ## Run whoami server
-	docker run --rm -it -p 9090:80 traefik/whoami:latest
+	go run ./cmd/turna whoami --address :9090
 
 .PHONY: dragonfly
 dragonfly: ## Run dragonfly server

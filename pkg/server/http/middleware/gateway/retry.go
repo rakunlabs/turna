@@ -1,15 +1,12 @@
 package gateway
 
 import (
-	"bufio"
-	"bytes"
-	"io"
-	"net"
 	"net/http"
 	"slices"
 	"time"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/internal/replay"
 )
 
 // DefaultRetryMaxBodySize is the largest request body buffered for retries.
@@ -63,7 +60,7 @@ func (c *Retry) middleware(backendTimeout time.Duration) func(http.Handler) http
 		}
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			body, ok, err := bufferBody(r, maxBody)
+			body, ok, err := replay.BufferBody(r, maxBody)
 			if err != nil {
 				writeError(w, r, http.StatusBadRequest)
 
@@ -92,165 +89,19 @@ func (c *Retry) middleware(backendTimeout time.Duration) func(http.Handler) http
 				last := attempt >= attempts
 
 				req, failed := httputil.WithUpstreamFailure(r.Clone(r.Context()))
-				rw := &retryWriter{
-					ResponseWriter: w,
-					header:         w.Header().Clone(),
-					retryable: func(code int) bool {
-						return !last && r.Context().Err() == nil && (slices.Contains(codes, code) || failed.Load())
-					},
-				}
+				rw := replay.NewWriter(w, func(code int) bool {
+					return !last && r.Context().Err() == nil && (slices.Contains(codes, code) || failed.Load())
+				})
 
-				if body != nil {
-					req.Body = io.NopCloser(bytes.NewReader(body))
-					req.GetBody = func() (io.ReadCloser, error) {
-						return io.NopCloser(bytes.NewReader(body)), nil
-					}
-				}
+				replay.SetBody(req, body)
 
 				next.ServeHTTP(rw, req)
+				rw.Finish()
 
-				if !rw.discard {
+				if !rw.Discarded() {
 					return
 				}
 			}
 		})
 	}
-}
-
-// bufferBody reads the request body when it is not larger than limit. ok is
-// false when the body is larger; r.Body then still yields the whole body.
-// A body of unknown length is a stream, such as gRPC streaming or a chunked
-// upload, which may wait for the response before it ends; it is not
-// buffered and not retried.
-func bufferBody(r *http.Request, limit int64) (body []byte, ok bool, err error) {
-	if r.Body == nil || r.Body == http.NoBody {
-		return nil, true, nil
-	}
-
-	if r.ContentLength > limit || r.ContentLength < 0 {
-		return nil, false, nil
-	}
-
-	buf, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
-	if err != nil {
-		return nil, false, err
-	}
-
-	if int64(len(buf)) > limit {
-		r.Body = readCloser{Reader: io.MultiReader(bytes.NewReader(buf), r.Body), Closer: r.Body}
-
-		return nil, false, nil
-	}
-
-	_ = r.Body.Close()
-
-	return buf, true, nil
-}
-
-type readCloser struct {
-	io.Reader
-	io.Closer
-}
-
-// retryWriter holds back response headers until the status is known and
-// drops the response when the status is retryable.
-type retryWriter struct {
-	http.ResponseWriter
-
-	header    http.Header
-	retryable func(code int) bool
-	written   bool
-	discard   bool
-}
-
-func (w *retryWriter) Header() http.Header {
-	if w.written && !w.discard {
-		// trailers are set after the status is written
-		return w.ResponseWriter.Header()
-	}
-
-	return w.header
-}
-
-func (w *retryWriter) WriteHeader(code int) {
-	if w.written {
-		return
-	}
-
-	if informational(code) {
-		// interim responses such as 103 Early Hints are sent on; a later
-		// retry still sends its own final response
-		if code != http.StatusSwitchingProtocols {
-			w.copyHeader()
-			w.ResponseWriter.WriteHeader(code)
-		}
-
-		return
-	}
-
-	w.written = true
-
-	if w.retryable(code) {
-		w.discard = true
-
-		return
-	}
-
-	w.copyHeader()
-	w.ResponseWriter.WriteHeader(code)
-}
-
-// copyHeader sets the headers of the attempt on the response.
-func (w *retryWriter) copyHeader() {
-	dst := w.ResponseWriter.Header()
-	for k := range dst {
-		if _, ok := w.header[k]; !ok {
-			delete(dst, k)
-		}
-	}
-
-	for k, v := range w.header {
-		dst[k] = v
-	}
-}
-
-func (w *retryWriter) Write(b []byte) (int, error) {
-	if !w.written {
-		w.WriteHeader(http.StatusOK)
-	}
-
-	if w.discard {
-		return len(b), nil
-	}
-
-	return w.ResponseWriter.Write(b)
-}
-
-func (w *retryWriter) Flush() {
-	if !w.written {
-		w.WriteHeader(http.StatusOK)
-	}
-
-	if w.discard {
-		return
-	}
-
-	if f, ok := w.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
-	}
-}
-
-// Hijack hands the connection over, for example for upgraded connections.
-// A hijacked attempt is final.
-func (w *retryWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	conn, rw, err := http.NewResponseController(w.ResponseWriter).Hijack()
-	if err == nil {
-		w.written = true
-	}
-
-	return conn, rw, err
-}
-
-func (w *retryWriter) Unwrap() http.ResponseWriter {
-	return w.ResponseWriter
 }
