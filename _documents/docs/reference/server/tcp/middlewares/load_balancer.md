@@ -36,6 +36,17 @@ server:
 | `proxy_protocol_version` | `1` | `1` or `2`. |
 | `health_check` | | Active check, see below. |
 | `passive_health_check` | | Passive check, see below. |
+| `tls[].addresses` | | Upstream addresses connected over TLS. Other upstreams get the connection unchanged. |
+| `tls[].tls` | | Client TLS of these upstreams, see below. |
+
+With `tls`, the handshake with the upstream must finish within `dial_timeout`. A failed handshake closes the client connection and is not retried on another upstream.
+
+| `tls[].tls` field | Description |
+| --- | --- |
+| `ca` | PEM bundle of trusted CA certificates; empty uses the system roots. |
+| `server_name` | Sent as SNI and verified against the certificate unless `subject_alt_names` is set. |
+| `subject_alt_names` | Names verified instead of `server_name`; DNS names may use a leading `*.`, values with a scheme are matched against URI SANs. |
+| `client_cert`, `client_key` | PEM client certificate and key presented to the upstream. |
 
 ## Health checks
 

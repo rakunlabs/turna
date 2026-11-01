@@ -669,3 +669,110 @@ func TestStreamStrategy(t *testing.T) {
 		t.Fatalf("configured strategies tcp %v udp %v", tcpS, udpS)
 	}
 }
+
+// TestStreamTLSTerminateBackendTLSPolicy checks that a TLSRoute behind a
+// terminate listener re-encrypts the stream with the BackendTLSPolicy of its
+// backend, and that a backend failing verification gets no connection.
+func TestStreamTLSTerminateBackendTLSPolicy(t *testing.T) {
+	backendCert, err := cert.GenerateCertificate(cert.WithDNSNames("abc.example.com"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pair, err := tls.X509KeyPair(backendCert.Certificate, backendCert.PrivateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	l, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+
+			go func() {
+				defer func() { _ = c.Close() }()
+
+				sni := c.(*tls.Conn)
+				line, _ := bufio.NewReader(sni).ReadString('\n')
+				_, _ = io.WriteString(c, "tls:"+sni.ConnectionState().ServerName+":"+line)
+			}()
+		}
+	}()
+
+	listenerCert, err := cert.GenerateCertificate(cert.WithDNSNames("term.example.com"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: objMeta("app", "term-tls"),
+		Data:       map[string][]byte{corev1.TLSCertKey: listenerCert.Certificate, corev1.TLSPrivateKeyKey: listenerCert.PrivateKey},
+	}
+
+	svcs, slices := backendObjects(backend{name: "secure", addr: l.Addr().String(), port: 8443})
+
+	gw := gatewayObj("app", "gw",
+		gwv1.Listener{Name: "term", Port: 443, Protocol: gwv1.TLSProtocolType, Hostname: ptr(gwv1.Hostname("term.example.com")),
+			TLS: &gwv1.ListenerTLSConfig{Mode: ptr(gwv1.TLSModeTerminate), CertificateRefs: []gwv1.SecretObjectReference{{Name: "term-tls"}}}},
+	)
+
+	route := &gwv1.TLSRoute{
+		ObjectMeta: objMeta("app", "term"),
+		Spec: gwv1.TLSRouteSpec{
+			CommonRouteSpec: gwv1.CommonRouteSpec{ParentRefs: []gwv1.ParentReference{{Name: "gw"}}},
+			Hostnames:       []gwv1.Hostname{"term.example.com"},
+			Rules:           []gwv1.TLSRouteRule{{BackendRefs: []gwv1.BackendRef{backendRef("secure", 8443)}}},
+		},
+	}
+
+	for _, tt := range []struct {
+		name string
+		ca   string
+		want string
+	}{
+		{name: "trusted", ca: string(backendCert.Certificate), want: "tls:abc.example.com:hi"},
+		{name: "untrusted", ca: testCAPEM(t)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			local := freePort(t)
+
+			res := applyTranslate(t, &Config{Address: "127.0.0.1", PortOffset: local - 443}, &Snapshot{
+				GatewayClasses:     []*gwv1.GatewayClass{class()},
+				Gateways:           []*gwv1.Gateway{gw},
+				TLSRoutes:          []*gwv1.TLSRoute{route},
+				Services:           svcs,
+				EndpointSlices:     slices,
+				Secrets:            []*corev1.Secret{secret},
+				BackendTLSPolicies: []*gwv1.BackendTLSPolicy{tlsPolicy("p", "secure", "", "ca", 1)},
+				ConfigMaps:         []*corev1.ConfigMap{{ObjectMeta: objMeta("app", "ca"), Data: map[string]string{caCertificateKey: tt.ca}}},
+			})
+
+			if c := policyCondition(t, res, "p", string(gwv1.PolicyConditionAccepted)); c.Status != metav1.ConditionTrue {
+				t.Fatalf("accepted = %+v", c)
+			}
+
+			c, err := tlsDial(t, "127.0.0.1:"+strconv.Itoa(local), "term.example.com")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = c.Close() }()
+
+			got := roundTrip(t, c)
+			if tt.want != "" && got != tt.want {
+				t.Fatalf("response = %q, want %q", got, tt.want)
+			}
+
+			if tt.want == "" && strings.HasPrefix(got, "tls:") {
+				t.Fatalf("untrusted backend reached: %q", got)
+			}
+		})
+	}
+}

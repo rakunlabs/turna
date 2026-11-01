@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/service"
 	"github.com/rakunlabs/turna/pkg/server/netlb"
 	"github.com/rakunlabs/turna/pkg/server/tcp"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/block"
@@ -21,10 +22,12 @@ import (
 )
 
 // streamBackend is a weighted backend of a TLS, TCP or UDP route. An invalid
-// backend has no addresses and rejects its share of connections.
+// backend has no addresses and rejects its share of connections. tls is the
+// BackendTLSPolicy of a TLSRoute backend, applied behind terminate listeners.
 type streamBackend struct {
 	weight int
 	addrs  []string
+	tls    *service.UpstreamTLS
 }
 
 // streamBackends resolves the backends of a stream route.
@@ -41,7 +44,7 @@ func (t *translator) streamBackends(kind gwv1.Kind, namespace string, refs []gwv
 			firstErr = err
 		}
 
-		b.addrs = up.addrs
+		b.addrs, b.tls = up.addrs, up.tls
 		out = append(out, b)
 	}
 
@@ -142,6 +145,30 @@ func (t *translator) streamTarget(entry string, idx int, backends []streamBacken
 	return []string{name}
 }
 
+// originateTLS sets the BackendTLSPolicy of TLSRoute backends on the load
+// balancer of a terminate listener route, so the decrypted stream is sent
+// to the backend over a new verified TLS connection.
+func (t *translator) originateTLS(entry string, idx int, backends []streamBackend) {
+	name := sanitize("k8s", entry, "lb", strconv.Itoa(idx))
+
+	mw, ok := t.out.Server.TCP.Middlewares[name]
+	if !ok || mw.LoadBalancerMiddleware == nil {
+		return
+	}
+
+	lb := *mw.LoadBalancerMiddleware
+	lb.TLS = nil
+
+	for _, b := range backends {
+		if b.tls != nil && len(b.addrs) > 0 {
+			lb.TLS = append(lb.TLS, loadbalancer.UpstreamTLS{Addresses: b.addrs, TLS: b.tls})
+		}
+	}
+
+	mw.LoadBalancerMiddleware = &lb
+	t.out.Server.TCP.Middlewares[name] = mw
+}
+
 // buildStreams creates TCP and UDP routers for stream entrypoints.
 func (t *translator) buildStreams() {
 	for entry, fam := range t.families {
@@ -217,6 +244,8 @@ func (t *translator) buildTLS(entry string) {
 		}
 
 		if !r.li.passthrough {
+			t.originateTLS(entry, i, r.backends)
+
 			name := sanitize("k8s", entry, "terminate", r.li.gw.Namespace, r.li.gw.Name, string(r.li.spec.Name))
 			if r.li.set != nil {
 				name = sanitize("k8s", entry, "terminate", kindListenerSet, r.li.set.Namespace, r.li.set.Name, string(r.li.spec.Name))

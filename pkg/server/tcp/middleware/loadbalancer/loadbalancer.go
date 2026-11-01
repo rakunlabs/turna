@@ -2,11 +2,13 @@ package loadbalancer
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"time"
 
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/service"
 	"github.com/rakunlabs/turna/pkg/server/netlb"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/redirect"
 	"github.com/rakunlabs/turna/pkg/server/tcp/tcpmw"
@@ -31,6 +33,38 @@ type LoadBalancer struct {
 	HealthCheck *netlb.HealthCheck `cfg:"health_check"`
 	// PassiveHealthCheck ejects upstreams with dial failures.
 	PassiveHealthCheck *netlb.PassiveHealthCheck `cfg:"passive_health_check"`
+
+	// TLS originates TLS to the listed upstream addresses; other upstreams
+	// get the connection unchanged.
+	TLS []UpstreamTLS `cfg:"tls"`
+}
+
+// UpstreamTLS is the TLS configuration of upstream addresses.
+type UpstreamTLS struct {
+	Addresses []string             `cfg:"addresses"`
+	TLS       *service.UpstreamTLS `cfg:"tls"`
+}
+
+// tlsConfigs maps upstream addresses to their client TLS configuration.
+func (m *LoadBalancer) tlsConfigs() (map[string]*tls.Config, error) {
+	out := make(map[string]*tls.Config)
+
+	for _, u := range m.TLS {
+		if u.TLS == nil {
+			continue
+		}
+
+		cfg, err := u.TLS.ClientConfig()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, a := range u.Addresses {
+			out[a] = cfg
+		}
+	}
+
+	return out, nil
 }
 
 func (m *LoadBalancer) Middleware(ctx context.Context, _ string) (tcpmw.Middleware, error) {
@@ -59,6 +93,11 @@ func (m *LoadBalancer) Middleware(ctx context.Context, _ string) (tcpmw.Middlewa
 	}
 
 	b, err := netlb.New(m.Strategy, m.Servers, m.PassiveHealthCheck)
+	if err != nil {
+		return nil, err
+	}
+
+	tlsConfigs, err := m.tlsConfigs()
 	if err != nil {
 		return nil, err
 	}
@@ -104,6 +143,22 @@ func (m *LoadBalancer) Middleware(ctx context.Context, _ string) (tcpmw.Middlewa
 				}
 
 				b.ReportSuccess(t)
+
+				if cfg := tlsConfigs[t.Address]; cfg != nil {
+					hctx, cancel := context.WithTimeout(ctx, f.DialTimeout)
+					tconn := tls.Client(rconn, cfg)
+					err := tconn.HandshakeContext(hctx)
+					cancel()
+
+					if err != nil {
+						release()
+						_ = rconn.Close()
+
+						return fmt.Errorf("load balancer: tls handshake with %s: %w", t.Address, err)
+					}
+
+					rconn = tconn
+				}
 
 				redirect.Forward(conn, rconn)
 				release()

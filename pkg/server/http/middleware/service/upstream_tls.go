@@ -11,6 +11,12 @@ import (
 
 var errInvalidUpstreamTLS = errors.New("upstream tls configuration is invalid")
 
+// ClientConfig returns the client TLS configuration for connections that are
+// not made by the HTTP transport.
+func (t *UpstreamTLS) ClientConfig() (*tls.Config, error) {
+	return t.config()
+}
+
 // config builds the client TLS configuration. Verification is done in
 // VerifyConnection so a fixed server name and subject alt names apply
 // regardless of the upstream address.

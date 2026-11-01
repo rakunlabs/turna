@@ -519,8 +519,9 @@ func (t *translator) resolveAddresses(fromKind gwv1.Kind, fromNamespace string, 
 		}
 	}
 
-	// stream routes pass connections through unchanged
-	if fromKind == kindRoute || fromKind == kindGRPCRoute {
+	// stream routes pass connections through unchanged; a TLSRoute behind a
+	// terminate listener originates TLS with the policy
+	if fromKind == kindRoute || fromKind == kindGRPCRoute || fromKind == kindTLSRoute {
 		if cfg := t.upstreamTLS(svc, port); cfg != nil {
 			out.scheme, out.tls = "https", t.withClientCert(cfg)
 		}
