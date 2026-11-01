@@ -19,7 +19,7 @@ func TestUnsupportedRuleFieldsReported(t *testing.T) {
 	svc, slice := serviceObj("app", "web", 80)
 
 	withSession := backendRule("/", "web", 80)
-	withSession.SessionPersistence = &gwv1.SessionPersistence{}
+	withSession.SessionPersistence = &gwv1.SessionPersistence{} //nolint:staticcheck // deprecated field is still rejected
 
 	grpcRoute := &gwv1.GRPCRoute{ObjectMeta: objMeta("app", "g"), Spec: gwv1.GRPCRouteSpec{
 		CommonRouteSpec: gwv1.CommonRouteSpec{ParentRefs: []gwv1.ParentReference{{Name: "gw"}}},

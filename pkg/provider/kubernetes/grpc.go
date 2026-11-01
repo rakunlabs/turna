@@ -30,7 +30,7 @@ func (t *translator) grpcRules(route *gwv1.GRPCRoute) ([]gateway.Rule, *refError
 	for i, r := range route.Spec.Rules {
 		rule := gateway.Rule{}
 
-		if err := unsupportedRuleFields(r.SessionPersistence != nil); err != nil {
+		if err := unsupportedRuleFields(r.SessionPersistence != nil); err != nil { //nolint:staticcheck // still reported as unsupported
 			setErr(err)
 		}
 

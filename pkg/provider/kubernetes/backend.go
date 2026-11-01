@@ -40,7 +40,7 @@ func (t *translator) rules(route *gwv1.HTTPRoute) ([]gateway.Rule, *refError) {
 	for i, r := range route.Spec.Rules {
 		rule := gateway.Rule{}
 
-		if err := unsupportedRuleFields(r.SessionPersistence != nil); err != nil {
+		if err := unsupportedRuleFields(r.SessionPersistence != nil); err != nil { //nolint:staticcheck // still reported as unsupported
 			setErr(err)
 		}
 
