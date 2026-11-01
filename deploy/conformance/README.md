@@ -30,7 +30,7 @@ Environment variables:
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `GATEWAY_API_VERSION` | `v1.6.3` | Gateway API release of the CRDs and the suite. |
+| `GATEWAY_API_VERSION` | `v1.7.0` | Gateway API release of the CRDs and the suite. |
 | `CLUSTER` | `turna` | kind cluster name. |
 | `WORK` | temporary | Directory for the image, suite, log and report. |
 | `PROFILES` | all gateway profiles | Comma separated conformance profiles. |
@@ -62,7 +62,7 @@ repository. In a fork of it:
 
 1. copy `upstream/conformance` into the repository root,
 2. copy the report to
-   `conformance/reports/v1.6/rakunlabs-turna/experimental-vX.Y.Z-default-report.yaml`
+   `conformance/reports/v1.7/rakunlabs-turna/experimental-vX.Y.Z-default-report.yaml`
    without changes and update the table of `README.md` there,
 3. run `make update-implist` and commit the generated changes with `git commit -s`,
 4. open a pull request (the CNCF EasyCLA must be signed).

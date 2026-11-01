@@ -4,7 +4,7 @@ A plain Kustomize installation, without Helm. Run these commands from the
 repository root:
 
 ```sh
-kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.3/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.7.0/standard-install.yaml
 kubectl apply -k deploy/kustomize/turna-gateway
 kubectl rollout status deployment/turna -n turna-system
 ```

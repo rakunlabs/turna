@@ -547,9 +547,26 @@ var addressGrace = 30 * time.Second
 // pendingProxy is the not ready reason of a proxy that is still starting.
 const pendingProxy = "pending"
 
-// mergeConditions keeps LastTransitionTime of unchanged conditions.
+// ownedConditions are the condition types written by turna. Other types
+// belong to other controllers and are kept unchanged.
+var ownedConditions = []string{
+	string(gwv1.GatewayConditionAccepted),
+	string(gwv1.GatewayConditionProgrammed),
+	string(gwv1.GatewayConditionResolvedRefs),
+	string(gwv1.GatewayConditionInsecureFrontendValidationMode),
+	string(gwv1.ListenerConditionConflicted),
+}
+
+// mergeConditions keeps LastTransitionTime of unchanged conditions and the
+// conditions of types turna does not write.
 func mergeConditions(existing, next []metav1.Condition) []metav1.Condition {
 	out := make([]metav1.Condition, 0, len(next))
+
+	for _, c := range existing {
+		if !slices.Contains(ownedConditions, c.Type) && meta.FindStatusCondition(next, c.Type) == nil {
+			out = append(out, c)
+		}
+	}
 
 	for _, c := range next {
 		if old := meta.FindStatusCondition(existing, c.Type); old != nil && old.Status == c.Status {
@@ -594,10 +611,10 @@ func supportedFeatures() []gwv1.SupportedFeature {
 		features.SupportHTTPRouteRequestTimeout,
 		features.SupportHTTPRouteBackendTimeout,
 		features.SupportHTTPRouteBackendRequestHeaderModification,
+		features.SupportHTTPRouteBackendURLRewrite,
 		features.SupportHTTPRouteBackendProtocolH2C,
 		features.SupportHTTPRouteBackendProtocolWebSocket,
-		features.SupportHTTPRouteRetry,
-		features.SupportHTTPRouteRetryBackendTimeout,
+		features.SupportHTTPRouteRetryCodes,
 		features.SupportHTTPRouteRetryConnectionError,
 		features.SupportHTTPRouteParentRefPort,
 		features.SupportHTTPRouteDestinationPortMatching,
@@ -617,6 +634,7 @@ func supportedFeatures() []gwv1.SupportedFeature {
 		features.SupportListenerSet,
 		features.SupportGRPCRoute,
 		features.SupportGRPCRouteNamedRouteRule,
+		features.SupportGRPCRouteRequestHeaderModifier,
 		features.SupportHTTPRouteNamedRouteRule,
 		features.SupportTLSRoute,
 		features.SupportTLSRouteModeTerminate,

@@ -3,7 +3,7 @@
 # See deploy/conformance/README.md.
 set -euo pipefail
 
-GATEWAY_API_VERSION="${GATEWAY_API_VERSION:-v1.6.3}"
+GATEWAY_API_VERSION="${GATEWAY_API_VERSION:-v1.7.0}"
 CLUSTER="${CLUSTER:-turna}"
 CONTEXT="kind-${CLUSTER}"
 WORK="${WORK:-$(mktemp -d)}"

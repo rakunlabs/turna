@@ -3,9 +3,12 @@ package kubernetes
 import (
 	"context"
 	"testing"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	kubefake "k8s.io/client-go/kubernetes/fake"
@@ -101,5 +104,35 @@ func TestProxyStatusRejectsForeignResourcesAndUnobservedRollouts(t *testing.T) {
 				t.Fatal("foreign proxy address published")
 			}
 		})
+	}
+}
+
+func TestMergeConditionsKeepsForeignConditions(t *testing.T) {
+	old := metav1.NewTime(metav1.Now().Add(-time.Hour))
+	foreign := metav1.Condition{Type: "example.com/Foreign", Status: metav1.ConditionTrue, Reason: "Seeded", ObservedGeneration: 1, LastTransitionTime: old}
+	existing := []metav1.Condition{
+		foreign,
+		{Type: string(gwv1.GatewayConditionAccepted), Status: metav1.ConditionTrue, Reason: "Accepted", ObservedGeneration: 1, LastTransitionTime: old},
+		{Type: string(gwv1.GatewayConditionResolvedRefs), Status: metav1.ConditionTrue, Reason: "ResolvedRefs", ObservedGeneration: 1, LastTransitionTime: old},
+	}
+	next := []metav1.Condition{
+		{Type: string(gwv1.GatewayConditionAccepted), Status: metav1.ConditionTrue, Reason: "Accepted", ObservedGeneration: 2, LastTransitionTime: metav1.Now()},
+	}
+
+	got := mergeConditions(existing, next)
+	if len(got) != 2 {
+		t.Fatalf("conditions = %+v, want the foreign and the accepted condition", got)
+	}
+
+	if c := meta.FindStatusCondition(got, foreign.Type); c == nil || !equality.Semantic.DeepEqual(*c, foreign) {
+		t.Fatalf("foreign condition = %+v, want %+v", c, foreign)
+	}
+
+	if c := meta.FindStatusCondition(got, string(gwv1.GatewayConditionResolvedRefs)); c != nil {
+		t.Fatalf("stale owned condition kept: %+v", c)
+	}
+
+	if c := meta.FindStatusCondition(got, string(gwv1.GatewayConditionAccepted)); c.ObservedGeneration != 2 || !c.LastTransitionTime.Equal(&old) {
+		t.Fatalf("accepted = %+v, want generation 2 and the old transition time", c)
 	}
 }
