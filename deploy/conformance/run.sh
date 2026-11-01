@@ -7,7 +7,9 @@ GATEWAY_API_VERSION="${GATEWAY_API_VERSION:-v1.6.3}"
 CLUSTER="${CLUSTER:-turna}"
 CONTEXT="kind-${CLUSTER}"
 WORK="${WORK:-$(mktemp -d)}"
-REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO="${REPO:-$(cd "$(dirname "$0")/../.." && pwd)}"
+# the report version must be a release tag; other tags (docs) are skipped
+VERSION="${VERSION:-$(cd "$REPO" && git describe --tags --match 'v*' --always --dirty)}"
 ARCH="$(docker info --format '{{.Architecture}}' | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')"
 
 # GATEWAY-HTTP and GATEWAY-GRPC run with the experimental channel CRDs, so
@@ -90,7 +92,7 @@ suite() {
 		-supported-features="$features" \
 		-conformance-profiles="$PROFILES" \
 		-organization=rakunlabs -project=turna -url=https://github.com/rakunlabs/turna \
-		-version="$(cd "$REPO" && git describe --tags --always --dirty)" -contact=@rakunlabs \
+		-version="$VERSION" -contact=@rakunlabs \
 		-report-output=/work/report.yaml \
 		-usable-address="${prefix}.255.250" -unusable-address="${prefix}.254.1" \
 		"${EXTRA_ARGS[@]}" >/dev/null
