@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/rakunlabs/ada/utils/sessions"
@@ -24,6 +25,13 @@ func TestRedisConnConfig(t *testing.T) {
 	}
 	if !cfg.TLS.Enabled || cfg.TLS.CAFile != "ca.pem" {
 		t.Fatalf("tls = %+v", cfg.TLS)
+	}
+}
+
+func TestRedisStoreGCPIAMRejectsPassword(t *testing.T) {
+	_, err := (Redis{Address: "redis:6379", Password: "pass", GCPIAM: true}).Store(context.Background(), sessions.Options{})
+	if err == nil || !strings.Contains(err.Error(), "gcp_iam") {
+		t.Fatalf("err = %v, want gcp_iam error", err)
 	}
 }
 

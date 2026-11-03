@@ -55,6 +55,7 @@ export type InstanceConfig = {
         password_set: boolean;
         client_name: string;
         cluster: boolean;
+        gcp_iam?: boolean;
         tls: { enabled: boolean; cert_file: string; key_file: string; ca_file: string };
       };
     };

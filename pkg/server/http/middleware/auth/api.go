@@ -195,6 +195,7 @@ func (m *Auth) InstanceConfigAPI(w http.ResponseWriter, r *http.Request) {
 				"password_set": cfg.Redis.Password != "",
 				"client_name":  cfg.Redis.ClientName,
 				"cluster":      cfg.Redis.Cluster,
+				"gcp_iam":      cfg.Redis.GCPIAM,
 				"tls": map[string]any{
 					"enabled":   cfg.Redis.TLS.Enabled,
 					"cert_file": cfg.Redis.TLS.CertFile,

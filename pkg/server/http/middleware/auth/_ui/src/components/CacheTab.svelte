@@ -25,6 +25,7 @@
   );
   const redisTLS = $derived(getSettingBool("cache", ["code_store", "redis", "tls", "enabled"]));
   const redisCluster = $derived(getSettingBool("cache", ["code_store", "redis", "cluster"]));
+  const redisGCPIAM = $derived(getSettingBool("cache", ["code_store", "redis", "gcp_iam"]));
 
   const shared = $derived(codeStore !== "memory");
 </script>
@@ -110,6 +111,16 @@
             () => redisCluster,
             (value: boolean) =>
               setSettingBool("cache", ["code_store", "redis", "cluster"], value)
+          }
+        />
+
+        <Switch
+          label="Google Cloud IAM"
+          hint="Authenticate to Memorystore with a Google Cloud access token from the instance's default credentials. Leave username and password empty."
+          bind:checked={
+            () => redisGCPIAM,
+            (value: boolean) =>
+              setSettingBool("cache", ["code_store", "redis", "gcp_iam"], value)
           }
         />
 

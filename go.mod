@@ -5,6 +5,7 @@ go 1.27.0
 toolchain go1.27.3
 
 require (
+	cloud.google.com/go/auth v0.24.1-0.20261001053825-dbc26066f70a
 	cloud.google.com/go/parametermanager v1.2.0
 	cloud.google.com/go/secretmanager v1.23.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.15.0
@@ -41,7 +42,7 @@ require (
 	github.com/rakunlabs/ada/middleware/encoding v0.5.4
 	github.com/rakunlabs/ada/middleware/telemetry v0.5.4
 	github.com/rakunlabs/cache v0.5.0
-	github.com/rakunlabs/cache/store/redis v0.5.0
+	github.com/rakunlabs/cache/store/redis v0.5.1
 	github.com/rakunlabs/chu v0.5.1
 	github.com/rakunlabs/chu/loader/external/loaderawssecrets v0.0.0-20261027215840-cda2502637e3
 	github.com/rakunlabs/chu/loader/external/loaderawsssm v0.0.0-20261027215840-cda2502637e3
@@ -87,7 +88,6 @@ require (
 )
 
 require (
-	cloud.google.com/go/auth v0.24.1-0.20261001053825-dbc26066f70a // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.3.0 // indirect
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
 	cloud.google.com/go/iam v1.12.0 // indirect

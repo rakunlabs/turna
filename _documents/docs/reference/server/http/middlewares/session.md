@@ -45,6 +45,7 @@ store:
     username: ""
     password: ""
     cluster: false # true forces Redis Cluster; false auto-detects
+    gcp_iam: false # use a Google Cloud access token (Memorystore IAM auth)
     key_prefix: session_
     session_key: "" # optional store-specific override
     compat: ""      # "", v1 or mixed
@@ -59,6 +60,8 @@ store:
 ```
 
 If `active` is empty, Turna uses `redis` when configured, otherwise `file` when configured. A store is required. The top-level `session_key` is used by both Redis and file stores unless that store defines its own `session_key`. Redis Cluster is detected automatically from the configured address; set `store.redis.cluster: true` to force cluster-aware routing, including through a single bootstrap address.
+
+For Google Cloud Memorystore with IAM authentication, set `store.redis.gcp_iam: true` and leave `username` and `password` empty. Turna gets an access token from Application Default Credentials (`cloud-platform` scope) for every new connection; the principal needs `roles/redis.dbConnectionUser`. Enable `tls` when the instance uses in-transit encryption.
 
 ## Redis Compatibility Mode
 

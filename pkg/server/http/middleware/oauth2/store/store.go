@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/rakunlabs/cache/store/memory"
 	storeredis "github.com/rakunlabs/cache/store/redis"
 	oauth2auth "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
+	"github.com/rakunlabs/turna/pkg/utils/redisauth"
 	redis "github.com/redis/go-redis/v9"
 )
 
@@ -20,8 +22,8 @@ var (
 
 type Store struct {
 	// Active store type empty mean memory or could be redis.
-	Active string                `cfg:"active"`
-	Redis  storeredis.ConnConfig `cfg:"redis"`
+	Active string      `cfg:"active"`
+	Redis  RedisConfig `cfg:"redis"`
 	// Cluster forces Redis Cluster mode, including when only one bootstrap
 	// address is configured. When false, cluster mode is detected automatically.
 	// Same as redis.cluster.
@@ -31,6 +33,13 @@ type Store struct {
 	// minted by one component (e.g. login) is only found by another (e.g. the
 	// auth token endpoint) when both use the same Redis and the same prefix.
 	KeyPrefix string `cfg:"key_prefix"`
+}
+
+// RedisConfig is the Redis connection of the store.
+type RedisConfig struct {
+	storeredis.ConnConfig `cfg:",squash"`
+	// GCPIAM authenticates with a Google Cloud access token (Memorystore IAM).
+	GCPIAM bool `cfg:"gcp_iam"`
 }
 
 // StoreCache holds the code and state caches. Both must implement
@@ -44,8 +53,11 @@ type StoreCache struct {
 
 func (m *Store) Init(ctx context.Context) (*StoreCache, error) {
 	if m.Active == "redis" {
-		cfg := m.Redis
+		cfg := m.Redis.ConnConfig
 		cfg.Cluster = cfg.Cluster || m.Cluster
+		if err := redisauth.ApplyGCPIAM(&cfg, m.Redis.GCPIAM); err != nil {
+			return nil, fmt.Errorf("oauth2 store redis: %w", err)
+		}
 
 		redisClient, err := storeredis.NewClient(ctx, cfg)
 		if err != nil {

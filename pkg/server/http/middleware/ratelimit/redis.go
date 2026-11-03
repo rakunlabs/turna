@@ -7,11 +7,14 @@ import (
 	"time"
 
 	storeredis "github.com/rakunlabs/cache/store/redis"
+	"github.com/rakunlabs/turna/pkg/utils/redisauth"
 	"github.com/redis/go-redis/v9"
 )
 
 type Redis struct {
 	storeredis.ConnConfig `cfg:",squash"`
+	// GCPIAM authenticates with a Google Cloud access token (Memorystore IAM).
+	GCPIAM bool `cfg:"gcp_iam"`
 
 	// KeyPrefix of the counter keys, default is "turna_ratelimit_".
 	KeyPrefix string `cfg:"key_prefix"`
@@ -40,7 +43,12 @@ type redisStore struct {
 }
 
 func newRedisStore(ctx context.Context, cfg *Redis, limit int, window time.Duration) (*redisStore, error) {
-	client, err := storeredis.NewClient(ctx, cfg.ConnConfig)
+	conn := cfg.ConnConfig
+	if err := redisauth.ApplyGCPIAM(&conn, cfg.GCPIAM); err != nil {
+		return nil, fmt.Errorf("rate_limit redis: %w", err)
+	}
+
+	client, err := storeredis.NewClient(ctx, conn)
 	if err != nil {
 		return nil, fmt.Errorf("rate_limit redis: %w", err)
 	}

@@ -22,4 +22,9 @@ func TestValidateCodeStoreSettings(t *testing.T) {
 	if err := validateCodeStoreSettings(CodeStoreSettings{Active: "unknown"}); err == nil {
 		t.Fatal("unknown code store should be rejected")
 	}
+
+	gcp := CodeStoreSettings{Active: "redis", Redis: CodeStoreRedisSettings{GCPIAM: true, Password: "pass"}}
+	if err := validateCodeStoreSettings(gcp); err == nil {
+		t.Fatal("gcp_iam with a password should be rejected")
+	}
 }

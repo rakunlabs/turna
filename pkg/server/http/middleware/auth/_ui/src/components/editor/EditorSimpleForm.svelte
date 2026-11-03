@@ -313,6 +313,11 @@
             set: (value) => editor.setPathValue(["code_store", "redis", "cluster"], value),
           })}
           {@render toggle({
+            label: "Google Cloud IAM",
+            on: editor.getPathBool(["code_store", "redis", "gcp_iam"]),
+            set: (value) => editor.setPathValue(["code_store", "redis", "gcp_iam"], value),
+          })}
+          {@render toggle({
             label: "Redis TLS",
             on: redisTLS,
             set: (value) => editor.setPathValue(["code_store", "redis", "tls", "enabled"], value),

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	storeredis "github.com/rakunlabs/cache/store/redis"
+	"github.com/rakunlabs/turna/pkg/utils/redisauth"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -144,6 +145,8 @@ func (s *memoryStore) remove(e *list.Element) {
 
 type Redis struct {
 	storeredis.ConnConfig `cfg:",squash"`
+	// GCPIAM authenticates with a Google Cloud access token (Memorystore IAM).
+	GCPIAM bool `cfg:"gcp_iam"`
 
 	// KeyPrefix of the keys, default is "turna_idempotency_".
 	KeyPrefix string `cfg:"key_prefix"`
@@ -170,7 +173,12 @@ return 0
 )
 
 func newRedisStore(ctx context.Context, cfg *Redis) (*redisStore, error) {
-	client, err := storeredis.NewClient(ctx, cfg.ConnConfig)
+	conn := cfg.ConnConfig
+	if err := redisauth.ApplyGCPIAM(&conn, cfg.GCPIAM); err != nil {
+		return nil, fmt.Errorf("idempotency redis: %w", err)
+	}
+
+	client, err := storeredis.NewClient(ctx, conn)
 	if err != nil {
 		return nil, fmt.Errorf("idempotency redis: %w", err)
 	}

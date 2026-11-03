@@ -16,6 +16,7 @@ import (
 	"github.com/rakunlabs/ada/utils/securecookie"
 	"github.com/rakunlabs/ada/utils/sessions"
 	storeredis "github.com/rakunlabs/cache/store/redis"
+	"github.com/rakunlabs/turna/pkg/utils/redisauth"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -27,6 +28,10 @@ type Redis struct {
 	// mode is detected automatically.
 	Cluster bool      `cfg:"cluster"`
 	TLS     TLSConfig `cfg:"tls"`
+	// GCPIAM authenticates with a Google Cloud access token from Application
+	// Default Credentials, for Memorystore with IAM authentication. A fresh
+	// token is used for every new connection.
+	GCPIAM bool `cfg:"gcp_iam"`
 
 	KeyPrefix string `cfg:"key_prefix"`
 	// SessionKey signs the session ID cookie. If empty, a random key is generated.
@@ -50,7 +55,12 @@ func (r Redis) Store(ctx context.Context, opts sessions.Options) (*RedisStore, e
 		return nil, fmt.Errorf("redis store compat %q is unknown, expected one of %q, %q, %q", r.Compat, CompatNone, CompatV1, CompatMixed)
 	}
 
-	client, err := storeredis.NewClient(ctx, r.connConfig())
+	cfg := r.connConfig()
+	if err := redisauth.ApplyGCPIAM(&cfg, r.GCPIAM); err != nil {
+		return nil, fmt.Errorf("redis store: %w", err)
+	}
+
+	client, err := storeredis.NewClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}

@@ -34,6 +34,8 @@ type CodeStoreRedisSettings struct {
 	// Cluster forces Redis Cluster mode. False keeps automatic detection.
 	Cluster bool                      `json:"cluster"      cfg:"cluster"`
 	TLS     CodeStoreRedisTLSSettings `json:"tls"         cfg:"tls"`
+	// GCPIAM authenticates with a Google Cloud access token (Memorystore IAM).
+	GCPIAM bool `json:"gcp_iam" cfg:"gcp_iam"`
 }
 
 type CodeStoreRedisTLSSettings struct {
@@ -86,10 +88,15 @@ func (c CodeStoreSettings) normalized() CodeStoreSettings {
 func validateCodeStoreSettings(c CodeStoreSettings) error {
 	switch c.normalized().Active {
 	case "database", "memory", "redis":
-		return nil
 	default:
 		return errors.New("code_store.active must be database, memory or redis")
 	}
+
+	if c.Redis.GCPIAM && (c.Redis.Username != "" || c.Redis.Password != "") {
+		return errors.New("code_store.redis.gcp_iam cannot be combined with username or password")
+	}
+
+	return nil
 }
 
 func (c CodeStoreSettings) store() oauth2store.Store {
@@ -99,7 +106,7 @@ func (c CodeStoreSettings) store() oauth2store.Store {
 		return store
 	}
 
-	store.Redis = storeredis.ConnConfig{
+	store.Redis = oauth2store.RedisConfig{ConnConfig: storeredis.ConnConfig{
 		ClientName: c.Redis.ClientName,
 		Address:    c.Redis.Address,
 		Username:   c.Redis.Username,
@@ -111,7 +118,7 @@ func (c CodeStoreSettings) store() oauth2store.Store {
 			KeyFile:  c.Redis.TLS.KeyFile,
 			CAFile:   c.Redis.TLS.CAFile,
 		},
-	}
+	}, GCPIAM: c.Redis.GCPIAM}
 
 	return store
 }

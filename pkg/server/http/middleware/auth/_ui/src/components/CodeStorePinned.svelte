@@ -14,6 +14,7 @@
       out.push(
         { label: "Addresses", value: (redis.address ?? []).join(", ") || "—" },
         { label: "Cluster mode", value: redis.cluster ? "forced" : "automatic" },
+        { label: "Google Cloud IAM", value: redis.gcp_iam ? "enabled" : "disabled" },
         { label: "Key prefix", value: pinned.key_prefix || "none (code_…)" },
         { label: "Username", value: redis.username || "—" },
         { label: "Password", value: redis.password_set ? "set in config" : "not set" },

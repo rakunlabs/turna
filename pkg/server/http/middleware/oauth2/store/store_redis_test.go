@@ -16,7 +16,7 @@ func redisStore(t *testing.T, prefix string) *StoreCache {
 		t.Skip("STORE_TEST_REDIS is not set")
 	}
 
-	s, err := (&Store{Active: "redis", Redis: storeredis.ConnConfig{Address: []string{addr}}, KeyPrefix: prefix}).Init(t.Context())
+	s, err := (&Store{Active: "redis", Redis: RedisConfig{ConnConfig: storeredis.ConnConfig{Address: []string{addr}}}, KeyPrefix: prefix}).Init(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

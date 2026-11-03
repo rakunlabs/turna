@@ -72,6 +72,7 @@ Without `stale_while_revalidate`, concurrent misses of the same URL all reach th
 | `redis.username` | | Username. |
 | `redis.password` | | Password. |
 | `redis.cluster` | `false` | Force Redis Cluster mode. |
+| `redis.gcp_iam` | `false` | Authenticate with a Google Cloud access token (Memorystore IAM), see [session](./session). Leave username and password empty. |
 | `redis.tls` | | `enabled`, `cert_file`, `key_file`, `ca_file`. |
 | `redis.key_prefix` | `turna_cache_` | Prefix of the cache keys. |
 

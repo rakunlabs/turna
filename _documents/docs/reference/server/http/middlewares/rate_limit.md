@@ -74,6 +74,7 @@ rate_limit:
 | `redis.address` | | Server addresses. More than one selects Redis Cluster. |
 | `redis.username` / `redis.password` | | Credentials. |
 | `redis.cluster` | `false` | Force cluster mode for a single address; otherwise it is detected. |
+| `redis.gcp_iam` | `false` | Authenticate with a Google Cloud access token (Memorystore IAM), see [session](./session). Leave username and password empty. |
 | `redis.tls` | | `enabled`, `cert_file`, `key_file`, `ca_file`. |
 | `redis.key_prefix` | `turna_ratelimit_` | Prefix of the counter keys. |
 
