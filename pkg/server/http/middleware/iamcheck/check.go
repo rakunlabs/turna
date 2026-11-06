@@ -82,6 +82,8 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 				hostToCheck = m.ForceHost
 			}
 
+			reqPath := httputil.CleanPath(r.URL.Path)
+
 			// check if the path is public
 			for _, resource := range m.Public {
 				// check hosts
@@ -100,7 +102,7 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 				if matchedHost {
 					// check path
 					for _, publicPath := range resource.Paths {
-						if v, _ := doublestar.Match(publicPath, r.URL.Path); v {
+						if v, _ := doublestar.Match(publicPath, reqPath); v {
 							if len(resource.Methods) == 0 || slices.ContainsFunc(resource.Methods, func(cmp string) bool {
 								return strings.EqualFold(cmp, r.Method)
 							}) {
@@ -113,7 +115,7 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 			}
 
 			principal := session.RequestPrincipal(r)
-			allowed, err := m.allowed(r.Context(), principal, hostToCheck, r.URL.Path, r.Method)
+			allowed, err := m.allowed(r.Context(), principal, hostToCheck, reqPath, r.Method)
 			if err != nil {
 				httputil.HandleError(w, httputil.NewErrorAs(err))
 				return
@@ -121,7 +123,7 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 
 			if !allowed {
 				for _, response := range m.Responses {
-					if v, _ := doublestar.Match(response.Path, r.URL.Path); v {
+					if v, _ := doublestar.Match(response.Path, reqPath); v {
 						if len(response.Methods) == 0 || slices.ContainsFunc(response.Methods, func(cmp string) bool {
 							return strings.EqualFold(cmp, r.Method)
 						}) {

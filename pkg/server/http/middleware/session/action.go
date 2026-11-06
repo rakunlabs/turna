@@ -642,7 +642,7 @@ func (m *Session) authPublicAllowed(r *http.Request) bool {
 			continue
 		}
 
-		allowed, err := checker.AccessAllowed(r.Context(), "", r.Host, r.URL.Path, r.Method)
+		allowed, err := checker.AccessAllowed(r.Context(), "", r.Host, httputil.CleanPath(r.URL.Path), r.Method)
 		if err != nil {
 			slog.Warn("session: public access check failed", "auth", entry, "error", err.Error())
 
@@ -904,12 +904,13 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 	}
 
 	if m.Action.Active == actionToken {
-		skip := m.skipPath(r.URL.Path)
+		reqPath := httputil.CleanPath(r.URL.Path)
+		skip := m.skipPath(reqPath)
 
 		// Raw-credential auth endpoints must bypass optional authentication.
 		// URL entries in auth_skip_paths publish no static paths, so an explicit
 		// auth selection also enables passthrough for a configured api_key_url.
-		if m.credentialPassthroughPath(r.URL.Path) && (skip || len(m.AuthSkipPaths) > 0) {
+		if m.credentialPassthroughPath(reqPath) && (skip || len(m.AuthSkipPaths) > 0) {
 			m.stripIdentityHeaders(r)
 			next.ServeHTTP(w, r)
 

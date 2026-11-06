@@ -1,13 +1,14 @@
 package login
 
 import (
+	"bytes"
 	"embed"
+	"html/template"
 	"io"
 	"io/fs"
 	"net/http"
 	"strings"
 
-	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 )
 
@@ -31,9 +32,10 @@ func (m *Login) SetFiles() error {
 		return err
 	}
 
-	m.statusContent = string(data)
+	// html/template escapes the cookie name for the JavaScript string
+	m.statusTemplate, err = template.New("status").Parse(string(data))
 
-	return nil
+	return err
 }
 
 func (m *Login) StatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -45,14 +47,14 @@ func (m *Login) StatusHandler(w http.ResponseWriter, r *http.Request) {
 		cookieName = pathParsed[0]
 	}
 
-	if cookieName == "" {
+	if cookieName == "" || !validCookieName(cookieName) {
 		cookieName = m.SuccessCookie.CookieName
 	}
 
-	data, err := render.ExecuteWithData(m.statusContent, map[string]any{
+	var data bytes.Buffer
+	if err := m.statusTemplate.Execute(&data, map[string]any{
 		"cookie": cookieName,
-	})
-	if err != nil {
+	}); err != nil {
 		httputil.HandleError(w, httputil.NewError("render error", err, http.StatusInternalServerError))
 
 		return
@@ -60,5 +62,18 @@ func (m *Login) StatusHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
-	w.Write(data)
+	_, _ = w.Write(data.Bytes())
+}
+
+// validCookieName reports whether name is a plain cookie token.
+func validCookieName(name string) bool {
+	for _, c := range name {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_', c == '-', c == '.':
+		default:
+			return false
+		}
+	}
+
+	return true
 }

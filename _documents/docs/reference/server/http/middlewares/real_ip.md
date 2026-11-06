@@ -34,6 +34,6 @@ When the connection comes from a trusted proxy:
 - A malformed header gets `400 Bad Request`.
 - Without any forwarding header the proxy itself is the client.
 
-When the connection comes from any other address, `X-Forwarded-For`, `X-Real-IP`, `True-Client-IP` and `header` are removed and `X-Real-IP` is set to the connection address, so clients cannot forge them.
+When the connection comes from any other address, `X-Forwarded-For`, `X-Real-IP`, `True-Client-IP`, the scheme and host headers (`X-Forwarded-Proto`, `X-Forwarded-Protocol`, `X-Forwarded-Ssl`, `X-Url-Scheme`, `X-Forwarded-Host`, `X-Forwarded-Port`, `Forwarded`) and `header` are removed and `X-Real-IP` is set to the connection address, so clients cannot forge them.
 
 Put `real_ip` first in the chain.

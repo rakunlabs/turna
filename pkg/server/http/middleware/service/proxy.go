@@ -157,7 +157,9 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 			if r.Header.Get(httputil2.HeaderXRealIP) == "" {
 				r.Header.Set(httputil2.HeaderXRealIP, httputil2.RealIP(r))
 			}
-			if r.Header.Get(httputil2.HeaderXForwardedProto) == "" {
+			// a client talking TLS to turna directly can not have a proxy in
+			// front telling another scheme
+			if r.TLS != nil || r.Header.Get(httputil2.HeaderXForwardedProto) == "" {
 				r.Header.Set(httputil2.HeaderXForwardedProto, httputil2.Scheme(r))
 			}
 			// X-Forwarded-For is set by httputil.ReverseProxy automatically, including

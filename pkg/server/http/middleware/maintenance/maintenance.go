@@ -16,6 +16,7 @@ import (
 
 	adaproxy "github.com/rakunlabs/ada/middleware/auth/proxy"
 
+	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/ipcheck"
 )
 
@@ -105,8 +106,9 @@ func (m *Maintenance) Middleware() (func(http.Handler) http.Handler, error) {
 	}
 
 	bypass := func(r *http.Request) bool {
+		reqPath := httputil.CleanPath(r.URL.Path)
 		for _, p := range m.AllowPaths {
-			if strings.HasPrefix(r.URL.Path, p) {
+			if strings.HasPrefix(reqPath, p) {
 				return true
 			}
 		}

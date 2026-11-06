@@ -16,6 +16,7 @@ import (
 	"github.com/rytsh/mugo/fstore"
 	"github.com/rytsh/mugo/templatex"
 
+	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/model"
 )
@@ -44,16 +45,14 @@ type TokenPass struct {
 	DebugToken   bool `cfg:"debug_token"`
 	DebugPayload bool `cfg:"debug_payload"`
 
-	tpl *templatex.Template
+	tpl *render.Pool
 }
 
 func (m *TokenPass) data(r *http.Request, body []byte) (map[string]any, error) {
 	var bodyMap any
 	if len(body) > 0 {
-		if err := json.Unmarshal(body, &bodyMap); err != nil {
-			return nil, err
-		}
-		bodyMap = body
+		// non JSON bodies are reachable as body_raw
+		_ = json.Unmarshal(body, &bodyMap)
 	}
 
 	// get all data for the template
@@ -83,16 +82,22 @@ func (m *TokenPass) render(data map[string]any, content string) ([]byte, error) 
 }
 
 func (m *TokenPass) Middleware() (func(http.Handler) http.Handler, error) {
-	defaultExpDuration, err := time.ParseDuration(m.DefaultExpDuration)
-	if err != nil {
-		return nil, err
+	var defaultExpDuration time.Duration
+	if m.DefaultExpDuration != "" {
+		var err error
+		defaultExpDuration, err = time.ParseDuration(m.DefaultExpDuration)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	m.tpl = templatex.New(templatex.WithAddFuncMapWithOpts(func(o templatex.Option) map[string]any {
-		return fstore.FuncMap(
-			fstore.WithLog(slog.Default()),
-		)
-	}))
+	m.tpl = render.NewPool(func() *templatex.Template {
+		return templatex.New(templatex.WithAddFuncMapWithOpts(func(o templatex.Option) map[string]any {
+			return fstore.FuncMap(
+				fstore.WithLog(slog.Default()),
+			)
+		}))
+	})
 
 	jwtMethod := jwt.GetSigningMethod(m.SigningMethod)
 	if jwtMethod == nil {

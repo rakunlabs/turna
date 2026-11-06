@@ -78,6 +78,10 @@ func TestEnabled(t *testing.T) {
 	if rec := request(h, "/", "203.0.113.1:1", "X-Bypass", "wrong"); rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("wrong bypass value status = %d", rec.Code)
 	}
+
+	if rec := request(h, "/health/../admin", "203.0.113.1:1"); rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("dot segment bypass status = %d", rec.Code)
+	}
 }
 
 func TestHTMLMessage(t *testing.T) {

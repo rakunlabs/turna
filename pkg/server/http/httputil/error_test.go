@@ -22,3 +22,19 @@ func TestNewErrorAsKeepsCode(t *testing.T) {
 		t.Errorf("plain: code = %d", got)
 	}
 }
+
+func TestCleanPath(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                 "/",
+		"/":                "/",
+		"/public/../admin": "/admin",
+		"//admin":          "/admin",
+		"/a/./b/":          "/a/b/",
+		"public/x":         "/public/x",
+		"/../..":           "/",
+	} {
+		if got := CleanPath(in); got != want {
+			t.Errorf("CleanPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

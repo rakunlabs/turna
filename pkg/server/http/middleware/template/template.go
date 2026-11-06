@@ -36,7 +36,7 @@ type Template struct {
 	// Delims is the delimiters for the template
 	Delims []string `cfg:"delims"`
 
-	tpl   *templatex.Template
+	tpl   *render.Pool
 	value map[string]any
 }
 
@@ -82,13 +82,21 @@ func (s *Template) Middleware() (func(http.Handler) http.Handler, error) {
 		}
 	}
 
-	s.tpl = templatex.New(templatex.WithAddFuncMapWithOpts(func(o templatex.Option) map[string]any {
-		return fstore.FuncMap(
-			fstore.WithLog(slog.Default()),
-			fstore.WithTrust(s.Trust),
-			fstore.WithWorkDir(s.WorkDir),
-		)
-	}))
+	s.tpl = render.NewPool(func() *templatex.Template {
+		tpl := templatex.New(templatex.WithAddFuncMapWithOpts(func(o templatex.Option) map[string]any {
+			return fstore.FuncMap(
+				fstore.WithLog(slog.Default()),
+				fstore.WithTrust(s.Trust),
+				fstore.WithWorkDir(s.WorkDir),
+			)
+		}))
+
+		if s.Delims != nil {
+			tpl.SetDelims(s.Delims[0], s.Delims[1])
+		}
+
+		return tpl
+	})
 
 	if s.Value != "" {
 		value, ok := render.Data[s.Value].(map[string]any)
@@ -96,10 +104,6 @@ func (s *Template) Middleware() (func(http.Handler) http.Handler, error) {
 			return nil, fmt.Errorf("inject value %s is not map[string]any", s.Value)
 		}
 		s.value = value
-	}
-
-	if s.Delims != nil {
-		s.tpl.SetDelims(s.Delims[0], s.Delims[1])
 	}
 
 	return func(next http.Handler) http.Handler {
@@ -157,8 +161,13 @@ func (s *Template) Middleware() (func(http.Handler) http.Handler, error) {
 					header.Set(k, v)
 				}
 
-				if statusCodeRet != 0 {
+				switch {
+				case statusCodeRet != 0:
 					rec.ResponseWriter.WriteHeader(statusCodeRet)
+				case rec.status != 0:
+					rec.ResponseWriter.WriteHeader(rec.status)
+				default:
+					rec.ResponseWriter.WriteHeader(http.StatusOK)
 				}
 			case rec.status != 0:
 				rec.ResponseWriter.WriteHeader(rec.status)

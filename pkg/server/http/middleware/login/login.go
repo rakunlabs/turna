@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/rakunlabs/turna/pkg/server/registry"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"path"
@@ -48,11 +49,11 @@ type Login struct {
 	client    *ok.Client `cfg:"-"`
 	pathFixed PathFixed  `cfg:"-"`
 
-	session         *session.Session  `cfg:"-"`
-	store           *store.StoreCache `cfg:"-"`
-	statusContent   string            `cfg:"-"`
-	sdkContent      []byte            `cfg:"-"`
-	sdkTypesContent []byte            `cfg:"-"`
+	session         *session.Session   `cfg:"-"`
+	store           *store.StoreCache  `cfg:"-"`
+	statusTemplate  *template.Template `cfg:"-"`
+	sdkContent      []byte             `cfg:"-"`
+	sdkTypesContent []byte             `cfg:"-"`
 }
 
 type Path struct {

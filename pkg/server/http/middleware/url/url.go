@@ -112,17 +112,19 @@ func (m *RuleCheck) matches(r *http.Request) bool {
 		return true
 	}
 
-	matched := false
-
-	if len(m.HostMatch) > 0 {
-		matched = m.hostMatches(r)
+	if len(m.HostMatch) == 0 && len(m.PathMatch) == 0 {
+		return false
 	}
 
-	if len(m.PathMatch) > 0 {
-		matched = m.pathMatches(r)
+	if len(m.HostMatch) > 0 && !m.hostMatches(r) {
+		return false
 	}
 
-	return matched
+	if len(m.PathMatch) > 0 && !m.pathMatches(r) {
+		return false
+	}
+
+	return true
 }
 
 func (m *RuleCheck) hostMatches(r *http.Request) bool {

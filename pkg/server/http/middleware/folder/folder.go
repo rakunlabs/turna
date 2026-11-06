@@ -2,11 +2,13 @@ package folder
 
 import (
 	"fmt"
+	"html"
 	"io"
 	"io/fs"
 	"log/slog"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -198,8 +200,9 @@ func (f *Folder) serveFile(w http.ResponseWriter, r *http.Request, uPath, cPath 
 	// redirect .../index.html to .../
 	// can't use Redirect() because that would make the path absolute,
 	// which would be a problem running under StripPrefix
-	if f.StripIndexName && strings.HasSuffix(uPath, f.IndexName) {
-		return localRedirect(w, r, strings.TrimSuffix(uPath, f.IndexName))
+	// relative target, the raw path can start with // and redirect off site
+	if f.StripIndexName && (uPath == f.IndexName || strings.HasSuffix(uPath, "/"+f.IndexName)) {
+		return localRedirect(w, r, "./")
 	}
 
 	file, err := f.fs.Open(cPath)
@@ -292,9 +295,20 @@ func (f *Folder) dirList(w http.ResponseWriter, r *http.Request, folder http.Fil
 
 	dirs = append(folderDirs, folderFiles...)
 
+	entries := make([]dirEntry, 0, len(dirs))
+	for _, d := range dirs {
+		entries = append(entries, dirEntry{
+			Name:    d.Name(),
+			Href:    html.EscapeString((&url.URL{Path: d.Name()}).EscapedPath()),
+			IsDir:   d.IsDir(),
+			Size:    d.Size(),
+			ModTime: d.ModTime(),
+		})
+	}
+
 	values := map[string]any{
 		"basePath":  f.BasePath,
-		"dirs":      dirs,
+		"dirs":      entries,
 		"url":       r.URL.Path,
 		"utc":       f.UTC,
 		"sortField": sortField,
@@ -351,7 +365,7 @@ table tr:hover a, th a {
 	{{- end }}
 	{{- range .dirs }}
 	<tr>
-		<td>{{ ternary "📁" "📄" .IsDir }} <a href="./{{ .Name }}{{ ternary "/" "" .IsDir }}" {{ ternary "" "download" .IsDir }}>{{ html2.EscapeString .Name }}{{ ternary "/" "" .IsDir }}</a></td>
+		<td>{{ ternary "📁" "📄" .IsDir }} <a href="./{{ .Href }}{{ ternary "/" "" .IsDir }}" {{ ternary "" "download" .IsDir }}>{{ html2.EscapeString .Name }}{{ ternary "/" "" .IsDir }}</a></td>
 		<td>{{ .Size | cast.ToUint64 | humanize.Bytes }}</td>
 		<td>{{ time.Format time.RFC3339 (ternary (time.UTC .ModTime) .ModTime $.utc) }}</td>
 	</tr>
@@ -374,6 +388,16 @@ table tr:hover a, th a {
 	_, err = w.Write(v)
 
 	return err
+}
+
+// dirEntry is a directory listing row. Href is already escaped for the
+// href attribute since the listing is rendered with text/template.
+type dirEntry struct {
+	Name    string
+	Href    string
+	IsDir   bool
+	Size    int64
+	ModTime time.Time
 }
 
 // localRedirect gives a Moved Permanently response.

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rytsh/mugo/fstore"
 	"github.com/rytsh/mugo/templatex"
@@ -46,17 +47,21 @@ func (h *Hello) Middleware() (func(http.Handler) http.Handler, error) {
 		h.Message = "OK"
 	}
 
-	tpl := templatex.New(templatex.WithAddFuncMapWithOpts(func(o templatex.Option) map[string]any {
-		return fstore.FuncMap(
-			fstore.WithLog(slog.Default()),
-			fstore.WithTrust(h.Trust),
-			fstore.WithWorkDir(h.WorkDir),
-		)
-	}))
+	tpl := render.NewPool(func() *templatex.Template {
+		tpl := templatex.New(templatex.WithAddFuncMapWithOpts(func(o templatex.Option) map[string]any {
+			return fstore.FuncMap(
+				fstore.WithLog(slog.Default()),
+				fstore.WithTrust(h.Trust),
+				fstore.WithWorkDir(h.WorkDir),
+			)
+		}))
 
-	if h.Delims != nil {
-		tpl.SetDelims(h.Delims[0], h.Delims[1])
-	}
+		if h.Delims != nil {
+			tpl.SetDelims(h.Delims[0], h.Delims[1])
+		}
+
+		return tpl
+	})
 
 	contentType := h.ContentType
 	if contentType == "" {

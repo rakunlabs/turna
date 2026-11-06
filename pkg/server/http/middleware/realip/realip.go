@@ -16,6 +16,21 @@ import (
 
 const headerTrueClientIP = "True-Client-IP"
 
+// untrustedHeaders are dropped from requests of untrusted peers, upstreams
+// and middlewares take the client address, scheme and host from them.
+var untrustedHeaders = []string{
+	httputil.HeaderXForwardedFor,
+	httputil.HeaderXRealIP,
+	headerTrueClientIP,
+	httputil.HeaderXForwardedProto,
+	httputil.HeaderXForwardedProtocol,
+	httputil.HeaderXForwardedSsl,
+	httputil.HeaderXUrlScheme,
+	"X-Forwarded-Host",
+	"X-Forwarded-Port",
+	"Forwarded",
+}
+
 type RealIP struct {
 	// TrustedProxies are IPs or CIDRs of proxies in front of Turna whose
 	// forwarding headers are used.
@@ -62,9 +77,9 @@ func (m *RealIP) Middleware() (func(http.Handler) http.Handler, error) {
 
 			if !isTrusted(peer) {
 				// headers of an untrusted peer are forged
-				r.Header.Del(httputil.HeaderXForwardedFor)
-				r.Header.Del(httputil.HeaderXRealIP)
-				r.Header.Del(headerTrueClientIP)
+				for _, name := range untrustedHeaders {
+					r.Header.Del(name)
+				}
 				if header != "" {
 					r.Header.Del(header)
 				}

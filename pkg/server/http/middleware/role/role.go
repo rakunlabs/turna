@@ -217,8 +217,9 @@ func (m *Role) allowed(claims ClaimsRole, r *http.Request) bool {
 		return true
 	}
 
+	reqPath := httputil.CleanPath(r.URL.Path)
 	for _, pathMap := range m.PathMap {
-		if !pathMap.regexPath.MatchString(r.URL.Path) {
+		if !pathMap.regexPath.MatchString(reqPath) {
 			continue
 		}
 

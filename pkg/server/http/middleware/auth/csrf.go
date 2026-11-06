@@ -27,7 +27,7 @@ func (m *Auth) csrfGuard(next http.Handler) http.Handler {
 	prefix := strings.TrimSuffix(m.PrefixPath, "/") + "/v1/"
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, prefix) && csrfSuspect(r) {
+		if strings.HasPrefix(httputil.CleanPath(r.URL.Path), prefix) && csrfSuspect(r) {
 			httputil.HandleError(w, httputil.NewError(
 				"cross-site request refused; send a JSON body (application/json)", nil, http.StatusForbidden))
 

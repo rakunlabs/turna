@@ -3,6 +3,7 @@ package httputil
 import (
 	"net"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 
@@ -23,14 +24,16 @@ func RealIP(r *http.Request) string {
 
 	// Fall back to legacy behavior
 	if ip := r.Header.Get(HeaderXForwardedFor); ip != "" {
-		i := strings.IndexAny(ip, ",")
-		if i > 0 {
-			xffip := strings.TrimSpace(ip[:i])
-			xffip = strings.TrimPrefix(xffip, "[")
-			xffip = strings.TrimSuffix(xffip, "]")
-			return xffip
+		if i := strings.IndexByte(ip, ','); i >= 0 {
+			ip = ip[:i]
 		}
-		return ip
+
+		ip = strings.TrimSpace(ip)
+		ip = strings.TrimPrefix(ip, "[")
+		ip = strings.TrimSuffix(ip, "]")
+		if ip != "" {
+			return ip
+		}
 	}
 	if ip := r.Header.Get(HeaderXRealIP); ip != "" {
 		ip = strings.TrimPrefix(ip, "[")
@@ -93,4 +96,20 @@ func OffsetLimit(r *http.Request) (offset, limit int64) {
 
 func ParseQuery(r *http.Request, opts ...query.OptionQuery) (*query.Query, error) {
 	return query.Parse(r.URL.RawQuery, opts...)
+}
+
+// CleanPath returns p with dot segments and repeated slashes removed,
+// keeping a trailing slash. Access rules must match on it, an upstream
+// normalizing /public/../admin would serve /admin otherwise.
+func CleanPath(p string) string {
+	if p == "" {
+		return "/"
+	}
+
+	c := path.Clean("/" + p)
+	if strings.HasSuffix(p, "/") && c != "/" {
+		c += "/"
+	}
+
+	return c
 }
