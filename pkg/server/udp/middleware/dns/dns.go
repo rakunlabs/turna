@@ -287,7 +287,15 @@ func (h *handler) answer(req *dns.Msg) *dns.Msg {
 
 // lookup returns the records at the exact owner name for the given type,
 // following a CNAME when the requested type is not CNAME.
+// maxCNAMEChain bounds CNAME chasing, a loop in the records would overflow
+// the stack otherwise.
+const maxCNAMEChain = 8
+
 func (h *handler) lookup(qname string, qtype uint16) []dns.RR {
+	return h.lookupDepth(qname, qtype, 0)
+}
+
+func (h *handler) lookupDepth(qname string, qtype uint16, depth int) []dns.RR {
 	rrs := h.records[qname]
 	if len(rrs) == 0 {
 		return nil
@@ -307,8 +315,10 @@ func (h *handler) lookup(qname string, qtype uint16) []dns.RR {
 
 	if len(out) == 0 && cname != nil && qtype != dns.TypeCNAME {
 		out = append(out, cname)
-		target := dns.CanonicalName(cname.(*dns.CNAME).Target)
-		out = append(out, h.lookup(target, qtype)...)
+		if depth < maxCNAMEChain {
+			target := dns.CanonicalName(cname.(*dns.CNAME).Target)
+			out = append(out, h.lookupDepth(target, qtype, depth+1)...)
+		}
 	}
 
 	return out

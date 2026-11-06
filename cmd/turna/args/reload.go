@@ -29,7 +29,14 @@ func reloadServer(data map[string]any) {
 		return
 	}
 
-	value := data[key]
+	value, ok := data[key]
+	if !ok || value == nil {
+		// an empty server would remove every entrypoint and router
+		slog.Warn("server reload: load_value is missing, previous configuration is kept", "key", key)
+
+		return
+	}
+
 	if reflect.DeepEqual(value, lastLoadValue) {
 		return
 	}

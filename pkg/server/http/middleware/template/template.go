@@ -99,7 +99,7 @@ func (s *Template) Middleware() (func(http.Handler) http.Handler, error) {
 	})
 
 	if s.Value != "" {
-		value, ok := render.Data[s.Value].(map[string]any)
+		value, ok := render.Data()[s.Value].(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("inject value %s is not map[string]any", s.Value)
 		}

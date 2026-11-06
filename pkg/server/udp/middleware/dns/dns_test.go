@@ -165,3 +165,17 @@ func TestHandler_NoOriginOnlyMatches(t *testing.T) {
 		t.Fatalf("unknown answer = %v, want nil", resp)
 	}
 }
+
+func TestHandler_CNAMELoop(t *testing.T) {
+	h, err := newHandler(&DNS{
+		Origin:  "example.com",
+		Records: []string{"a IN CNAME b", "b IN CNAME a"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if resp := h.answer(query("a.example.com", dns.TypeA)); resp == nil || len(resp.Answer) == 0 {
+		t.Fatalf("expected cname chain answer, got %v", resp)
+	}
+}

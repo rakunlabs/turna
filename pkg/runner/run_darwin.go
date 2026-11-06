@@ -29,11 +29,7 @@ func sysProcAttr(user string) (*syscall.SysProcAttr, error) {
 			return nil, fmt.Errorf("cannot parse user: %w", err)
 		}
 
-		v.Credential = &syscall.Credential{
-			Uid:         user.UID,
-			Gid:         user.GID,
-			NoSetGroups: true,
-		}
+		v.Credential = user.Credential()
 	}
 
 	return v, nil

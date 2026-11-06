@@ -152,7 +152,7 @@ func runRoot(ctx context.Context) error {
 
 	// this function will be called after all configs are loaded and dynamically changes
 	call := func(_ context.Context, _ string, data map[string]any) {
-		render.Data = data
+		render.SetData(data)
 
 		// set service filters
 		for i := range config.Application.Services {
@@ -203,13 +203,13 @@ func runRoot(ctx context.Context) error {
 
 	if config.Application.Server.LoadValue != "" {
 		if err := config.Decode(
-			render.Data[config.Application.Server.LoadValue],
+			render.Data()[config.Application.Server.LoadValue],
 			&config.Application.Server,
 		); err != nil {
 			return fmt.Errorf("unable to load server config from load_value: %w", err)
 		}
 
-		rememberLoadValue(render.Data)
+		rememberLoadValue(render.Data())
 	}
 
 	http.ServerInfo = config.AppName + " [" + config.BuildVars.Version + "]"

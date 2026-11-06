@@ -16,7 +16,7 @@ import (
 func ApplyEnv(env map[string]any, paths []string) error {
 	values := make(map[string]any)
 	for _, path := range paths {
-		loaded, ok := loader.InnerPath(path, render.Data).(map[string]any)
+		loaded, ok := loader.InnerPath(path, render.Data()).(map[string]any)
 		if !ok {
 			return fmt.Errorf("process env_values path %q must contain a map", path)
 		}

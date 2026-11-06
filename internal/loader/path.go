@@ -17,8 +17,8 @@ func InnerPath(s string, v map[string]interface{}) interface{} {
 	maps := strings.Split(s, "/")
 
 	// find the inner path
-	for _, m := range maps {
-		if m == maps[len(maps)-1] {
+	for i, m := range maps {
+		if i == len(maps)-1 {
 			// found correct path
 			return v[m]
 		}
@@ -50,8 +50,8 @@ func MapPath(s string, v interface{}) interface{} {
 
 	mapDef := map[string]interface{}{}
 	mapRange := mapDef
-	for _, m := range maps {
-		if m == maps[len(maps)-1] {
+	for i, m := range maps {
+		if i == len(maps)-1 {
 			mapRange[m] = v
 			break
 		}

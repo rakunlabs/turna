@@ -27,6 +27,6 @@ Use one of these modes:
 | In-process | Set `auth_middleware` to a registered [`auth`](./auth) middleware name. It takes precedence over `check_api`. |
 | HTTP | Leave `auth_middleware` empty and set `check_api`. |
 
-Required request headers default to `X-Forwarded-Method`, `X-Forwarded-Host`, and `X-Forwarded-Uri`. `X-User` must also be present.
+Required request headers default to `X-Forwarded-Method`, `X-Forwarded-Host`, and `X-Forwarded-Uri`. `X-User` must also be present; it must come from a middleware in front that sets it, such as `session`, since a client can send it too. Requests authenticated with an API key are checked as the key principal (`api-key:<id>`), not as its owner.
 
 `pass_headers` copies selected request headers to the response on successful authorization.

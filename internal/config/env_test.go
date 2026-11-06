@@ -8,13 +8,13 @@ import (
 )
 
 func TestApplyEnv(t *testing.T) {
-	previous := render.Data
-	t.Cleanup(func() { render.Data = previous })
-	render.Data = map[string]any{
+	previous := render.Data()
+	t.Cleanup(func() { render.SetData(previous) })
+	render.SetData(map[string]any{
 		"first":  map[string]any{"TURNA_TEST_ENV": "first", "TURNA_TEST_EXTRA": "{{ .value }}"},
 		"second": map[string]any{"TURNA_TEST_ENV": "second"},
 		"value":  "loaded",
-	}
+	})
 	t.Setenv("TURNA_TEST_ENV", "original")
 	t.Setenv("TURNA_TEST_EXTRA", "original")
 	t.Setenv("TURNA_TEST_UNRELATED", "unchanged")
@@ -50,9 +50,9 @@ func TestApplyEnv(t *testing.T) {
 }
 
 func TestApplyEnvErrorsDoNotChangeEnvironment(t *testing.T) {
-	previous := render.Data
-	t.Cleanup(func() { render.Data = previous })
-	render.Data = map[string]any{"not_map": "text"}
+	previous := render.Data()
+	t.Cleanup(func() { render.SetData(previous) })
+	render.SetData(map[string]any{"not_map": "text"})
 	for _, tc := range []struct {
 		name  string
 		env   map[string]any

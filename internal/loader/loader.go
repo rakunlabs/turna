@@ -22,6 +22,30 @@ type clients struct {
 	cloud  *cloudClients
 }
 
+// holds collects the named values of all configs of a Load call, so every
+// callback sees the values of the other configs too.
+type holds struct {
+	mu   sync.Mutex
+	data map[string]interface{}
+}
+
+// set merges values into the collected values and returns a fresh copy;
+// the copy is handed to the callback and must not be modified.
+func (h *holds) set(values map[string]interface{}) map[string]interface{} {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.data == nil {
+		h.data = map[string]interface{}{}
+	}
+
+	for k, v := range values {
+		h.data[k] = v
+	}
+
+	return copyMap(h.data)
+}
+
 // Load loads all configs to their export location and in memory.
 //
 // If a config uses dynamic sources, cancel ctx to stop watching.
@@ -39,8 +63,10 @@ func (c Configs) Load(ctx context.Context, wg *sync.WaitGroup, call Call) error 
 
 	defer cl.cloud.close()
 
+	all := &holds{}
+
 	for _, config := range c {
-		if err := config.load(ctx, wg, cl, call); err != nil {
+		if err := config.load(ctx, wg, cl, all, call); err != nil {
 			return err
 		}
 	}
@@ -48,7 +74,7 @@ func (c Configs) Load(ctx context.Context, wg *sync.WaitGroup, call Call) error 
 	return nil
 }
 
-func (c Config) load(ctx context.Context, wg *sync.WaitGroup, cl *clients, call Call) error {
+func (c Config) load(ctx context.Context, wg *sync.WaitGroup, cl *clients, all *holds, call Call) error {
 	to := Data{}
 
 	for _, static := range c.Statics {
@@ -58,15 +84,25 @@ func (c Config) load(ctx context.Context, wg *sync.WaitGroup, cl *clients, call 
 	}
 
 	if len(c.Dynamics) > 0 {
-		for _, dynamic := range c.Dynamics {
-			waitCtx, err := dynamic.load(ctx, wg, &to, cl, &c, call)
+		state := &dynamicState{
+			to:     &to,
+			base:   copyMap(to.Map),
+			values: make([]interface{}, len(c.Dynamics)),
+		}
+
+		for i, dynamic := range c.Dynamics {
+			waitCtx, err := dynamic.load(ctx, wg, state, i, cl, &c, all, call)
 			if err != nil {
 				return err
 			}
 
 			// wait for the first load
 			if waitCtx != nil {
-				<-waitCtx.Done()
+				select {
+				case <-waitCtx.Done():
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 			}
 		}
 
@@ -91,8 +127,9 @@ func (c Config) load(ctx context.Context, wg *sync.WaitGroup, cl *clients, call 
 		}
 	}
 
+	data := all.set(to.Hold)
 	if call != nil {
-		call(ctx, c.Name, to.Hold)
+		call(ctx, c.Name, data)
 	}
 
 	return nil
@@ -189,14 +226,16 @@ func loadSource(ctx context.Context, src source, to *Data, cl *clients) error {
 
 	var dataProcessed interface{}
 
+	// raw content of this source, base64 must not decode an earlier one
+	var raw []byte
+
 	if c.Raw {
 		if c.Map != "" {
 			vMap := MapPath(c.Map, data).(map[string]interface{})
 			to.Merge(vMap)
 			dataProcessed = vMap
 		} else {
-			to.Raw = data
-			dataProcessed = data
+			raw = data
 		}
 	} else {
 		codecName := c.Codec
@@ -209,22 +248,31 @@ func loadSource(ctx context.Context, src source, to *Data, cl *clients) error {
 			return err
 		}
 
-		innerValue := MapPath(c.Map, InnerPath(c.InnerPath, vMap))
+		inner := InnerPath(c.InnerPath, vMap)
+		if inner == nil && c.InnerPath != "" {
+			slog.Warn("load inner_path not found", "name", c.Name, "inner_path", c.InnerPath)
+
+			return nil
+		}
+
+		innerValue := MapPath(c.Map, inner)
 		if m, ok := innerValue.(map[string]interface{}); ok {
 			to.Merge(m)
 			dataProcessed = innerValue
 		} else {
-			to.Raw = []byte(fmt.Sprint(innerValue))
-			dataProcessed = to.Raw
+			raw = []byte(fmt.Sprint(innerValue))
 		}
 	}
 
-	if c.Base64 && to.Raw != nil {
-		if to.Raw, err = base64.StdEncoding.DecodeString(string(to.Raw)); err != nil {
-			return fmt.Errorf("decode base64 error: %w", err)
+	if raw != nil {
+		if c.Base64 {
+			if raw, err = base64.StdEncoding.DecodeString(string(raw)); err != nil {
+				return fmt.Errorf("decode base64 error: %w", err)
+			}
 		}
 
-		dataProcessed = to.Raw
+		to.Raw = raw
+		dataProcessed = raw
 	}
 
 	to.AddHold(c.Name, dataProcessed)
@@ -260,7 +308,17 @@ func (c *ConfigContent) fetch(_ context.Context, _ *clients) ([]byte, string, er
 	return []byte(c.Content), "", nil
 }
 
-func (c ConfigDynamic) load(ctx context.Context, wg *sync.WaitGroup, to *Data, cl *clients, config *Config, call Call) (context.Context, error) {
+// dynamicState is the state of a config shared by its dynamic sources.
+type dynamicState struct {
+	mu sync.Mutex
+	to *Data
+	// base is the map of the static sources
+	base map[string]interface{}
+	// values are the latest map values of each dynamic source
+	values []interface{}
+}
+
+func (c ConfigDynamic) load(ctx context.Context, wg *sync.WaitGroup, state *dynamicState, index int, cl *clients, config *Config, all *holds, call Call) (context.Context, error) {
 	if wg == nil {
 		wg = &sync.WaitGroup{}
 	}
@@ -278,76 +336,103 @@ func (c ConfigDynamic) load(ctx context.Context, wg *sync.WaitGroup, to *Data, c
 
 	waitContext, waitCancel := context.WithCancel(ctx)
 
-	recordToMap := copyMap(to.Map)
-
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		defer cancel()
-
-		// release the startup wait once the first message has been received,
-		// regardless of whether it processed cleanly.
-		received := false
+		defer waitCancel()
 
 		for {
-			if received {
-				waitCancel()
-			}
+			var data []byte
+			var ok bool
 
 			select {
 			case <-ctx.Done():
 				return
-			case data := <-ch:
-				received = true
-
-				if c.Consul.Template {
-					v, err := renderTemplate(string(data), to.Hold)
-					if err != nil {
-						slog.Warn("failed to execute consul template", "err", err.Error())
-
-						continue
-					}
-
-					data = v
+			case data, ok = <-ch:
+				if !ok {
+					return
 				}
+			}
 
-				if c.Consul.Raw {
-					to.Raw = data
-					to.AddHold(c.Consul.Name, data)
-				} else {
-					var vMap map[string]interface{}
-					if err := decodeContent(c.Consul.Codec, data, &vMap); err != nil {
-						slog.Warn("failed to load consul data", "err", err.Error())
+			hold := c.apply(state, index, data, config)
 
-						continue
-					}
+			// release the startup wait once the first message has been
+			// received, regardless of whether it processed cleanly
+			waitCancel()
 
-					// restore the static base before merging the new value
-					to.Map = copyMap(recordToMap)
-					to.Merge(vMap)
-					to.AddHold(c.Consul.Name, vMap)
-				}
+			if hold == nil {
+				continue
+			}
 
-				if to.Raw != nil {
-					to.AddHold(config.Name, to.Raw)
-				} else {
-					to.AddHold(config.Name, to.Map)
-				}
-
-				if config.Export != "" {
-					if err := c.exportDynamic(config, to); err != nil {
-						slog.Warn("failed to save dynamic consul data to file", "filePath", config.Export, "err", err.Error())
-					}
-				}
-
-				if call != nil {
-					call(ctx, config.Name, to.Hold)
-				}
+			values := all.set(hold)
+			if call != nil {
+				call(ctx, config.Name, values)
 			}
 		}
 	}()
 
 	return waitContext, nil
+}
+
+// apply processes a new value of the dynamic source and returns the named
+// values to publish, nil when the value is rejected.
+func (c ConfigDynamic) apply(state *dynamicState, index int, data []byte, config *Config) map[string]interface{} {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	to := state.to
+
+	if c.Consul.Template {
+		v, err := renderTemplate(string(data), copyMap(to.Hold))
+		if err != nil {
+			slog.Warn("failed to execute consul template", "err", err.Error())
+
+			return nil
+		}
+
+		data = v
+	}
+
+	if c.Consul.Raw {
+		to.Raw = data
+		to.AddHold(c.Consul.Name, data)
+	} else {
+		var vMap map[string]interface{}
+		if len(data) > 0 {
+			if err := decodeContent(c.Consul.Codec, data, &vMap); err != nil {
+				slog.Warn("failed to load consul data", "err", err.Error())
+
+				return nil
+			}
+		}
+
+		state.values[index] = vMap
+
+		// rebuild from the static base and the latest value of every source
+		to.Map = copyMap(state.base)
+		for _, v := range state.values {
+			if m, ok := v.(map[string]interface{}); ok {
+				to.Merge(copyMap(m))
+			}
+		}
+
+		to.AddHold(c.Consul.Name, vMap)
+	}
+
+	if to.Raw != nil {
+		to.AddHold(config.Name, to.Raw)
+	} else {
+		to.AddHold(config.Name, to.Map)
+	}
+
+	if config.Export != "" {
+		if err := c.exportDynamic(config, to); err != nil {
+			slog.Warn("failed to save dynamic consul data to file", "filePath", config.Export, "err", err.Error())
+		}
+	}
+
+	return copyMap(to.Hold)
 }
 
 func (c ConfigDynamic) exportDynamic(config *Config, to *Data) error {

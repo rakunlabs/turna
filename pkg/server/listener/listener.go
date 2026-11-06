@@ -10,6 +10,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/quic-go/quic-go"
 )
@@ -217,6 +218,10 @@ func (e *Entrypoint) Close() error {
 func (e *Entrypoint) acceptLoop() {
 	defer close(e.done)
 
+	// back off on accept errors like EMFILE, as net/http does, instead of
+	// spinning while the process is out of file descriptors
+	var delay time.Duration
+
 	for {
 		conn, err := e.listener.Accept()
 		if err != nil {
@@ -224,15 +229,19 @@ func (e *Entrypoint) acceptLoop() {
 				return
 			}
 
-			var ne net.Error
-			if errors.As(err, &ne) && ne.Timeout() {
-				continue
+			if delay == 0 {
+				delay = 5 * time.Millisecond
+			} else {
+				delay = min(delay*2, time.Second)
 			}
 
-			slog.Warn("failed to accept connection", "entrypoint", e.Name, "err", err.Error())
+			slog.Warn("failed to accept connection", "entrypoint", e.Name, "err", err.Error(), "retry", delay.String())
+			time.Sleep(delay)
 
 			continue
 		}
+
+		delay = 0
 
 		e.mu.Lock()
 		v := e.current

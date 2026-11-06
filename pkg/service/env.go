@@ -47,7 +47,7 @@ func (s *Service) GetEnv(predefined map[string]any, environ bool, envPaths []str
 
 	// add values
 	for _, path := range envPaths {
-		if vInner, ok := loader.InnerPath(path, render.Data).(map[string]any); ok {
+		if vInner, ok := loader.InnerPath(path, render.Data()).(map[string]any); ok {
 			for k, val := range vInner {
 				rV, err := render.Execute(val)
 				if err != nil {

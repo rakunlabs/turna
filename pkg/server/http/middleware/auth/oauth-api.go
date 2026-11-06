@@ -659,6 +659,18 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			user = nil
 		}
 
+		if user != nil && user.ServiceAccount {
+			// service accounts have no directory entry, an LDAP user with the
+			// same name must not get their tokens
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_grant",
+				ErrorDescription: "password login is not allowed for service accounts",
+				code:             http.StatusBadRequest,
+			})
+
+			return
+		}
+
 		if user == nil || !user.Local {
 			if passwordCfg.LdapDisabled {
 				httputil.HandleError(w, AccessTokenErrorResponse{

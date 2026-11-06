@@ -90,9 +90,11 @@ func (m *IamForwardAuth) Middleware() (func(http.Handler) http.Handler, error) {
 			if parsedURL, err := url.ParseRequestURI(uri); err == nil {
 				path = parsedURL.Path
 			}
+			path = httputil.CleanPath(path)
 
-			// Read user identity from X-User header.
-			xUser := r.Header.Get("X-User")
+			// Identity set by the session middleware in front; an api key is
+			// checked as itself, not as its owner.
+			xUser := session.RequestPrincipal(r)
 			if xUser == "" {
 				httputil.HandleError(w, httputil.NewError("", nil, http.StatusUnauthorized))
 				return

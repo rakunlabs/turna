@@ -380,3 +380,42 @@ func TestConfigs_LoadVault(t *testing.T) {
 		t.Errorf("got %q", v)
 	}
 }
+
+func TestConfigs_LoadKeepsEarlierConfigs(t *testing.T) {
+	c := Configs{
+		{Name: "a", Statics: []ConfigStatic{{Content: &ConfigContent{Content: `{"x": 1}`}}}},
+		{Name: "b", Statics: []ConfigStatic{{Content: &ConfigContent{Content: `{"y": 2}`}}}},
+	}
+
+	var last map[string]any
+	if err := c.Load(context.Background(), nil, func(_ context.Context, _ string, data map[string]any) {
+		last = data
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if last["a"] == nil || last["b"] == nil {
+		t.Fatalf("data = %v, want both configs", last)
+	}
+}
+
+func TestConfigs_LoadBase64OwnRaw(t *testing.T) {
+	tempDir := t.TempDir()
+
+	c := Configs{{
+		Export: tempDir + "/out",
+		Statics: []ConfigStatic{
+			{Content: &ConfigContent{ConfigCommon: ConfigCommon{Raw: true}, Content: "not base64"}},
+			{Content: &ConfigContent{ConfigCommon: ConfigCommon{Base64: true, Raw: true}, Content: "bWVyaGFiYQ=="}},
+		},
+	}}
+
+	if err := c.Load(context.Background(), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	v, _ := os.ReadFile(tempDir + "/out")
+	if string(v) != "merhaba" {
+		t.Errorf("got %q", v)
+	}
+}

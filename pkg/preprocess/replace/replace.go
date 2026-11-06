@@ -84,7 +84,7 @@ func (c *Content) set() error {
 	}
 
 	if c.Value != "" {
-		v, ok := render.Data[c.Value].(map[string]any)
+		v, ok := render.Data()[c.Value].(map[string]any)
 		if !ok {
 			return fmt.Errorf("inject value %s is not map[string]any", c.Value)
 		}

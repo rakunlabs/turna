@@ -61,7 +61,7 @@ type oldNew struct {
 }
 
 func (s *Inject) values(loadName string) ([]oldNew, error) {
-	v, ok := render.Data[loadName].(map[string]any)
+	v, ok := render.Data()[loadName].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("inject value %s is not map[string]any", loadName)
 	}

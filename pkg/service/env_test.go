@@ -123,7 +123,7 @@ func TestGetEnv(t *testing.T) {
 				tt.osEnv()
 			}
 
-			render.Data = tt.exported
+			render.SetData(tt.exported)
 
 			s := Service{}
 

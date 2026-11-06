@@ -90,6 +90,9 @@ func applyConfig(ctx context.Context) (bool, error) {
 	if key := srv.LoadValue; key != "" {
 		// the server comes from loaded data, keep following it
 		value = lastData[key]
+		if value == nil {
+			return false, fmt.Errorf("load_value %s is missing", key)
+		}
 
 		srv = server.Server{LoadValue: key}
 		if err := config.Decode(value, &srv); err != nil {

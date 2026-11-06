@@ -67,16 +67,29 @@ func (p *Path) DNSFetch() {
 	p.m.Lock()
 	defer p.m.Unlock()
 
-	ips, err := net.LookupIP(p.DNS)
-	if err != nil {
-		slog.Warn("dnsPath cannot resolve dns", slog.String("dns", p.DNS), slog.String("error", err.Error()))
+	// check again, another request may have refreshed while waiting
+	if !p.lastCheck.IsZero() && time.Since(p.lastCheck) < p.Duration {
+		return
 	}
 
-	p.ipHolder.Set(ips)
+	ips, err := net.LookupIP(p.DNS)
+	if err != nil {
+		// keep the known ips, a failed lookup must not drop all targets
+		slog.Warn("dnsPath cannot resolve dns", slog.String("dns", p.DNS), slog.String("error", err.Error()))
+	} else {
+		p.ipHolder.Set(ips)
+	}
 
 	slog.Debug("dnsPath resolved dns", slog.String("dns", p.DNS), slog.String("ips", p.ipHolder.Dump()))
 
 	p.lastCheck = time.Now()
+}
+
+func (p *Path) ip(number string) string {
+	p.m.RLock()
+	defer p.m.RUnlock()
+
+	return p.ipHolder.GetStr(number)
 }
 
 func (m *DNSPath) Middleware() (func(http.Handler) http.Handler, error) {
@@ -128,11 +141,18 @@ func (m *DNSPath) ReplaceRequest(r *http.Request) (*url.URL, http.RoundTripper) 
 			p.DNSFetch()
 
 			number := p.rgx.ReplaceAllString(r.URL.Path, p.Number)
+
+			ip := p.ip(number)
+			if ip == "" {
+				// an empty host would connect to the gateway itself
+				return nil, nil
+			}
+
 			r.URL.Path = p.rgx.ReplaceAllString(r.URL.Path, p.Replacement)
 
 			target := &url.URL{
 				Scheme: p.Schema,
-				Host:   p.ipHolder.GetStr(number) + ":" + p.Port,
+				Host:   net.JoinHostPort(ip, p.Port),
 			}
 
 			// slog.Debug("dnsPath replaced path", slog.String("path", r.URL.Path), slog.String("host", target.Host), slog.String("schema", target.Scheme))

@@ -227,6 +227,11 @@ func (m *AccessLog) Middleware() (func(http.Handler) http.Handler, error) {
 
 			bodyBytes := rec.body.Bytes()
 
+			if rec.status == 0 {
+				// handler wrote without WriteHeader, net/http panics on 0
+				rec.status = http.StatusOK
+			}
+
 			argsResponse = append(argsResponse,
 				"status", rec.status,
 				"size", humanize.Bytes(uint64(len(bodyBytes))),

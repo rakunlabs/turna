@@ -851,9 +851,18 @@ func (m *Session) doOptional(next http.Handler, w http.ResponseWriter, r *http.R
 			return
 		}
 
+		// same identity as serveAPIKey, later checks use the key principal
+		// and not the owner's permissions
+		if apiKeyPrincipal(customClaims) == "" {
+			anonymous()
+
+			return
+		}
+
 		r.Header.Del(headerName)
 
 		tcontext.Set(r, "claims", customClaims)
+		tcontext.Set(r, apiKeyAuthenticatedContextKey, true)
 		tcontext.Set(r, "provider", providerName)
 		addXUserHeader(r, customClaims, provider.XUser, provider.EmailVerifyCheck, provider.ClaimHeader)
 

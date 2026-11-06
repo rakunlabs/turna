@@ -244,7 +244,15 @@ func serve(ctx context.Context, wg *sync.WaitGroup, entrypoint string, conn net.
 // only when closeConn is set, otherwise a read deadline unblocks the loop so
 // the socket can be reused by the next configuration.
 func serveLoop(ctx context.Context, wg *sync.WaitGroup, entrypoint string, conn net.PacketConn, chain func() []Middleware, closeConn bool) {
+	if !closeConn {
+		// a previous loop on the reused socket may have left a deadline
+		_ = conn.SetReadDeadline(time.Time{})
+	}
+
+	unblocked := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
+		defer close(unblocked)
+
 		if closeConn {
 			_ = conn.Close()
 
@@ -253,11 +261,17 @@ func serveLoop(ctx context.Context, wg *sync.WaitGroup, entrypoint string, conn 
 
 		_ = conn.SetReadDeadline(time.Now())
 	})
-	defer stop()
 
-	if !closeConn {
-		defer func() { _ = conn.SetReadDeadline(time.Time{}) }()
-	}
+	defer func() {
+		if stop() || closeConn {
+			return
+		}
+
+		// the deadline callback is running, reset only after it is done so
+		// the next loop on this socket does not time out on every read
+		<-unblocked
+		_ = conn.SetReadDeadline(time.Time{})
+	}()
 
 	// bound the number of concurrently handled datagrams.
 	sem := make(chan struct{}, MaxInFlight)
@@ -276,6 +290,12 @@ func serveLoop(ctx context.Context, wg *sync.WaitGroup, entrypoint string, conn 
 			}
 
 			slog.Warn("failed to read udp packet", "entrypoint", entrypoint, "err", err.Error())
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(10 * time.Millisecond):
+			}
 
 			continue
 		}

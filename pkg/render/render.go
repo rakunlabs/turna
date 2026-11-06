@@ -3,6 +3,7 @@ package render
 import (
 	"log/slog"
 	"sync"
+	"sync/atomic"
 
 	"github.com/rytsh/mugo/fstore"
 	_ "github.com/rytsh/mugo/fstore/registry"
@@ -11,10 +12,25 @@ import (
 	"github.com/rytsh/mugo/templatex"
 )
 
-var Data = make(map[string]any)
+var data atomic.Pointer[map[string]any]
+
+// Data returns the loaded values. The map is shared, do not modify it.
+func Data() map[string]any {
+	if v := data.Load(); v != nil {
+		return *v
+	}
+
+	return nil
+}
+
+// SetData publishes the loaded values. v must not be modified afterwards,
+// requests read it concurrently.
+func SetData(v map[string]any) {
+	data.Store(&v)
+}
 
 func Execute(content any) ([]byte, error) {
-	return ExecuteWithData(cast.ToString(content), Data)
+	return ExecuteWithData(cast.ToString(content), Data())
 }
 
 // validateTemplate carries the mugo function map so Validate can parse template

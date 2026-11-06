@@ -26,6 +26,18 @@ func TestInnerPath(t *testing.T) {
 			want: "test",
 		},
 		{
+			name: "repeated segment name",
+			args: args{
+				s: "a/b/a",
+				v: map[string]interface{}{
+					"a": map[string]interface{}{
+						"b": map[string]interface{}{"a": "deep"},
+					},
+				},
+			},
+			want: "deep",
+		},
+		{
 			name: "test with inner",
 			args: args{
 				s: "test/inner",

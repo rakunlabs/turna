@@ -3,6 +3,7 @@ package loader
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/hashicorp/consul/api"
@@ -73,34 +74,34 @@ func (c *consulClient) dynamicValue(ctx context.Context, wg *sync.WaitGroup, key
 	vChannel := make(chan []byte)
 
 	plan.HybridHandler = func(_ watch.BlockingParamVal, raw interface{}) {
-		if raw == nil {
-			return
+		// a missing key is an empty value, waiting for it would block startup
+		var value []byte
+		if v, ok := raw.(*api.KVPair); ok && v != nil {
+			value = v.Value
 		}
 
-		if v, ok := raw.(*api.KVPair); ok && v != nil {
-			vChannel <- v.Value
+		select {
+		case vChannel <- value:
+		case <-ctx.Done():
 		}
 	}
-
-	runCh := make(chan error, 1)
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-
-		select {
-		case <-ctx.Done():
-			plan.Stop()
-		case <-runCh:
-		}
-
-		close(vChannel)
+		<-ctx.Done()
+		plan.Stop()
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		runCh <- plan.RunWithClientAndHclog(c.client, hclog.NewNullLogger())
+		// only the sender closes the channel, after the handler can not run
+		defer close(vChannel)
+
+		if err := plan.RunWithClientAndHclog(c.client, hclog.NewNullLogger()); err != nil {
+			slog.Error("consul watch stopped", "key", key, "err", err.Error())
+		}
 	}()
 
 	return vChannel, plan.Stop, nil
