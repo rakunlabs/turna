@@ -42,7 +42,7 @@ func newServiceHandler(t *testing.T, ctx context.Context, m *Service) http.Handl
 		t.Fatalf("middleware: %v", err)
 	}
 
-	var h http.Handler = http.NotFoundHandler()
+	h := http.Handler(http.NotFoundHandler())
 	for i := len(mws) - 1; i >= 0; i-- {
 		h = mws[i](h)
 	}

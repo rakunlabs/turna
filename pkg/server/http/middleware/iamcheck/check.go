@@ -59,10 +59,10 @@ func (m *IamCheck) Middleware() (func(http.Handler) http.Handler, error) {
 		m.client = client
 	}
 
-	// fill paths on public resources
+	// fill paths on public resources from the legacy path field
 	for i := range m.Public {
-		if m.Public[i].Path != "" {
-			m.Public[i].Paths = append(m.Public[i].Paths, m.Public[i].Path)
+		if m.Public[i].Path != "" { //nolint:staticcheck // legacy config field
+			m.Public[i].Paths = append(m.Public[i].Paths, m.Public[i].Path) //nolint:staticcheck // legacy config field
 		}
 	}
 

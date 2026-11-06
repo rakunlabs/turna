@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -120,6 +121,13 @@ func (m *Auth) rotateEncryption(ctx context.Context, newKey string) error {
 		return fmt.Errorf("swap live cipher: %w", err)
 	}
 
+	// rows written with the old key while the transaction ran
+	for _, col := range encryptedColumns {
+		if err := reencryptStale(ctx, m.db, newCipher, m.cipher, col); err != nil {
+			slog.Warn("re-encrypt rows written during rotation", "table", col.table, "error", err.Error())
+		}
+	}
+
 	// reload validates end-to-end that settings decrypt under the new key
 	if err := m.cache.Reload(ctx); err != nil {
 		return fmt.Errorf("reload cache after rotation: %w", err)
@@ -179,6 +187,59 @@ func reencryptColumn(ctx context.Context, tx *sql.Tx, oldC, newC *Cipher, col en
 			sealed, rec.id,
 		); err != nil {
 			return fmt.Errorf("update %s/%s: %w", col.table, rec.id, err)
+		}
+	}
+
+	return nil
+}
+
+// reencryptStale rewrites values of a column that do not open with newC,
+// using c which also holds the previous key.
+func reencryptStale(ctx context.Context, db *sql.DB, newC, c *Cipher, col encryptedColumn) error {
+	rows, err := db.QueryContext(ctx, fmt.Sprintf("SELECT %s, %s FROM %s", col.idCol, col.valCol, col.table))
+	if err != nil {
+		return err
+	}
+
+	stale := map[string]string{}
+	for rows.Next() {
+		var id string
+		var value sql.NullString
+		if err := rows.Scan(&id, &value); err != nil {
+			_ = rows.Close()
+			return err
+		}
+
+		if value.Valid && value.String != "" {
+			if _, err := newC.DecryptString(value.String); err != nil {
+				stale[id] = value.String
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	_ = rows.Close()
+
+	for id, value := range stale {
+		plain, err := c.DecryptString(value)
+		if err != nil {
+			// not from this rotation, neither key opens it
+			continue
+		}
+
+		sealed, err := newC.EncryptString(plain)
+		if err != nil {
+			return err
+		}
+
+		// only replace the value that was read, a newer write wins
+		if _, err := db.ExecContext(ctx,
+			fmt.Sprintf("UPDATE %s SET %s = $1 WHERE %s = $2 AND %s = $3", col.table, col.valCol, col.idCol, col.valCol),
+			sealed, id, value,
+		); err != nil {
+			return err
 		}
 	}
 

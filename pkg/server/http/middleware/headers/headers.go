@@ -83,7 +83,7 @@ func (w *responseWriter) applyOnce() {
 	}
 
 	w.applied = true
-	w.apply(w.ResponseWriter.Header())
+	w.apply(w.Header())
 }
 
 func (w *responseWriter) WriteHeader(code int) {

@@ -69,7 +69,7 @@ func startTTY(path string, args []string, attr *os.ProcAttr) (*os.Process, func(
 		return fail(fmt.Errorf("make terminal raw: %w", err))
 	}
 	previousCleanup := cleanup
-	cleanup = func() { term.Restore(int(input.Fd()), state); previousCleanup() }
+	cleanup = func() { _ = term.Restore(int(input.Fd()), state); previousCleanup() }
 
 	attr.Files = []*os.File{slave, slave, slave}
 	attr.Sys.Setpgid = false

@@ -54,7 +54,7 @@ func runAPI(ctx context.Context) error {
 		}
 
 		if err := client.Do(req, func(r *http.Response) error {
-			if !(r.StatusCode >= 200 && r.StatusCode < 300) {
+			if r.StatusCode < 200 || r.StatusCode >= 300 {
 				if !apiCmdFlags.silent {
 					w := bufio.NewWriter(os.Stderr)
 					_, _ = bufio.NewReader(r.Body).WriteTo(w)

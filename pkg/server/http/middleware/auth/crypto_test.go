@@ -67,9 +67,18 @@ func TestCipherRekey(t *testing.T) {
 		t.Fatalf("Rekey() error = %v", err)
 	}
 
-	// data sealed with the old key must no longer open under the new key
+	// data sealed with the old key while rotating still opens
+	if plain, err := c.DecryptString(sealedOld); err != nil || plain != "payload" {
+		t.Fatalf("DecryptString() old value = %q, %v", plain, err)
+	}
+
+	// after a second rotation the first key is gone
+	if err := c.Rekey("third-key"); err != nil {
+		t.Fatal(err)
+	}
+
 	if _, err := c.DecryptString(sealedOld); err == nil {
-		t.Fatal("expected decrypt failure for value sealed with the old key")
+		t.Fatal("expected decrypt failure for value sealed two keys ago")
 	}
 
 	// new key round-trips

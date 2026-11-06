@@ -58,6 +58,8 @@ type Auth struct {
 	// runCtx is the middleware lifetime context; background work started
 	// lazily from a request (memory cache cleanup) must not use the request ctx.
 	runCtx context.Context `cfg:"-"`
+	// providerKeys caches the JWKS of upstream providers by cert_url
+	providerKeys sync.Map `cfg:"-"`
 }
 
 type Database struct {

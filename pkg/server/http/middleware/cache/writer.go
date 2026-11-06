@@ -71,15 +71,23 @@ func (w *teeWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
 
-// bufferedWriter holds the whole response.
+// bufferedWriter holds the response up to limit bytes. A larger response
+// is not held: with a client it is streamed to it from then on, without one
+// (background revalidation) the rest is dropped.
 type bufferedWriter struct {
 	header http.Header
 	body   bytes.Buffer
 	code   int
+
+	limit    int64
+	client   http.ResponseWriter
+	overflow bool
+	// passed is set once the response went to the client directly
+	passed bool
 }
 
-func newBufferedWriter() *bufferedWriter {
-	return &bufferedWriter{header: http.Header{}}
+func newBufferedWriter(limit int64, client http.ResponseWriter) *bufferedWriter {
+	return &bufferedWriter{header: http.Header{}, limit: limit, client: client}
 }
 
 func (w *bufferedWriter) Header() http.Header {
@@ -97,7 +105,38 @@ func (w *bufferedWriter) Write(b []byte) (int, error) {
 		w.code = http.StatusOK
 	}
 
-	return w.body.Write(b)
+	if w.passed {
+		return w.client.Write(b)
+	}
+
+	if w.overflow {
+		return len(b), nil
+	}
+
+	if int64(w.body.Len()+len(b)) <= w.limit {
+		return w.body.Write(b)
+	}
+
+	w.overflow = true
+
+	if w.client == nil {
+		w.body = bytes.Buffer{}
+
+		return len(b), nil
+	}
+
+	w.passed = true
+	w.copyTo(w.client)
+	w.body = bytes.Buffer{}
+
+	return w.client.Write(b)
+}
+
+// Flush flushes only a response that is streamed to the client.
+func (w *bufferedWriter) Flush() {
+	if w.passed {
+		_ = http.NewResponseController(w.client).Flush()
+	}
 }
 
 func (w *bufferedWriter) copyTo(dst http.ResponseWriter) {

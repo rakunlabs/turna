@@ -271,8 +271,8 @@ func (m *Auth) ldapRuntime() *ldap.Ldap {
 	}
 
 	if len(sn.LDAP) == 0 {
-		if m.ldap.runtime != nil {
-			m.ldap.runtime.Close()
+		if old := m.ldap.runtime; old != nil {
+			closeLater(old.Close)
 		}
 		m.ldap.runtime = nil
 		m.ldap.cfg = nil
@@ -294,8 +294,8 @@ func (m *Auth) ldapRuntime() *ldap.Ldap {
 		return m.ldap.runtime
 	}
 
-	if m.ldap.runtime != nil {
-		m.ldap.runtime.Close()
+	if old := m.ldap.runtime; old != nil {
+		closeLater(old.Close)
 	}
 
 	m.ldap.runtime = cfg.runtime()
@@ -313,8 +313,8 @@ func (m *Auth) closeLDAP() error {
 	m.ldap.m.Lock()
 	defer m.ldap.m.Unlock()
 
-	if m.ldap.runtime != nil {
-		m.ldap.runtime.Close()
+	if old := m.ldap.runtime; old != nil {
+		closeLater(old.Close)
 	}
 
 	return nil

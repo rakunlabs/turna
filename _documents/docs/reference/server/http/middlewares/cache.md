@@ -53,6 +53,8 @@ A response is not stored when:
 - the request has `Authorization`, unless the response is `public` or has `s-maxage`, or `cache_authorized` is set,
 - its status is not in `statuses` or the body is larger than `max_body_size`.
 
+With `stale_if_error`, a response is held back until it completes so it can be replaced by the stale one on error. A response larger than `max_body_size` is not held: it is sent to the client from then on and not stored.
+
 `s-maxage` wins over `max-age`, which wins over `Expires`. The upstream's `stale-while-revalidate` and `stale-if-error` directives override the configured values, and `must-revalidate` disables both.
 
 ## Requests

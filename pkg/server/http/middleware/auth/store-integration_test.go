@@ -82,6 +82,8 @@ func TestStoreIntegration(t *testing.T) {
 		t.Fatalf("atomic flow take count = %d, want 1", got)
 	}
 
+	// a previous run leaves the record behind
+	_ = store.DeleteFlowCode(ctx, flowKindRevoked, "rotation-test")
 	created, err := store.CreateFlowCodeOnce(ctx, flowKindRevoked, "rotation-test", revokedToken{Type: "Refresh"}, time.Minute)
 	if err != nil || !created {
 		t.Fatalf("create flow once: created=%v err=%v", created, err)

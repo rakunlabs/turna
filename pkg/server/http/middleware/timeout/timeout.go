@@ -100,7 +100,7 @@ func (w *timeoutWriter) timeout() {
 	w.timedOut = true
 
 	if strings.HasPrefix(w.req.Header.Get("Content-Type"), "application/grpc") {
-		h := w.ResponseWriter.Header()
+		h := w.Header()
 		h.Set("Content-Type", "application/grpc")
 		h.Set("Grpc-Status", "4") // DEADLINE_EXCEEDED
 		h.Set("Grpc-Message", "request timeout")

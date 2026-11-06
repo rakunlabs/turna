@@ -37,7 +37,7 @@ func (m *GrpcUI) Get(ctx context.Context, name, addr, prefixPath string) (*grpcu
 		Addr:     addr,
 	}
 
-	m.grpcUIMiddlewares.Set(ctx, cacheKey{Name: name, Addr: addr}, v)
+	_ = m.grpcUIMiddlewares.Set(ctx, cacheKey{Name: name, Addr: addr}, v)
 
 	return v, nil
 }

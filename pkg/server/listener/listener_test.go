@@ -40,3 +40,22 @@ func TestDeliverAfterListenerSwap(t *testing.T) {
 		t.Fatal("connection not delivered to the new listener")
 	}
 }
+
+func TestSameAddress(t *testing.T) {
+	for _, tt := range []struct {
+		a, b string
+		want bool
+	}{
+		{":80", "0.0.0.0:80", true},
+		{":80", "[::]:80", true},
+		{"127.0.0.1:80", "127.0.0.1:80", true},
+		{"[::1]:80", "[0:0:0:0:0:0:0:1]:80", true},
+		{":80", ":81", false},
+		{"127.0.0.1:80", ":80", false},
+		{"localhost:80", "127.0.0.1:80", false},
+	} {
+		if got := sameAddress(tt.a, tt.b); got != tt.want {
+			t.Errorf("sameAddress(%q, %q) = %v", tt.a, tt.b, got)
+		}
+	}
+}

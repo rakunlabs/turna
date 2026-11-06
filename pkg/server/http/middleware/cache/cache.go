@@ -367,9 +367,15 @@ func (h *handler) middleware(next http.Handler) http.Handler {
 		if cached != nil && cached.staleIfError(now) && int64(len(cached.Body)) <= h.maxBody {
 			// hold the response back so it can be replaced on error; the
 			// stored body fits max_body_size, so a new one likely does too
-			rec := newBufferedWriter()
+			rec := newBufferedWriter(h.maxBody, w)
+			h.setStatus(rec, "MISS")
 			req, failed := httputil.WithUpstreamFailure(r)
 			next.ServeHTTP(rec, req)
+
+			if rec.passed {
+				// too large to hold back, already sent to the client
+				return
+			}
 
 			if failed.Load() || rec.code >= 500 {
 				h.setStatus(w, "STALE")
@@ -378,7 +384,6 @@ func (h *handler) middleware(next http.Handler) http.Handler {
 				return
 			}
 
-			h.setStatus(rec, "MISS")
 			rec.copyTo(w)
 			h.storeResponse(r, base, rec.code, rec.header, rec.body.Bytes(), now)
 
@@ -456,14 +461,14 @@ func (h *handler) revalidate(next http.Handler, r *http.Request, base string) {
 		default:
 		}
 
-		rec := newBufferedWriter()
+		rec := newBufferedWriter(h.maxBody, nil)
 		next.ServeHTTP(rec, req)
 
 		if rec.code == 0 {
 			rec.code = http.StatusOK
 		}
 
-		if rec.code >= 500 {
+		if rec.code >= 500 || rec.overflow {
 			return
 		}
 

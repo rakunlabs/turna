@@ -21,6 +21,9 @@ func normalizeResources(resources []data.Resource) []data.Resource {
 	return resources
 }
 
+// normalizeResource folds the legacy Path into Paths.
+//
+//nolint:staticcheck // translates the deprecated Path field on purpose
 func normalizeResource(resource data.Resource) data.Resource {
 	if resource.Path != "" {
 		if resource.Path != strings.Join(resource.Paths, " ") {
@@ -39,6 +42,8 @@ func normalizeResource(resource data.Resource) data.Resource {
 }
 
 // resourcesForDisplay adds the legacy Path display without mutating the cache.
+//
+//nolint:staticcheck // fills the deprecated Path field on purpose
 func resourcesForDisplay(resources []data.Resource) []data.Resource {
 	resources = slices.Clone(resources)
 	for i := range resources {

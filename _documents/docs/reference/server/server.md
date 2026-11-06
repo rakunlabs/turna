@@ -77,7 +77,7 @@ server:
 | `pre_middlewares.request_id` | Enable built-in request ID middleware. Default is true. |
 | `pre_middlewares.server_info` | Enable built-in `Server` response header. Default is true. |
 
-Each router always includes panic recovery, Turna request context setup, optional pre-middlewares, configured middlewares, and a final `204 No Content` fallback.
+Each router always includes panic recovery, Turna request context setup, optional pre-middlewares, configured middlewares, and a final `204 No Content` fallback. A panic is logged with its stack and answered with a plain `500 Internal Server Error`; the panic message is not sent to the client.
 
 Entrypoints without TLS accept HTTP/1.1 and HTTP/2 without TLS (h2c, used by plain text gRPC clients). TLS entrypoints negotiate HTTP/2 or HTTP/1.1 with ALPN.
 

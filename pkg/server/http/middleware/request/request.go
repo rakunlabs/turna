@@ -90,7 +90,7 @@ func (m *Request) Middleware() (func(http.Handler) http.Handler, error) {
 			}
 
 			w.WriteHeader(retStatus)
-			w.Write(retBody)
+			_, _ = w.Write(retBody)
 		})
 	}, nil
 }

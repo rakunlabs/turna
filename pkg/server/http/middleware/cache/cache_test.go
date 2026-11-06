@@ -287,3 +287,23 @@ func TestInvalidConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestBufferedWriterOverflowStreams(t *testing.T) {
+	rec := httptest.NewRecorder()
+	w := newBufferedWriter(4, rec)
+	w.Header().Set("X-A", "1")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ab"))
+	_, _ = w.Write([]byte("cdef"))
+
+	if !w.passed || rec.Body.String() != "abcdef" || rec.Header().Get("X-A") != "1" {
+		t.Fatalf("passed = %v body = %q", w.passed, rec.Body.String())
+	}
+
+	bg := newBufferedWriter(4, nil)
+	_, _ = bg.Write([]byte("abcdef"))
+
+	if !bg.overflow || bg.body.Len() != 0 {
+		t.Fatalf("overflow = %v len = %d", bg.overflow, bg.body.Len())
+	}
+}

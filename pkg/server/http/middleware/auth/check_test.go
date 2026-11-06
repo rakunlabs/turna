@@ -7,6 +7,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 )
 
+//nolint:staticcheck // tests the deprecated Path field
 func TestNormalizeResources(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -72,6 +73,7 @@ func TestNormalizeResources(t *testing.T) {
 	}
 }
 
+//nolint:staticcheck // tests the deprecated Path field
 func TestPermissionDisplayPath(t *testing.T) {
 	permission := &data.Permission{Resources: []data.Resource{{
 		Paths:    []string{"/api/**", "/other/**"},
@@ -94,6 +96,7 @@ func TestPermissionDisplayPath(t *testing.T) {
 	}
 }
 
+//nolint:staticcheck // tests the deprecated Path field
 func TestPermissionMatchingIgnoresLegacyPath(t *testing.T) {
 	permission := &data.Permission{Resources: []data.Resource{{
 		Path: "/legacy/**", Paths: []string{"/api/**"}, Methods: []string{"GET"},
@@ -115,6 +118,8 @@ func TestPermissionMatchingIgnoresLegacyPath(t *testing.T) {
 }
 
 // a legacy resource must keep matching the same requests after normalization.
+//
+//nolint:staticcheck // tests the deprecated Path field
 func TestNormalizeResourcesKeepsAccessDecision(t *testing.T) {
 	cfg := data.CheckConfig{NoHostCheck: true}
 

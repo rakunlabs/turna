@@ -139,7 +139,7 @@ func fetchClientMetadata(ctx context.Context, clientID string) (*AccessClient, e
 		return nil, fmt.Errorf("fetch client metadata: status %d", res.StatusCode)
 	}
 	mediaType, _, err := mime.ParseMediaType(res.Header.Get("Content-Type"))
-	if err != nil || (mediaType != "application/json" && !(strings.HasPrefix(mediaType, "application/") && strings.HasSuffix(mediaType, "+json"))) {
+	if err != nil || (mediaType != "application/json" && (!strings.HasPrefix(mediaType, "application/") || !strings.HasSuffix(mediaType, "+json"))) {
 		return nil, fmt.Errorf("client metadata response is not JSON")
 	}
 

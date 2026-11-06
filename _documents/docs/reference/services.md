@@ -86,6 +86,8 @@ services:
 
 `migrate` and `cache-warmup` can run in parallel because they share the same order. `app` starts after both dependencies complete. `cache-warmup` may fail without stopping the run because `allow_failure` is true.
 
+A service started by a dependency that fails, without `allow_failure`, stops Turna with its error, logged under the failing service's name.
+
 ## Template Data
 
 `command` and `env` values are rendered with loaded data. For example:

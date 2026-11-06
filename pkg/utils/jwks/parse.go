@@ -103,14 +103,20 @@ func parseEC(k rawJWK) (*ecdsa.PublicKey, error) {
 		return nil, fmt.Errorf("EC JWK %q: invalid y: %w", k.KID, err)
 	}
 
-	pub := &ecdsa.PublicKey{
-		Curve: curve,
-		X:     new(big.Int).SetBytes(xBytes),
-		Y:     new(big.Int).SetBytes(yBytes),
+	size := (curve.Params().BitSize + 7) / 8
+	if len(xBytes) > size || len(yBytes) > size {
+		return nil, fmt.Errorf("EC JWK %q: coordinates are too long for %s", k.KID, k.Crv)
 	}
 
-	if !curve.IsOnCurve(pub.X, pub.Y) {
-		return nil, fmt.Errorf("EC JWK %q: point is not on curve %s", k.KID, k.Crv)
+	// uncompressed point 0x04 || X || Y, also checks it is on the curve
+	point := make([]byte, 1+2*size)
+	point[0] = 4
+	copy(point[1+size-len(xBytes):1+size], xBytes)
+	copy(point[1+2*size-len(yBytes):], yBytes)
+
+	pub, err := ecdsa.ParseUncompressedPublicKey(curve, point)
+	if err != nil {
+		return nil, fmt.Errorf("EC JWK %q: point is not on curve %s: %w", k.KID, k.Crv, err)
 	}
 
 	return pub, nil

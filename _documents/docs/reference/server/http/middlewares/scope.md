@@ -22,3 +22,5 @@ server:
 | `noop` | `false` | Disable the check and always continue. |
 
 Put `session` before `scope` in the router chain.
+
+A request without claims gets `401`. A request whose token has none of the listed scopes gets `403 Forbidden`.

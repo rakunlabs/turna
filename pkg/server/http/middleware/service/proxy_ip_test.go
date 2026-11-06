@@ -32,7 +32,7 @@ func TestServiceForwardedClientIP(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var handler http.Handler = http.NotFoundHandler()
+			handler := http.Handler(http.NotFoundHandler())
 			for i := len(middlewares) - 1; i >= 0; i-- {
 				handler = middlewares[i](handler)
 			}

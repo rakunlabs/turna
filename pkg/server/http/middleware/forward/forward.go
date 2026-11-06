@@ -1,6 +1,7 @@
 package forward
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/rakunlabs/ok"
 )
@@ -101,8 +103,21 @@ func (m *Forward) proxyConnect(w http.ResponseWriter, req *http.Request) error {
 
 	slog.Debug(fmt.Sprintf("CONNECT tunnel established to %v (from %v)", host, req.RemoteAddr))
 
-	go m.tunnelConn(targetConn, clientConn)
-	go m.tunnelConn(clientConn, targetConn)
+	// the server cancels the request context on shutdown, the hijacked
+	// connections must not outlive it
+	stop := context.AfterFunc(req.Context(), func() {
+		_ = clientConn.Close()
+		_ = targetConn.Close()
+	})
+
+	var wg sync.WaitGroup
+	wg.Go(func() { m.tunnelConn(targetConn, clientConn) })
+	wg.Go(func() { m.tunnelConn(clientConn, targetConn) })
+
+	go func() {
+		wg.Wait()
+		stop()
+	}()
 
 	return nil
 }

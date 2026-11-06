@@ -210,10 +210,19 @@ func (m *Auth) codeStoreRuntime(ctx context.Context) (*oauth2store.StoreCache, e
 	m.codeStore = storeCache
 	m.codeStoreCfg = cfg
 	if oldStore != nil {
-		_ = oldStore.Close()
+		closeLater(func() { _ = oldStore.Close() })
 	}
 
 	return storeCache, nil
+}
+
+// replacedGrace is how long a replaced runtime stays open for requests that
+// still hold it.
+var replacedGrace = time.Minute
+
+// closeLater closes a replaced runtime after replacedGrace.
+func closeLater(close func()) {
+	time.AfterFunc(replacedGrace, close)
 }
 
 func (m *Auth) closeCodeStore() error {

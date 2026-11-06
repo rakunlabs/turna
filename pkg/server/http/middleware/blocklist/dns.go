@@ -266,7 +266,7 @@ func listingCode(a string) bool {
 
 	b := ip.As4()
 
-	return b[0] == 127 && !(b[1] == 255 && b[2] == 255)
+	return b[0] == 127 && (b[1] != 255 || b[2] != 255)
 }
 
 // temporary reports whether a lookup error may succeed later; not found

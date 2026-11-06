@@ -44,7 +44,7 @@ func NewDNSResolver(dns string, m map[string]string) *DNSResolver {
 // Resolve implement interface NameResolver
 func (d *DNSResolver) Resolve(ctx context.Context, name string) (context.Context, net.IP, error) {
 	if len(d.ipMap) > 0 {
-		if strings.Index(name, ":") != -1 {
+		if strings.Contains(name, ":") {
 			v, _, err := net.SplitHostPort(name)
 			if err != nil {
 				return ctx, nil, err

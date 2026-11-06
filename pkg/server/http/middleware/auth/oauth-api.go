@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -908,7 +909,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			if rememberMe {
 				sessionExpires = time.Unix(authTime, 0).Add(m.cache.Snapshot().Token.GetRefreshAbsoluteLifetime()).Unix()
 			} else {
-				sessionExpires = exp.Time.Unix()
+				sessionExpires = exp.Unix()
 			}
 		}
 		if sessionExpires <= time.Now().Unix() {
@@ -943,7 +944,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			AuthTime:       authTime,
 			SessionExpires: sessionExpires,
 			RefreshToken:   accessTokenRequest.RefreshToken,
-			RefreshExpires: exp.Time.Unix(),
+			RefreshExpires: exp.Unix(),
 		})
 
 		return
@@ -1573,6 +1574,9 @@ func validateOAuth2Settings(setting OAuth2Settings) error {
 	return err
 }
 
+// requestOriginWarn logs once that public URLs follow the request.
+var requestOriginWarn sync.Once
+
 func (m *Auth) issuerURL(r *http.Request) string {
 	// oauth2.base_url is the canonical external origin of this auth
 	// instance after its instance-local host replacement. Use it for discovery,
@@ -1580,6 +1584,10 @@ func (m *Auth) issuerURL(r *http.Request) string {
 	if baseURL := m.effectiveOAuthBaseURL(); baseURL != "" {
 		return baseURL + m.PrefixPath + "/oauth2"
 	}
+
+	requestOriginWarn.Do(func() {
+		slog.Warn("auth: oauth2 base_url is not set, the issuer is built from the request host and forwarded headers; set base_url or use real_ip with trusted_proxies")
+	})
 
 	scheme := r.Header.Get("X-Forwarded-Proto")
 	host := r.Header.Get("X-Forwarded-Host")

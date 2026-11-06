@@ -41,8 +41,6 @@ func TestTry_Middleware(t *testing.T) {
 				}
 
 				httputil.Blob(w, http.StatusOK, "text/plain", []byte("Hello World"))
-
-				return
 			},
 			want: "Hello World",
 		},

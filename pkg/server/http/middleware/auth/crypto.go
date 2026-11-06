@@ -29,6 +29,8 @@ func randomHex(n int) (string, error) {
 // encryption-key rotation without racing concurrent encrypt/decrypt calls.
 type aeadBox struct {
 	aead cipher.AEAD
+	// previous is the key before the last Rekey, used only to open values
+	previous cipher.AEAD
 }
 
 // Cipher seals and opens values with AES-GCM. The active key can be swapped at
@@ -86,7 +88,8 @@ func (c *Cipher) Rekey(key string) error {
 		return err
 	}
 
-	c.box.Store(&aeadBox{aead: aead})
+	// rows written with the old key while the rotation ran stay readable
+	c.box.Store(&aeadBox{aead: aead, previous: c.box.Load().aead})
 
 	return nil
 }
@@ -114,14 +117,17 @@ func (c *Cipher) DecryptString(value string) (string, error) {
 		return "", err
 	}
 
-	aead := c.box.Load().aead
+	box := c.box.Load()
 
-	nonceSize := aead.NonceSize()
+	nonceSize := box.aead.NonceSize()
 	if len(raw) < nonceSize {
 		return "", fmt.Errorf("encrypted value is too short")
 	}
 
-	plain, err := aead.Open(nil, raw[:nonceSize], raw[nonceSize:], nil)
+	plain, err := box.aead.Open(nil, raw[:nonceSize], raw[nonceSize:], nil)
+	if err != nil && box.previous != nil {
+		plain, err = box.previous.Open(nil, raw[:nonceSize], raw[nonceSize:], nil)
+	}
 	if err != nil {
 		return "", err
 	}

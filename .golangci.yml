@@ -1,0 +1,20 @@
+version: "2"
+
+linters:
+  exclusions:
+    presets:
+      # Close, Flush and response writes in cleanup and handlers
+      - std-error-handling
+    rules:
+      # channel receives in tests, errcheck reports them without a name
+      - path: _test\.go
+        linters:
+          - errcheck
+        text: "^Error return value is not checked"
+      - linters:
+          - errcheck
+        text: "Error return value of `httputil2?\\.(JSON|JSONBlob|Blob|HTML|Redirect|NoContent|HandleError)` is not checked"
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

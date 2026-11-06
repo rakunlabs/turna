@@ -97,7 +97,7 @@ Suggested rollout:
 3. Switch to `compat: mixed`. Existing sessions move to the signed cookie as they are used, with no logout.
 4. Remove `compat` once traffic has rolled over.
 
-In `v1` the cookie is unsigned, so `session_key` has no effect and a client can choose its own session ID. This matches how v0.8.x already behaves, so it is not a regression, but it is a reason to keep the compatibility window short. Signing becomes effective in step 3.
+In `v1` the cookie is unsigned, so `session_key` has no effect. A session ID the store does not know is not reused; a new one is issued. Signing becomes effective in step 3.
 
 ## Cookie Options
 
@@ -124,6 +124,8 @@ The stored session lives exactly as long as its refresh token. On every login an
 | No refresh token | `options.max_age` | `options.max_age` |
 
 The signed cookie only carries the session ID and does not expire on its own; the store record decides the lifetime.
+
+Every login issues a new session ID and deletes the record of the previous one, so a session ID planted before login cannot be used afterwards. Token refreshes keep the ID.
 
 ## Failure Handling
 

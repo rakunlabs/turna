@@ -205,113 +205,81 @@ func (m *AccessLog) Middleware() (func(http.Handler) http.Handler, error) {
 
 			rec := &customResponseRecorder{
 				ResponseWriter: w,
-				body:           new(bytes.Buffer),
+				capture:        logDetails.GetResponseBody(),
+				limit:          logDetails.ResponseBodySize,
 			}
 
 			next.ServeHTTP(rec, r)
 
-			// If the response switched to streaming mode (SSE detected from response Content-Type),
-			// the data was already written directly to the client. Log what we can and return.
-			if rec.streaming {
-				argsResponse = append(argsResponse,
-					"status", rec.status,
-					"streaming", true,
-					"duration", time.Since(start).String(),
-					"duration_ms", time.Since(start).Milliseconds(),
-				)
-
-				Log(m.Level, m.Message, slog.Group("request", argsRequest...), slog.Group("response", argsResponse...))
-
-				return
-			}
-
-			bodyBytes := rec.body.Bytes()
-
 			if rec.status == 0 {
-				// handler wrote without WriteHeader, net/http panics on 0
 				rec.status = http.StatusOK
 			}
 
 			argsResponse = append(argsResponse,
 				"status", rec.status,
-				"size", humanize.Bytes(uint64(len(bodyBytes))),
-				"size_bytes", len(bodyBytes),
+				"size", humanize.Bytes(uint64(rec.size)),
+				"size_bytes", rec.size,
 				"duration", time.Since(start).String(),
 				"duration_ms", time.Since(start).Milliseconds(),
 			)
 
-			if logDetails.GetResponseBody() {
-				switch {
-				case len(bodyBytes) == 0:
+			if rec.capture {
+				if rec.size == 0 {
 					argsResponse = append(argsResponse, "body", nil)
-				case logDetails.ResponseBodySize == 0:
-					argsResponse = append(argsResponse, "body", string(bodyBytes))
-				case logDetails.ResponseBodySize > 0 && len(bodyBytes) <= logDetails.ResponseBodySize:
-					argsResponse = append(argsResponse, "body", string(bodyBytes))
-				case logDetails.ResponseBodySize > 0 && len(bodyBytes) > logDetails.ResponseBodySize:
-					argsResponse = append(argsResponse, "body", string(bodyBytes[:logDetails.ResponseBodySize]))
+				} else {
+					argsResponse = append(argsResponse, "body", rec.body.String())
 				}
 			}
 
 			Log(m.Level, m.Message, slog.Group("request", argsRequest...), slog.Group("response", argsResponse...))
-
-			rec.ResponseWriter.WriteHeader(rec.status)
-			_, _ = rec.ResponseWriter.Write(bodyBytes)
 		})
 	}, nil
 }
 
+// customResponseRecorder passes the response through and keeps a copy of
+// up to limit bytes of the body for the log, 0 keeps all of it.
 type customResponseRecorder struct {
 	http.ResponseWriter
-	body *bytes.Buffer
 
-	status    int
-	streaming bool
+	capture bool
+	limit   int
+	body    bytes.Buffer
+
+	status int
+	size   int
 }
 
 func (r *customResponseRecorder) Write(b []byte) (int, error) {
-	if r.streaming {
-		n, err := r.ResponseWriter.Write(b)
-		if err != nil {
-			return n, err
-		}
-
-		if f, ok := r.ResponseWriter.(http.Flusher); ok {
-			f.Flush()
-		}
-
-		return n, nil
+	if r.status == 0 {
+		r.status = http.StatusOK
 	}
 
-	return r.body.Write(b)
+	n, err := r.ResponseWriter.Write(b)
+	r.size += n
+
+	if r.capture {
+		keep := b[:n]
+		if r.limit > 0 {
+			keep = keep[:min(len(keep), max(r.limit-r.body.Len(), 0))]
+		}
+
+		r.body.Write(keep)
+	}
+
+	return n, err
 }
 
 func (r *customResponseRecorder) WriteHeader(code int) {
-	r.status = code
-
-	// Detect SSE response from upstream: if the Content-Type is text/event-stream,
-	// switch to streaming mode - write headers immediately and stop buffering.
-	if strings.HasPrefix(r.Header().Get("Content-Type"), "text/event-stream") {
-		r.streaming = true
-		r.ResponseWriter.WriteHeader(code)
-
-		// Flush any previously buffered bytes to the real writer
-		if r.body.Len() > 0 {
-			_, _ = r.ResponseWriter.Write(r.body.Bytes())
-			r.body.Reset()
-
-			if f, ok := r.ResponseWriter.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
+	if r.status == 0 || code < 200 {
+		r.status = code
 	}
+
+	r.ResponseWriter.WriteHeader(code)
 }
 
 func (r *customResponseRecorder) Flush() {
-	if r.streaming {
-		if f, ok := r.ResponseWriter.(http.Flusher); ok {
-			f.Flush()
-		}
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
 	}
 }
 

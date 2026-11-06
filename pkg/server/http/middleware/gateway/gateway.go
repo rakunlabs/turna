@@ -900,16 +900,17 @@ func wellKnownPort(scheme string) int {
 	}
 }
 
-// normalizePath removes "." and ".." segments, also percent encoded ones, so
-// a request like "/public/../admin" can not match "/public" and reach
-// "/admin" on an upstream that normalizes the path itself.
+// normalizePath removes "." and ".." segments, also percent encoded ones, and
+// merges repeated slashes, so a request like "/public/../admin" or "//admin"
+// can not avoid the rules of "/admin" on an upstream that normalizes the
+// path itself.
 func normalizePath(r *http.Request) *http.Request {
-	if !hasDotSegment(r.URL.Path) {
+	if !hasDotSegment(r.URL.Path) && !strings.Contains(r.URL.Path, "//") {
 		return r
 	}
 
 	u := *r.URL
-	u.Path = removeDotSegments(u.Path)
+	u.Path = removeDotSegments(mergeSlashes(u.Path))
 	u.RawPath = ""
 
 	r2 := new(http.Request)
@@ -917,6 +918,14 @@ func normalizePath(r *http.Request) *http.Request {
 	r2.URL = &u
 
 	return r2
+}
+
+func mergeSlashes(p string) string {
+	for strings.Contains(p, "//") {
+		p = strings.ReplaceAll(p, "//", "/")
+	}
+
+	return p
 }
 
 func hasDotSegment(p string) bool {

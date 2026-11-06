@@ -10,6 +10,7 @@ package oauth2resource
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -104,6 +105,10 @@ func (m *OAuth2Resource) Middleware() (func(http.Handler) http.Handler, error) {
 
 	if m.UserHeader == "" {
 		m.UserHeader = "X-User"
+	}
+
+	if m.Resource == "" && m.getCheckAudience() {
+		slog.Warn("oauth2_resource: resource is not set, the audience is built from the request host and forwarded headers; set resource or use real_ip with trusted_proxies")
 	}
 
 	return func(next http.Handler) http.Handler {

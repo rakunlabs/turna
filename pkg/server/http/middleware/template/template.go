@@ -151,7 +151,7 @@ func (s *Template) Middleware() (func(http.Handler) http.Handler, error) {
 			}
 
 			// return part
-			header := rec.ResponseWriter.Header()
+			header := rec.Header()
 			header.Set(httputil.HeaderContentLength, strconv.Itoa(len(bodyBytes)))
 
 			switch {

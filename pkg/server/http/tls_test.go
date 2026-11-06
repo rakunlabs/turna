@@ -112,8 +112,16 @@ func TestBuildTLSConfigClientCAs(t *testing.T) {
 	if cfg.ClientCAs == nil {
 		t.Fatal("ClientCAs is nil")
 	}
-	if len(cfg.ClientCAs.Subjects()) != 1 {
-		t.Fatalf("ClientCAs subjects = %d", len(cfg.ClientCAs.Subjects()))
+	pemData, err := os.ReadFile(clientCA.CertFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := x509.NewCertPool()
+	want.AppendCertsFromPEM(pemData)
+
+	if !cfg.ClientCAs.Equal(want) {
+		t.Fatal("ClientCAs does not hold exactly the client CA")
 	}
 }
 

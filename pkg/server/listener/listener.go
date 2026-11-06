@@ -88,7 +88,38 @@ func (e *Entrypoint) Same(address, network string) bool {
 		network = "tcp"
 	}
 
-	return e.Address == address && e.Network == network
+	if e.Network != network {
+		return false
+	}
+
+	return e.Address == address || sameAddress(e.Address, address)
+}
+
+// sameAddress reports whether two addresses bind the same socket, so ":80"
+// and "0.0.0.0:80" do not bind again and fail with address in use. Host
+// names are not resolved.
+func sameAddress(a, b string) bool {
+	ah, ap, err := net.SplitHostPort(a)
+	if err != nil {
+		return false
+	}
+
+	bh, bp, err := net.SplitHostPort(b)
+	if err != nil || ap != bp {
+		return false
+	}
+
+	unspecified := func(h string) bool {
+		return h == "" || h == "0.0.0.0" || h == "::"
+	}
+
+	if unspecified(ah) && unspecified(bh) {
+		return true
+	}
+
+	aIP, bIP := net.ParseIP(ah), net.ParseIP(bh)
+
+	return aIP != nil && bIP != nil && aIP.Equal(bIP)
 }
 
 // QUIC returns the HTTP/3 transport, nil when not enabled.

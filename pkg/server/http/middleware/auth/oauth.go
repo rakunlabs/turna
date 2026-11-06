@@ -10,15 +10,18 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 	oauth2auth "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/token"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
+	"github.com/rakunlabs/turna/pkg/utils/jwks"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -263,11 +266,59 @@ func (m *Auth) claimsFromProviderToken(r *http.Request, tokenValue []byte, provi
 	}
 
 	claims := jwt.MapClaims{}
+
+	// with cert_url the token signature is verified, without it the claims
+	// are only as trusted as the back channel to the provider
+	if provider.CertURL != "" {
+		set, err := m.providerJWKS(provider.CertURL)
+		if err != nil {
+			return nil, fmt.Errorf("provider jwks: %w", err)
+		}
+
+		if _, err := jwt.ParseWithClaims(accessToken, &claims, set.Keyfunc); err != nil {
+			return nil, fmt.Errorf("provider token: %w", err)
+		}
+
+		return claims, nil
+	}
+
+	slog.Warn("auth: provider identity read from an unverified access token, set userinfo_url or cert_url")
+
 	if _, _, err := token.ParseAccessTokenJWT(accessToken, &claims); err != nil {
 		return nil, err
 	}
 
 	return claims, nil
+}
+
+// providerJWKS returns the cached key set of an upstream provider, refreshed
+// in background until the middleware stops.
+func (m *Auth) providerJWKS(certURL string) (*jwks.JWKS, error) {
+	if v, ok := m.providerKeys.Load(certURL); ok {
+		return v.(*jwks.JWKS), nil
+	}
+
+	ctx := m.runCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	set, err := jwks.Get(certURL, jwks.Options{
+		Ctx:             ctx,
+		Client:          &http.Client{Timeout: 30 * time.Second},
+		RefreshInterval: 5 * time.Minute,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if v, loaded := m.providerKeys.LoadOrStore(certURL, set); loaded {
+		set.EndBackground()
+
+		return v.(*jwks.JWKS), nil
+	}
+
+	return set, nil
 }
 
 // aliasFromClaims picks the user alias from provider claims using the

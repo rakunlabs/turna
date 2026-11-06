@@ -37,14 +37,14 @@ func (w *responseWriter) WriteHeader(statusCode int) {
 
 	// nothing to decide for responses without a body or a known small body
 	if !w.compressible() {
-		w.commit(false)
+		_ = w.commit(false)
 
 		return
 	}
 
 	if cl := w.Header().Get("Content-Length"); cl != "" {
 		if n, err := strconv.Atoi(cl); err == nil && n < w.minLength {
-			w.commit(false)
+			_ = w.commit(false)
 		}
 	}
 }

@@ -42,4 +42,4 @@ server:
 
 Path checks use doublestar patterns. Method rules accept `*`, explicit methods, `+METHOD` to allow, and `-METHOD` to block.
 
-`request_body_size` and `response_body_size` are byte limits. A value of `0` means no limit. Default sensitive headers are `Authorization`, `Cookie`, `Set-Cookie`, and `X-Forwarded-For`.
+`request_body_size` and `response_body_size` are byte limits. A value of `0` means no limit. The response is passed to the client as it is written, so streaming responses keep working; only the logged part of the body is kept in memory. Default sensitive headers are `Authorization`, `Cookie`, `Set-Cookie`, and `X-Forwarded-For`.
