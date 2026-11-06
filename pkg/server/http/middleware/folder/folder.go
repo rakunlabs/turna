@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net/http"
 	"os"
 	"path"
@@ -62,9 +63,14 @@ type Folder struct {
 	//   - strong: "<sha256 of content>", required for filesystems without modtime (embedded).
 	ETag string `cfg:"etag"`
 
-	fs            http.FileSystem
-	etagCache     sync.Map
-	customContent func(r *http.Request, name string, content io.ReadSeeker) io.ReadSeeker
+	// Precompressed serves sidecar files (name.br, name.zst, name.gz) when the
+	// client accepts the encoding, in order of preference: br, zstd, gzip.
+	Precompressed []string `cfg:"precompressed"`
+
+	fs               http.FileSystem
+	precompressedEnc []string
+	etagCache        sync.Map
+	customContent    func(r *http.Request, name string, content io.ReadSeeker) io.ReadSeeker
 }
 
 func (f *Folder) SetCustomContent(customContent func(r *http.Request, name string, content io.ReadSeeker) io.ReadSeeker) {
@@ -129,6 +135,17 @@ func (f *Folder) Middleware() (func(http.Handler) http.Handler, error) {
 	case "", etagWeak, etagStrong:
 	default:
 		return nil, fmt.Errorf("unsupported etag mode %q, use %q or %q", f.ETag, etagWeak, etagStrong)
+	}
+
+	// normalized copy, the config itself must stay untouched
+	f.precompressedEnc = make([]string, 0, len(f.Precompressed))
+	for _, raw := range f.Precompressed {
+		enc := strings.ToLower(strings.TrimSpace(raw))
+		if _, ok := precompressedExt[enc]; !ok {
+			return nil, fmt.Errorf("unsupported precompressed encoding %q, use br, zstd or gzip", raw)
+		}
+
+		f.precompressedEnc = append(f.precompressedEnc, enc)
 	}
 
 	if f.BrowseCache == "" {
@@ -395,13 +412,22 @@ func (f *Folder) fsFile(w http.ResponseWriter, r *http.Request, file string) err
 		return err
 	}
 
-	f.serveContent(w, r, file, fi.Name(), fi.ModTime(), hFile)
-
-	return nil
+	return f.fsFileInfo(w, r, file, fi, hFile)
 }
 
 func (f *Folder) fsFileInfo(w http.ResponseWriter, r *http.Request, filePath string, fi fs.FileInfo, file http.File) error {
-	f.serveContent(w, r, filePath, fi.Name(), fi.ModTime(), file)
+	if pFile, pInfo, encoding := f.precompressed(w, r, filePath); pFile != nil {
+		defer pFile.Close()
+
+		// ServeContent omits Content-Length when Content-Encoding is set
+		w = &lengthWriter{ResponseWriter: w, size: pInfo.Size()}
+
+		f.serveContent(w, r, filePath+precompressedExt[encoding], fi.Name(), pInfo.ModTime(), pFile, encoding)
+
+		return nil
+	}
+
+	f.serveContent(w, r, filePath, fi.Name(), fi.ModTime(), file, "")
 
 	return nil
 }
@@ -417,15 +443,30 @@ func (f *Folder) Cache(w http.ResponseWriter, fileName string) {
 }
 
 func (f *Folder) ServeContent(w http.ResponseWriter, req *http.Request, name string, modtime time.Time, content io.ReadSeeker) {
-	f.serveContent(w, req, "", name, modtime, content)
+	f.serveContent(w, req, "", name, modtime, content, "")
 }
 
 // serveContent serves the content; filePath is the key used to cache strong
-// ETags, an empty filePath disables caching.
-func (f *Folder) serveContent(w http.ResponseWriter, req *http.Request, filePath, name string, modtime time.Time, content io.ReadSeeker) {
+// ETags, an empty filePath disables caching. A non empty encoding means the
+// content is already compressed with it.
+func (f *Folder) serveContent(w http.ResponseWriter, req *http.Request, filePath, name string, modtime time.Time, content io.ReadSeeker, encoding string) {
 	f.Cache(w, name)
 	if f.customContent != nil {
 		content = f.customContent(req, name, content)
+	}
+
+	if encoding != "" {
+		w.Header().Set("Content-Encoding", encoding)
+
+		// never let ServeContent sniff the compressed bytes
+		if w.Header().Get("Content-Type") == "" {
+			ctype := mime.TypeByExtension(path.Ext(name))
+			if ctype == "" {
+				ctype = "application/octet-stream"
+			}
+
+			w.Header().Set("Content-Type", ctype)
+		}
 	}
 
 	if f.ETag != "" {
@@ -433,6 +474,10 @@ func (f *Folder) serveContent(w http.ResponseWriter, req *http.Request, filePath
 		if err != nil {
 			slog.Warn("cannot generate etag", "file", filePath, "err", err.Error())
 		} else if etag != "" {
+			if encoding != "" {
+				etag = etag[:len(etag)-1] + "-" + encoding + "\""
+			}
+
 			w.Header().Set("ETag", etag)
 		}
 	}

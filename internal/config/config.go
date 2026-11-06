@@ -18,7 +18,8 @@ var (
 	StartDate = time.Now()
 )
 
-var Application = struct {
+// App is the application configuration.
+type App struct {
 	LogLevel   string             `cfg:"log_level"`
 	Loads      loader.Configs     `cfg:"loads"`
 	Env        map[string]any     `cfg:"env" log:"-"`
@@ -29,8 +30,29 @@ var Application = struct {
 	Preprocess preprocess.Configs `cfg:"preprocess"`
 	Telemetry  telemetry.Config   `cfg:"telemetry"`
 	Providers  Providers          `cfg:"providers"`
-}{
-	LogLevel: "info",
+	Reload     Reload             `cfg:"reload"`
+}
+
+// NewApp returns the configuration with its defaults.
+func NewApp() App {
+	return App{LogLevel: "info"}
+}
+
+var Application = NewApp()
+
+// Reload applies a changed configuration file to the running server.
+// Only the server section is replaced; loads, services, telemetry and
+// providers keep the configuration they started with.
+type Reload struct {
+	// Signal reloads on SIGHUP, default true.
+	Signal *bool `cfg:"signal"`
+	// Watch reloads when the configuration file changes.
+	Watch bool `cfg:"watch"`
+	// Debounce waits for writes to settle before reloading, default 500ms.
+	Debounce time.Duration `cfg:"debounce"`
+	// Interval reloads periodically, e.g. to pick up changes of remote
+	// sources such as Consul or Vault; 0 disables it.
+	Interval time.Duration `cfg:"interval"`
 }
 
 // Providers are dynamic configuration sources of the server.

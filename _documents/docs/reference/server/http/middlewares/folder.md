@@ -38,6 +38,7 @@ server:
 | `browse_cache` | `no-cache` | `Cache-Control` value for browse pages. |
 | `disable_folder_slash_redirect` | `false` | Disable automatic slash redirect for directories. |
 | `etag` | | ETag generation for files: `weak` or `strong`. Empty disables it. |
+| `precompressed` | | Serve precompressed sidecar files, encodings in order of preference: `br`, `zstd`, `gzip`. |
 
 ## ETag
 
@@ -58,6 +59,27 @@ folder:
 ```
 
 `Last-Modified` / `If-Modified-Since` keep working independently of this setting.
+
+## Precompressed Files
+
+With `precompressed`, a request for `app.js` is answered with `app.js.br`, `app.js.zst` or `app.js.gz` when that file exists and the client accepts the encoding in `Accept-Encoding`. Higher q-values win, `q=0` disables an encoding, and ties follow the configured order. Without an acceptable sidecar the original file is served.
+
+```yaml
+folder:
+  path: ./dist
+  spa: true
+  etag: strong
+  precompressed: [br, zstd, gzip]
+```
+
+- `Content-Encoding` is set and `Content-Type` comes from the original file name (`application/octet-stream` if unknown).
+- `Vary: Accept-Encoding` is added to file responses whenever a sidecar was looked up, also when the original is served.
+- ETags get the encoding as suffix, e.g. `"<hash>-br"`, so each representation has its own.
+- Range requests apply to the compressed bytes.
+- Index and SPA index files use sidecars too; files that are already `.br`, `.zst` or `.gz` are served as they are.
+- The original file must exist, sidecars are not served for missing files.
+
+The [`compress`](./compress) middleware leaves responses with `Content-Encoding` untouched. When `compress` runs before `folder` and picks an encoding, it removes `Accept-Encoding` from the request, so `folder` serves the original file and `compress` compresses it on the fly. Sidecars are then only used for `HEAD` and `Range` requests. Leave `compress` out of routes that serve precompressed files.
 
 ## Versioned Docs Example
 

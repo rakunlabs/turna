@@ -158,17 +158,19 @@ When `client_ca_files` is non-empty, the listener uses Go's `VerifyClientCertIfG
 
 1. exact host match (e.g. `app.example.com`),
 2. wildcard match by replacing the first label (e.g. `api.internal.example.com` matches `*.internal.example.com`),
-3. an ACME-provisioned certificate when `acme` is enabled and the host is allowed,
+3. an ACME certificate when `acme` is enabled and the host is managed or allowed on demand,
 4. the `default` host key,
 5. a generated self-signed certificate when nothing else matches.
 
 ### ACME (Let's Encrypt)
 
-Enable `acme` to automatically obtain and renew certificates from an ACME CA (Let's Encrypt by default) using the **TLS-ALPN-01** challenge. The challenge is answered over the existing TLS entrypoint, so no extra HTTP port is required, but the TLS entrypoint (usually `:443`) must be reachable from the public internet for validation to succeed.
+Enable `acme` to obtain and renew certificates from an ACME CA (Let's Encrypt by default, ZeroSSL or any ACME directory). Certificates of `domains` are obtained at startup and renewed in the background; OCSP responses are stapled.
 
 ```yaml
 server:
   entrypoints:
+    web:
+      address: ":80"
     websecure:
       address: ":443"
   http:
@@ -178,28 +180,104 @@ server:
         email: admin@example.com
         domains:
           - app.example.com
-        cache_dir: ./acme-cache
         # Use the staging CA while testing to avoid rate limits.
-        directory_url: "https://acme-staging-v02.api.letsencrypt.org/directory"
+        ca: letsencrypt_staging
     routers:
+      # plain routers on :80 answer the HTTP-01 challenge
+      web:
+        entrypoints: [web]
+        path: /*
+        middlewares: [app]
       secure:
-        entrypoints:
-          - websecure
+        entrypoints: [websecure]
         path: /*
         tls: {}
-        middlewares:
-          - app
+        middlewares: [app]
 ```
 
 | Field | Default | Description |
 | --- | --- | --- |
 | `enabled` | `false` | Turns on ACME certificate provisioning. |
 | `email` | | Contact address registered with the ACME account. |
-| `domains` | | Allow-list of host names certificates may be issued for. A request for a host outside this list is rejected. |
-| `cache_dir` | `acme-cache` | Directory used to persist the account key and issued certificates. |
-| `directory_url` | Let's Encrypt production | ACME directory endpoint. Leave empty for the Let's Encrypt production CA, or set the staging URL while testing. |
+| `domains` | | Host names obtained at startup. Wildcards like `*.example.com` need `dns`. |
+| `ca` | `letsencrypt` | `letsencrypt`, `letsencrypt_staging`, `zerossl` or a directory URL. |
+| `directory_url` | | ACME directory endpoint, overrides `ca`. |
+| `eab.key_id`, `eab.mac_key` | | External account binding, required by ZeroSSL and some private CAs. |
+| `key_type` | `p256` | Certificate key: `ed25519`, `p256`, `p384`, `rsa2048`, `rsa4096`. |
+| `cache_dir` | `acme-cache` | Directory of the account key and certificates when `redis` is not set. |
+| `redis` | | Store certificates and locks in Redis, see below. |
+| `disable_http_challenge` | `false` | Turns off HTTP-01. |
+| `disable_tls_alpn_challenge` | `false` | Turns off TLS-ALPN-01. |
+| `dns` | | DNS-01 challenge, see below. When set, only DNS-01 is used. |
+| `on_demand` | | Obtain certificates at the first handshake of other hosts, see below. |
+| `disable_ocsp_stapling` | `false` | Turns off OCSP stapling. |
 
-Certificates are issued on first request and renewed automatically. Use the Let's Encrypt **staging** directory (`https://acme-staging-v02.api.letsencrypt.org/directory`) during testing; the production CA enforces strict rate limits. Wildcard certificates are not supported by the TLS-ALPN-01 challenge — list each host explicitly under `domains`. Entries configured in `store` still take precedence for their exact/wildcard host names.
+### Challenges
+
+- **HTTP-01** is answered on every plain (non-TLS) HTTP entrypoint before routing, so port `80` must reach Turna. Requests under `/.well-known/acme-challenge/` that are not active challenges continue to the routers.
+- **TLS-ALPN-01** is answered on the TLS entrypoints, so port `443` must reach Turna.
+- **DNS-01** creates a TXT record through a DNS provider. It works without public ports and is required for wildcard certificates.
+
+```yaml
+acme:
+  enabled: true
+  email: admin@example.com
+  domains:
+    - example.com
+    - "*.example.com"
+  dns:
+    cloudflare:
+      api_token: ${CF_API_TOKEN}
+    # resolvers: [1.1.1.1:53]
+    # propagation_timeout: 5m
+```
+
+| Provider | Fields |
+| --- | --- |
+| `cloudflare` | `api_token` (Zone.DNS:Edit), `zone_token` |
+| `route53` | `region`, `profile`, `access_key_id`, `secret_access_key`, `session_token`, `hosted_zone_id`; empty fields use the AWS default credentials |
+| `google_cloud` | `project`, `credentials_file` (empty uses Application Default Credentials) |
+| `digitalocean` | `api_token` |
+| `hetzner` | `api_token` |
+| `rfc2136` | `server`, `key_name`, `key_alg`, `key` (TSIG), for BIND, PowerDNS, Knot … |
+
+`dns` also accepts `ttl`, `propagation_delay`, `propagation_timeout` (default `2m`, `-1s` disables the check), `resolvers` and `override_domain` to delegate `_acme-challenge` with a CNAME.
+
+### On-demand TLS
+
+`on_demand` obtains a certificate during the first TLS handshake for a host that is not in `domains`, useful when customers point their own domains at Turna. A host is allowed when it matches `allow` or when the `ask` URL answers `2xx` for `?domain=<host>`. One of them is required so that clients cannot make Turna request certificates for any name.
+
+```yaml
+acme:
+  enabled: true
+  email: admin@example.com
+  on_demand:
+    allow:
+      - "*.tenants.example.com"
+    ask: http://localhost:3000/allowed-domain
+    ask_timeout: 5s
+```
+
+The first handshake of a new host waits for the certificate; later handshakes use the cached one.
+
+### Shared storage
+
+With several instances, every instance would obtain its own certificates and only the instance that started a challenge could answer it. `redis` stores account keys, certificates and challenge data in Redis and locks issuance, so an instance obtains a certificate once and any instance answers the challenge:
+
+```yaml
+acme:
+  enabled: true
+  domains: [app.example.com]
+  redis:
+    address:
+      - redis:6379
+    password: secret
+    key_prefix: turna_acme_
+```
+
+`redis` uses the same connection fields as `rate_limit` (`address`, `username`, `password`, `cluster`, `tls`, `gcp_iam`).
+
+Entries configured in `store` take precedence for their exact and wildcard host names. Changing the `acme` block on reload starts a new manager; an unchanged block keeps the running one.
 
 ### Self-signed certificate
 
@@ -217,6 +295,27 @@ server:
         ips:
           - 192.168.1.10
 ```
+
+## HTTP/3
+
+Set `http3` on an entrypoint with TLS routers to also serve them over QUIC on the same UDP port. TCP responses get an `Alt-Svc` header so browsers switch to HTTP/3.
+
+```yaml
+server:
+  entrypoints:
+    websecure:
+      address: ":443"
+      http3:
+        enabled: true
+        # advertise_port: 443
+```
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `http3.enabled` | `false` | Opens a UDP socket on the port of the entrypoint and serves its TLS routers with HTTP/3. |
+| `http3.advertise_port` | listening port | Port announced in `Alt-Svc`, when a NAT or container maps the port. |
+
+HTTP/3 uses the TLS certificates and routers of the entrypoint and always requires TLS 1.3. Allow UDP on the port in firewalls and load balancers. Linux may log that the UDP receive buffer is too small; see the [quic-go wiki](https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes).
 
 ## TCP Routers
 

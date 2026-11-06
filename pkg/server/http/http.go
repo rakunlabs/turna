@@ -11,9 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mholt/acmez/v3"
+
+	"github.com/rakunlabs/turna/pkg/server/acme"
 	"github.com/rakunlabs/turna/pkg/server/cert"
-	"golang.org/x/crypto/acme"
-	"golang.org/x/crypto/acme/autocert"
 )
 
 type HTTP struct {
@@ -40,30 +41,13 @@ type TLS struct {
 	// certificate is configured in Store.
 	SelfSigned SelfSigned `cfg:"self_signed"`
 	// ACME enables automatic certificate provisioning from an ACME CA such as
-	// Let's Encrypt using the TLS-ALPN-01 challenge.
+	// Let's Encrypt.
 	ACME *ACME `cfg:"acme"`
 }
 
-// ACME configures automatic certificate provisioning from an ACME CA
-// (e.g. Let's Encrypt) using the TLS-ALPN-01 challenge over the existing TLS
-// entrypoint. No extra HTTP port is required, but the TLS entrypoint (usually
-// :443) must be reachable from the public internet for validation to succeed.
-type ACME struct {
-	// Enabled turns on ACME certificate provisioning.
-	Enabled bool `cfg:"enabled"`
-	// Email is the contact address registered with the ACME account.
-	Email string `cfg:"email"`
-	// Domains is the allow-list of host names ACME certificates may be issued
-	// for (HostWhitelist). A request for a host outside this list is rejected.
-	Domains []string `cfg:"domains"`
-	// CacheDir is the directory used to persist account keys and issued
-	// certificates. Defaults to "acme-cache".
-	CacheDir string `cfg:"cache_dir"`
-	// DirectoryURL overrides the ACME directory endpoint. Leave empty for the
-	// Let's Encrypt production CA. Use the staging URL while testing to avoid
-	// rate limits: https://acme-staging-v02.api.letsencrypt.org/directory
-	DirectoryURL string `cfg:"directory_url"`
-}
+// ACME configures automatic certificate provisioning from an ACME CA such as
+// Let's Encrypt with the HTTP-01, TLS-ALPN-01 or DNS-01 challenge.
+type ACME = acme.ACME
 
 type SelfSigned struct {
 	Organization []string `cfg:"organization"`
@@ -106,13 +90,13 @@ func (t TLS) minVersion() (uint16, error) {
 // the client's SNI server name (exact, then wildcard), falling back to the
 // "default" host key and finally to a generated self-signed certificate.
 func (h *HTTP) buildTLSConfig() (*tls.Config, error) {
-	return h.buildStoreTLSConfig(h.TLS.Store, true)
+	return h.buildStoreTLSConfig(h.TLS.Store, true, nil)
 }
 
 // buildStoreTLSConfig builds an SNI-aware *tls.Config serving the
 // certificates of store. shared adds the settings of the shared listener
 // configuration: ACME and the optional client CAs.
-func (h *HTTP) buildStoreTLSConfig(store map[string][]Certificate, shared bool) (*tls.Config, error) {
+func (h *HTTP) buildStoreTLSConfig(store map[string][]Certificate, shared bool, acmeManager *acme.Manager) (*tls.Config, error) {
 	minVersion, err := h.TLS.minVersion()
 	if err != nil {
 		return nil, err
@@ -156,11 +140,8 @@ func (h *HTTP) buildStoreTLSConfig(store map[string][]Certificate, shared bool) 
 		allCerts = append(allCerts, generated)
 	}
 
-	// Optionally build an ACME (e.g. Let's Encrypt) certificate manager that
-	// provisions certificates on demand via the TLS-ALPN-01 challenge.
-	var acmeManager *autocert.Manager
-	if shared && h.TLS.ACME != nil && h.TLS.ACME.Enabled {
-		acmeManager = h.buildACMEManager()
+	if !shared {
+		acmeManager = nil
 	}
 
 	cfg := &tls.Config{
@@ -170,7 +151,7 @@ func (h *HTTP) buildStoreTLSConfig(store map[string][]Certificate, shared bool) 
 			// A TLS-ALPN-01 challenge handshake must always be answered by the
 			// ACME manager, even when a static certificate is configured for the
 			// same host, otherwise validation fails.
-			if acmeManager != nil && isACMEChallenge(hello) {
+			if acmeManager != nil && acme.IsChallenge(hello) {
 				return acmeManager.GetCertificate(hello)
 			}
 
@@ -183,8 +164,8 @@ func (h *HTTP) buildStoreTLSConfig(store map[string][]Certificate, shared bool) 
 				}
 			}
 
-			// No statically configured certificate matched; let ACME provision
-			// a certificate for the requested host.
+			// No statically configured certificate matched; use the ACME
+			// certificate of the host, obtained on demand when allowed.
 			if acmeManager != nil {
 				certificate, err := acmeManager.GetCertificate(hello)
 				if err == nil {
@@ -216,51 +197,13 @@ func (h *HTTP) buildStoreTLSConfig(store map[string][]Certificate, shared bool) 
 		cfg.ClientCAs = clientCAs
 	}
 
-	if acmeManager != nil {
+	if acmeManager != nil && acmeManager.TLSALPN() {
 		// Advertise the ACME TLS-ALPN-01 protocol while preserving normal
 		// HTTP/2 and HTTP/1.1 negotiation for regular traffic.
-		cfg.NextProtos = append(cfg.NextProtos, "h2", "http/1.1", acme.ALPNProto)
+		cfg.NextProtos = append(cfg.NextProtos, "h2", "http/1.1", acmez.ACMETLS1Protocol)
 	}
 
 	return cfg, nil
-}
-
-// isACMEChallenge reports whether the ClientHello negotiates the ACME
-// TLS-ALPN-01 challenge protocol ("acme-tls/1").
-func isACMEChallenge(hello *tls.ClientHelloInfo) bool {
-	for _, proto := range hello.SupportedProtos {
-		if proto == acme.ALPNProto {
-			return true
-		}
-	}
-
-	return false
-}
-
-// buildACMEManager constructs an autocert.Manager from the ACME config. The
-// manager handles account registration, certificate issuance and automatic
-// renewal, persisting state under the configured cache directory.
-func (h *HTTP) buildACMEManager() *autocert.Manager {
-	cacheDir := h.TLS.ACME.CacheDir
-	if cacheDir == "" {
-		cacheDir = "acme-cache"
-	}
-
-	manager := &autocert.Manager{
-		Prompt: autocert.AcceptTOS,
-		Cache:  autocert.DirCache(cacheDir),
-		Email:  h.TLS.ACME.Email,
-	}
-
-	if len(h.TLS.ACME.Domains) > 0 {
-		manager.HostPolicy = autocert.HostWhitelist(h.TLS.ACME.Domains...)
-	}
-
-	if h.TLS.ACME.DirectoryURL != "" {
-		manager.Client = &acme.Client{DirectoryURL: h.TLS.ACME.DirectoryURL}
-	}
-
-	return manager
 }
 
 // wildcardCert looks up a certificate for serverName with the longest

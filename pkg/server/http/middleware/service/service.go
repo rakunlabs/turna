@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/internal/requestkey"
 )
 
 type Service struct {
@@ -96,8 +98,14 @@ type UpstreamTLS struct {
 
 type LoadBalancer struct {
 	Servers []Server `cfg:"servers"`
-	// Strategy is round_robin, random or least_conn; default is round_robin.
+	// Strategy is round_robin, random, least_conn, hash or first; default is round_robin.
 	Strategy string `cfg:"strategy"`
+	// HashKey builds the key of the hash strategy from parts like rate_limit
+	// keys: ip, realip, path, host, method, header:<name>, query:<name>,
+	// cookie:<name>. Default is ip.
+	HashKey []string `cfg:"hash_key"`
+	// TrustedProxies are the proxies trusted for the client ip of the hash key.
+	TrustedProxies []string `cfg:"trusted_proxies"`
 	// Sticky enables session affinity.
 	Sticky *Sticky `cfg:"sticky"`
 
@@ -110,6 +118,7 @@ type balancerBuilder struct {
 	sockets unixSockets
 	health  *healthChecker
 	passive *PassiveHealthCheck
+	hashKey func(r *http.Request) string
 }
 
 func (b *balancerBuilder) targets(servers []Server) ([]*ProxyTarget, error) {
@@ -161,7 +170,7 @@ func (b *balancerBuilder) balancer(servers []Server, cookieSuffix string, lb *Lo
 		return nil, err
 	}
 
-	return newLBBalancer(targets, lb.Strategy, sticky)
+	return newLBBalancer(targets, lb.Strategy, sticky, b.hashKey)
 }
 
 func (m *Service) GetBalancer() (ProxyBalancer, error) {
@@ -177,6 +186,20 @@ func (m *Service) getBalancer(transport http.RoundTripper) (ProxyBalancer, *bala
 		states:  make(map[string]*targetState),
 		sockets: make(unixSockets),
 		passive: lb.PassiveHealthCheck,
+	}
+
+	if lb.Strategy == StrategyHash {
+		keys := lb.HashKey
+		if len(keys) == 0 {
+			keys = []string{"ip"}
+		}
+
+		hashKey, err := requestkey.New("loadbalancer hash_key", keys, lb.TrustedProxies)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		builder.hashKey = hashKey
 	}
 
 	if lb.HealthCheck != nil {

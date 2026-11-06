@@ -107,7 +107,7 @@ func loadConfig(ctx context.Context, visit func(fn func(*pflag.Flag))) error {
 	overrideValues := make(map[string]overrideHold)
 	override(overrideValues)
 
-	if err := chu.Load(ctx, AppName, &config.Application); err != nil {
+	if err := chu.Load(ctx, AppName, &config.Application, chu.WithReport(reportSource)); err != nil {
 		return fmt.Errorf("unable to load configuration settings: %w", err)
 	}
 
@@ -213,7 +213,14 @@ func runRoot(ctx context.Context) error {
 	}
 
 	http.ServerInfo = config.AppName + " [" + config.BuildVars.Version + "]"
+	rememberServer(&config.Application.Server)
 	if err := config.Application.Server.Run(ctx, wg); err != nil {
+		into.CtxCancel()
+
+		return err
+	}
+
+	if err := startReload(ctx, wg, config.Application.Reload); err != nil {
 		into.CtxCancel()
 
 		return err

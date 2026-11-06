@@ -43,6 +43,7 @@ Dynamic `loads` can update loaded data later. When that happens, Turna refreshes
 | `server` | object | HTTP/TCP server configuration. See [Server](./server/server). |
 | `services` | array | Local commands to run. See [Services](./services). |
 | `telemetry` | object | OpenTelemetry exporter settings. See [Telemetry](#telemetry). |
+| `reload` | object | Apply configuration changes without restarting. See [Reload](#reload). |
 
 The debug `loaded config` log respects `log:"-"` struct tags: tagged fields are omitted, while other fields keep their `cfg` names. This does not affect configuration decoding. Process/service environment maps, inline loader content, credentials, private keys and marked authentication fields are excluded. This is not a general string scrubber: avoid putting secrets in unmarked fields such as commands or URLs, or in explicit `print` templates.
 
@@ -69,6 +70,29 @@ This runs once at startup. Dynamic loads do not reapply environment settings. It
 Only components that read the environment after this step observe the new values. In particular, `gcp_token` reads credentials, certificates and audience from its middleware config, not automatically from environment variables; setting a GCP environment variable does not replace those fields or invalidate cached tokens.
 
 After applying environment settings, Turna replaces the default HTTP transport with a clone whose proxy function reads a fresh snapshot of `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` (and their lowercase equivalents). This bypasses Go's process-wide proxy environment cache, even if loads already made HTTP requests. Middleware clients that subsequently use or clone the default transport, including `gcp_token`, use the new proxy settings. Existing clients with their own transports and clients with explicit proxy settings are unaffected. The proxy snapshot is not refreshed on dynamic reload.
+
+## Reload
+
+Turna reloads its configuration on `SIGHUP`, with `watch` when the configuration file changes, with `interval` periodically, and through the [`reload`](./server/http/middlewares/reload) HTTP middleware. The configuration is loaded again from all [sources](#application-config-sources) and the `server` section is applied like a dynamic update: entrypoints are opened and closed, routers, middlewares and certificates are replaced, and running connections are kept. An invalid configuration is logged and the running one keeps serving.
+
+```yaml
+reload:
+  signal: true
+  watch: true
+  debounce: 500ms
+  interval: 5m
+```
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `signal` | `true` | Reload on `SIGHUP`, e.g. `kill -HUP <pid>` or `docker kill -s HUP <container>`. |
+| `watch` | `false` | Reload when the configuration file changes. The directory is watched, so editors that replace the file and Kubernetes ConfigMap updates are seen. |
+| `debounce` | `500ms` | Wait for writes to settle before reloading. |
+| `interval` | `0` (off) | Reload periodically. `watch` only sees the local file; use `interval` to pick up changes in Consul, Vault, AWS, Azure, GCP or HTTP config sources. |
+
+A reload whose `server` section is unchanged does nothing, so a short `interval` only costs reading the sources. Reloads never run concurrently.
+
+Only `server` is replaced. `loads`, `env`, `preprocess`, `services`, `telemetry`, `providers` and `reload` keep the values they started with; restart Turna to change them. Middlewares whose configuration did not change keep their state (rate limit counters, sessions, ACME certificates). When `server.load_value` is set, the server keeps following the loaded data key.
 
 ## Telemetry
 

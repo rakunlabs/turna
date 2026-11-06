@@ -217,6 +217,29 @@ func TestTranslateRejects(t *testing.T) {
 			err:    "idempotency redis is not allowed",
 		},
 		{
+			name:   "bad behavior redis in labels",
+			cfg:    Config{HTTP: Protocol{Middlewares: []string{"bad_behavior"}}},
+			labels: map[string]string{"turna.http.middlewares.f.bad_behavior.redis.address": "evil:6379"},
+			err:    "bad_behavior redis is not allowed",
+		},
+		{
+			name:   "blocklist urls in labels",
+			cfg:    Config{HTTP: Protocol{Middlewares: []string{"blocklist"}}},
+			labels: map[string]string{"turna.http.middlewares.f.blocklist.deny.urls.0.url": "file:///etc/shadow", "turna.http.middlewares.f.blocklist.deny.urls.0.type": "ip"},
+			err:    "blocklist urls are not allowed",
+		},
+		{
+			name:   "waf directives files in labels",
+			cfg:    Config{HTTP: Protocol{Middlewares: []string{"waf"}}},
+			labels: map[string]string{"turna.http.middlewares.f.waf.directives_files": "/etc/*"},
+			err:    "waf directives_files are not allowed",
+		},
+		{
+			name:   "reload needs an allow",
+			labels: map[string]string{"turna.http.middlewares.f.reload.methods": "POST"},
+			err:    "type reload is not allowed",
+		},
+		{
 			name:   "forward auth needs an allow",
 			labels: map[string]string{"turna.http.middlewares.f.forward_auth.address": "http://evil"},
 			err:    "type forward_auth is not allowed",

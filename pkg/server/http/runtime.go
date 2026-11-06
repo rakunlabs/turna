@@ -13,6 +13,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
+
+	"github.com/rakunlabs/turna/pkg/server/acme"
 	"github.com/rakunlabs/turna/pkg/server/registry"
 )
 
@@ -31,16 +35,29 @@ type Runtime struct {
 
 	rules *RuleSwitch
 	tls   atomic.Pointer[tlsConfigs]
+	// acme answers HTTP-01 challenges on plain entrypoints
+	acme atomic.Pointer[acme.Manager]
 
 	components *registry.Components
 
 	mu      sync.Mutex
 	servers map[string]*runningServer
+
+	// acmeCurrent is the active ACME manager; Prepare and Activate run under
+	// the manager lock.
+	acmeCurrent *acme.Manager
 }
 
 type runningServer struct {
 	server   *http.Server
 	listener net.Listener
+	// h3 serves the entrypoint over QUIC, nil without http3
+	h3 *http3.Server
+	// h3ln is the QUIC listener of h3; closed before the transport gets
+	// a new listener
+	h3ln *quic.EarlyListener
+	// quic is the HTTP/3 setting the server started with
+	quic QUIC
 
 	// open TLS connections with the client certificate settings they were
 	// accepted with
@@ -81,6 +98,36 @@ type Prepared struct {
 	stage  *registry.ComponentStage
 	plain  map[string]struct{}
 	secure map[string]struct{}
+
+	// acme is the manager to activate; newACME reports that it was built by
+	// this Prepare and must be started or stopped.
+	acme    *acme.Manager
+	newACME bool
+
+	quic map[string]QUIC
+}
+
+// QUIC is the HTTP/3 transport of an entrypoint.
+type QUIC struct {
+	Transport *quic.Transport
+	// AdvertisePort overrides the port of the Alt-Svc header.
+	AdvertisePort int
+}
+
+// quicFor returns the HTTP/3 setting of an entrypoint; only TLS servers
+// serve HTTP/3.
+func (p *Prepared) quicFor(entrypoint string, secure bool) QUIC {
+	if !secure {
+		return QUIC{}
+	}
+
+	return p.quic[entrypoint]
+}
+
+// SetQUIC sets the HTTP/3 sockets of the entrypoints, used by Activate for
+// TLS entrypoints.
+func (p *Prepared) SetQUIC(q map[string]QUIC) {
+	p.quic = q
 }
 
 // Prepare builds h for the given entrypoints. It must run inside a registry
@@ -93,9 +140,15 @@ func (rt *Runtime) Prepare(h *HTTP, entrypoints []string) (*Prepared, error) {
 
 	p := &Prepared{rt: rt, plain: plain, secure: secure}
 
+	if err := p.prepareACME(h); err != nil {
+		return nil, err
+	}
+
 	if len(secure) > 0 {
-		p.tls, err = h.buildTLSConfigs(secure)
+		p.tls, err = h.buildTLSConfigs(secure, p.acme)
 		if err != nil {
+			p.discardACME()
+
 			return nil, err
 		}
 	}
@@ -114,6 +167,7 @@ func (rt *Runtime) Prepare(h *HTTP, entrypoints []string) (*Prepared, error) {
 	p.stage, err = rt.components.Stage(rt.ctx, specs)
 	if err != nil {
 		registry.GlobalReg.ClearHTTPInitFuncs()
+		p.discardACME()
 
 		return nil, err
 	}
@@ -121,7 +175,7 @@ func (rt *Runtime) Prepare(h *HTTP, entrypoints []string) (*Prepared, error) {
 	err = registry.GlobalReg.RunHTTPInitFuncs()
 	registry.GlobalReg.ClearHTTPInitFuncs()
 	if err != nil {
-		p.stage.Rollback()
+		p.Discard()
 
 		return nil, fmt.Errorf("cannot init http middlewares: %w", err)
 	}
@@ -135,7 +189,7 @@ func (rt *Runtime) Prepare(h *HTTP, entrypoints []string) (*Prepared, error) {
 
 	for name, router := range h.Routers {
 		if err := router.set(p.rules, entrypoints); err != nil {
-			p.stage.Rollback()
+			p.Discard()
 
 			return nil, fmt.Errorf("router %s cannot set: %w", name, err)
 		}
@@ -147,6 +201,56 @@ func (rt *Runtime) Prepare(h *HTTP, entrypoints []string) (*Prepared, error) {
 // Discard drops a prepared configuration that will not be activated.
 func (p *Prepared) Discard() {
 	p.stage.Rollback()
+	p.discardACME()
+}
+
+// prepareACME reuses the running ACME manager when its configuration is
+// unchanged, otherwise builds a new one that is started on Activate.
+func (p *Prepared) prepareACME(h *HTTP) error {
+	if h.TLS.ACME == nil || !h.TLS.ACME.Enabled {
+		return nil
+	}
+
+	if cur := p.rt.acmeCurrent; cur != nil && cur.Fingerprint() == h.TLS.ACME.Fingerprint() {
+		p.acme = cur
+
+		return nil
+	}
+
+	m, err := acme.New(p.rt.ctx, h.TLS.ACME)
+	if err != nil {
+		return err
+	}
+
+	p.acme = m
+	p.newACME = true
+
+	return nil
+}
+
+func (p *Prepared) discardACME() {
+	if p.newACME && p.acme != nil {
+		p.acme.Stop()
+		p.acme = nil
+		p.newACME = false
+	}
+}
+
+func (rt *Runtime) activateACME(p *Prepared) {
+	if p.newACME {
+		if err := p.acme.Start(); err != nil {
+			slog.Error("acme cannot start", "err", err.Error())
+		}
+	}
+
+	rt.acme.Store(p.acme)
+
+	if old := rt.acmeCurrent; old != nil && old != p.acme {
+		old.Stop()
+	}
+
+	rt.acmeCurrent = p.acme
+	p.newACME = false
 }
 
 // Activate switches to the prepared configuration. Servers are started for
@@ -158,6 +262,8 @@ func (p *Prepared) Activate(listen ListenerFunc) {
 	if p.tls != nil {
 		rt.tls.Store(p.tls)
 	}
+
+	rt.activateACME(p)
 
 	rt.rules.Store(p.rules)
 	p.stage.Commit()
@@ -175,7 +281,7 @@ func (p *Prepared) Activate(listen ListenerFunc) {
 
 	for key, s := range rt.servers {
 		entrypoint, secure := splitServerKey(key)
-		if want, ok := wanted[entrypoint]; ok && want == secure {
+		if want, ok := wanted[entrypoint]; ok && want == secure && s.quic == p.quicFor(entrypoint, secure) {
 			continue
 		}
 
@@ -198,7 +304,16 @@ func (p *Prepared) Activate(listen ListenerFunc) {
 			continue
 		}
 
-		rt.startServer(entrypoint, secure, listener)
+		if _, ok := p.quic[entrypoint]; ok && !secure {
+			slog.Warn("http3 needs tls routers, entrypoint is served without http3", "entrypoint", entrypoint)
+		}
+
+		var quic *QUIC
+		if q := p.quicFor(entrypoint, secure); q.Transport != nil {
+			quic = &q
+		}
+
+		rt.startServer(entrypoint, secure, listener, quic)
 	}
 }
 
@@ -224,6 +339,29 @@ func (rt *Runtime) Shutdown() {
 	for key, s := range rt.servers {
 		rt.stopServer(key, s)
 	}
+
+	if rt.acmeCurrent != nil {
+		rt.acmeCurrent.Stop()
+		rt.acmeCurrent = nil
+		rt.acme.Store(nil)
+	}
+}
+
+// handler serves an entrypoint; plain entrypoints answer ACME HTTP-01
+// challenges before routing.
+func (rt *Runtime) handler(entrypoint string, secure bool) http.Handler {
+	next := rt.rules.Serve(entrypoint)
+	if secure {
+		return next
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if m := rt.acme.Load(); m != nil && m.HandleHTTPChallenge(w, r) {
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (rt *Runtime) stopServer(key string, s *runningServer) {
@@ -235,17 +373,28 @@ func (rt *Runtime) stopServer(key string, s *runningServer) {
 	ctx, cancel := context.WithTimeout(context.Background(), ShutdownTimeout)
 	defer cancel()
 
+	if s.h3 != nil {
+		if err := s.h3.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+			slog.Error(fmt.Sprintf("http3 [%s] shutdown error", key), "err", err.Error())
+		}
+
+		_ = s.h3.Close()
+		_ = s.h3ln.Close()
+	}
+
 	if err := s.server.Shutdown(ctx); err != nil {
 		slog.Error(fmt.Sprintf("http [%s] shutdown error", key), "err", err.Error())
 	}
 }
 
-func (rt *Runtime) startServer(entrypoint string, secure bool, listener net.Listener) {
+func (rt *Runtime) startServer(entrypoint string, secure bool, listener net.Listener, quic *QUIC) {
 	key := serverKey(entrypoint, secure)
+
+	handler := rt.handler(entrypoint, secure)
 
 	s := &http.Server{
 		ReadHeaderTimeout: ReadHeaderTimeout,
-		Handler:           rt.rules.Serve(entrypoint),
+		Handler:           handler,
 	}
 
 	if !secure {
@@ -292,6 +441,14 @@ func (rt *Runtime) startServer(entrypoint string, secure bool, listener net.List
 		}
 	}
 
+	if quic != nil {
+		running.quic = *quic
+		running.h3, running.h3ln = rt.startHTTP3(key, entrypoint, handler, quic)
+		if running.h3 != nil {
+			s.Handler = altSvc(handler, listener.Addr(), quic.AdvertisePort)
+		}
+	}
+
 	rt.servers[key] = running
 
 	rt.wg.Add(1)
@@ -313,6 +470,63 @@ func (rt *Runtime) startServer(entrypoint string, secure bool, listener net.List
 
 		slog.Info(fmt.Sprintf("http server [%s] is stopped", key))
 	}()
+}
+
+// startHTTP3 serves handler over QUIC with the TLS configuration of the
+// entrypoint.
+func (rt *Runtime) startHTTP3(key, entrypoint string, handler http.Handler, q *QUIC) (*http3.Server, *quic.EarlyListener) {
+	h3 := &http3.Server{Handler: handler}
+
+	tlsConf := http3.ConfigureTLSConfig(&tls.Config{
+		MinVersion: tls.VersionTLS13,
+		GetConfigForClient: func(*tls.ClientHelloInfo) (*tls.Config, error) {
+			return rt.tls.Load().forEntrypoint(entrypoint), nil
+		},
+	})
+
+	// a listener of the long-lived transport, closing it keeps the socket
+	// usable for the next server of the entrypoint
+	ln, err := q.Transport.ListenEarly(tlsConf, &quic.Config{Allow0RTT: true})
+	if err != nil {
+		slog.Error(fmt.Sprintf("cannot listen http3 [%s]", key), "err", err.Error())
+
+		return nil, nil
+	}
+
+	rt.wg.Add(1)
+	go func() {
+		defer rt.wg.Done()
+
+		slog.Info(fmt.Sprintf("http3 server [%s] is listening on %s", key, ln.Addr().String()))
+
+		if err := h3.ServeListener(ln); err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, quic.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
+			slog.Error(fmt.Sprintf("cannot serve http3 [%s]", key), "err", err.Error())
+		}
+
+		slog.Info(fmt.Sprintf("http3 server [%s] is stopped", key))
+	}()
+
+	return h3, ln
+}
+
+// altSvc announces HTTP/3 on the port of addr or advertisePort.
+func altSvc(next http.Handler, addr net.Addr, advertisePort int) http.Handler {
+	port := advertisePort
+	if port == 0 {
+		if a, ok := addr.(*net.TCPAddr); ok {
+			port = a.Port
+		}
+	}
+
+	value := fmt.Sprintf(`h3=":%d"; ma=86400`, port)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ProtoMajor < 3 {
+			w.Header().Add("Alt-Svc", value)
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func serverKey(entrypoint string, secure bool) string {

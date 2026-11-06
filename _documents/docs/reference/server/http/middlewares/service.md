@@ -1,6 +1,6 @@
 # service
 
-`service` is Turna's reverse proxy middleware. It can proxy to one or more upstream servers with weighted round-robin, random or least-connections balancing, health checks, session affinity and traffic mirroring, or select upstreams by request path prefix.
+`service` is Turna's reverse proxy middleware. It can proxy to one or more upstream servers with weighted round-robin, random, least-connections, consistent hash or primary/backup balancing, health checks, session affinity and traffic mirroring, or select upstreams by request path prefix.
 
 ```yaml
 server:
@@ -26,7 +26,9 @@ server:
 | `pass_host_header` | | When explicitly `false`, clear `r.Host` before proxying. |
 | `proxy` | | Optional HTTP or HTTPS forward proxy URL used for upstream requests. Credentials may be included in the URL. |
 | `loadbalancer.servers` | | Upstream list; each entry has `url` (`http://`, `https://` or `unix:///path.sock`) and optional `weight` (default `1`). |
-| `loadbalancer.strategy` | `round_robin` | `round_robin` (smooth weighted), `random` (weighted) or `least_conn` (active requests / weight). |
+| `loadbalancer.strategy` | `round_robin` | `round_robin` (smooth weighted), `random` (weighted), `least_conn` (active requests / weight), `hash` (weighted consistent hash of `hash_key`) or `first` (first available server in config order). |
+| `loadbalancer.hash_key` | `[ip]` | Request key of the `hash` strategy, built from parts: `ip`, `realip`, `path`, `host`, `method`, `header:<name>`, `query:<name>`, `cookie:<name>`. A missing part falls back to the client IP. |
+| `loadbalancer.trusted_proxies` | | Proxies trusted for the client IP of the `ip` part of `hash_key`. |
 | `loadbalancer.sticky.cookie` | | Session affinity cookie, see below. |
 | `loadbalancer.health_check` | | Active health check, see below. |
 | `loadbalancer.passive_health_check` | | Passive health check, see below. |
@@ -98,6 +100,40 @@ service:
 ```
 
 Unhealthy or ejected upstreams are skipped. When every upstream is unavailable, turna still tries them (fail open) instead of rejecting the request.
+
+### Consistent hash
+
+`hash` sends requests with the same key to the same upstream using weighted rendezvous hashing. When an upstream becomes unavailable only its keys move to other upstreams, and they return when it recovers. Retries go to the next best upstream for the key.
+
+```yaml
+service:
+  retry: 1
+  loadbalancer:
+    strategy: hash
+    hash_key: ["header:X-Tenant"]
+    servers:
+      - url: http://app-1:3000
+        weight: 2
+      - url: http://app-2:3000
+```
+
+### Primary / backup
+
+`first` always uses the first available server in the list, so the following servers are only used as failover. Weights are ignored.
+
+```yaml
+service:
+  retry: 1
+  loadbalancer:
+    strategy: first
+    health_check:
+      path: /healthz
+    servers:
+      - url: http://primary:3000
+      - url: http://backup:3000
+```
+
+`sticky` takes precedence over the strategy for the first attempt of a request.
 
 ## Sticky Sessions
 

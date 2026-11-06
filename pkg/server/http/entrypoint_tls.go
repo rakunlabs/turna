@@ -7,6 +7,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"slices"
+
+	"github.com/mholt/acmez/v3"
+
+	"github.com/rakunlabs/turna/pkg/server/acme"
 )
 
 const (
@@ -112,8 +117,8 @@ func (c *tlsConfigs) forEntrypoint(entrypoint string) *tls.Config {
 
 // buildTLSConfigs builds the shared configuration and the entrypoint
 // overrides for the given secure entrypoints.
-func (h *HTTP) buildTLSConfigs(secure map[string]struct{}) (*tlsConfigs, error) {
-	base, err := h.buildTLSConfig()
+func (h *HTTP) buildTLSConfigs(secure map[string]struct{}, acmeManager *acme.Manager) (*tlsConfigs, error) {
+	base, err := h.buildStoreTLSConfig(h.TLS.Store, true, acmeManager)
 	if err != nil {
 		return nil, err
 	}
@@ -136,12 +141,16 @@ func (h *HTTP) buildTLSConfigs(secure map[string]struct{}) (*tlsConfigs, error) 
 
 		entryBase := base
 		if len(e.Store) > 0 {
-			entryBase, err = h.buildStoreTLSConfig(e.Store, false)
+			entryBase, err = h.buildStoreTLSConfig(e.Store, false, nil)
 			if err != nil {
 				return nil, fmt.Errorf("tls entrypoint %s: %w", name, err)
 			}
 
-			entryBase.NextProtos = base.NextProtos
+			// ACME does not serve this entrypoint, so its challenge
+			// protocol is not offered
+			entryBase.NextProtos = slices.DeleteFunc(slices.Clone(base.NextProtos), func(p string) bool {
+				return p == acmez.ACMETLS1Protocol
+			})
 		}
 
 		cfg, err := e.config(entryBase)

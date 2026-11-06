@@ -9,6 +9,8 @@ import (
 	"net"
 	"sync"
 
+	"github.com/quic-go/quic-go"
+
 	"github.com/rakunlabs/turna/pkg/server/http"
 	"github.com/rakunlabs/turna/pkg/server/listener"
 	"github.com/rakunlabs/turna/pkg/server/registry"
@@ -169,10 +171,20 @@ func (m *Manager) Apply(s *Server) (err error) {
 
 	// open new sockets first, a bind error aborts without side effects
 	opened := make(map[string]*listener.Entrypoint)
+	// quicChanged are kept entrypoints whose HTTP/3 socket is replaced, a
+	// nil value disables HTTP/3
+	quicChanged := make(map[string]*quic.Transport)
 	defer func() {
 		if err != nil {
 			for _, e := range opened {
 				_ = e.Close()
+			}
+
+			for _, c := range quicChanged {
+				if c != nil {
+					_ = c.Close()
+					_ = c.Conn.Close()
+				}
 			}
 		}
 	}()
@@ -181,13 +193,28 @@ func (m *Manager) Apply(s *Server) (err error) {
 	packets := make([]string, 0)
 
 	for name, cfg := range s.EntryPoints {
-		if old, ok := m.entrypoints[name]; !ok || !old.Same(cfg.Address, cfg.Network) {
-			e, err := listener.Bind(name, cfg.Address, cfg.Network)
+		if cfg.http3() && isPacket(cfg.Network) {
+			return fmt.Errorf("entrypoint %s: http3 needs a tcp network", name)
+		}
+
+		old, ok := m.entrypoints[name]
+		switch {
+		case !ok || !old.Same(cfg.Address, cfg.Network):
+			e, err := listener.BindWith(name, cfg.Address, cfg.Network, cfg.http3())
 			if err != nil {
 				return fmt.Errorf("entrypoint %s: %w", name, err)
 			}
 
 			opened[name] = e
+		case cfg.http3() && old.QUIC() == nil:
+			conn, err := old.OpenQUIC()
+			if err != nil {
+				return fmt.Errorf("entrypoint %s: %w", name, err)
+			}
+
+			quicChanged[name] = conn
+		case !cfg.http3() && old.QUIC() != nil:
+			quicChanged[name] = nil
 		}
 
 		if isPacket(cfg.Network) {
@@ -248,6 +275,12 @@ func (m *Manager) Apply(s *Server) (err error) {
 		m.entrypoints[name] = e
 	}
 
+	// servers of the entrypoint restart with the new transport on Activate
+	for name, conn := range quicChanged {
+		m.http.Release(name)
+		m.entrypoints[name].SetQUIC(conn)
+	}
+
 	// release entrypoints that move between tcp and http before activation
 	for _, name := range pTCP.Entrypoints() {
 		m.http.Release(name)
@@ -257,6 +290,7 @@ func (m *Manager) Apply(s *Server) (err error) {
 	}
 
 	pTCP.Activate(m.listen)
+	pHTTP.SetQUIC(m.quic(s))
 	pHTTP.Activate(m.listen)
 	pUDP.Activate(m.packet)
 
@@ -296,6 +330,27 @@ func (m *Manager) listen(name string) (net.Listener, error) {
 	}
 
 	return e.Listen()
+}
+
+// quic returns the HTTP/3 sockets of the entrypoints of s.
+func (m *Manager) quic(s *Server) map[string]http.QUIC {
+	out := make(map[string]http.QUIC)
+
+	for name, cfg := range s.EntryPoints {
+		e, ok := m.entrypoints[name]
+		if !ok || e.QUIC() == nil {
+			continue
+		}
+
+		q := http.QUIC{Transport: e.QUIC()}
+		if cfg.HTTP3 != nil {
+			q.AdvertisePort = cfg.HTTP3.AdvertisePort
+		}
+
+		out[name] = q
+	}
+
+	return out
 }
 
 func (m *Manager) packet(name string) (net.PacketConn, error) {

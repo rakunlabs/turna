@@ -10,6 +10,8 @@ import (
 	"net"
 	"strings"
 	"sync"
+
+	"github.com/quic-go/quic-go"
 )
 
 // Entrypoint is a bound socket of a configured entrypoint.
@@ -20,6 +22,8 @@ type Entrypoint struct {
 
 	listener net.Listener
 	packet   net.PacketConn
+	// quic is the HTTP/3 transport on the UDP port of a TCP entrypoint
+	quic *quic.Transport
 
 	mu      sync.Mutex
 	current *Virtual
@@ -29,6 +33,12 @@ type Entrypoint struct {
 
 // Bind opens the socket of an entrypoint.
 func Bind(name, address, network string) (*Entrypoint, error) {
+	return BindWith(name, address, network, false)
+}
+
+// BindWith opens the socket of an entrypoint; quic also opens a UDP socket
+// on the same port of a TCP entrypoint for HTTP/3.
+func BindWith(name, address, network string, quic bool) (*Entrypoint, error) {
 	if network == "" {
 		network = "tcp"
 	}
@@ -55,6 +65,17 @@ func Bind(name, address, network string) (*Entrypoint, error) {
 	e.listener = l
 	slog.Info(fmt.Sprintf("entrypoint %s is listening on %s with %s", name, l.Addr().String(), network))
 
+	if quic {
+		conn, err := e.OpenQUIC()
+		if err != nil {
+			_ = l.Close()
+
+			return nil, err
+		}
+
+		e.quic = conn
+	}
+
 	go e.acceptLoop()
 
 	return e, nil
@@ -67,6 +88,58 @@ func (e *Entrypoint) Same(address, network string) bool {
 	}
 
 	return e.Address == address && e.Network == network
+}
+
+// QUIC returns the HTTP/3 transport, nil when not enabled.
+func (e *Entrypoint) QUIC() *quic.Transport {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return e.quic
+}
+
+// OpenQUIC opens a QUIC transport on the UDP port of the TCP entrypoint
+// without attaching it, see SetQUIC.
+func (e *Entrypoint) OpenQUIC() (*quic.Transport, error) {
+	tcpAddr, ok := e.listener.Addr().(*net.TCPAddr)
+	if !ok {
+		return nil, fmt.Errorf("entrypoint %s: http3 needs a tcp network", e.Name)
+	}
+
+	udpNetwork := "udp" + strings.TrimPrefix(e.Network, "tcp")
+
+	conn, err := net.ListenPacket(udpNetwork, net.JoinHostPort(addrHost(e.Address), fmt.Sprint(tcpAddr.Port)))
+	if err != nil {
+		return nil, fmt.Errorf("address cannot listen %s for http3: %w", e.Address, err)
+	}
+
+	slog.Info(fmt.Sprintf("entrypoint %s is listening on %s with %s for http3", e.Name, conn.LocalAddr().String(), udpNetwork))
+
+	// the transport owns the socket and outlives the servers using it
+	return &quic.Transport{Conn: conn}, nil
+}
+
+// SetQUIC replaces the HTTP/3 transport, closing the previous one and its
+// socket; nil disables HTTP/3.
+func (e *Entrypoint) SetQUIC(conn *quic.Transport) {
+	e.mu.Lock()
+	old := e.quic
+	e.quic = conn
+	e.mu.Unlock()
+
+	if old != nil && old != conn {
+		_ = old.Close()
+		_ = old.Conn.Close()
+	}
+}
+
+func addrHost(address string) string {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return ""
+	}
+
+	return host
 }
 
 // IsPacket reports whether the entrypoint is a UDP (packet) socket.
@@ -135,6 +208,8 @@ func (e *Entrypoint) Close() error {
 
 	err := e.listener.Close()
 	<-e.done
+
+	e.SetQUIC(nil)
 
 	return err
 }

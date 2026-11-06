@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"math"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
@@ -22,6 +23,8 @@ const (
 	StrategyRoundRobin = "round_robin"
 	StrategyRandom     = "random"
 	StrategyLeastConn  = "least_conn"
+	StrategyHash       = "hash"
+	StrategyFirst      = "first"
 
 	triedTargetsKey = "_lb_tried_targets"
 )
@@ -134,24 +137,32 @@ type lbBalancer struct {
 	targets  []*ProxyTarget
 	strategy string
 	sticky   *stickyCookie
+	// key builds the hash key of a request for the hash strategy.
+	key func(r *http.Request) string
 
 	mu sync.Mutex
 	rr uint64
 }
 
-func newLBBalancer(targets []*ProxyTarget, strategy string, sticky *stickyCookie) (*lbBalancer, error) {
+func newLBBalancer(targets []*ProxyTarget, strategy string, sticky *stickyCookie, key func(r *http.Request) string) (*lbBalancer, error) {
 	switch strategy {
 	case "":
 		strategy = StrategyRoundRobin
-	case StrategyRoundRobin, StrategyRandom, StrategyLeastConn:
+	case StrategyRoundRobin, StrategyRandom, StrategyLeastConn, StrategyHash, StrategyFirst:
 	default:
-		return nil, fmt.Errorf("unsupported strategy %q (supported: %s, %s, %s)", strategy, StrategyRoundRobin, StrategyRandom, StrategyLeastConn)
+		return nil, fmt.Errorf("unsupported strategy %q (supported: %s, %s, %s, %s, %s)",
+			strategy, StrategyRoundRobin, StrategyRandom, StrategyLeastConn, StrategyHash, StrategyFirst)
+	}
+
+	if strategy == StrategyHash && key == nil {
+		return nil, fmt.Errorf("hash strategy requires a key")
 	}
 
 	return &lbBalancer{
 		targets:  targets,
 		strategy: strategy,
 		sticky:   sticky,
+		key:      key,
 	}, nil
 }
 
@@ -198,6 +209,12 @@ func (b *lbBalancer) Next(w http.ResponseWriter, r *http.Request) *ProxyTarget {
 var errNoUpstream = httputil2.NewError("no available upstream", nil, http.StatusServiceUnavailable)
 
 func (b *lbBalancer) NextTarget(w http.ResponseWriter, r *http.Request) (*ProxyTarget, error) {
+	// build the hash key before locking, it may parse the query or cookies
+	var key string
+	if b.strategy == StrategyHash {
+		key = b.key(r)
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -243,7 +260,7 @@ func (b *lbBalancer) NextTarget(w http.ResponseWriter, r *http.Request) (*ProxyT
 	stickyHit := target != nil
 
 	if target == nil {
-		target = b.pick(candidates)
+		target = b.pick(key, candidates)
 	}
 
 	if b.sticky != nil && !stickyHit {
@@ -255,12 +272,16 @@ func (b *lbBalancer) NextTarget(w http.ResponseWriter, r *http.Request) (*ProxyT
 	return target, nil
 }
 
-func (b *lbBalancer) pick(candidates []*ProxyTarget) *ProxyTarget {
+func (b *lbBalancer) pick(key string, candidates []*ProxyTarget) *ProxyTarget {
 	if len(candidates) == 1 {
 		return candidates[0]
 	}
 
 	switch b.strategy {
+	case StrategyFirst:
+		return candidates[0]
+	case StrategyHash:
+		return rendezvous(key, candidates)
 	case StrategyRandom:
 		total := 0
 		for _, t := range candidates {
@@ -309,6 +330,60 @@ func (b *lbBalancer) pick(candidates []*ProxyTarget) *ProxyTarget {
 
 		return best
 	}
+}
+
+// rendezvous picks the target with the highest weighted score for the key
+// (weighted HRW), so removing a target only moves the keys it owned.
+func rendezvous(key string, candidates []*ProxyTarget) *ProxyTarget {
+	var (
+		best      *ProxyTarget
+		bestScore float64
+	)
+
+	for _, t := range candidates {
+		h := fnvString(fnvString(fnvOffset64, key)*fnvPrime64, t.state.id)
+		score := float64(t.getWeight()) / -math.Log(unitOpen(mix64(h)))
+
+		if best == nil || score > bestScore {
+			best = t
+			bestScore = score
+		}
+	}
+
+	return best
+}
+
+// unitOpen maps x to (0, 1) using 52 bits, the +0.5 stays exact so the
+// result is never 0 or 1 and its logarithm is finite and negative.
+func unitOpen(x uint64) float64 {
+	return (float64(x>>12) + 0.5) / (1 << 52)
+}
+
+const (
+	fnvOffset64 = 14695981039346656037
+	fnvPrime64  = 1099511628211
+)
+
+// fnvString continues an FNV-1a hash with s without allocating; multiplying
+// by the prime in between separates key and target id like a zero byte.
+func fnvString(h uint64, s string) uint64 {
+	for i := 0; i < len(s); i++ {
+		h ^= uint64(s[i])
+		h *= fnvPrime64
+	}
+
+	return h
+}
+
+// mix64 is the splitmix64 finalizer, spreading FNV output over all bits.
+func mix64(x uint64) uint64 {
+	x ^= x >> 30
+	x *= 0xbf58476d1ce4e5b9
+	x ^= x >> 27
+	x *= 0x94d049bb133111eb
+	x ^= x >> 31
+
+	return x
 }
 
 // ///////////////////////////////////////////////////////////////////////////

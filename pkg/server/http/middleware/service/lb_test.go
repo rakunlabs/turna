@@ -346,7 +346,7 @@ func TestActiveHealthCheck(t *testing.T) {
 func TestAllUnhealthyFailOpen(t *testing.T) {
 	a := namedBackend(t, "a", nil)
 
-	lb, err := newLBBalancer([]*ProxyTarget{{URL: mustURL(t, a.URL), state: newTargetState(mustURL(t, a.URL), nil)}}, "", nil)
+	lb, err := newLBBalancer([]*ProxyTarget{{URL: mustURL(t, a.URL), state: newTargetState(mustURL(t, a.URL), nil)}}, "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -34,7 +34,7 @@ func TestEntryPointClientCertificates(t *testing.T) {
 		},
 	}}
 
-	configs, err := h.buildTLSConfigs(map[string]struct{}{"mtls": {}, "fallback": {}, "plain": {}})
+	configs, err := h.buildTLSConfigs(map[string]struct{}{"mtls": {}, "fallback": {}, "plain": {}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestEntryPointClientCertificatesInvalid(t *testing.T) {
 		"bad auth": {ClientCAs: []string{"x"}, ClientAuth: "maybe"},
 	} {
 		h := &HTTP{TLS: TLS{EntryPoints: map[string]EntryPointTLS{"e": e}}}
-		if _, err := h.buildTLSConfigs(map[string]struct{}{"e": {}}); err == nil {
+		if _, err := h.buildTLSConfigs(map[string]struct{}{"e": {}}, nil); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
@@ -110,7 +110,7 @@ func TestEntryPointCertificateStore(t *testing.T) {
 		},
 	}}
 
-	configs, err := h.buildTLSConfigs(map[string]struct{}{"a": {}, "b": {}, "plain": {}})
+	configs, err := h.buildTLSConfigs(map[string]struct{}{"a": {}, "b": {}, "plain": {}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

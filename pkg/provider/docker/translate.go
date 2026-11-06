@@ -635,6 +635,19 @@ func (t *translator) middleware(kind, name string, def any, known []string, p Pr
 		return fmt.Errorf("%s middleware %s: idempotency redis is not allowed in labels", kind, name)
 	}
 
+	if m, ok := out.(*shttp.HTTPMiddleware); ok && m.BadBehavior != nil && m.BadBehavior.Redis != nil {
+		return fmt.Errorf("%s middleware %s: bad_behavior redis is not allowed in labels", kind, name)
+	}
+
+	// remote lists and databases are fetched or read by Turna
+	if m, ok := out.(*shttp.HTTPMiddleware); ok && m.Blocklist != nil && (len(m.Blocklist.Allow.URLs) > 0 || len(m.Blocklist.Deny.URLs) > 0) {
+		return fmt.Errorf("%s middleware %s: blocklist urls are not allowed in labels", kind, name)
+	}
+
+	if m, ok := out.(*shttp.HTTPMiddleware); ok && m.WAF != nil && len(m.WAF.DirectivesFiles) > 0 {
+		return fmt.Errorf("%s middleware %s: waf directives_files are not allowed in labels", kind, name)
+	}
+
 	return nil
 }
 

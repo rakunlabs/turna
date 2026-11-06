@@ -7,9 +7,12 @@ import (
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/accesslog"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/addprefix"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/antibot"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/badbehavior"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/basicauth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/block"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/blocklist"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/bodylimit"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/cache"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/canary"
@@ -28,6 +31,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/forwardauth"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/gateway"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/gcptoken"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/geoip"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/grpcui"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/gzip"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/headers"
@@ -50,6 +54,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/redirectcontinue"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/redirection"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/regexpath"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/reload"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/request"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/requestid"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/retry"
@@ -70,6 +75,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/try"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/url"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/view"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/waf"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/webhooksignature"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/whoami"
 
@@ -146,6 +152,12 @@ type HTTPMiddleware struct {
 	Errors                     *errorpages.Errors                    `cfg:"errors"`
 	Retry                      *retry.Retry                          `cfg:"retry"`
 	SignedURL                  *signedurl.SignedURL                  `cfg:"signed_url"`
+	BadBehavior                *badbehavior.BadBehavior              `cfg:"bad_behavior"`
+	Blocklist                  *blocklist.Blocklist                  `cfg:"blocklist"`
+	GeoIP                      *geoip.GeoIP                          `cfg:"geoip"`
+	Antibot                    *antibot.Antibot                      `cfg:"antibot"`
+	WAF                        *waf.WAF                              `cfg:"waf"`
+	Reload                     *reload.Reload                        `cfg:"reload"`
 }
 
 func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]MiddlewareFunc, error) {
@@ -325,6 +337,24 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	case h.SignedURL != nil:
 		m, err := h.SignedURL.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.BadBehavior != nil:
+		m, err := h.BadBehavior.Middleware(ctx)
+		return []MiddlewareFunc{m}, err
+	case h.Blocklist != nil:
+		m, err := h.Blocklist.Middleware(ctx)
+		return []MiddlewareFunc{m}, err
+	case h.GeoIP != nil:
+		m, err := h.GeoIP.Middleware(ctx)
+		return []MiddlewareFunc{m}, err
+	case h.Antibot != nil:
+		m, err := h.Antibot.Middleware(ctx)
+		return []MiddlewareFunc{m}, err
+	case h.WAF != nil:
+		m, err := h.WAF.Middleware(ctx)
+		return []MiddlewareFunc{m}, err
+	case h.Reload != nil:
+		m, err := h.Reload.Middleware()
 		return []MiddlewareFunc{m}, err
 	case h.Auth != nil:
 		m, err := h.Auth.Middleware(ctx, name)

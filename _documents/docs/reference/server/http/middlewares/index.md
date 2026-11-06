@@ -32,10 +32,13 @@ A single named middleware can hold only one middleware type. If you need both he
 | --- | --- |
 | `access_log` | Structured request/response logging. |
 | `add_prefix` | Add a path prefix before the next middleware. |
+| `antibot` | Challenge clients with JavaScript proof-of-work or a captcha before letting them through. |
 | `auth` | PostgreSQL-backed unified IAM/OAuth2 middleware. |
 | `basic_auth` | HTTP Basic authentication with htpasswd hashes. |
+| `bad_behavior` | Ban clients that produce too many error responses, in memory or shared through Redis. |
 | `block` | Block methods or paths. |
 | `body_limit` | Reject request bodies larger than a size. |
+| `blocklist` | Deny requests by IP, reverse DNS, user agent, path, remote lists and DNSBL. |
 | `cache` | Cache upstream responses in memory or Redis following `Cache-Control`. |
 | `canary` | Split traffic between middleware chains by weight, sticky per client. |
 | `circuit_breaker` | Stop calling a failing upstream for a while and answer `503`. |
@@ -55,6 +58,7 @@ A single named middleware can hold only one middleware type. If you need both he
 | `gcp_token` | Google Cloud token via X.509 workload identity federation (OAuth2 endpoint or header inject). |
 | `grpcui` | Browser UI for gRPC services. |
 | `gzip` | Deprecated, use `compress`. |
+| `geoip` | Allow or deny requests by country or ASN from MaxMind databases. |
 | `headers` | Set, append or delete request/response headers. |
 | `hello` | Return a static or templated response. |
 | `iam_check` | Check request authorization through an IAM API. |
@@ -75,6 +79,7 @@ A single named middleware can hold only one middleware type. If you need both he
 | `redirect_continue` | Redirect when a regex rewrite changes the URL, otherwise continue. |
 | `redirection` | Always redirect. |
 | `regex_path` | Rewrite the URL path with a regex. |
+| `reload` | Reload the configuration on request, like `SIGHUP`. |
 | `request` | Make an outbound HTTP request and return its response. |
 | `request_id` | Ensure `X-Request-Id` exists. |
 | `retry` | Send a request again with backoff when the upstream fails. |
@@ -95,5 +100,6 @@ A single named middleware can hold only one middleware type. If you need both he
 | `try` | Retry a chain with a rewritten path for selected response statuses. |
 | `url` | Modify scheme, host, path, query, fragment, and port by rule. |
 | `view` | Serve a combined Swagger/API documentation UI. |
+| `waf` | Web application firewall with Coraza and the OWASP Core Rule Set. |
 | `webhook_signature` | Verify HMAC signatures of webhooks (GitHub, Stripe, Slack, Shopify, Standard Webhooks). |
 | `whoami` | Echo server, host and request details, like `traefik/whoami`. |
