@@ -14,7 +14,7 @@ require (
 	github.com/abbot/go-http-auth v0.4.1-0.20220112235402-e1cee1c72f2f
 	github.com/ajg/form v1.9.0
 	github.com/alicebob/miniredis/v2 v2.35.0
-	github.com/andybalholm/brotli v1.2.6
+	github.com/andybalholm/brotli v1.2.7
 	github.com/aws/aws-sdk-go-v2/config v1.33.12
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.50.7
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.81.1

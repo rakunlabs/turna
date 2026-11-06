@@ -148,7 +148,7 @@ func (m *Auth) SAMLACS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	assertion, err := sp.ParseResponse(r, []string{relay.RequestID})
+	assertion, err := parseSAMLResponse(sp, r, []string{relay.RequestID})
 	if err != nil {
 		httputil.HandleError(w, httputil.NewError("saml response invalid", err, http.StatusBadRequest))
 		return
