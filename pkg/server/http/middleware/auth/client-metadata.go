@@ -43,9 +43,39 @@ func validateClientMetadataURL(clientID string) (*url.URL, error) {
 	return u, nil
 }
 
+// clientMetadataBlockedNets are non-public ranges the net.IP predicates miss.
+var clientMetadataBlockedNets = []*net.IPNet{
+	mustParseCIDR("100.64.0.0/10"), // carrier-grade NAT
+	mustParseCIDR("64:ff9b::/96"),  // NAT64, can map to internal IPv4
+}
+
+func mustParseCIDR(cidr string) *net.IPNet {
+	_, n, err := net.ParseCIDR(cidr)
+	if err != nil {
+		panic(err)
+	}
+
+	return n
+}
+
+func isPublicClientMetadataIP(ip net.IP) bool {
+	if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+		return false
+	}
+	for _, n := range clientMetadataBlockedNets {
+		if n.Contains(ip) {
+			return false
+		}
+	}
+
+	return true
+}
+
 func publicClientMetadataHTTPClient() *http.Client {
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	// a fresh transport per fetch; keep-alives would leave its idle conns behind
 	transport := &http.Transport{
+		DisableKeepAlives: true,
 		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 			host, port, err := net.SplitHostPort(address)
 			if err != nil {
@@ -60,7 +90,7 @@ func publicClientMetadataHTTPClient() *http.Client {
 			// still reach dual-stack metadata hosts over IPv4
 			var lastErr error
 			for _, ip := range ips {
-				if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				if !isPublicClientMetadataIP(ip) {
 					continue
 				}
 

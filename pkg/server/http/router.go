@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -101,35 +100,18 @@ func handle(e RouterHandler, path string, h http.Handler) (err error) {
 	return nil
 }
 
-var ErrorMiddleware = func(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.WithValue(r.Context(), "error-handler", func(err error) {
-			slog.Error(err.Error(), "request_id", r.Header.Get("X-Request-Id"))
-
-			httputil.HandleError(w, httputil.NewError("", err, http.StatusInternalServerError))
-		})
-
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
 var RecoverMiddleware = func(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
-			if r := recover(); r != nil {
-				if r == http.ErrAbortHandler {
-					panic(r)
-				}
-				err, ok := r.(error)
-				if !ok {
-					err = fmt.Errorf("%v", r)
+			if rec := recover(); rec != nil {
+				if rec == http.ErrAbortHandler {
+					panic(rec)
 				}
 
-				slog.Error(fmt.Sprintf("panic: %s", err.Error()))
-				debug.PrintStack()
+				slog.Error(fmt.Sprintf("panic: %v", rec), "request_id", r.Header.Get("X-Request-Id"), "stack", string(debug.Stack()))
 
 				w.WriteHeader(http.StatusInternalServerError)
-				_, _ = w.Write([]byte(fmt.Sprintf("panic: %s", err.Error())))
+				_, _ = w.Write([]byte(http.StatusText(http.StatusInternalServerError)))
 
 				return
 			}

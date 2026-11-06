@@ -55,6 +55,9 @@ type Auth struct {
 	ldapSyncM    sync.Mutex              `cfg:"-"`
 	samlM        samlManager             `cfg:"-"`
 	encRotateM   sync.Mutex              `cfg:"-"`
+	// runCtx is the middleware lifetime context; background work started
+	// lazily from a request (memory cache cleanup) must not use the request ctx.
+	runCtx context.Context `cfg:"-"`
 }
 
 type Database struct {
@@ -122,6 +125,8 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 	if m.Cache.PollInterval < 0 {
 		return nil, errors.New("auth cache poll_interval must be positive")
 	}
+
+	m.runCtx = ctx
 
 	// identifies this process in fleet-wide records such as auth_sync_locks
 	m.instanceID = ulid.Make().String()

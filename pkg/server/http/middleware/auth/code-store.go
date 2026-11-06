@@ -193,9 +193,14 @@ func (m *Auth) codeStoreRuntime(ctx context.Context) (*oauth2store.StoreCache, e
 			State: &databaseCodeCache{store: m.store, kind: flowKindOAuthState, ttl: oauth2store.DefaultStateTimeout},
 		}
 	} else {
+		initCtx := m.runCtx
+		if initCtx == nil {
+			initCtx = context.WithoutCancel(ctx)
+		}
+
 		storeConfig := cfg.store()
 		var err error
-		storeCache, err = storeConfig.Init(ctx)
+		storeCache, err = storeConfig.Init(initCtx)
 		if err != nil {
 			return nil, err
 		}

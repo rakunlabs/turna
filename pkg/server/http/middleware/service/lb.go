@@ -406,8 +406,7 @@ type StickyCookie struct {
 }
 
 type stickyCookie struct {
-	cookie   http.Cookie
-	sameSite http.SameSite
+	cookie http.Cookie
 }
 
 func (s *Sticky) build(suffix string) (*stickyCookie, error) {

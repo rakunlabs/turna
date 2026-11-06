@@ -1,7 +1,10 @@
 package auth
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -461,10 +464,23 @@ func (m *Auth) ConsentAPI(w http.ResponseWriter, r *http.Request) {
 		Scopes:       flow.Scope,
 		Resources:    flow.Resources,
 		Flow:         flowID,
-		ConsentToken: flow.ConsentToken,
+		ConsentToken: consentFormToken(flow.ConsentToken, userAlias),
 		Action:       m.PrefixPath + "/oauth2/consent",
 		RememberMe:   !m.cache.Snapshot().Authorize.DisableRememberMe,
 	})
+}
+
+// consentFormToken binds the flow's consent token to the principal viewing
+// the page, so a form rendered for one user cannot be submitted by another.
+func consentFormToken(token, userAlias string) string {
+	if token == "" {
+		return ""
+	}
+
+	mac := hmac.New(sha256.New, []byte(token))
+	mac.Write([]byte(userAlias))
+
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // ConsentDecisionAPI handles the approve/deny form submission of the consent
@@ -494,7 +510,7 @@ func (m *Auth) ConsentDecisionAPI(w http.ResponseWriter, r *http.Request) {
 
 	// flows created before the token existed carry none; they expire within
 	// the flow lifetime, so refusing them is only a one-time "start over"
-	if flow.ConsentToken == "" || subtle.ConstantTimeCompare([]byte(flow.ConsentToken), []byte(r.PostFormValue("consent_token"))) != 1 {
+	if flow.ConsentToken == "" || subtle.ConstantTimeCompare([]byte(consentFormToken(flow.ConsentToken, userAlias)), []byte(r.PostFormValue("consent_token"))) != 1 {
 		m.renderConsent(w, http.StatusForbidden, consentPageData{Error: "This consent form is no longer valid. Start over from the application."})
 
 		return

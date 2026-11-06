@@ -282,7 +282,10 @@ func (m *JWT) Middleware(ctx context.Context) (func(http.Handler) http.Handler, 
 		}
 
 		if _, hasKid := t.Header["kid"]; remote != nil && (hasKid || len(static) == 0) {
-			return remote.keyfunc(t)
+			key, err := remote.keyfunc(t)
+			if !errors.Is(err, jwks.ErrKIDNotFound) || len(static) == 0 {
+				return key, err
+			}
 		}
 
 		if len(static) == 0 {

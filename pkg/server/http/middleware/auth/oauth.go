@@ -149,19 +149,26 @@ func (m *Auth) jwtRuntime(ctx context.Context) (*jwtSigner, error) {
 	}
 
 	if setting.PrivateKey == "" {
-		// first start or deleted setting: generate and persist a new key
-		generated, err := m.generateJWTSetting(ctx, "system")
-		if err != nil {
+		// first start or deleted setting: generate and persist a new key; the
+		// create-only write lets the first instance win a concurrent start
+		if _, err := m.generateJWTSetting(createOnlyContext(ctx), "system"); err != nil && !errors.Is(err, errPrecondition) {
 			return nil, err
 		}
-
-		setting = generated
 
 		// reload so concurrent readers and other instances converge
 		if err := m.cache.Reload(ctx); err != nil {
 			return nil, fmt.Errorf("reload after jwt generate: %w", err)
 		}
 		setting = m.cache.Snapshot().JWTKey
+
+		// the row exists but carries no key; replace it
+		if setting.PrivateKey == "" {
+			generated, err := m.generateJWTSetting(ctx, "system")
+			if err != nil {
+				return nil, err
+			}
+			setting = generated
+		}
 	}
 
 	privateKey, err := token.ParseRSAPrivateKey(setting.PrivateKey)

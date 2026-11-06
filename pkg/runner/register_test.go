@@ -100,6 +100,23 @@ func TestStoreReg_Run(t *testing.T) {
 			},
 		},
 		{
+			name:    "failed dependency",
+			wantErr: true,
+			fields: fields{
+				commands: []*Command{
+					{
+						Name:    "base",
+						Command: []string{"echo", "base"},
+					},
+					{
+						Name:    "dependent",
+						Command: []string{"sh", "-c", "exit 1"},
+						Depends: []string{"base"},
+					},
+				},
+			},
+		},
+		{
 			name:    "mix mistake",
 			wantErr: true,
 			fields: fields{

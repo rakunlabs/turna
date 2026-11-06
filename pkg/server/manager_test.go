@@ -14,6 +14,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/registry"
 	"github.com/rakunlabs/turna/pkg/server/tcp"
 	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/redirect"
+	"github.com/rakunlabs/turna/pkg/server/tcp/middleware/snirouter"
 )
 
 func newTestManager(t *testing.T) *Manager {
@@ -183,6 +184,18 @@ func TestManagerFailedApplyKeepsRunning(t *testing.T) {
 	bad.HTTP.Routers["a"] = shttp.Router{Path: []string{"/x/*/y/*"}, Middlewares: []string{"mgr-hello"}}
 	if err := m.Apply(bad); err == nil {
 		t.Fatal("expected path error")
+	}
+
+	// sni router referencing a missing middleware
+	bad = helloServer(map[string]EntryPoint{"a": {Address: "127.0.0.1:0"}, "b": {Address: "127.0.0.1:0"}}, "bad")
+	bad.TCP = tcp.TCP{
+		Routers: map[string]tcp.Router{"b": {EntryPoints: []string{"b"}, Middlewares: []string{"sni"}}},
+		Middlewares: map[string]tcp.TCPMiddleware{"sni": {SNIRouterMiddleware: &snirouter.SNIRouter{
+			Routes: []snirouter.Route{{SNI: []string{"a.example.com"}, Middlewares: []string{"missing"}}},
+		}}},
+	}
+	if err := m.Apply(bad); err == nil {
+		t.Fatal("expected sni router error")
 	}
 
 	if got := body(t, addrA); got != "ok" {

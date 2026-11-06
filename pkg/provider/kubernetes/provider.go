@@ -979,17 +979,47 @@ func (p *Provider) controllerImage(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	for _, c := range pod.Spec.Containers {
+	var container *corev1.Container
+	for i, c := range pod.Spec.Containers {
 		if c.Name == proxyContainer {
-			return c.Image, nil
+			container = &pod.Spec.Containers[i]
+
+			break
 		}
 	}
 
-	if len(pod.Spec.Containers) == 1 {
-		return pod.Spec.Containers[0].Image, nil
+	if container == nil && len(pod.Spec.Containers) == 1 {
+		container = &pod.Spec.Containers[0]
 	}
 
-	return "", fmt.Errorf("pod %s has no %s container", name, proxyContainer)
+	if container == nil {
+		return "", fmt.Errorf("pod %s has no %s container", name, proxyContainer)
+	}
+
+	for _, st := range pod.Status.ContainerStatuses {
+		if st.Name == container.Name {
+			return pinnedImage(container.Image, st.ImageID), nil
+		}
+	}
+
+	return container.Image, nil
+}
+
+// pinnedImage returns image pinned to the digest of the running imageID,
+// such as "docker-pullable://repo@sha256:...", so a moving tag can not give
+// the proxies a newer build. image is returned when no digest is known.
+func pinnedImage(image, imageID string) string {
+	_, digest, ok := strings.Cut(imageID, "@")
+	if !ok || !strings.HasPrefix(digest, "sha256:") {
+		return image
+	}
+
+	repo, _, _ := strings.Cut(image, "@")
+	if i := strings.LastIndexByte(repo, ':'); i > strings.LastIndexByte(repo, '/') {
+		repo = repo[:i]
+	}
+
+	return repo + "@" + digest
 }
 
 func (p *Provider) proxyImage() string {

@@ -95,4 +95,6 @@ Address rules use `host:port`, `host:*`, or `host:start-end`. IPv6 hosts must us
 - Shell, exec, SFTP, and forwarding are disabled unless explicitly enabled.
 - `sftp.directory` only resolves relative paths. Embedded SFTP runs with Turna's OS permissions and absolute paths remain accessible subject to those permissions. Use a dedicated low-privilege Turna process or OS/container isolation when filesystem confinement is required.
 - `shell.os_user` changes the shell process UID/GID on Unix, but does not create a chroot.
+- Shell and exec processes do not inherit Turna's environment. They get only `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `TERM` and `LANG` from Turna when set (on Windows: `PATH`, `PATHEXT`, `SYSTEMROOT`, `COMSPEC`, `USERPROFILE`, `USERNAME`, `TEMP`, `TMP`, `LANG`), plus the client variables allowed by `shell.env`. With `os_user`, `HOME`, `USER` and `LOGNAME` are those of the OS user.
+- The SSH handshake and authentication must finish within 30 seconds.
 - Agent forwarding, X11 forwarding, SCP protocol handling, and arbitrary SSH subsystems are not enabled.

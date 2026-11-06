@@ -415,3 +415,29 @@ func TestDynamicClientExpired(t *testing.T) {
 		t.Error("fresh dynamic client should not expire")
 	}
 }
+
+func TestRegistrationClientRejectsExpired(t *testing.T) {
+	token := "registration-token"
+	sn := &Snapshot{
+		Registration: RegistrationSettings{clientLifetime: time.Hour},
+		OAuthClients: map[string]AccessClient{
+			"old": {Dynamic: true, RegistrationToken: sha256Hex(token), CreatedAt: time.Now().Add(-2 * time.Hour).Unix()},
+			"new": {Dynamic: true, RegistrationToken: sha256Hex(token), CreatedAt: time.Now().Unix()},
+		},
+	}
+	cache := NewCache(nil)
+	cache.snap.Store(sn)
+	m := &Auth{cache: cache}
+
+	for id, want := range map[string]bool{"old": false, "new": true} {
+		r := httptest.NewRequest(http.MethodGet, "/oauth2/register/"+id, nil)
+		r.SetPathValue("client_id", id)
+		r.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+
+		_, client := m.registrationClient(w, r)
+		if (client != nil) != want {
+			t.Errorf("%s: client found = %v, want %v (status %d)", id, client != nil, want, w.Code)
+		}
+	}
+}

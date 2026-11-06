@@ -324,7 +324,7 @@ func (m *Session) applyDynamic(dynamic map[string]Provider, providerGroups map[s
 		return
 	}
 
-	keyFunc, err := buildKeyFunc(merged)
+	keyFunc, err := buildKeyFunc(m.ctx, merged)
 	if err != nil {
 		slog.Error("session: cannot build keyfunc for dynamic providers", "error", err.Error())
 

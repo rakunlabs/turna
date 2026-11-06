@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/rakunlabs/turna/pkg/server/http"
 	"github.com/rakunlabs/turna/pkg/server/registry"
@@ -25,6 +26,12 @@ type EntryPoint struct {
 	// HTTP3 serves the TLS routers of the entrypoint over QUIC on the same
 	// UDP port too.
 	HTTP3 *HTTP3 `cfg:"http3"`
+
+	// Timeouts of the HTTP server of the entrypoint, zero read and write
+	// timeouts are unlimited, idle timeout defaults to 120s.
+	ReadTimeout  time.Duration `cfg:"read_timeout"`
+	WriteTimeout time.Duration `cfg:"write_timeout"`
+	IdleTimeout  time.Duration `cfg:"idle_timeout"`
 }
 
 type HTTP3 struct {
@@ -32,6 +39,8 @@ type HTTP3 struct {
 	// AdvertisePort is the port announced in the Alt-Svc header, default
 	// is the listening port; set it when a NAT or container maps the port.
 	AdvertisePort int `cfg:"advertise_port"`
+	// Allow0RTT accepts 0-RTT early data; it can be replayed by an attacker.
+	Allow0RTT bool `cfg:"allow_0rtt"`
 }
 
 func (e EntryPoint) http3() bool {

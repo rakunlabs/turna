@@ -3,8 +3,10 @@ package session
 import (
 	"context"
 	"errors"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rakunlabs/turna/pkg/server/registry"
@@ -172,8 +174,8 @@ type issuerKeyFunc struct {
 }
 
 func (i *issuerKeyFunc) Keyfunc(token *jwt.Token) (any, error) {
-	for providerName, issuerName := range i.providers {
-		issuer := IssuerRegistry.Get(issuerName)
+	for _, providerName := range slices.Sorted(maps.Keys(i.providers)) {
+		issuer := IssuerRegistry.Get(i.providers[providerName])
 		if issuer == nil {
 			continue
 		}

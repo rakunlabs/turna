@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
@@ -230,6 +231,11 @@ func parseEmailSettingDurations(cfg *EmailSettings) error {
 	return nil
 }
 
+const (
+	smtpDialTimeout    = 10 * time.Second
+	smtpSessionTimeout = time.Minute
+)
+
 // sendEmail delivers a plain-text mail through the configured SMTP relay.
 func sendEmail(cfg EmailSettings, to, subject, body string) error {
 	if cfg.SMTP.Host == "" {
@@ -261,32 +267,40 @@ func sendEmail(cfg EmailSettings, to, subject, body string) error {
 		InsecureSkipVerify: cfg.SMTP.InsecureSkipVerify, //nolint:gosec // operator opt-in
 	}
 
-	var client *smtp.Client
+	dialer := &net.Dialer{Timeout: smtpDialTimeout}
 
+	var conn net.Conn
+	var err error
 	if cfg.SMTP.TLS {
-		conn, err := tls.Dial("tcp", addr, tlsConfig)
+		conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
 		if err != nil {
 			return fmt.Errorf("smtp tls dial: %w", err)
 		}
-
-		client, err = smtp.NewClient(conn, cfg.SMTP.Host)
-		if err != nil {
-			return fmt.Errorf("smtp client: %w", err)
-		}
 	} else {
-		var err error
-		client, err = smtp.Dial(addr)
+		conn, err = dialer.Dial("tcp", addr)
 		if err != nil {
 			return fmt.Errorf("smtp dial: %w", err)
 		}
+	}
 
-		if cfg.SMTP.StartTLS {
-			if err := client.StartTLS(tlsConfig); err != nil {
-				return fmt.Errorf("smtp starttls: %w", err)
-			}
-		}
+	// bounds the whole exchange; also applies after STARTTLS wraps the conn
+	if err := conn.SetDeadline(time.Now().Add(smtpSessionTimeout)); err != nil {
+		_ = conn.Close()
+		return fmt.Errorf("smtp deadline: %w", err)
+	}
+
+	client, err := smtp.NewClient(conn, cfg.SMTP.Host)
+	if err != nil {
+		_ = conn.Close()
+		return fmt.Errorf("smtp client: %w", err)
 	}
 	defer client.Close()
+
+	if !cfg.SMTP.TLS && cfg.SMTP.StartTLS {
+		if err := client.StartTLS(tlsConfig); err != nil {
+			return fmt.Errorf("smtp starttls: %w", err)
+		}
+	}
 
 	if cfg.SMTP.Username != "" && !cfg.SMTP.NoAuth {
 		auth := smtp.PlainAuth("", cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.Host)

@@ -21,6 +21,56 @@ type pooledReader struct {
 	io.Reader
 
 	release func()
+	once    sync.Once
+}
+
+// done returns the decoder to the pool once. The transport may still read
+// the body after the handler returned, so it is not released before both
+// Close and the handler are done.
+func (p *pooledReader) done() {
+	p.once.Do(p.release)
+}
+
+// body releases the decoder when closed, after the handler returned.
+type body struct {
+	*pooledReader
+
+	mu       sync.Mutex
+	closed   bool
+	returned bool
+}
+
+func (b *body) Read(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.closed {
+		return 0, errors.New("read on closed body")
+	}
+
+	return b.Reader.Read(p)
+}
+
+func (b *body) Close() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.closed = true
+	if b.returned {
+		b.done()
+	}
+
+	return nil
+}
+
+func (b *body) handlerReturned() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.returned = true
+	if b.closed {
+		b.done()
+	}
 }
 
 func (m *Decompress) Middleware() func(http.Handler) http.Handler {
@@ -107,9 +157,10 @@ func (m *Decompress) Middleware() func(http.Handler) http.Handler {
 
 				return
 			}
-			defer reader.release()
+			rb := &body{pooledReader: reader}
+			defer rb.handlerReturned()
 
-			r.Body = io.NopCloser(reader)
+			r.Body = rb
 			r.Header.Del(httputil.HeaderContentEncoding)
 			r.Header.Del("Content-Length")
 			r.ContentLength = -1

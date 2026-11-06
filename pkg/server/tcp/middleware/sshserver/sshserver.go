@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 
@@ -133,12 +134,19 @@ func (m *SSHServer) build() (*server, error) {
 	return s, nil
 }
 
+// handshakeTimeout bounds the SSH handshake and authentication.
+const handshakeTimeout = 30 * time.Second
+
 func (s *server) serve(parent context.Context, middleware string, raw net.Conn) error {
+	_ = raw.SetDeadline(time.Now().Add(handshakeTimeout))
+
 	conn, channels, requests, err := ssh.NewServerConn(raw, s.config)
 	if err != nil {
 		return fmt.Errorf("ssh handshake: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
+
+	_ = raw.SetDeadline(time.Time{})
 
 	u := s.users[conn.User()]
 	ctx, cancel := context.WithCancel(parent)

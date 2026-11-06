@@ -150,6 +150,20 @@ func TestJWKS(t *testing.T) {
 	}
 }
 
+func TestJWKSFallbackToStaticKey(t *testing.T) {
+	remote := newFixture(t)
+	local := newFixture(t)
+	m := &JWT{JWKSURL: remote.jwks.URL, PublicKeys: []string{local.pem}}
+
+	if code, _ := serve(t, m, bearer(local.token(t, gojwt.MapClaims{}, "local"))); code != http.StatusNoContent {
+		t.Fatalf("static key with unknown kid: status = %d", code)
+	}
+
+	if code, _ := serve(t, m, bearer(remote.token(t, gojwt.MapClaims{}, "k1"))); code != http.StatusNoContent {
+		t.Fatalf("remote key: status = %d", code)
+	}
+}
+
 func TestMissingToken(t *testing.T) {
 	f := newFixture(t)
 
@@ -264,7 +278,7 @@ func TestRoleAndScope(t *testing.T) {
 		{"keycloak realm roles", gojwt.MapClaims{"realm_access": map[string]any{"roles": []any{"admin"}}, "scope": "api.write"}, http.StatusNoContent},
 		{"keycloak client roles", gojwt.MapClaims{"resource_access": map[string]any{"app": map[string]any{"roles": []any{"admin"}}}, "scope": "api.write"}, http.StatusNoContent},
 		{"missing role", gojwt.MapClaims{"roles": []any{"user"}, "scope": "api.write"}, http.StatusForbidden},
-		{"missing scope", gojwt.MapClaims{"roles": []any{"admin"}, "scope": "api.read"}, http.StatusUnauthorized},
+		{"missing scope", gojwt.MapClaims{"roles": []any{"admin"}, "scope": "api.read"}, http.StatusForbidden},
 	}
 
 	for _, tt := range tests {

@@ -4,7 +4,6 @@ package sshserver
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"os/user"
 	"strconv"
@@ -12,6 +11,8 @@ import (
 )
 
 func defaultShell() string { return "/bin/sh" }
+
+var baseEnvNames = []string{"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG"}
 
 func setCommandUser(cmd *exec.Cmd, username string) error {
 	if username == "" {
@@ -45,9 +46,6 @@ func setCommandUser(cmd *exec.Cmd, username string) error {
 		Uid: uint32(uid), Gid: uint32(gid), Groups: groups,
 	}}
 	cmd.Dir = u.HomeDir
-	if cmd.Env == nil {
-		cmd.Env = os.Environ()
-	}
 	cmd.Env = append(cmd.Env, "HOME="+u.HomeDir, "USER="+u.Username, "LOGNAME="+u.Username)
 	return nil
 }

@@ -80,13 +80,19 @@ func (r *routeInfo) key() nsName {
 	return nsName{Namespace: r.meta.Namespace, Name: r.meta.Name}
 }
 
-// routeParents returns the served gateways the route references directly
-// or through ListenerSets they allow.
+// routeParents returns the served gateways the route attaches to, directly
+// or through ListenerSets they allow. Gateways where no listener accepts the
+// route do not count, their backend settings must not apply to it.
 func (t *translator) routeParents(r *routeInfo, served map[nsName][]*listener) []nsName {
 	var out []nsName
 
 	for _, ref := range r.parentRefs {
-		if gk, _, parentErr, ok := t.parentListeners(ref, r.meta.Namespace, served); ok && parentErr == "" && !slices.Contains(out, gk) {
+		gk, lis, parentErr, ok := t.parentListeners(ref, r.meta.Namespace, served)
+		if !ok || parentErr != "" || slices.Contains(out, gk) {
+			continue
+		}
+
+		if attached, _, _ := t.matchListeners(r, ref, lis); len(attached) > 0 {
 			out = append(out, gk)
 		}
 	}

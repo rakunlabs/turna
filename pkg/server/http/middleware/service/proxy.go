@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	httputil2 "github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/internal/replay"
 	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
 )
 
@@ -168,6 +169,20 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 			retries := config.RetryCount
 			errHolder := httputil2.Error{}
 
+			// ReverseProxy closes the body, keep a copy to send it again
+			var body []byte
+			if retries > 0 {
+				if b, ok, err := replay.BufferBody(r, maxRetryBody); err != nil {
+					httputil2.HandleError(w, httputil2.NewError("cannot read body", err, http.StatusBadRequest))
+
+					return
+				} else if !ok {
+					retries = 0
+				} else {
+					body = b
+				}
+			}
+
 			// a chain can be run again (try middleware), start a fresh attempt list
 			tcontext.Set(r, triedTargetsKey, nil)
 
@@ -211,9 +226,17 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 				// Proxy. httputil.ReverseProxy natively handles WebSocket/Upgrade
 				// requests over the configured Transport, so TLS (wss), Host header
 				// and path rewrites all work the same as for regular HTTP.
-				tgt.acquire()
-				proxyHTTP(tgt, &errHolder, config).ServeHTTP(w, r)
-				tgt.release()
+				if body != nil {
+					replay.SetBody(r, body)
+				}
+
+				func() {
+					// ReverseProxy panics with ErrAbortHandler when the copy fails
+					tgt.acquire()
+					defer tgt.release()
+
+					proxyHTTP(tgt, &errHolder, config).ServeHTTP(w, r)
+				}()
 
 				if errHolder.Err == nil {
 					return
@@ -235,6 +258,10 @@ func ProxyWithConfig(config ProxyConfig) func(http.Handler) http.Handler {
 		})
 	}
 }
+
+// maxRetryBody is the largest request body buffered to retry on another
+// upstream; larger and streamed bodies are sent once.
+const maxRetryBody = 1 << 20
 
 // reportUnreachable tells a surrounding retry that no upstream answered.
 func reportUnreachable(r *http.Request, e *httputil2.Error) {

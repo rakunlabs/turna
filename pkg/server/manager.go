@@ -291,6 +291,7 @@ func (m *Manager) Apply(s *Server) (err error) {
 
 	pTCP.Activate(m.listen)
 	pHTTP.SetQUIC(m.quic(s))
+	pHTTP.SetTimeouts(httpTimeouts(s))
 	pHTTP.Activate(m.listen)
 	pUDP.Activate(m.packet)
 
@@ -345,9 +346,21 @@ func (m *Manager) quic(s *Server) map[string]http.QUIC {
 		q := http.QUIC{Transport: e.QUIC()}
 		if cfg.HTTP3 != nil {
 			q.AdvertisePort = cfg.HTTP3.AdvertisePort
+			q.Allow0RTT = cfg.HTTP3.Allow0RTT
 		}
 
 		out[name] = q
+	}
+
+	return out
+}
+
+// httpTimeouts returns the HTTP server timeouts of the entrypoints of s.
+func httpTimeouts(s *Server) map[string]http.Timeouts {
+	out := make(map[string]http.Timeouts, len(s.EntryPoints))
+
+	for name, cfg := range s.EntryPoints {
+		out[name] = http.Timeouts{Read: cfg.ReadTimeout, Write: cfg.WriteTimeout, Idle: cfg.IdleTimeout}
 	}
 
 	return out

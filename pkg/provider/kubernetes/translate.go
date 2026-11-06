@@ -884,10 +884,16 @@ func (t *translator) route(route *routeInfo, gateways map[nsName][]*listener) {
 	}
 }
 
-func (t *translator) attach(route *routeInfo, ref gwv1.ParentReference, lis []*listener, translate func() (any, *refError)) (metav1.Condition, metav1.Condition) {
-	gen := route.meta.Generation
-	resolvedOK := t.condition(gen, string(gwv1.RouteConditionResolvedRefs), true, string(gwv1.RouteReasonResolvedRefs), "")
+// attachment is a listener a route attaches to with the matching hostnames.
+type attachment struct {
+	li    *listener
+	hosts []string
+}
 
+// matchListeners returns the listeners of lis the route attaches to through
+// ref, without changing any listener state. When none match, reason and msg
+// tell why.
+func (t *translator) matchListeners(route *routeInfo, ref gwv1.ParentReference, lis []*listener) (attached []attachment, reason, msg string) {
 	var candidates []*listener
 
 	for _, li := range lis {
@@ -903,7 +909,7 @@ func (t *translator) attach(route *routeInfo, ref gwv1.ParentReference, lis []*l
 	}
 
 	if len(candidates) == 0 {
-		return t.condition(gen, string(gwv1.RouteConditionAccepted), false, string(gwv1.RouteReasonNoMatchingParent), "no matching listener"), resolvedOK
+		return nil, string(gwv1.RouteReasonNoMatchingParent), "no matching listener"
 	}
 
 	var allowed []*listener
@@ -914,15 +920,8 @@ func (t *translator) attach(route *routeInfo, ref gwv1.ParentReference, lis []*l
 	}
 
 	if len(allowed) == 0 {
-		return t.condition(gen, string(gwv1.RouteConditionAccepted), false, string(gwv1.RouteReasonNotAllowedByListeners), "route is not allowed by listeners"), resolvedOK
+		return nil, string(gwv1.RouteReasonNotAllowedByListeners), "route is not allowed by listeners"
 	}
-
-	type attachment struct {
-		li    *listener
-		hosts []string
-	}
-
-	var attached []attachment
 
 	for _, li := range allowed {
 		if route.hostless {
@@ -940,7 +939,19 @@ func (t *translator) attach(route *routeInfo, ref gwv1.ParentReference, lis []*l
 	}
 
 	if len(attached) == 0 {
-		return t.condition(gen, string(gwv1.RouteConditionAccepted), false, string(gwv1.RouteReasonNoMatchingListenerHostname), "no matching listener hostname"), resolvedOK
+		return nil, string(gwv1.RouteReasonNoMatchingListenerHostname), "no matching listener hostname"
+	}
+
+	return attached, "", ""
+}
+
+func (t *translator) attach(route *routeInfo, ref gwv1.ParentReference, lis []*listener, translate func() (any, *refError)) (metav1.Condition, metav1.Condition) {
+	gen := route.meta.Generation
+	resolvedOK := t.condition(gen, string(gwv1.RouteConditionResolvedRefs), true, string(gwv1.RouteReasonResolvedRefs), "")
+
+	attached, reason, msg := t.matchListeners(route, ref, lis)
+	if len(attached) == 0 {
+		return t.condition(gen, string(gwv1.RouteConditionAccepted), false, reason, msg), resolvedOK
 	}
 
 	// HTTPRoutes and GRPCRoutes must not share hostnames on a listener, the

@@ -87,15 +87,13 @@ func (m *Scope) Middleware() func(http.Handler) http.Handler {
 				}
 
 				if !found {
-					httputil.HandleError(w, httputil.NewError("scope not authorized", nil, http.StatusUnauthorized))
+					httputil.HandleError(w, httputil.NewError("scope not authorized", nil, http.StatusForbidden))
 
 					return
 				}
 			}
 
 			next.ServeHTTP(w, r)
-
-			return
 		})
 	}
 }

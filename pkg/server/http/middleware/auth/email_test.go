@@ -1,8 +1,12 @@
 package auth
 
 import (
+	"io"
+	"net"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBuildEmailMessageTemplate(t *testing.T) {
@@ -66,5 +70,39 @@ func TestBuildEmailMessageMagicLinkDisabled(t *testing.T) {
 func TestValidateEmailTemplatesRejectsMissingKey(t *testing.T) {
 	if err := validateEmailTemplates(EmailSettings{BodyTemplate: "{{.Missing}}"}); err == nil {
 		t.Fatal("expected missing template key error")
+	}
+}
+
+func TestSendEmailClosesConnOnGreetingFailure(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	closed := make(chan error, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			closed <- err
+			return
+		}
+		defer conn.Close()
+
+		_, _ = conn.Write([]byte("554 go away\r\n"))
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		_, err = io.ReadAll(conn)
+		closed <- err
+	}()
+
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+	portN, _ := strconv.Atoi(port)
+	cfg := EmailSettings{From: "a@example.com", SMTP: SMTPSettings{Host: host, Port: portN}}
+	if err := sendEmail(cfg, "b@example.com", "s", "b"); err == nil {
+		t.Fatal("expected greeting failure")
+	}
+
+	if err := <-closed; err != nil {
+		t.Fatalf("client conn was not closed: %v", err)
 	}
 }

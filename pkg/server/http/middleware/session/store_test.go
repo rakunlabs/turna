@@ -105,3 +105,46 @@ func TestSetStoreSessionKey(t *testing.T) {
 		})
 	}
 }
+
+func TestLoginRotatesSessionID(t *testing.T) {
+	m := &Session{
+		CookieName: "auth_session",
+		Store: Store{File: &store.File{
+			SessionKey: "test-session-key",
+			Path:       t.TempDir(),
+		}},
+	}
+	if err := m.SetStore(context.Background()); err != nil {
+		t.Fatalf("SetStore: %v", err)
+	}
+
+	first := httptest.NewRecorder()
+	if err := m.SetLoginToken(first, httptest.NewRequest(http.MethodPost, "https://example.com/login", nil), []byte(`{"access_token":"first"}`), "auth", AuthenticationMethodCode); err != nil {
+		t.Fatalf("SetLoginToken: %v", err)
+	}
+	oldCookie := first.Result().Cookies()[0]
+
+	loginRequest := httptest.NewRequest(http.MethodPost, "https://example.com/login", nil)
+	loginRequest.AddCookie(oldCookie)
+	second := httptest.NewRecorder()
+	if err := m.SetLoginToken(second, loginRequest, []byte(`{"access_token":"second"}`), "auth", AuthenticationMethodPassword); err != nil {
+		t.Fatalf("SetLoginToken: %v", err)
+	}
+	newCookie := second.Result().Cookies()[0]
+
+	if newCookie.Value == oldCookie.Value {
+		t.Fatal("login reused the incoming session ID")
+	}
+
+	oldRequest := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
+	oldRequest.AddCookie(oldCookie)
+	if v, err := m.store.Get(oldRequest, m.CookieName); err != nil || !v.IsNew {
+		t.Fatalf("previous session still valid: isNew=%v err=%v", v.IsNew, err)
+	}
+
+	newRequest := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
+	newRequest.AddCookie(newCookie)
+	if method, err := m.GetAuthenticationMethod(newRequest); err != nil || method != AuthenticationMethodPassword {
+		t.Fatalf("method = %q, err=%v", method, err)
+	}
+}

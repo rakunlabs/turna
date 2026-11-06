@@ -188,14 +188,12 @@ func (s *connectionSession) startCommand(
 	}
 
 	cmd := exec.CommandContext(ctx, parts[0], args...) //nolint:gosec // explicitly configured SSH shell
+	cmd.Env = baseEnv()
 	for key, value := range env {
 		cmd.Env = append(cmd.Env, key+"="+value)
 	}
 	if ptyCfg != nil && ptyCfg.Term != "" && !strings.ContainsRune(ptyCfg.Term, '\x00') {
 		cmd.Env = append(cmd.Env, "TERM="+ptyCfg.Term)
-	}
-	if len(cmd.Env) > 0 {
-		cmd.Env = append(os.Environ(), cmd.Env...)
 	}
 	if err := setCommandUser(cmd, s.user.Shell.OSUser); err != nil {
 		return nil, nil, nil, err
@@ -222,6 +220,19 @@ func (s *connectionSession) startCommand(
 		return nil, nil, nil, err
 	}
 	return cmd, nil, nil, nil
+}
+
+// baseEnvNames (per platform) are the variables of the Turna process passed
+// to shells; the rest of its environment (secrets included) is not inherited.
+func baseEnv() []string {
+	env := make([]string, 0, len(baseEnvNames))
+	for _, name := range baseEnvNames {
+		if value, ok := os.LookupEnv(name); ok {
+			env = append(env, name+"="+value)
+		}
+	}
+
+	return env
 }
 
 // ptyDrainTimeout bounds how long to wait for buffered PTY output after the

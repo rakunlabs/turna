@@ -38,6 +38,11 @@ server:
 | --- | --- | --- |
 | `address` | | Address passed to `net.Listen`, such as `:8080` or `/var/run/app.sock`. |
 | `network` | `tcp` | Network passed to `net.Listen`. Use `udp`, `udp4`, or `udp6` for a UDP entrypoint, which is bound with `net.ListenPacket` and consumed by `server.udp` routers. |
+| `read_timeout` | unlimited | Maximum duration to read a whole HTTP request, body included. |
+| `write_timeout` | unlimited | Maximum duration from the end of the request headers to the end of the HTTP response. Long responses such as streams and downloads need a large value. |
+| `idle_timeout` | `120s` | How long an idle HTTP keep-alive connection is kept open. |
+
+The timeouts apply to HTTP routers of the entrypoint; request headers are always read within 10s. Changing a timeout restarts the HTTP server of the entrypoint, open connections are drained.
 
 ## HTTP Routers
 
@@ -314,6 +319,7 @@ server:
 | --- | --- | --- |
 | `http3.enabled` | `false` | Opens a UDP socket on the port of the entrypoint and serves its TLS routers with HTTP/3. |
 | `http3.advertise_port` | listening port | Port announced in `Alt-Svc`, when a NAT or container maps the port. |
+| `http3.allow_0rtt` | `false` | Accepts 0-RTT early data. It saves a round trip on resumed connections, but early requests can be replayed by an attacker, so enable it only when the routes are safe to replay. |
 
 HTTP/3 uses the TLS certificates and routers of the entrypoint and always requires TLS 1.3. Allow UDP on the port in firewalls and load balancers. Linux may log that the UDP receive buffer is too small; see the [quic-go wiki](https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes).
 

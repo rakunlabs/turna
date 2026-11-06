@@ -76,3 +76,25 @@ func (c *Conn) Write(b []byte) (int, error) {
 }
 
 func (c *Conn) NetConn() net.Conn { return c.Conn }
+
+// SetDeadline and SetReadDeadline with a zero time, used by middlewares
+// after peeking a header, restore the idle deadline instead of clearing it.
+func (c *Conn) SetDeadline(t time.Time) error {
+	if t.IsZero() {
+		c.extend()
+
+		return nil
+	}
+
+	return c.Conn.SetDeadline(t)
+}
+
+func (c *Conn) SetReadDeadline(t time.Time) error {
+	if t.IsZero() {
+		c.extend()
+
+		return nil
+	}
+
+	return c.Conn.SetReadDeadline(t)
+}

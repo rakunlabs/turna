@@ -86,7 +86,7 @@ func TestGetAndKeyfunc(t *testing.T) {
 		{
 			"kid": "oct-1", "kty": "oct",
 			"k": base64.RawURLEncoding.EncodeToString([]byte("secret-hmac-key")),
-		},
+		}, // skipped: symmetric
 		{"kid": "enc-1", "kty": "RSA", "use": "enc", "n": "AQAB", "e": "AQAB"}, // filtered: use=enc
 		{"kid": "bad-1", "kty": "RSA", "n": "!!!!", "e": "AQAB"},               // skipped: broken
 		{"kid": "unknown-1", "kty": "XXX"},                                     // skipped: unsupported
@@ -99,8 +99,8 @@ func TestGetAndKeyfunc(t *testing.T) {
 		t.Fatalf("Get: %v", err)
 	}
 
-	if j.Len() != 4 {
-		t.Fatalf("Len() = %d, want 4", j.Len())
+	if j.Len() != 3 {
+		t.Fatalf("Len() = %d, want 3", j.Len())
 	}
 
 	// RSA
@@ -131,12 +131,8 @@ func TestGetAndKeyfunc(t *testing.T) {
 	}
 
 	// oct
-	key, err = j.Keyfunc(&jwt.Token{Header: map[string]any{"kid": "oct-1", "alg": "HS256"}})
-	if err != nil {
-		t.Fatalf("Keyfunc oct-1: %v", err)
-	}
-	if string(key.([]byte)) != "secret-hmac-key" {
-		t.Fatalf("oct-1 key = %q", key)
+	if _, err := j.Keyfunc(&jwt.Token{Header: map[string]any{"kid": "oct-1", "alg": "HS256"}}); !errors.Is(err, ErrKIDNotFound) {
+		t.Fatalf("expected oct key to be skipped, got %v", err)
 	}
 
 	// unknown kid

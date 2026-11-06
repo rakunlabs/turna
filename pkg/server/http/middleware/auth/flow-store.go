@@ -153,6 +153,17 @@ func (s *Store) UpdateFlowCode(ctx context.Context, kind, id string, payload any
 	return nil
 }
 
+// SetFlowCodeLastPoll updates only the last_poll field of a flow payload, so
+// a concurrent writer of other fields (device approval) is not overwritten.
+func (s *Store) SetFlowCodeLastPoll(ctx context.Context, kind, id string, lastPoll int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE auth_flow_codes SET payload = jsonb_set(payload, '{last_poll}', to_jsonb($3::bigint))
+		WHERE id = $1 AND kind = $2 AND expires_at > now()`,
+		kind+":"+id, kind, lastPoll)
+
+	return err
+}
+
 // DeleteFlowCode removes a flow entry and opportunistically prunes expired rows.
 func (s *Store) DeleteFlowCode(ctx context.Context, kind, id string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM auth_flow_codes WHERE id = $1 AND kind = $2`, kind+":"+id, kind)

@@ -399,8 +399,6 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 
 			// not found
 			writeError(w, http.StatusNotFound, http.StatusText(http.StatusNotFound))
-
-			return
 		})
 	}, nil
 }

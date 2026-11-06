@@ -145,7 +145,6 @@ type source struct {
 type lists struct {
 	static  compiled
 	sources []*source
-	zones   []string
 
 	mu      sync.Mutex
 	current atomic.Pointer[compiled]

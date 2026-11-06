@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -18,22 +19,35 @@ type Certificate struct {
 	PrivateKey  []byte
 }
 
-var cache *Certificate
+var (
+	cacheMu sync.Mutex
+	cache   = map[string]*Certificate{}
+)
 
+// GenerateCertificateCache returns a certificate generated once per set of
+// options.
 func GenerateCertificateCache(opts ...Options) (*Certificate, error) {
-	if cache == nil {
-		cert, err := GenerateCertificate(opts...)
-		if err != nil {
-			return nil, err
-		}
+	o := newOptions(opts...)
+	key := fmt.Sprintf("%q|%q|%v|%d", o.Organization, o.DNSNames, o.IPs, o.NotAfter)
 
-		cache = cert
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+
+	if c, ok := cache[key]; ok {
+		return c, nil
 	}
 
-	return cache, nil
+	c, err := generate(o)
+	if err != nil {
+		return nil, err
+	}
+
+	cache[key] = c
+
+	return c, nil
 }
 
-func GenerateCertificate(opts ...Options) (*Certificate, error) {
+func newOptions(opts ...Options) *options {
 	o := &options{
 		Organization: []string{"turna"},
 		DNSNames:     []string{"localhost"},
@@ -44,6 +58,14 @@ func GenerateCertificate(opts ...Options) (*Certificate, error) {
 		opt(o)
 	}
 
+	return o
+}
+
+func GenerateCertificate(opts ...Options) (*Certificate, error) {
+	return generate(newOptions(opts...))
+}
+
+func generate(o *options) (*Certificate, error) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate private key: %w", err)

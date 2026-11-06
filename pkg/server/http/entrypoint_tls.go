@@ -94,7 +94,8 @@ func (c *tlsConfigs) clientAuthKey(entrypoint string) string {
 	return c.auth[""]
 }
 
-// clientAuthID describes the client certificate settings of cfg.
+// clientAuthID describes the client certificate settings of cfg; cas are
+// PEM contents so a rotated CA changes the result.
 func clientAuthID(cfg *tls.Config, cas []string) string {
 	sum := sha256.New()
 	_, _ = fmt.Fprintf(sum, "%d\x00", cfg.ClientAuth)
@@ -118,7 +119,12 @@ func (c *tlsConfigs) forEntrypoint(entrypoint string) *tls.Config {
 // buildTLSConfigs builds the shared configuration and the entrypoint
 // overrides for the given secure entrypoints.
 func (h *HTTP) buildTLSConfigs(secure map[string]struct{}, acmeManager *acme.Manager) (*tlsConfigs, error) {
-	base, err := h.buildStoreTLSConfig(h.TLS.Store, true, acmeManager)
+	clientCAs, clientCAPEMs, err := h.loadClientCAs()
+	if err != nil {
+		return nil, err
+	}
+
+	base, err := h.buildStoreTLSConfig(h.TLS.Store, true, acmeManager, clientCAs)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +136,7 @@ func (h *HTTP) buildTLSConfigs(secure map[string]struct{}, acmeManager *acme.Man
 	}
 
 	out := &tlsConfigs{base: base, entries: make(map[string]*tls.Config, len(h.TLS.EntryPoints)), auth: make(map[string]string)}
-	out.auth[""] = clientAuthID(base, h.TLS.ClientCAFiles)
+	out.auth[""] = clientAuthID(base, clientCAPEMs)
 
 	for name, e := range h.TLS.EntryPoints {
 		if _, ok := secure[name]; !ok {
@@ -141,7 +147,8 @@ func (h *HTTP) buildTLSConfigs(secure map[string]struct{}, acmeManager *acme.Man
 
 		entryBase := base
 		if len(e.Store) > 0 {
-			entryBase, err = h.buildStoreTLSConfig(e.Store, false, nil)
+			// the shared client certificate settings are kept, see config
+			entryBase, err = h.buildStoreTLSConfig(e.Store, false, nil, clientCAs)
 			if err != nil {
 				return nil, fmt.Errorf("tls entrypoint %s: %w", name, err)
 			}
@@ -162,7 +169,7 @@ func (h *HTTP) buildTLSConfigs(secure map[string]struct{}, acmeManager *acme.Man
 
 		cas := e.ClientCAs
 		if len(cas) == 0 && cfg.ClientAuth == base.ClientAuth {
-			cas = h.TLS.ClientCAFiles
+			cas = clientCAPEMs
 		}
 
 		out.auth[name] = clientAuthID(cfg, cas)

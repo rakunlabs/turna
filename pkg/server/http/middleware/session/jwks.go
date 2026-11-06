@@ -1,11 +1,14 @@
 package session
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -17,6 +20,15 @@ var (
 	ErrKIDNotFound  = jwks.ErrKIDNotFound
 	ErrTokenInvalid = fmt.Errorf("token is invalid")
 )
+
+// asymmetricMethods are the signing algorithms accepted for session tokens;
+// keys come from public JWK Sets, so HMAC is never valid.
+var asymmetricMethods = []string{
+	"RS256", "RS384", "RS512",
+	"PS256", "PS384", "PS512",
+	"ES256", "ES384", "ES512",
+	"EdDSA",
+}
 
 type InfProviderCert interface {
 	GetCertURL() string
@@ -58,7 +70,7 @@ func (j *JwkKeyFuncParse) Keyfunc(token *jwt.Token) (any, error) {
 
 func (j *JwkKeyFuncParse) ParseWithClaims(tokenString string, claims jwt.Claims) (*jwt.Token, error) {
 	// Parse the JWT.
-	token, err := jwt.ParseWithClaims(tokenString, claims, j.Keyfunc)
+	token, err := jwt.ParseWithClaims(tokenString, claims, j.Keyfunc, jwt.WithValidMethods(asymmetricMethods))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse the JWT: %w", err)
 	}
@@ -99,8 +111,8 @@ func (k *KeyFuncMulti) KeySelectorFirst(multiJWKS *MultipleJWKS, token *jwt.Toke
 
 // KeySelectorFirst returns the first key found in the multiple JWK Sets.
 func KeySelectorFirst(multiJWKS *MultipleJWKS, token *jwt.Token) (*KeyFound, error) {
-	for name, jwks := range multiJWKS.sets {
-		key, err := jwks.Keyfunc(token)
+	for _, name := range multiJWKS.order {
+		key, err := multiJWKS.sets[name].Keyfunc(token)
 		if err == nil {
 			return &KeyFound{
 				Key:  key,
@@ -262,6 +274,8 @@ func GetMultiple(multiple map[MultipleJWKSKey]jwks.Options, options MultipleOpti
 	for u, opts := range multiple {
 		set, err := jwks.Get(u.URL, opts)
 		if err != nil {
+			multiJWKS.EndBackground()
+
 			return nil, fmt.Errorf("failed to get JWKS from %q: %w", u, err)
 		}
 		multiJWKS.sets[MultipleJWKSKey{
@@ -270,6 +284,10 @@ func GetMultiple(multiple map[MultipleJWKSKey]jwks.Options, options MultipleOpti
 		}] = set
 	}
 
+	multiJWKS.order = slices.SortedFunc(maps.Keys(multiJWKS.sets), func(a, b MultipleJWKSKey) int {
+		return cmp.Or(cmp.Compare(a.Name, b.Name), cmp.Compare(a.URL, b.URL))
+	})
+
 	return multiJWKS, nil
 }
 
@@ -277,6 +295,8 @@ func GetMultiple(multiple map[MultipleJWKSKey]jwks.Options, options MultipleOpti
 type MultipleJWKS struct {
 	keySelector func(multiJWKS *MultipleJWKS, token *jwt.Token) (key any, err error)
 	sets        map[MultipleJWKSKey]*jwks.JWKS // No lock is required because this map is read-only after initialization.
+	// order is the deterministic lookup order of sets, sorted by provider name.
+	order []MultipleJWKSKey
 }
 
 // Keyfunc matches the signature of github.com/golang-jwt/jwt/v5's jwt.Keyfunc function.

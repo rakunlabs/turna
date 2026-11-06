@@ -145,7 +145,9 @@ func (m *Auth) TokenClaimsRevoked(ctx context.Context, jti, sid string) (bool, e
 // revokeRawToken parses a token issued by this middleware. Access tokens put
 // their jti on the denylist; refresh tokens revoke the complete sid family.
 // Invalid or already expired tokens are a no-op (RFC 7009 semantics).
-func (m *Auth) revokeRawToken(ctx context.Context, token string) error {
+// A non-empty clientID restricts revocation to tokens issued to that client
+// (RFC 7009 §2.1); tokens of other clients are silently left alone.
+func (m *Auth) revokeRawToken(ctx context.Context, token, clientID string) error {
 	signer, err := m.jwtRuntime(ctx)
 	if err != nil {
 		return err
@@ -162,6 +164,12 @@ func (m *Auth) revokeRawToken(ctx context.Context, token string) error {
 	exp := claimInt64(claims["exp"])
 	if jti == "" || exp <= 0 {
 		return nil
+	}
+
+	if clientID != "" {
+		if owner := tokenClientID(claims); owner != "" && owner != clientID {
+			return nil
+		}
 	}
 
 	kind := flowKindRevoked
@@ -206,7 +214,17 @@ func (m *Auth) revokeRawToken(ctx context.Context, token string) error {
 // RevokeToken implements session.InfRevoker so the login middleware can
 // revoke session tokens on logout.
 func (m *Auth) RevokeToken(ctx context.Context, token string) error {
-	return m.revokeRawToken(ctx, token)
+	return m.revokeRawToken(ctx, token, "")
+}
+
+func tokenClientID(claims jwt.MapClaims) string {
+	if azp, _ := claims["azp"].(string); azp != "" {
+		return azp
+	}
+
+	clientID, _ := claims["client_id"].(string)
+
+	return clientID
 }
 
 // revokeRequest is the RFC 7009 form payload; client credentials may come
@@ -257,7 +275,6 @@ func (m *Auth) APIRevoke(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-
 	if req.Token == "" {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "invalid_request",
@@ -269,7 +286,7 @@ func (m *Auth) APIRevoke(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// per RFC 7009 §2.2 an invalid or already expired token still returns 200
-	if err := m.revokeRawToken(r.Context(), req.Token); err != nil {
+	if err := m.revokeRawToken(r.Context(), req.Token, clientID); err != nil {
 		httputil.HandleError(w, AccessTokenErrorResponse{
 			Error:            "server_error",
 			ErrorDescription: err.Error(),

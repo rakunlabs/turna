@@ -2064,10 +2064,13 @@ func (m *Auth) APICodeAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	urlParsed.RawQuery = url.Values{
-		"code":  {codeID},
-		"state": {stateValue.OrgState},
-	}.Encode()
+	q := urlParsed.Query()
+	q.Set("code", codeID)
+	q.Set("iss", m.issuerURL(r))
+	if stateValue.OrgState != "" {
+		q.Set("state", stateValue.OrgState)
+	}
+	urlParsed.RawQuery = q.Encode()
 
 	httputil.Redirect(w, http.StatusTemporaryRedirect, urlParsed.String())
 }

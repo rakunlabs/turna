@@ -301,3 +301,20 @@ func TestMaxUploadSize(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 }
+
+func TestCrossSiteFormRefused(t *testing.T) {
+	h, _ := newHandler(t, &FileManager{})
+
+	body := []byte(`{"path":"/x"}`)
+	if rec := do(h, http.MethodPost, "/api/mkdir", body, "Sec-Fetch-Site", "cross-site", "Content-Type", "text/plain"); rec.Code != http.StatusForbidden {
+		t.Fatalf("cross-site form status = %d", rec.Code)
+	}
+
+	if rec := do(h, http.MethodPost, "/api/mkdir", body, "Sec-Fetch-Site", "same-origin", "Content-Type", "text/plain"); rec.Code != http.StatusCreated {
+		t.Fatalf("same-origin status = %d", rec.Code)
+	}
+
+	if rec := do(h, http.MethodPost, "/api/mkdir", []byte(`{"path":"/y"}`), "Origin", "https://evil.example", "Content-Type", "application/json"); rec.Code != http.StatusCreated {
+		t.Fatalf("cross-origin json status = %d", rec.Code)
+	}
+}

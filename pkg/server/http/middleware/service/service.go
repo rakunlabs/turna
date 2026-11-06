@@ -301,14 +301,24 @@ func (m *Service) Middleware(ctx context.Context) ([]func(http.Handler) http.Han
 	cfg.passive = m.LoadBalancer.PassiveHealthCheck
 
 	mirrorTransport := transport
-	if m.Mirror != nil && m.Mirror.TLS != nil {
-		tlsConfig, err := m.Mirror.TLS.config()
-		if err != nil {
-			return nil, err
+	if m.Mirror != nil && (m.Mirror.TLS != nil || m.Mirror.H2C) {
+		mirrorTransport = transport.Clone()
+
+		if m.Mirror.H2C {
+			var protocols http.Protocols
+			protocols.SetUnencryptedHTTP2(true)
+			protocols.SetHTTP2(true)
+			mirrorTransport.Protocols = &protocols
 		}
 
-		mirrorTransport = transport.Clone()
-		mirrorTransport.TLSClientConfig = tlsConfig
+		if m.Mirror.TLS != nil {
+			tlsConfig, err := m.Mirror.TLS.config()
+			if err != nil {
+				return nil, err
+			}
+
+			mirrorTransport.TLSClientConfig = tlsConfig
+		}
 	}
 
 	mirror, err := m.Mirror.build(mirrorTransport, builder.sockets)

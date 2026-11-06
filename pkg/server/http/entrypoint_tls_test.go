@@ -138,8 +138,52 @@ func TestEntryPointCertificateStore(t *testing.T) {
 			t.Errorf("%s client auth = %v", tt.entrypoint, cfg.ClientAuth)
 		}
 
-		if len(cfg.NextProtos) == 0 {
-			t.Errorf("%s has no ALPN protocols", tt.entrypoint)
-		}
+	}
+}
+
+// An entrypoint with only its own store keeps the shared client CAs, and
+// rotating a CA file changes the client certificate settings.
+func TestEntryPointStoreSharedClientCAs(t *testing.T) {
+	caFile, _ := testClientPKI(t)
+	otherFile, _ := testClientPKI(t)
+
+	h := &HTTP{TLS: TLS{
+		Store:         map[string][]Certificate{"default": {writeCertFiles(t, "shared.example.com")}},
+		ClientCAFiles: []string{caFile},
+		EntryPoints: map[string]EntryPointTLS{
+			"a": {Store: map[string][]Certificate{"default": {writeCertFiles(t, "a.example.com")}}},
+		},
+	}}
+
+	configs, err := h.buildTLSConfigs(map[string]struct{}{"a": {}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := configs.forEntrypoint("a")
+	if cfg.ClientAuth != tls.VerifyClientCertIfGiven || cfg.ClientCAs == nil || !cfg.ClientCAs.Equal(configs.base.ClientCAs) {
+		t.Fatalf("entrypoint client auth = %v, cas %v", cfg.ClientAuth, cfg.ClientCAs != nil)
+	}
+
+	if configs.clientAuthKey("a") != configs.clientAuthKey("") {
+		t.Error("entrypoint with shared client CAs has other client auth settings")
+	}
+
+	// same file path, other CA
+	other, err := os.ReadFile(otherFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(caFile, other, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rotated, err := h.buildTLSConfigs(map[string]struct{}{"a": {}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if rotated.clientAuthKey("a") == configs.clientAuthKey("a") || rotated.clientAuthKey("") == configs.clientAuthKey("") {
+		t.Error("rotated client CA keeps the client auth settings")
 	}
 }

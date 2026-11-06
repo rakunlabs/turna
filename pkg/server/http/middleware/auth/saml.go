@@ -66,6 +66,8 @@ type samlMetadataEntry struct {
 
 const samlMetadataTTL = time.Hour
 
+var samlMetadataHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
 // samlRelay is the payload stored in auth_flow_codes for a SAML login.
 type samlRelay struct {
 	Provider    string   `json:"provider"`
@@ -133,15 +135,23 @@ func (m *Auth) samlKeyPair(ctx context.Context) (*rsa.PrivateKey, *x509.Certific
 	setting := m.cache.Snapshot().SAMLKey
 
 	if setting.PrivateKey == "" {
-		generated, err := m.generateSAMLSetting(ctx, "system")
-		if err != nil {
+		// create-only: another instance may have generated it concurrently
+		if _, err := m.generateSAMLSetting(createOnlyContext(ctx), "system"); err != nil && !errors.Is(err, errPrecondition) {
 			return nil, nil, err
 		}
 
-		setting = generated
-
 		if err := m.cache.Reload(ctx); err != nil {
 			return nil, nil, fmt.Errorf("reload after saml generate: %w", err)
+		}
+		setting = m.cache.Snapshot().SAMLKey
+
+		// the row exists but carries no key; replace it
+		if setting.PrivateKey == "" {
+			generated, err := m.generateSAMLSetting(ctx, "system")
+			if err != nil {
+				return nil, nil, err
+			}
+			setting = generated
 		}
 	}
 
@@ -175,21 +185,16 @@ func (m *Auth) samlKeyPair(ctx context.Context) (*rsa.PrivateKey, *x509.Certific
 
 // samlIDPMetadata returns the IdP metadata for a provider, cached for an hour.
 func (m *Auth) samlIDPMetadata(ctx context.Context, name string, cfg SAMLProviderConfig) (*saml.EntityDescriptor, error) {
-	m.samlM.m.Lock()
-	defer m.samlM.m.Unlock()
-
-	if m.samlM.metadata == nil {
-		m.samlM.metadata = map[string]*samlMetadataEntry{}
-	}
-
 	source := cfg.MetadataXML + "\x00" + cfg.MetadataURL
 
-	if entry, ok := m.samlM.metadata[name]; ok {
-		if entry.source == source && (cfg.MetadataXML != "" || time.Since(entry.fetchedAt) < samlMetadataTTL) {
-			return entry.descrip, nil
-		}
+	m.samlM.m.Lock()
+	cached := m.samlCachedMetadataLocked(name, source, cfg)
+	m.samlM.m.Unlock()
+	if cached != nil {
+		return cached, nil
 	}
 
+	// fetched without the lock so a slow IdP does not stall other providers
 	var descriptor *saml.EntityDescriptor
 	var err error
 
@@ -200,7 +205,7 @@ func (m *Auth) samlIDPMetadata(ctx context.Context, name string, cfg SAMLProvide
 		var metadataURL *url.URL
 		metadataURL, err = url.Parse(cfg.MetadataURL)
 		if err == nil {
-			descriptor, err = samlsp.FetchMetadata(ctx, http.DefaultClient, *metadataURL)
+			descriptor, err = samlsp.FetchMetadata(ctx, samlMetadataHTTPClient, *metadataURL)
 		}
 	default:
 		err = errors.New("provider has no metadata_url or metadata_xml")
@@ -209,9 +214,29 @@ func (m *Auth) samlIDPMetadata(ctx context.Context, name string, cfg SAMLProvide
 		return nil, fmt.Errorf("idp metadata: %w", err)
 	}
 
+	m.samlM.m.Lock()
+	defer m.samlM.m.Unlock()
+
+	if m.samlM.metadata == nil {
+		m.samlM.metadata = map[string]*samlMetadataEntry{}
+	}
+	// a concurrent caller may have stored a fresh entry meanwhile
+	if cached := m.samlCachedMetadataLocked(name, source, cfg); cached != nil {
+		return cached, nil
+	}
 	m.samlM.metadata[name] = &samlMetadataEntry{source: source, descrip: descriptor, fetchedAt: time.Now()}
 
 	return descriptor, nil
+}
+
+func (m *Auth) samlCachedMetadataLocked(name, source string, cfg SAMLProviderConfig) *saml.EntityDescriptor {
+	if entry, ok := m.samlM.metadata[name]; ok {
+		if entry.source == source && (cfg.MetadataXML != "" || time.Since(entry.fetchedAt) < samlMetadataTTL) {
+			return entry.descrip
+		}
+	}
+
+	return nil
 }
 
 // samlBaseURL derives the external base url of this middleware from the request.

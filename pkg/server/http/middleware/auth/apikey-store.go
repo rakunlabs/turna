@@ -304,6 +304,16 @@ func (s *Store) GetAPIKeyMeta(ctx context.Context, id string) (*APIKeyMeta, erro
 	return meta, nil
 }
 
+// checkOwnerAPIKeyUpdate keeps owners from re-enabling a disabled key; a key
+// may have been disabled by an admin, so only the admin plane can undo it.
+func checkOwnerAPIKeyUpdate(meta *APIKeyMeta, update APIKeyUpdate) error {
+	if meta.Disabled && update.Disabled != nil && !*update.Disabled {
+		return fmt.Errorf("a disabled api key can only be re-enabled by an admin; %w", data.ErrInvalidRequest)
+	}
+
+	return nil
+}
+
 func applyAPIKeyUpdate(meta *APIKeyMeta, update APIKeyUpdate) {
 	if update.Name != nil {
 		meta.Name = *update.Name
@@ -397,6 +407,9 @@ func (s *Store) UpdateAPIKey(ctx context.Context, userID, id string, update APIK
 			return errPrecondition
 		}
 		return fmt.Errorf("api key %s not found; %w", id, data.ErrNotFound)
+	}
+	if err := checkOwnerAPIKeyUpdate(meta, update); err != nil {
+		return err
 	}
 
 	applyAPIKeyUpdate(meta, update)

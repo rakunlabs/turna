@@ -116,3 +116,21 @@ func TestConsentPageNotFramable(t *testing.T) {
 		t.Error("consent form misses the consent token")
 	}
 }
+
+func TestConsentFormTokenBoundToUser(t *testing.T) {
+	t.Parallel()
+
+	alice := consentFormToken("secret", "alice")
+	if alice == "" || alice == "secret" {
+		t.Fatalf("unexpected form token %q", alice)
+	}
+	if alice != consentFormToken("secret", "alice") {
+		t.Error("form token must be deterministic for the same user")
+	}
+	if alice == consentFormToken("secret", "bob") {
+		t.Error("form token must differ per user")
+	}
+	if consentFormToken("", "alice") != "" {
+		t.Error("empty flow token must stay empty")
+	}
+}

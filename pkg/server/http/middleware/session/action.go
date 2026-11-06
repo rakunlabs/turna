@@ -109,7 +109,7 @@ func (p *ProviderWrapper) GetName() string {
 // buildKeyFunc builds the token validation keyfunc for a provider map:
 // remote JWKS keyfuncs for providers with oauth2.cert_url and an in-process
 // issuer keyfunc for providers referencing an auth_middleware.
-func buildKeyFunc(providerMap map[string]Provider) (*JwkKeyFuncParse, error) {
+func buildKeyFunc(ctx context.Context, providerMap map[string]Provider) (*JwkKeyFuncParse, error) {
 	providerList := make([]InfProviderCert, 0, len(providerMap))
 	issuerProviders := make(map[string]string)
 	for k, v := range providerMap {
@@ -133,6 +133,9 @@ func buildKeyFunc(providerMap map[string]Provider) (*JwkKeyFuncParse, error) {
 	}
 
 	opts := []OptionJWK{}
+	if ctx != nil {
+		opts = append(opts, WithContext(ctx))
+	}
 	if len(issuerProviders) > 0 {
 		opts = append(opts, WithKeyFunc(&issuerKeyFunc{providers: issuerProviders}))
 	}
@@ -159,7 +162,7 @@ func (m *Session) SetAction() error {
 
 		m.Action.Token.auth.Client = client.HTTP
 
-		jwksMulti, err := buildKeyFunc(m.Provider)
+		jwksMulti, err := buildKeyFunc(m.ctx, m.Provider)
 		if err != nil {
 			// A provider_source is resolved lazily because the referenced auth
 			// middleware may register after this session middleware. Allow a
@@ -441,9 +444,10 @@ func (m *Session) refreshTokenDataOnce(r *http.Request, providerName string, tok
 	}
 
 	requestConfig := request.AuthRequestConfig{
-		TokenURL:     provider.Oauth2.TokenURL,
-		ClientID:     provider.Oauth2.ClientID,
-		ClientSecret: provider.Oauth2.ClientSecret,
+		TokenURL:        provider.Oauth2.TokenURL,
+		ClientID:        provider.Oauth2.ClientID,
+		ClientSecret:    provider.Oauth2.ClientSecret,
+		AuthHeaderStyle: request.AuthHeaderStyle(provider.Oauth2.AuthHeaderStyle),
 	}
 
 	requestConfig.Scopes = strings.Fields(token.Scope)

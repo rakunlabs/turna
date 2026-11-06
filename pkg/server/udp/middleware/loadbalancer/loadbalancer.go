@@ -160,13 +160,15 @@ func (lb *balancer) session(conn net.PacketConn, addr net.Addr) (*session, error
 	key := addr.String()
 
 	lb.mu.Lock()
-	defer lb.mu.Unlock()
+	s, ok := lb.sessions[key]
+	full := len(lb.sessions) >= lb.max
+	lb.mu.Unlock()
 
-	if s, ok := lb.sessions[key]; ok {
+	if ok {
 		return s, nil
 	}
 
-	if len(lb.sessions) >= lb.max {
+	if full {
 		return nil, fmt.Errorf("max sessions %d reached", lb.max)
 	}
 
@@ -185,6 +187,8 @@ func (lb *balancer) session(conn net.PacketConn, addr net.Addr) (*session, error
 
 		var d net.Dialer
 
+		// dialed without the lock so a slow upstream does not block other
+		// clients
 		upConn, err := d.DialContext(lb.ctx, lb.network, t.Address)
 		if err != nil {
 			lb.b.ReportFailure(t)
@@ -193,8 +197,30 @@ func (lb *balancer) session(conn net.PacketConn, addr net.Addr) (*session, error
 			continue
 		}
 
+		lb.mu.Lock()
+
+		if cur, ok := lb.sessions[key]; ok {
+			lb.mu.Unlock()
+			_ = upConn.Close()
+
+			return cur, nil
+		}
+
+		if len(lb.sessions) >= lb.max || lb.ctx.Err() != nil {
+			lb.mu.Unlock()
+			_ = upConn.Close()
+
+			if err := lb.ctx.Err(); err != nil {
+				return nil, err
+			}
+
+			return nil, fmt.Errorf("max sessions %d reached", lb.max)
+		}
+
 		s := &session{target: t, upConn: upConn, release: lb.b.Acquire(t), lastSeen: time.Now()}
 		lb.sessions[key] = s
+
+		lb.mu.Unlock()
 
 		go lb.relay(conn, addr, key, s)
 

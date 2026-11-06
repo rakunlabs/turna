@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -130,6 +131,13 @@ func (s *FileStore) Save(_ *http.Request, w http.ResponseWriter, session *sessio
 	}
 
 	setSessionCookie(w, session.Name(), cookieValue, session.Options)
+
+	return nil
+}
+
+// Delete removes the stored record of the session ID.
+func (s *FileStore) Delete(_ context.Context, sessionID string) error {
+	s.delete(sessionID)
 
 	return nil
 }

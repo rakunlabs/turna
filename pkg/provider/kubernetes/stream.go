@@ -237,6 +237,25 @@ func (t *translator) buildTLS(entry string) {
 
 	var routes []sniRoute
 
+	// a more specific listener on the entrypoint owns its hostname, a route
+	// of a broader listener must not take it, also when it is older
+	shadowed := func(li *listener, host string) bool {
+		own := string(ptrOr(li.spec.Hostname, ""))
+
+		for _, other := range t.streams[entry] {
+			oh := string(ptrOr(other.li.spec.Hostname, ""))
+			if other.li == li || oh == "" || oh == own {
+				continue
+			}
+
+			if (own == "" || hostMatches(own, oh)) && (oh == host || hostMatches(oh, host)) {
+				return true
+			}
+		}
+
+		return false
+	}
+
 	for i, r := range t.streams[entry] {
 		target := t.streamTarget(entry, i, r.backends, false)
 		if len(target) == 0 {
@@ -266,7 +285,7 @@ func (t *translator) buildTLS(entry string) {
 			}
 
 			// the oldest route wins a hostname
-			if slices.ContainsFunc(routes, func(x sniRoute) bool { return x.host == h }) {
+			if shadowed(r.li, h) || slices.ContainsFunc(routes, func(x sniRoute) bool { return x.host == h }) {
 				continue
 			}
 

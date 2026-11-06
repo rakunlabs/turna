@@ -30,8 +30,6 @@ func IsRefreshNeed(accessToken string) (bool, error) {
 
 // Parse64 parse the cookie
 func ParseToken64(v string) (*TokenData, error) {
-	vByte := []byte(v)
-
 	vByte, err := base64.StdEncoding.DecodeString(v)
 	if err != nil {
 		return nil, err

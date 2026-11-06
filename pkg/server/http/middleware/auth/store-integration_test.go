@@ -91,6 +91,21 @@ func TestStoreIntegration(t *testing.T) {
 		t.Fatalf("duplicate flow once: created=%v err=%v", created, err)
 	}
 
+	_ = store.DeleteFlowCode(ctx, flowKindDevice, "last-poll-test")
+	if err := store.CreateFlowCode(ctx, flowKindDevice, "last-poll-test", deviceFlow{Status: deviceStatusApproved, UserID: "u1"}, time.Minute); err != nil {
+		t.Fatalf("create device flow: %v", err)
+	}
+	if err := store.SetFlowCodeLastPoll(ctx, flowKindDevice, "last-poll-test", 42); err != nil {
+		t.Fatalf("set last poll: %v", err)
+	}
+	var polled deviceFlow
+	if err := store.GetFlowCode(ctx, flowKindDevice, "last-poll-test", &polled); err != nil {
+		t.Fatalf("get device flow: %v", err)
+	}
+	if polled.LastPoll != 42 || polled.Status != deviceStatusApproved || polled.UserID != "u1" {
+		t.Fatalf("last poll update clobbered the flow: %+v", polled)
+	}
+
 	if err := store.CreateFlowCode(ctx, flowKindRevoked, "expired-cleanup-test", revokedToken{}, -time.Second); err != nil {
 		t.Fatalf("create expired flow: %v", err)
 	}

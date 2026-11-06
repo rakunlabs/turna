@@ -79,6 +79,10 @@ type Session struct {
 
 	store StoreInf `cfg:"-"`
 
+	// ctx is the middleware lifecycle context; it stops the JWKS background
+	// refresh when the middleware is replaced or shut down.
+	ctx context.Context `cfg:"-"`
+
 	// authCheckClient posts anonymous public checks to URL entries of
 	// AuthSkipPaths; nil when there are none.
 	authCheckClient *ok.Client `cfg:"-"`
@@ -117,6 +121,8 @@ type Options struct {
 }
 
 func (m *Session) Init(ctx context.Context, name string) error {
+	m.ctx = ctx
+
 	if err := m.SetStore(ctx); err != nil {
 		return err
 	}

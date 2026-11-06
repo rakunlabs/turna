@@ -364,8 +364,7 @@ func (m *Auth) deviceCodeGrant(w http.ResponseWriter, r *http.Request, req Acces
 		return
 	}
 
-	flow.LastPoll = now
-	_ = m.store.UpdateFlowCode(r.Context(), flowKindDevice, req.DeviceCode, &flow)
+	_ = m.store.SetFlowCodeLastPoll(r.Context(), flowKindDevice, req.DeviceCode, now)
 
 	switch flow.Status {
 	case deviceStatusDenied:

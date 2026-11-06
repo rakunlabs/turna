@@ -335,8 +335,10 @@ func (m *Auth) registrationClient(w http.ResponseWriter, r *http.Request) (strin
 		return "", nil
 	}
 
-	client, ok := m.cache.Snapshot().OAuthClients[clientID]
+	sn := m.cache.Snapshot()
+	client, ok := sn.OAuthClients[clientID]
 	if !ok || !client.Dynamic || client.RegistrationToken == "" ||
+		dynamicClientExpired(client, sn.Registration.GetClientLifetime(), time.Now()) ||
 		subtle.ConstantTimeCompare([]byte(client.RegistrationToken), []byte(sha256Hex(token))) != 1 {
 		w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
 		httputil.HandleError(w, AccessTokenErrorResponse{

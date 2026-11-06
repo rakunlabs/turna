@@ -600,3 +600,30 @@ func TestNegativeTimeout(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestRetrySendsBodyAgain(t *testing.T) {
+	dead := httptest.NewServer(http.NotFoundHandler())
+	deadURL := dead.URL
+	dead.Close()
+
+	echo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(w, r.Body)
+	}))
+	t.Cleanup(echo.Close)
+
+	h := newServiceHandler(t, context.Background(), &Service{
+		Retry: 1,
+		LoadBalancer: LoadBalancer{
+			Servers: []Server{{URL: deadURL}, {URL: echo.URL}},
+		},
+	})
+
+	for range 4 {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", strings.NewReader("payload")))
+
+		if rec.Code != http.StatusOK || rec.Body.String() != "payload" {
+			t.Fatalf("status = %d body = %q", rec.Code, rec.Body.String())
+		}
+	}
+}

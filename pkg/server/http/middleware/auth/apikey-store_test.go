@@ -1,8 +1,11 @@
 package auth
 
 import (
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 )
 
 func TestShouldRefreshAPIKeyLastUsed(t *testing.T) {
@@ -31,5 +34,22 @@ func TestApplyAPIKeyUpdateDescription(t *testing.T) {
 
 	if meta.Description != description {
 		t.Fatalf("description = %q", meta.Description)
+	}
+}
+
+func TestCheckOwnerAPIKeyUpdateDisabled(t *testing.T) {
+	enable, disable := false, true
+
+	if err := checkOwnerAPIKeyUpdate(&APIKeyMeta{Disabled: true}, APIKeyUpdate{Disabled: &enable}); !errors.Is(err, data.ErrInvalidRequest) {
+		t.Fatalf("owner re-enabling a disabled key: err = %v", err)
+	}
+	if err := checkOwnerAPIKeyUpdate(&APIKeyMeta{Disabled: true}, APIKeyUpdate{Disabled: &disable}); err != nil {
+		t.Fatalf("keeping a key disabled: %v", err)
+	}
+	if err := checkOwnerAPIKeyUpdate(&APIKeyMeta{Disabled: true}, APIKeyUpdate{}); err != nil {
+		t.Fatalf("update without disabled: %v", err)
+	}
+	if err := checkOwnerAPIKeyUpdate(&APIKeyMeta{}, APIKeyUpdate{Disabled: &disable}); err != nil {
+		t.Fatalf("owner disabling a key: %v", err)
 	}
 }

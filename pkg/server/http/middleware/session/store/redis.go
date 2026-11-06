@@ -123,14 +123,6 @@ func (s *RedisStore) New(r *http.Request, name string) (*sessions.Session, error
 		return session, nil
 	}
 
-	// In v1 the ID is kept even when nothing is stored yet, so Save reuses it
-	// instead of rotating the cookie. An older turna sharing this cookie would
-	// otherwise adopt the rotated value and both sides would keep invalidating
-	// each other's session.
-	if s.compat == CompatV1 {
-		session.ID = sessionID
-	}
-
 	values, err := s.load(r.Context(), sessionID)
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
@@ -205,6 +197,15 @@ func (s *RedisStore) Save(r *http.Request, w http.ResponseWriter, session *sessi
 	}
 
 	setSessionCookie(w, session.Name(), cookieValue, session.Options)
+
+	return nil
+}
+
+// Delete removes the stored record of the session ID.
+func (s *RedisStore) Delete(ctx context.Context, sessionID string) error {
+	if err := s.client.Del(ctx, s.redisKey(sessionID)).Err(); err != nil {
+		return unavailable(err)
+	}
 
 	return nil
 }

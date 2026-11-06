@@ -46,6 +46,12 @@ func conditionalRequest(r *http.Request) (*http.Request, error) {
 	return r.WithContext(context.WithValue(r.Context(), writeConditionKey{}, condition)), nil
 }
 
+// createOnlyContext makes the next conditional write fail with
+// errPrecondition when the record already exists.
+func createOnlyContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, writeConditionKey{}, writeCondition{createOnly: true})
+}
+
 // checkWriteCondition runs inside the same transaction as the write. Row locks
 // serialize competing writers, and an advisory lock covers absent-row creates.
 // Table/column names come only from fixed application constants.

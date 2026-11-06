@@ -585,6 +585,13 @@ func (g *GCPToken) Middleware() (func(http.Handler) http.Handler, error) {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if g.Mode != ModeInject && !g.authorized(r) {
+				w.Header().Set("WWW-Authenticate", `Basic realm="gcp_token"`)
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_client"})
+
+				return
+			}
+
 			t, err := g.Token(r.Context())
 			if err != nil {
 				slog.Error("gcp_token: cannot get token", "err", err.Error())
@@ -616,13 +623,6 @@ func (g *GCPToken) Middleware() (func(http.Handler) http.Handler, error) {
 
 				r.Header.Set(g.Header, value)
 				next.ServeHTTP(w, r)
-
-				return
-			}
-
-			if !g.authorized(r) {
-				w.Header().Set("WWW-Authenticate", `Basic realm="gcp_token"`)
-				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_client"})
 
 				return
 			}

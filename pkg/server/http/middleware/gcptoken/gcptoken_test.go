@@ -227,7 +227,7 @@ func TestManagedKafkaFormat(t *testing.T) {
 }
 
 func TestClientAuth(t *testing.T) {
-	_, _, h := newMiddleware(t, func(g *GCPToken) {
+	_, f, h := newMiddleware(t, func(g *GCPToken) {
 		g.ClientID = "console"
 		g.ClientSecret = "s3cret"
 	})
@@ -237,6 +237,10 @@ func TestClientAuth(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+
+	if f.stsCalls.Load() != 0 {
+		t.Fatalf("unauthorized request fetched a token, sts=%d", f.stsCalls.Load())
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/",

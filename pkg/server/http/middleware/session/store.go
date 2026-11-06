@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"time"
@@ -34,6 +35,10 @@ const (
 
 type StoreInf interface {
 	Get(r *http.Request, name string) (*sessions.Session, error)
+}
+
+type sessionDeleter interface {
+	Delete(ctx context.Context, sessionID string) error
 }
 
 func (m *Session) GetStore() StoreInf {
@@ -143,6 +148,16 @@ func (m *Session) setToken(w http.ResponseWriter, r *http.Request, token []byte,
 		return err
 	}
 
+	// an interactive login never reuses the incoming session ID, otherwise a
+	// pre-set cookie would be upgraded to an authenticated session (fixation)
+	var oldID string
+	if method != "" {
+		oldID = session.ID
+		session.ID = ""
+		session.Values = make(map[string]any)
+		session.IsNew = true
+	}
+
 	session.Values[TokenKey] = cookieValue
 	session.Values[ProviderKey] = providerName
 	if method != "" {
@@ -158,6 +173,14 @@ func (m *Session) setToken(w http.ResponseWriter, r *http.Request, token []byte,
 
 	if err := session.Save(r, w); err != nil {
 		return err
+	}
+
+	if oldID != "" && oldID != session.ID {
+		if d, ok := m.store.(sessionDeleter); ok {
+			if err := d.Delete(r.Context(), oldID); err != nil {
+				slog.Warn("cannot delete previous session", "error", err.Error())
+			}
+		}
 	}
 
 	// add header for session set

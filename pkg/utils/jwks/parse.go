@@ -31,9 +31,6 @@ type rawJWK struct {
 	Crv string `json:"crv"`
 	X   string `json:"x"`
 	Y   string `json:"y"`
-
-	// oct (symmetric)
-	K string `json:"k"`
 }
 
 // parseJWK converts a raw JWK into a crypto key usable by golang-jwt.
@@ -45,9 +42,9 @@ func parseJWK(k rawJWK) (any, error) {
 		return parseEC(k)
 	case "OKP":
 		return parseOKP(k)
-	case "oct":
-		return parseOct(k)
 	default:
+		// symmetric "oct" keys are rejected: a published shared secret
+		// would let anyone sign tokens
 		return nil, fmt.Errorf("kty %q: %w", k.Kty, ErrUnsupportedKeyType)
 	}
 }
@@ -138,17 +135,4 @@ func parseOKP(k rawJWK) (ed25519.PublicKey, error) {
 	}
 
 	return ed25519.PublicKey(xBytes), nil
-}
-
-func parseOct(k rawJWK) ([]byte, error) {
-	if k.K == "" {
-		return nil, fmt.Errorf("oct JWK %q is missing k", k.KID)
-	}
-
-	kBytes, err := base64.RawURLEncoding.DecodeString(k.K)
-	if err != nil {
-		return nil, fmt.Errorf("oct JWK %q: invalid k: %w", k.KID, err)
-	}
-
-	return kBytes, nil
 }

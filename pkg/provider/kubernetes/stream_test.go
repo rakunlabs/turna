@@ -776,3 +776,58 @@ func TestStreamTLSTerminateBackendTLSPolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestStreamTLSSpecificListenerOwnsHost(t *testing.T) {
+	svcs, endpoints := backendObjects(backend{name: "wide", addr: "127.0.0.1:1", port: 443}, backend{name: "foo", addr: "127.0.0.1:2", port: 443})
+
+	gw := gatewayObj("app", "gw",
+		gwv1.Listener{Name: "wide", Port: 443, Protocol: gwv1.TLSProtocolType, Hostname: ptr(gwv1.Hostname("*.example.com")),
+			TLS: &gwv1.ListenerTLSConfig{Mode: ptr(gwv1.TLSModePassthrough)}},
+		gwv1.Listener{Name: "foo", Port: 443, Protocol: gwv1.TLSProtocolType, Hostname: ptr(gwv1.Hostname("foo.example.com")),
+			TLS: &gwv1.ListenerTLSConfig{Mode: ptr(gwv1.TLSModePassthrough)}},
+	)
+
+	route := func(name, section, svc string, created int64) *gwv1.TLSRoute {
+		meta := objMeta("app", name)
+		meta.CreationTimestamp = metav1.Unix(created, 0)
+
+		return &gwv1.TLSRoute{
+			ObjectMeta: meta,
+			Spec: gwv1.TLSRouteSpec{
+				CommonRouteSpec: gwv1.CommonRouteSpec{ParentRefs: []gwv1.ParentReference{{Name: "gw", SectionName: ptr(gwv1.SectionName(section))}}},
+				Hostnames:       []gwv1.Hostname{"foo.example.com"},
+				Rules:           []gwv1.TLSRouteRule{{BackendRefs: []gwv1.BackendRef{backendRef(svc, 443)}}},
+			},
+		}
+	}
+
+	// the route on the broad listener is older
+	res := Translate(&Config{}, &Snapshot{
+		GatewayClasses: []*gwv1.GatewayClass{class()},
+		Gateways:       []*gwv1.Gateway{gw},
+		TLSRoutes:      []*gwv1.TLSRoute{route("wide", "wide", "wide", 1), route("foo", "foo", "foo", 2)},
+		Services:       svcs,
+		EndpointSlices: endpoints,
+	})
+
+	for _, mw := range res.Server.TCP.Middlewares {
+		if mw.SNIRouterMiddleware == nil {
+			continue
+		}
+
+		for _, r := range mw.SNIRouterMiddleware.Routes {
+			if len(r.SNI) != 1 || r.SNI[0] != "foo.example.com" {
+				continue
+			}
+
+			lb := res.Server.TCP.Middlewares[r.Middlewares[len(r.Middlewares)-1]].LoadBalancerMiddleware
+			if lb == nil || len(lb.Servers) != 1 || lb.Servers[0].Address != "127.0.0.1:2" {
+				t.Fatalf("foo.example.com routed to %+v, want the foo listener backend", lb)
+			}
+
+			return
+		}
+	}
+
+	t.Fatal("no sni route for foo.example.com")
+}

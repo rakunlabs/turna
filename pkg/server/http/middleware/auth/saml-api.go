@@ -225,10 +225,13 @@ func (m *Auth) SAMLACS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	urlParsed.RawQuery = url.Values{
-		"code":  {codeID},
-		"state": {relay.OrgState},
-	}.Encode()
+	q := urlParsed.Query()
+	q.Set("code", codeID)
+	q.Set("iss", m.issuerURL(r))
+	if relay.OrgState != "" {
+		q.Set("state", relay.OrgState)
+	}
+	urlParsed.RawQuery = q.Encode()
 
 	httputil.Redirect(w, http.StatusTemporaryRedirect, urlParsed.String())
 }

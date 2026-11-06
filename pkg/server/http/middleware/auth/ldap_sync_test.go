@@ -158,3 +158,24 @@ func TestLDAPDetailsDoesNotMutateInput(t *testing.T) {
 		t.Fatalf("unexpected details: %v", out)
 	}
 }
+
+func TestLDAPManagedUser(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		user *data.User
+		want bool
+	}{
+		{"ldap", &data.User{Details: map[string]any{ldapDNKey: "uid=jdoe,dc=example"}}, true},
+		{"federated", &data.User{Details: map[string]any{"email": "a@example.com"}}, false},
+		{"local", &data.User{Local: true, Details: map[string]any{ldapDNKey: "uid=x"}}, false},
+		{"service", &data.User{ServiceAccount: true}, false},
+	}
+
+	for _, tt := range tests {
+		if got := ldapManagedUser(tt.user); got != tt.want {
+			t.Errorf("%s: ldapManagedUser() = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}

@@ -57,6 +57,17 @@ func ldapAliases(u ldap.LdapUser, fallback string) []string {
 // identity used to match a stored user even when uid or mail change.
 const ldapDNKey = "ldap_dn"
 
+// ldapManagedUser reports whether the user was provisioned from LDAP.
+func ldapManagedUser(user *data.User) bool {
+	if user.ServiceAccount || user.Local {
+		return false
+	}
+
+	dn, _ := user.Details[ldapDNKey].(string)
+
+	return dn != ""
+}
+
 // ldapUserIndex resolves the stored user behind an LDAP entry.
 type ldapUserIndex struct {
 	sn   *Snapshot
@@ -491,11 +502,12 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 		}
 	}
 
-	// reset sync roles for users that left all groups
+	// reset sync roles for LDAP users that left all groups; users without an
+	// LDAP DN (OAuth/SAML federated) keep the roles their provider synced
 	if uid == "" {
 		for _, id := range sn.UserIDs {
 			user := sn.Users[id]
-			if user.ServiceAccount || user.Local || len(user.SyncRoleIDs) == 0 {
+			if !ldapManagedUser(user) || len(user.SyncRoleIDs) == 0 {
 				continue
 			}
 

@@ -96,6 +96,12 @@ func (rt *Runtime) Prepare(h *TCP, entrypoints []string) (*Prepared, error) {
 
 	specs := make(map[string]registry.Spec, len(h.Middlewares))
 	for name, m := range h.Middlewares {
+		for _, ref := range m.refs() {
+			if _, ok := h.Middlewares[ref]; !ok {
+				return nil, fmt.Errorf("tcp middleware %s: middleware '%s' not found", name, ref)
+			}
+		}
+
 		specs[name] = registry.Spec{
 			Fingerprint: fingerprint(m),
 			Refs:        m.refs(),

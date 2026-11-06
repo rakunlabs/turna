@@ -274,7 +274,7 @@ func (f *Folder) serveFile(w http.ResponseWriter, r *http.Request, uPath, cPath 
 func (f *Folder) dirList(w http.ResponseWriter, r *http.Request, folder http.File) error {
 	dirs, err := folder.Readdir(-1)
 	if err != nil {
-		return fmt.Errorf("Error reading directory")
+		return fmt.Errorf("error reading directory: %w", err)
 	}
 	folderDirs := []fs.FileInfo{}
 	folderFiles := []fs.FileInfo{}

@@ -90,13 +90,43 @@ func (t TLS) minVersion() (uint16, error) {
 // the client's SNI server name (exact, then wildcard), falling back to the
 // "default" host key and finally to a generated self-signed certificate.
 func (h *HTTP) buildTLSConfig() (*tls.Config, error) {
-	return h.buildStoreTLSConfig(h.TLS.Store, true, nil)
+	clientCAs, _, err := h.loadClientCAs()
+	if err != nil {
+		return nil, err
+	}
+
+	return h.buildStoreTLSConfig(h.TLS.Store, true, nil, clientCAs)
+}
+
+// loadClientCAs reads ClientCAFiles and returns their pool and PEM contents,
+// nil without files.
+func (h *HTTP) loadClientCAs() (*x509.CertPool, []string, error) {
+	if len(h.TLS.ClientCAFiles) == 0 {
+		return nil, nil, nil
+	}
+
+	pool := x509.NewCertPool()
+	pems := make([]string, 0, len(h.TLS.ClientCAFiles))
+
+	for _, file := range h.TLS.ClientCAFiles {
+		caPEM, err := os.ReadFile(file)
+		if err != nil {
+			return nil, nil, fmt.Errorf("cannot read client CA file %q: %w", file, err)
+		}
+		if !pool.AppendCertsFromPEM(caPEM) {
+			return nil, nil, fmt.Errorf("client CA file %q contains no certificates", file)
+		}
+
+		pems = append(pems, string(caPEM))
+	}
+
+	return pool, pems, nil
 }
 
 // buildStoreTLSConfig builds an SNI-aware *tls.Config serving the
-// certificates of store. shared adds the settings of the shared listener
-// configuration: ACME and the optional client CAs.
-func (h *HTTP) buildStoreTLSConfig(store map[string][]Certificate, shared bool, acmeManager *acme.Manager) (*tls.Config, error) {
+// certificates of store. shared adds ACME of the shared listener
+// configuration; a non-nil clientCAs verifies optional client certificates.
+func (h *HTTP) buildStoreTLSConfig(store map[string][]Certificate, shared bool, acmeManager *acme.Manager, clientCAs *x509.CertPool) (*tls.Config, error) {
 	minVersion, err := h.TLS.minVersion()
 	if err != nil {
 		return nil, err
@@ -179,18 +209,7 @@ func (h *HTTP) buildStoreTLSConfig(store map[string][]Certificate, shared bool, 
 		},
 	}
 
-	if shared && len(h.TLS.ClientCAFiles) > 0 {
-		clientCAs := x509.NewCertPool()
-		for _, file := range h.TLS.ClientCAFiles {
-			caPEM, err := os.ReadFile(file)
-			if err != nil {
-				return nil, fmt.Errorf("cannot read client CA file %q: %w", file, err)
-			}
-			if !clientCAs.AppendCertsFromPEM(caPEM) {
-				return nil, fmt.Errorf("client CA file %q contains no certificates", file)
-			}
-		}
-
+	if clientCAs != nil {
 		// mTLS is optional at the shared listener: routes that require it check
 		// VerifiedChains, while ordinary HTTPS routes continue to work.
 		cfg.ClientAuth = tls.VerifyClientCertIfGiven
@@ -254,3 +273,6 @@ func (h *HTTP) generateSelfSigned() (tls.Certificate, error) {
 }
 
 var ReadHeaderTimeout = 10 * time.Second
+
+// IdleTimeout is the keep-alive timeout of entrypoints without idle_timeout.
+var IdleTimeout = 120 * time.Second

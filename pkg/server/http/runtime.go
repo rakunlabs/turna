@@ -58,6 +58,10 @@ type runningServer struct {
 	h3ln *quic.EarlyListener
 	// quic is the HTTP/3 setting the server started with
 	quic QUIC
+	// timeouts the server started with
+	timeouts Timeouts
+	// cancel ends the base context of the requests
+	cancel context.CancelFunc
 
 	// open TLS connections with the client certificate settings they were
 	// accepted with
@@ -104,7 +108,8 @@ type Prepared struct {
 	acme    *acme.Manager
 	newACME bool
 
-	quic map[string]QUIC
+	quic     map[string]QUIC
+	timeouts map[string]Timeouts
 }
 
 // QUIC is the HTTP/3 transport of an entrypoint.
@@ -112,6 +117,32 @@ type QUIC struct {
 	Transport *quic.Transport
 	// AdvertisePort overrides the port of the Alt-Svc header.
 	AdvertisePort int
+	// Allow0RTT accepts 0-RTT early data, which can be replayed.
+	Allow0RTT bool
+}
+
+// Timeouts of the HTTP server of an entrypoint. Zero read and write
+// timeouts are unlimited, a zero idle timeout is IdleTimeout.
+type Timeouts struct {
+	Read  time.Duration
+	Write time.Duration
+	Idle  time.Duration
+}
+
+// timeoutsFor returns the server timeouts of an entrypoint.
+func (p *Prepared) timeoutsFor(entrypoint string) Timeouts {
+	t := p.timeouts[entrypoint]
+	if t.Idle == 0 {
+		t.Idle = IdleTimeout
+	}
+
+	return t
+}
+
+// SetTimeouts sets the server timeouts of the entrypoints, used by
+// Activate; servers with other timeouts are restarted.
+func (p *Prepared) SetTimeouts(t map[string]Timeouts) {
+	p.timeouts = t
 }
 
 // quicFor returns the HTTP/3 setting of an entrypoint; only TLS servers
@@ -269,7 +300,6 @@ func (p *Prepared) Activate(listen ListenerFunc) {
 	p.stage.Commit()
 
 	rt.mu.Lock()
-	defer rt.mu.Unlock()
 
 	wanted := make(map[string]bool, len(p.plain)+len(p.secure))
 	for e := range p.plain {
@@ -279,13 +309,16 @@ func (p *Prepared) Activate(listen ListenerFunc) {
 		wanted[e] = true
 	}
 
+	stopped := make(map[string]*runningServer)
+
 	for key, s := range rt.servers {
 		entrypoint, secure := splitServerKey(key)
-		if want, ok := wanted[entrypoint]; ok && want == secure && s.quic == p.quicFor(entrypoint, secure) {
+		if want, ok := wanted[entrypoint]; ok && want == secure && s.quic == p.quicFor(entrypoint, secure) && s.timeouts == p.timeoutsFor(entrypoint) {
 			continue
 		}
 
-		rt.stopServer(key, s)
+		rt.detach(key, s)
+		stopped[key] = s
 	}
 
 	for entrypoint, secure := range wanted {
@@ -313,22 +346,32 @@ func (p *Prepared) Activate(listen ListenerFunc) {
 			quic = &q
 		}
 
-		rt.startServer(entrypoint, secure, listener, quic)
+		rt.startServer(entrypoint, secure, listener, quic, p.timeoutsFor(entrypoint))
 	}
+
+	rt.mu.Unlock()
+
+	shutdownServers(stopped)
 }
 
 // Release stops the servers of the given entrypoints, used before the
 // entrypoint socket is closed or handed to another protocol.
 func (rt *Runtime) Release(entrypoint string) {
 	rt.mu.Lock()
-	defer rt.mu.Unlock()
+
+	stopped := make(map[string]*runningServer)
 
 	for _, secure := range []bool{false, true} {
 		key := serverKey(entrypoint, secure)
 		if s, ok := rt.servers[key]; ok {
-			rt.stopServer(key, s)
+			rt.detach(key, s)
+			stopped[key] = s
 		}
 	}
+
+	rt.mu.Unlock()
+
+	shutdownServers(stopped)
 }
 
 // Shutdown gracefully stops all servers.
@@ -336,9 +379,14 @@ func (rt *Runtime) Shutdown() {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 
+	stopped := make(map[string]*runningServer, len(rt.servers))
+
 	for key, s := range rt.servers {
-		rt.stopServer(key, s)
+		rt.detach(key, s)
+		stopped[key] = s
 	}
+
+	shutdownServers(stopped)
 
 	if rt.acmeCurrent != nil {
 		rt.acmeCurrent.Stop()
@@ -364,12 +412,32 @@ func (rt *Runtime) handler(entrypoint string, secure bool) http.Handler {
 	})
 }
 
-func (rt *Runtime) stopServer(key string, s *runningServer) {
+// detach removes a server and stops it accepting at once; the socket stays
+// open for the next consumer. shutdownServers drains it.
+func (rt *Runtime) detach(key string, s *runningServer) {
 	delete(rt.servers, key)
 
-	// stop accepting at once, the socket stays open for the next consumer
 	_ = s.listener.Close()
 
+	// the transport accepts a new listener only after the old one is closed
+	if s.h3ln != nil {
+		_ = s.h3ln.Close()
+	}
+}
+
+// shutdownServers gracefully stops detached servers in parallel; connections
+// still open after ShutdownTimeout, hijacked ones included, are closed.
+func shutdownServers(servers map[string]*runningServer) {
+	var wg sync.WaitGroup
+
+	for key, s := range servers {
+		wg.Go(func() { shutdownServer(key, s) })
+	}
+
+	wg.Wait()
+}
+
+func shutdownServer(key string, s *runningServer) {
 	ctx, cancel := context.WithTimeout(context.Background(), ShutdownTimeout)
 	defer cancel()
 
@@ -379,22 +447,35 @@ func (rt *Runtime) stopServer(key string, s *runningServer) {
 		}
 
 		_ = s.h3.Close()
-		_ = s.h3ln.Close()
 	}
 
 	if err := s.server.Shutdown(ctx); err != nil {
-		slog.Error(fmt.Sprintf("http [%s] shutdown error", key), "err", err.Error())
+		if !errors.Is(err, context.DeadlineExceeded) {
+			slog.Error(fmt.Sprintf("http [%s] shutdown error", key), "err", err.Error())
+		}
+
+		_ = s.server.Close()
 	}
+
+	// Shutdown and Close do not track hijacked connections; proxied upgrades
+	// (websockets) end with the request context
+	s.cancel()
 }
 
-func (rt *Runtime) startServer(entrypoint string, secure bool, listener net.Listener, quic *QUIC) {
+func (rt *Runtime) startServer(entrypoint string, secure bool, listener net.Listener, quic *QUIC, timeouts Timeouts) {
 	key := serverKey(entrypoint, secure)
 
 	handler := rt.handler(entrypoint, secure)
 
+	baseCtx, cancel := context.WithCancel(context.Background())
+
 	s := &http.Server{
 		ReadHeaderTimeout: ReadHeaderTimeout,
+		ReadTimeout:       timeouts.Read,
+		WriteTimeout:      timeouts.Write,
+		IdleTimeout:       timeouts.Idle,
 		Handler:           handler,
+		BaseContext:       func(net.Listener) context.Context { return baseCtx },
 	}
 
 	if !secure {
@@ -405,7 +486,7 @@ func (rt *Runtime) startServer(entrypoint string, secure bool, listener net.List
 		s.Protocols = &protocols
 	}
 
-	running := &runningServer{server: s, listener: listener, conns: make(map[net.Conn]string)}
+	running := &runningServer{server: s, listener: listener, timeouts: timeouts, cancel: cancel, conns: make(map[net.Conn]string)}
 
 	if secure {
 		s.TLSConfig = &tls.Config{
@@ -486,7 +567,7 @@ func (rt *Runtime) startHTTP3(key, entrypoint string, handler http.Handler, q *Q
 
 	// a listener of the long-lived transport, closing it keeps the socket
 	// usable for the next server of the entrypoint
-	ln, err := q.Transport.ListenEarly(tlsConf, &quic.Config{Allow0RTT: true})
+	ln, err := q.Transport.ListenEarly(tlsConf, &quic.Config{Allow0RTT: q.Allow0RTT})
 	if err != nil {
 		slog.Error(fmt.Sprintf("cannot listen http3 [%s]", key), "err", err.Error())
 

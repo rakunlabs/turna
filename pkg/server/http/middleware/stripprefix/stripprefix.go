@@ -52,6 +52,8 @@ func (a *StripPrefix) Middleware() func(http.Handler) http.Handler {
 			urlPath, err := a.Strip(r.URL.Path)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
+
+				return
 			}
 
 			r.URL.Path = urlPath

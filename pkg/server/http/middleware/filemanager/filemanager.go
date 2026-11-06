@@ -394,6 +394,12 @@ func (m *FileManager) serveAPI(w http.ResponseWriter, r *http.Request, api strin
 		return
 	}
 
+	if crossSiteForm(r) {
+		writeJSON(w, http.StatusForbidden, apiError{Error: "cross-site request refused"})
+
+		return
+	}
+
 	switch api {
 	case "info":
 		writeJSON(w, http.StatusOK, infoResponse{

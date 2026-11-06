@@ -31,6 +31,13 @@ type AuthRequestConfig struct {
 }
 
 func (a *Auth) AuthRequest(ctx context.Context, uValues url.Values, cfg AuthRequestConfig) ([]byte, error) {
+	if uValues == nil {
+		uValues = url.Values{}
+	}
+
+	// set if style is params
+	AuthParams(cfg.ClientID, cfg.ClientSecret, uValues, cfg.AuthHeaderStyle)
+
 	encodedData := uValues.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.TokenURL, strings.NewReader(encodedData))
@@ -38,8 +45,6 @@ func (a *Auth) AuthRequest(ctx context.Context, uValues url.Values, cfg AuthRequ
 		return nil, err
 	}
 
-	// set if style is params
-	AuthParams(cfg.ClientID, cfg.ClientSecret, req, cfg.AuthHeaderStyle)
 	AuthHeader(req, cfg.ClientID, cfg.ClientSecret, cfg.AuthHeaderStyle)
 
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
@@ -77,6 +82,9 @@ func RawRequest(req *http.Request, client *http.Client) ([]byte, error) {
 	// 1MB limit
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	r.Body.Close()
+	if err != nil {
+		return nil, err
+	}
 
 	if code := r.StatusCode; code < 200 || code > 299 {
 		return nil, &StatusError{StatusCode: code, Body: string(body)}

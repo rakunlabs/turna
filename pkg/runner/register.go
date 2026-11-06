@@ -20,6 +20,19 @@ type StoreReg struct {
 	order []*OrderCommand
 	wg    *sync.WaitGroup
 	rwm   sync.RWMutex
+
+	// depWG tracks the commands started by dependency triggers, depErr gets
+	// the first error of them
+	depWG  sync.WaitGroup
+	depErr chan error
+}
+
+// dependencyFailed records the error of a dependency triggered command.
+func (s *StoreReg) dependencyFailed(err error) {
+	select {
+	case s.depErr <- err:
+	default:
+	}
 }
 
 type OrderCommand struct {
@@ -64,8 +77,10 @@ func (o *OrderCommand) Run(ctxParent context.Context, wg *sync.WaitGroup) error 
 
 			// run dependencies
 			wg.Add(1)
+			o.StoreReg.depWG.Add(1)
 			go func() {
 				defer wg.Done()
+				defer o.StoreReg.depWG.Done()
 
 				ctx, ctxCancel := context.WithCancel(ctxParent)
 				defer ctxCancel()
@@ -74,9 +89,9 @@ func (o *OrderCommand) Run(ctxParent context.Context, wg *sync.WaitGroup) error 
 					slog.Info(fmt.Sprintf("command [%s] dependecy trigger [%s]", name, depend))
 
 					if err := o.StoreReg.Get(depend).DependecyTrigger(ctx, name); err != nil {
-						slog.Error(fmt.Sprintf("failed command [%s]", name), "err", err.Error())
+						slog.Error(fmt.Sprintf("failed command [%s]", depend), "err", err.Error())
 
-						addErr(err)
+						o.StoreReg.dependencyFailed(fmt.Errorf("command [%s] failed: %w", depend, err))
 
 						ctxCancel()
 
@@ -214,13 +229,34 @@ func (s *StoreReg) Run(ctx context.Context) error {
 		return err
 	}
 
+	s.depErr = make(chan error, 1)
+
 	for i := range s.order {
 		if err := s.order[i].Run(ctx, s.wg); err != nil {
 			return err
 		}
 	}
 
-	return nil
+	// dependency triggered commands outlive their order, their first
+	// error is returned as soon as it happens
+	done := make(chan struct{})
+	go func() {
+		s.depWG.Wait()
+		close(done)
+	}()
+
+	select {
+	case err := <-s.depErr:
+		return err
+	case <-done:
+	}
+
+	select {
+	case err := <-s.depErr:
+		return err
+	default:
+		return nil
+	}
 }
 
 func NewStoreReg(wg *sync.WaitGroup) *StoreReg {

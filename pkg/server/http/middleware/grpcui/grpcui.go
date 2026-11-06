@@ -131,6 +131,8 @@ func (m *GrpcUI) Middleware() func(http.Handler) http.Handler {
 			r.URL.Path, err = sprefix.Strip(r.URL.Path)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
+
+				return
 			}
 
 			h.ServeHTTP(w, r)

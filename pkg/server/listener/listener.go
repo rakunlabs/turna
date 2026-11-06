@@ -243,14 +243,32 @@ func (e *Entrypoint) acceptLoop() {
 
 		delay = 0
 
+		e.deliver(conn)
+	}
+}
+
+// deliver hands conn to the current listener. A listener replaced while
+// conn waits refuses it, so the new current listener is tried once.
+func (e *Entrypoint) deliver(conn net.Conn) {
+	var prev *Virtual
+
+	for range 2 {
 		e.mu.Lock()
 		v := e.current
 		e.mu.Unlock()
 
-		if v == nil || !v.deliver(conn) {
-			_ = conn.Close()
+		if v == nil || v == prev {
+			break
 		}
+
+		if v.deliver(conn) {
+			return
+		}
+
+		prev = v
 	}
+
+	_ = conn.Close()
 }
 
 // Virtual is a listener fed by an Entrypoint.

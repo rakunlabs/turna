@@ -36,21 +36,30 @@ func build(names []string, get func(string) ([]tcpmw.Middleware, error)) (tcpmw.
 
 // Lazy builds the chain on first use from the active middlewares, so
 // middlewares may be registered in any order. A middleware using Lazy is
-// rebuilt by a reload when one of the names changes.
+// rebuilt by a reload when one of the names changes. A failed build is
+// retried on the next connection.
 func Lazy(names []string) tcpmw.Handler {
 	var (
-		once    sync.Once
+		mu      sync.Mutex
 		handler tcpmw.Handler
-		err     error
 	)
 
 	return func(conn net.Conn) error {
-		once.Do(func() { handler, err = build(names, registry.GlobalReg.ActiveTcpMiddleware) })
-		if err != nil {
-			return err
-		}
+		mu.Lock()
+		h := handler
+		if h == nil {
+			var err error
+			if h, err = build(names, registry.GlobalReg.ActiveTcpMiddleware); err != nil {
+				mu.Unlock()
 
-		return handler(conn)
+				return err
+			}
+
+			handler = h
+		}
+		mu.Unlock()
+
+		return h(conn)
 	}
 }
 
