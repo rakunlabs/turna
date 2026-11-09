@@ -56,8 +56,11 @@ func (m *Session) SetStore(ctx context.Context) error {
 	}
 
 	sessionOpts := sessions.Options{
-		Path:   "/",
-		MaxAge: 86400,
+		Path:     "/",
+		MaxAge:   86400,
+		Secure:   m.Options.GetSecure(),
+		HttpOnly: m.Options.GetHttpOnly(),
+		SameSite: m.Options.GetSameSite(),
 	}
 
 	if m.Options.Path != "" {
@@ -69,14 +72,12 @@ func (m *Session) SetStore(ctx context.Context) error {
 	if m.Options.Domain != "" {
 		sessionOpts.Domain = m.Options.Domain
 	}
-	if m.Options.Secure {
-		sessionOpts.Secure = m.Options.Secure
+
+	if !sessionOpts.Secure {
+		slog.Warn("session: cookie secure flag is disabled; use it only for local plain HTTP development")
 	}
-	if m.Options.HttpOnly {
-		sessionOpts.HttpOnly = m.Options.HttpOnly
-	}
-	if m.Options.SameSite != 0 {
-		sessionOpts.SameSite = m.Options.SameSite
+	if sessionOpts.SameSite == http.SameSiteNoneMode && !sessionOpts.Secure {
+		return fmt.Errorf("session: same_site None requires secure cookies")
 	}
 
 	var err error

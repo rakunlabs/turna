@@ -25,6 +25,8 @@
   import AdminTab from "./components/AdminTab.svelte";
   import CacheTab from "./components/CacheTab.svelte";
   import EncryptionTab from "./components/EncryptionTab.svelte";
+  import AuditTab from "./components/AuditTab.svelte";
+  import ScimTab from "./components/ScimTab.svelte";
   import AuthFlowGuide from "./components/AuthFlowGuide.svelte";
   import ResourcePage from "./components/ResourcePage.svelte";
   import RecordEditor from "./components/RecordEditor.svelte";
@@ -305,6 +307,10 @@
           <CacheTab />
         {:else if route.tab === "encryption"}
           <EncryptionTab />
+        {:else if route.tab === "audit"}
+          <AuditTab />
+        {:else if route.tab === "scim"}
+          <ScimTab />
         {:else if route.tab === "docs"}
           <AuthFlowGuide />
         {:else if route.isResource(route.tab)}

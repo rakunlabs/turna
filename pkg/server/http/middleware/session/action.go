@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/claims"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/dpop"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session/providers"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session/request"
 	"github.com/rakunlabs/turna/pkg/server/http/tcontext"
@@ -87,6 +89,22 @@ type Provider struct {
 	APIKey bool `cfg:"api_key" json:"api_key,omitempty"`
 	// APIKeyHeader is the header carrying the raw API key. Default X-API-Key.
 	APIKeyHeader string `cfg:"api_key_header" json:"api_key_header,omitempty"`
+	// Issuer lists the accepted iss claim values of access tokens. Empty
+	// accepts any issuer for remote providers; issuer-backed providers
+	// (auth_middleware) then accept only the auth middleware's own issuer.
+	Issuer []string `cfg:"issuer" json:"issuer,omitempty"`
+	// Audience lists the accepted aud claim values of access tokens; one of
+	// them must be present. Empty requires oauth2.client_id in aud (or as
+	// azp/client_id/cid/appid) for remote providers and "turna-auth" for
+	// issuer-backed providers.
+	Audience []string `cfg:"audience" json:"audience,omitempty"`
+	// SkipAudienceCheck disables the audience check. Use it only for
+	// providers whose tokens carry no usable audience.
+	SkipAudienceCheck bool `cfg:"skip_audience_check" json:"skip_audience_check,omitempty"`
+	// CheckRevocation rejects access tokens revoked through the issuer's
+	// revocation endpoint or logout. Issuer-backed providers only; every
+	// request reads the issuer's code store.
+	CheckRevocation bool `cfg:"check_revocation" json:"check_revocation,omitempty"`
 	// Priority is use to sort provider.
 	Priority int `cfg:"priority" json:"priority,omitempty"`
 	// Hide is use to hide provider.
@@ -161,6 +179,8 @@ func (m *Session) SetAction() error {
 		}
 
 		m.Action.Token.auth.Client = client.HTTP
+
+		warnProviderPolicies(m.Provider)
 
 		jwksMulti, err := buildKeyFunc(m.ctx, m.Provider)
 		if err != nil {
@@ -262,6 +282,32 @@ func addXUserHeader(r *http.Request, claim *claims.Custom, xUser []string, email
 			}
 		}
 	}
+
+	// when the user authenticated, so an authorization server behind this
+	// session can enforce OIDC max_age and prompt=login
+	r.Header.Del(HeaderAuthTime)
+	if authTime := claimUnix(claim.Map["auth_time"]); authTime > 0 {
+		r.Header.Set(HeaderAuthTime, strconv.FormatInt(authTime, 10))
+	}
+}
+
+// HeaderAuthTime carries the auth_time (unix seconds) of the validated
+// session token downstream.
+const HeaderAuthTime = "X-Auth-Time"
+
+func claimUnix(v any) int64 {
+	switch n := v.(type) {
+	case float64:
+		return int64(n)
+	case int64:
+		return n
+	case json.Number:
+		i, _ := n.Int64()
+
+		return i
+	}
+
+	return 0
 }
 
 func apiKeyHeader(provider Provider) string {
@@ -722,6 +768,7 @@ func (m *Session) remotePublicAllowed(r *http.Request, checkURL string) bool {
 func (m *Session) stripIdentityHeaders(r *http.Request) {
 	r.Header.Del("X-User")
 	r.Header.Del("X-User-Id")
+	r.Header.Del(HeaderAuthTime)
 
 	for _, provider := range m.Providers() {
 		for k := range provider.ClaimHeader {
@@ -773,16 +820,9 @@ func (m *Session) cookieClaims(w http.ResponseWriter, r *http.Request) (*claims.
 		}
 	}
 
-	customClaims := &claims.Custom{}
-	jwtToken, err := m.KeyFuncParser().ParseWithClaims(token.AccessToken, customClaims)
+	customClaims, providerName, err := m.ValidateAccessToken(r.Context(), token.AccessToken)
 	if err != nil {
 		return nil, "", nil, err
-	}
-
-	if m.SetProvider != "" {
-		providerName = m.SetProvider
-	} else {
-		providerName, _ = jwtToken.Header["provider_name"].(string)
 	}
 
 	return customClaims, providerName, token, nil
@@ -799,30 +839,18 @@ func (m *Session) doOptional(next http.Handler, w http.ResponseWriter, r *http.R
 	}
 
 	if authorizationHeader := r.Header.Get("Authorization"); authorizationHeader != "" {
-		token := strings.TrimPrefix(authorizationHeader, "Bearer ")
+		token, scheme := AuthorizationToken(authorizationHeader)
 		if token == "" {
 			anonymous()
 
 			return
 		}
 
-		customClaims := &claims.Custom{}
-		jwtToken, err := m.KeyFuncParser().ParseWithClaims(token, customClaims)
-		if err != nil {
+		customClaims, providerName, err := m.ValidateAccessToken(r.Context(), token)
+		if err != nil || m.checkDPoP(r, customClaims.Map, scheme, token, providerName) != nil {
 			anonymous()
 
 			return
-		}
-
-		if typ, _ := customClaims.Map["typ"].(string); typ == "Refresh" || typ == "ID" {
-			anonymous()
-
-			return
-		}
-
-		providerName := m.SetProvider
-		if providerName == "" {
-			providerName, _ = jwtToken.Header["provider_name"].(string)
 		}
 
 		provider, _ := m.GetProvider(providerName)
@@ -952,11 +980,17 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 	if m.Action.Active == actionToken {
 		if authorizationHeader := r.Header.Get("Authorization"); authorizationHeader != "" {
 			// get token from header
-			if token := strings.TrimPrefix(authorizationHeader, "Bearer "); token != "" {
-				// validate token, check if token is valid
-				customClaims := &claims.Custom{}
-				jwtToken, err := m.KeyFuncParser().ParseWithClaims(token, customClaims)
+			if token, scheme := AuthorizationToken(authorizationHeader); token != "" {
+				// validate signature, lifetime, issuer, audience, type and
+				// (when enabled) revocation
+				customClaims, providerName, err := m.ValidateAccessToken(r.Context(), token)
 				if err != nil {
+					if IsUnavailable(err) {
+						m.sessionUnavailable(w, err)
+
+						return
+					}
+
 					slog.Debug("token is not valid", "error", err.Error())
 
 					m.unauthorized(w, r)
@@ -964,20 +998,13 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 					return
 				}
 
-				if typ, _ := customClaims.Map["typ"].(string); typ != "" {
-					if typ == "Refresh" {
-						slog.Debug("token is refresh token")
-						m.unauthorized(w, r)
+				// RFC 9449: DPoP-bound tokens need a proof of the bound key
+				if err := m.checkDPoP(r, customClaims.Map, scheme, token, providerName); err != nil {
+					slog.Debug("dpop check failed", "error", err.Error())
+					w.Header().Set("WWW-Authenticate", dpop.Challenge("invalid_token"))
+					httputil.JSON(w, http.StatusUnauthorized, MetaData{Error: err.Error()})
 
-						return
-					}
-
-					if typ == "ID" {
-						slog.Debug("token is id token")
-						m.unauthorized(w, r)
-
-						return
-					}
+					return
 				}
 
 				// Apply RFC 8707 resource binding only to OAuth clients
@@ -987,14 +1014,6 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 					m.invalidTokenChallenge(w, r, "token audience does not cover this resource")
 
 					return
-				}
-
-				// next middlewares can check roles
-				var providerName string
-				if m.SetProvider != "" {
-					providerName = m.SetProvider
-				} else {
-					providerName, _ = jwtToken.Header["provider_name"].(string)
 				}
 
 				provider, _ := m.GetProvider(providerName)
@@ -1089,9 +1108,14 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 		}
 
 		// check if token is valid
-		customClaims := &claims.Custom{}
-		jwtToken, err := m.KeyFuncParser().ParseWithClaims(token.AccessToken, customClaims)
+		customClaims, validatedProvider, err := m.ValidateAccessToken(r.Context(), token.AccessToken)
 		if err != nil {
+			if IsUnavailable(err) {
+				m.sessionUnavailable(w, err)
+
+				return
+			}
+
 			slog.Debug("token is not valid", "error", err.Error())
 			m.redirectToLoginOrChallenge(w, r, true, true)
 
@@ -1099,11 +1123,7 @@ func (m *Session) Do(next http.Handler, w http.ResponseWriter, r *http.Request) 
 		}
 
 		// next middlewares can check roles
-		if m.SetProvider != "" {
-			providerName = m.SetProvider
-		} else {
-			providerName, _ = jwtToken.Header["provider_name"].(string)
-		}
+		providerName = validatedProvider
 
 		provider, _ := m.GetProvider(providerName)
 
@@ -1276,8 +1296,8 @@ func (m *Session) IsLogged(w http.ResponseWriter, r *http.Request) (*claims.Cust
 	}
 
 	// check if token is valid
-	customClaim := &claims.Custom{}
-	if _, err := m.KeyFuncParser().ParseWithClaims(token.AccessToken, customClaim); err != nil {
+	customClaim, _, err := m.ValidateAccessToken(r.Context(), token.AccessToken)
+	if err != nil {
 		slog.Debug("token is not valid", "error", err.Error())
 		return nil, false, err
 	}

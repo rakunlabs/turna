@@ -14,6 +14,8 @@ export type Tab =
   | "signup"
   | "mtls"
   | "encryption"
+  | "audit"
+  | "scim"
   | "admin"
   | "cache"
   | "device-settings"
@@ -86,12 +88,14 @@ export const navGroups: NavGroup[] = [
       { id: "custom-info", label: "Custom info" },
       { id: "device-settings", label: "Device flow" },
       { id: "token-exchange", label: "Token exchange" },
+      { id: "scim", label: "SCIM" },
     ],
   },
   {
     label: "Platform",
     items: [
       { id: "admin", label: "Admin" },
+      { id: "audit", label: "Audit log" },
       { id: "cache", label: "Cache" },
       { id: "encryption", label: "Encryption" },
       { id: "docs", label: "Docs" },
@@ -115,6 +119,8 @@ const FIXED_TABS: Tab[] = [
   "signup",
   "mtls",
   "encryption",
+  "audit",
+  "scim",
   "admin",
   "cache",
   "device-settings",

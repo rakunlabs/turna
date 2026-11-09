@@ -17,6 +17,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/dpop"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
 
@@ -31,6 +32,10 @@ const DefaultAuthPrefixPath = "/auth"
 // (the auth middleware); detection is optional and lazy.
 type revocationChecker interface {
 	TokenRevoked(ctx context.Context, jti string) bool
+}
+
+type dpopReplayer interface {
+	DPoPReplay(r *http.Request) dpop.ReplayFunc
 }
 
 type familyRevocationChecker interface {
@@ -61,6 +66,10 @@ type OAuth2Resource struct {
 	// RequiredScopes must all be present in the token's scope claim;
 	// missing scopes answer 403 insufficient_scope.
 	RequiredScopes []string `cfg:"required_scopes"`
+
+	// dpopReplay is the local replay cache used when the issuer has no
+	// shared one.
+	dpopReplay dpop.MemoryReplay `cfg:"-"`
 
 	// CheckAudience requires the token aud claim to contain the resource
 	// identifier (RFC 8707 binding). Default true.
@@ -271,7 +280,7 @@ func (m *OAuth2Resource) protect(w http.ResponseWriter, r *http.Request, next ht
 		r.Header.Del(m.ScopeHeader)
 	}
 
-	token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer"))
+	token, scheme := session.AuthorizationToken(r.Header.Get("Authorization"))
 	if token == "" {
 		m.challenge(w, r, http.StatusUnauthorized, "invalid_request", "bearer token required")
 
@@ -305,6 +314,18 @@ func (m *OAuth2Resource) protect(w http.ResponseWriter, r *http.Request, next ht
 
 	if typ, _ := claims["typ"].(string); typ != "Bearer" {
 		m.challenge(w, r, http.StatusUnauthorized, "invalid_token", "access token type must be Bearer")
+
+		return
+	}
+
+	// RFC 9449: DPoP-bound tokens need a proof of the bound key
+	var replay dpop.ReplayFunc = m.dpopReplay.Seen
+	if shared, ok := issuer.(dpopReplayer); ok {
+		replay = shared.DPoPReplay(r)
+	}
+	if err := dpop.CheckBinding(r, claims, scheme, token, dpop.HTU(r, m.resourceID(r)), replay); err != nil {
+		w.Header().Set("WWW-Authenticate", dpop.Challenge("invalid_token"))
+		httputil.JSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid_token", "error_description": err.Error()})
 
 		return
 	}

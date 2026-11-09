@@ -39,11 +39,19 @@ server:
               name: turna
               auth_middleware: "auth"
               password_flow: true
+              oauth2:
+                client_id: "ui"
+                client_secret: "ui-secret-change-me"
+                scopes: ["openid"]
           action:
             token:
               login_path: "/login/"
       login:
         login:
+          state_cookie:
+            secure: false
+          success_cookie:
+            secure: false
           path:
             base: "/login/"
           info:
@@ -70,13 +78,17 @@ server:
           - login
       # MCP endpoint protected as an OAuth2 resource
       mcp:
-        path: /mcp/*
+        path:
+          - /mcp
+          - /mcp/*
         middlewares:
           - mcp-guard
           - mcp-upstream
       # RFC 9728 protected resource metadata
       mcp-wellknown:
-        path: /.well-known/oauth-protected-resource*
+        path:
+          - /.well-known/oauth-protected-resource
+          - /.well-known/oauth-protected-resource/*
         middlewares:
           - mcp-guard
       # RFC 8414 / OIDC discovery from the issuer root

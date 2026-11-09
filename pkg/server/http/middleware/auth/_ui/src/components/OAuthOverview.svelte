@@ -369,6 +369,16 @@
         Purge expired records
       </button>
     </div>
+    <div class="mt-7">
+      <Switch
+        label="OpenID standard claims"
+        hint="Release name, email, phone and address only for the granted profile, email, phone and address scopes, from the userinfo endpoint (OIDC Core §5.4). Off keeps name, email and preferred_username in every id_token for clients that rely on it."
+        bind:checked={
+          () => getSettingBool("token", ["oidc_standard_claims"]),
+          (value: boolean) => setSettingBool("token", ["oidc_standard_claims"], value)
+        }
+      />
+    </div>
   </Section>
 
   <Section
@@ -539,6 +549,16 @@
         bind:checked={
           () => getSettingBool("authorize", ["disabled"]),
           (value: boolean) => setSettingBool("authorize", ["disabled"], value)
+        }
+      />
+    </div>
+    <div class="mt-5">
+      <Switch
+        label="Allow plain PKCE"
+        hint="Accept code_challenge_method=plain for legacy clients. Leave off: plain sends the verifier in clear in the authorization request, and OAuth 2.1 allows only S256."
+        bind:checked={
+          () => getSettingBool("authorize", ["allow_plain_pkce"]),
+          (value: boolean) => setSettingBool("authorize", ["allow_plain_pkce"], value)
         }
       />
     </div>
@@ -1070,10 +1090,18 @@
     <h3 class="stamp stamp-ink mt-10 border-b border-rule pb-1.5">Rotation</h3>
     <div class="mt-4">
       <BreakSeal
-        consequence="Rotating generates a new RSA signing key and republishes JWKS. Every outstanding access and refresh token is invalidated the moment it lands — every signed-in session and every machine holding a token must obtain a new one, and there is no undo."
+        consequence="Rotating generates a new RSA signing key and republishes JWKS with both keys. New tokens are signed with the new key; tokens signed with the previous key keep verifying for the refresh lifetime (at least 24 hours), so signed-in sessions continue without interruption."
         action="Rotate signing key"
         disabled={session.busy}
         onconfirm={() => void registry.rotateSigningKey()}
+      />
+    </div>
+    <div class="mt-4">
+      <BreakSeal
+        consequence="Use this only for a compromised key. The new key replaces every previous key at once: every outstanding access and refresh token is invalidated the moment it lands, every signed-in session and every machine holding a token must obtain a new one, and there is no undo."
+        action="Rotate and revoke all tokens"
+        disabled={session.busy}
+        onconfirm={() => void registry.rotateSigningKey(true)}
       />
       {#if session.busy}
         <p class="stamp mt-3" role="status" aria-live="polite">Rotating and republishing JWKS…</p>

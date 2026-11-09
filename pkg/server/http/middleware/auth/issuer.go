@@ -36,11 +36,12 @@ func (m *Auth) Keyfunc(token *jwt.Token) (any, error) {
 	}
 
 	kid, _ := token.Header["kid"].(string)
-	if kid != signer.KID {
+	key, ok := signer.PublicKey(kid)
+	if !ok {
 		return nil, session.ErrKIDNotFound
 	}
 
-	return signer.Public, nil
+	return key, nil
 }
 
 // IssueToken runs the OAuth2 token endpoint in-process and returns the raw
@@ -55,6 +56,9 @@ func (m *Auth) IssueToken(orig *http.Request, form url.Values) ([]byte, int, err
 	r.Header.Set("Accept", "application/json")
 	r.Host = orig.Host
 	r.TLS = orig.TLS
+	// the audit record names the browser, not this in-process call
+	r.RemoteAddr = orig.RemoteAddr
+	r.Header.Set("User-Agent", orig.UserAgent())
 	for _, name := range []string{"X-Forwarded-Proto", "X-Forwarded-Host"} {
 		if value := orig.Header.Get(name); value != "" {
 			r.Header.Set(name, value)
@@ -62,7 +66,7 @@ func (m *Auth) IssueToken(orig *http.Request, form url.Values) ([]byte, int, err
 	}
 
 	rec := &responseRecorder{header: http.Header{}, code: http.StatusOK}
-	m.APIToken(rec, r)
+	m.APITokenAudited(rec, r)
 
 	return rec.body.Bytes(), rec.code, nil
 }
@@ -95,6 +99,8 @@ func (m *Auth) PasskeyToken(ctx context.Context, orig *http.Request, body []byte
 	if orig != nil {
 		r.Host = orig.Host
 		r.TLS = orig.TLS
+		r.RemoteAddr = orig.RemoteAddr
+		r.Header.Set("User-Agent", orig.UserAgent())
 		if v := orig.Header.Get("X-Forwarded-Proto"); v != "" {
 			r.Header.Set("X-Forwarded-Proto", v)
 		}
@@ -104,7 +110,7 @@ func (m *Auth) PasskeyToken(ctx context.Context, orig *http.Request, body []byte
 	}
 
 	rec := &responseRecorder{header: http.Header{}, code: http.StatusOK}
-	m.APIPasskeyToken(rec, r)
+	m.audited(auditLogin, m.APIPasskeyToken)(rec, r)
 
 	return rec.body.Bytes(), rec.code, nil
 }

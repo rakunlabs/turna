@@ -3,11 +3,13 @@ package basicauth
 import (
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
-	goauth "github.com/abbot/go-http-auth"
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 )
 
@@ -16,25 +18,38 @@ const (
 	defaultRealm = "Restricted"
 )
 
-// BasicAuth mostly copied from echo's BasicAuth middleware.
 type BasicAuth struct {
+	// Users are "username:hash" entries; bcrypt and argon2id hashes are
+	// accepted.
 	Users []string `cfg:"users" log:"-"`
 	Realm string   `cfg:"realm"`
 	// HeaderField is the name of the header field to set with the username, default X-User
 	HeaderField string `cfg:"header_field"`
 	// RemoveHeader removes the Authorization header from the request
 	RemoveHeader bool `cfg:"remove_header"`
+	// AllowLegacyHashes accepts APR1, md5crypt and unsalted {SHA} hashes.
+	// They are fast to brute force; use it only while migrating.
+	AllowLegacyHashes bool `cfg:"allow_legacy_hashes"`
 }
 
 func (b *BasicAuth) Middleware(name string) (func(http.Handler) http.Handler, error) {
-	v := make(map[string]string, len(b.Users))
+	users := make(map[string]verifier, len(b.Users))
 	for _, user := range b.Users {
-		parts := strings.Split(user, ":")
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid user: %q", user)
+		username, hash, ok := strings.Cut(user, ":")
+		if !ok || username == "" || hash == "" {
+			return nil, fmt.Errorf("invalid user entry, want username:hash")
 		}
 
-		v[parts[0]] = parts[1]
+		v, err := newVerifier(hash, b.AllowLegacyHashes)
+		if err != nil {
+			return nil, fmt.Errorf("user %q: %w", username, err)
+		}
+
+		if isLegacy(hash) {
+			slog.Warn("basic_auth: legacy password hash accepted, replace it with bcrypt or argon2id", "middleware", name, "user", username)
+		}
+
+		users[username] = v
 	}
 
 	realm := b.Realm
@@ -42,35 +57,19 @@ func (b *BasicAuth) Middleware(name string) (func(http.Handler) http.Handler, er
 		realm = defaultRealm
 	}
 
-	gAuth := goauth.BasicAuth{
-		Realm: realm,
-		Secrets: func(user, realm string) string {
-			if hash, ok := v[user]; ok {
-				return hash
-			}
-
-			return ""
-		},
-	}
-
 	if b.HeaderField == "" {
 		b.HeaderField = "X-User"
 	}
 
-	validator := func(username, password string, r *http.Request) bool {
-		if secret := gAuth.Secrets(username, realm); secret == "" || !goauth.CheckSecret(password, secret) {
+	check := func(username, password string) bool {
+		v, ok := users[username]
+		if !ok {
+			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
+
 			return false
 		}
 
-		if b.RemoveHeader {
-			r.Header.Del("Authorization")
-		}
-
-		if b.HeaderField != "" {
-			r.Header.Set(b.HeaderField, username)
-		}
-
-		return true
+		return v(password)
 	}
 
 	return func(next http.Handler) http.Handler {
@@ -78,35 +77,31 @@ func (b *BasicAuth) Middleware(name string) (func(http.Handler) http.Handler, er
 			auth := r.Header.Get(httputil.HeaderAuthorization)
 			l := len(basic)
 
-			if len(auth) > l+1 && strings.EqualFold(auth[:l], basic) {
+			if len(auth) > l+1 && strings.EqualFold(auth[:l], basic) && auth[l] == ' ' {
 				// Invalid base64 shouldn't be treated as error
 				// instead should be treated as invalid client input
-				b, err := base64.StdEncoding.DecodeString(auth[l+1:])
+				cred, err := base64.StdEncoding.DecodeString(strings.TrimSpace(auth[l+1:]))
 				if err != nil {
 					httputil.HandleError(w, httputil.NewError("", err, http.StatusBadRequest))
 
 					return
 				}
 
-				cred := string(b)
-
-				for i := range len(cred) {
-					if cred[i] == ':' {
-						// Verify credentials
-						valid := validator(cred[:i], cred[i+1:], r)
-						if valid {
-							next.ServeHTTP(w, r)
-
-							return
-						}
-
-						break
+				if username, password, ok := strings.Cut(string(cred), ":"); ok && check(username, password) {
+					if b.RemoveHeader {
+						r.Header.Del(httputil.HeaderAuthorization)
 					}
+
+					r.Header.Set(b.HeaderField, username)
+
+					next.ServeHTTP(w, r)
+
+					return
 				}
 			}
 
 			// Need to return `401` for browsers to pop-up login box.
-			w.Header().Set(httputil.HeaderWWWAuthenticate, basic+" realm="+strconv.Quote(realm))
+			w.Header().Set(httputil.HeaderWWWAuthenticate, basic+" realm="+strconv.Quote(realm)+`, charset="UTF-8"`)
 			httputil.HandleError(w, httputil.NewError("", nil, http.StatusUnauthorized))
 		})
 	}, nil

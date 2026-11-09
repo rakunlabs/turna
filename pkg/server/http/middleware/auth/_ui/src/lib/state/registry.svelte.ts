@@ -170,13 +170,20 @@ class Registry {
 
   #loading: Promise<boolean> | null = null;
 
-  async rotateSigningKey() {
+  /** `immediate` drops the replaced key at once (compromised key). */
+  async rotateSigningKey(immediate = false) {
     const ok = await session.run(async () => {
-      await session.request("jwt/rotate", { method: "POST", body: "{}" });
+      await session.request("jwt/rotate", { method: "POST", body: JSON.stringify(immediate ? { grace: "0" } : {}) });
       await Promise.all([settings.load("jwt"), this.loadJWKS(), this.loadKind("settings")]);
     });
 
-    if (ok) docket.commit("Signing key rotated — outstanding tokens are now invalid");
+    if (ok) {
+      docket.commit(
+        immediate
+          ? "Signing key rotated — outstanding tokens are now invalid"
+          : "Signing key rotated — the previous key keeps verifying during the grace period",
+      );
+    }
     return ok;
   }
 

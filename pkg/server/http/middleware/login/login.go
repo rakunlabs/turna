@@ -248,7 +248,8 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 		m.SuccessCookie.SameSite = http.SameSiteLaxMode
 	}
 
-	m.SuccessCookie.HttpOnly = false
+	// the login page SDK polls this cookie from JavaScript
+	m.SuccessCookie.HttpOnly = auth.Bool(false)
 
 	// /////////////////////////
 	storeCache, err := m.Store.Init(ctx)
@@ -320,7 +321,9 @@ func (m *Login) Middleware(ctx context.Context) (func(http.Handler) http.Handler
 				}
 
 				customClaim, isLogged, err := m.session.IsLogged(w, r)
-				if isLogged {
+				// prompt=login (OIDC re-authentication) shows the login page
+				// even with a valid session; the new login replaces it
+				if isLogged && r.URL.Query().Get("prompt") != "login" {
 					if responseType := r.URL.Query().Get("response_type"); responseType == "code" {
 						m.AuthCodeReturn(w, r, customClaim)
 

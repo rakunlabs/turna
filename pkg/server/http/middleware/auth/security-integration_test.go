@@ -166,7 +166,7 @@ func TestAuthSecurityIntegration(t *testing.T) {
 		}
 		w = httptest.NewRecorder()
 		m.emailCodeGrant(w, r, AccessTokenRequest{Code: emailCode, TOTP: "invalid"}, "client", "secret")
-		if w.Code != http.StatusUnauthorized {
+		if w.Code != http.StatusBadRequest {
 			t.Fatalf("invalid MFA: %d %s", w.Code, w.Body.String())
 		}
 		if err := store.GetFlowCode(ctx, flowKindEmail, hash, &flow); err != nil {

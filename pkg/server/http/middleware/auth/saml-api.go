@@ -53,7 +53,7 @@ func (m *Auth) SAMLLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	codeChallenge, codeChallengeMethod, err := pkceParams(r)
+	codeChallenge, codeChallengeMethod, err := pkceParams(r, m.cache.Snapshot().Authorize.AllowPlainPKCE)
 	if err != nil {
 		httputil.HandleError(w, httputil.NewError("invalid pkce parameters", err, http.StatusBadRequest))
 		return

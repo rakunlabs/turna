@@ -240,6 +240,18 @@ export const settingTemplates = {
     issuer: "Turna Auth",
     skew: 1,
   },
+  scim: {
+    enabled: false,
+    bearer_token: "",
+    delete_disables: false,
+  },
+  audit: {
+    disabled: false,
+    retention: "90d",
+    webhook_url: "",
+    webhook_secret: "",
+    webhook_events: [] as string[],
+  },
   signup: {
     enabled: false,
     email_verification: true,

@@ -28,3 +28,7 @@ curl -fSL https://github.com/rakunlabs/turna/releases/latest/download/turna_Darw
 ## Documentation
 
 Full documentation is in [`_documents/docs`](_documents/docs) and is published at <https://rakunlabs.github.io/turna/>.
+
+## Security
+
+Report vulnerabilities privately, see [SECURITY.md](SECURITY.md).

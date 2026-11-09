@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
 
 // dynamicClientPrefix marks client ids created through RFC 7591.
@@ -35,6 +37,7 @@ var registrationGrantTypes = map[string]bool{
 // ClientRegistrationRequest is the RFC 7591 client metadata request.
 type ClientRegistrationRequest struct {
 	RedirectURIs            []string `json:"redirect_uris"`
+	PostLogoutRedirectURIs  []string `json:"post_logout_redirect_uris"`
 	TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
 	GrantTypes              []string `json:"grant_types"`
 	ResponseTypes           []string `json:"response_types"`
@@ -50,6 +53,7 @@ type ClientRegistrationResponse struct {
 	ClientIDIssuedAt        int64    `json:"client_id_issued_at,omitempty"`
 	ClientSecretExpiresAt   int64    `json:"client_secret_expires_at"`
 	RedirectURIs            []string `json:"redirect_uris,omitempty"`
+	PostLogoutRedirectURIs  []string `json:"post_logout_redirect_uris,omitempty"`
 	TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method,omitempty"`
 	GrantTypes              []string `json:"grant_types,omitempty"`
 	ResponseTypes           []string `json:"response_types,omitempty"`
@@ -160,7 +164,7 @@ func (m *Auth) APIRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, uri := range req.RedirectURIs {
+	for _, uri := range append(slices.Clone(req.RedirectURIs), req.PostLogoutRedirectURIs...) {
 		if err := validateRegistrationRedirectURI(uri); err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_redirect_uri",
@@ -251,15 +255,16 @@ func (m *Auth) APIRegister(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 
 	client := AccessClient{
-		ClientSecret:      clientSecret,
-		Scope:             scope,
-		RedirectURIs:      req.RedirectURIs,
-		ClientName:        req.ClientName,
-		Public:            authMethod == "none",
-		Dynamic:           true,
-		GrantTypes:        grantTypes,
-		RegistrationToken: sha256Hex(registrationToken),
-		CreatedAt:         now.Unix(),
+		ClientSecret:           clientSecret,
+		Scope:                  scope,
+		RedirectURIs:           req.RedirectURIs,
+		ClientName:             req.ClientName,
+		PostLogoutRedirectURIs: req.PostLogoutRedirectURIs,
+		Public:                 authMethod == "none",
+		Dynamic:                true,
+		GrantTypes:             grantTypes,
+		RegistrationToken:      sha256Hex(registrationToken),
+		CreatedAt:              now.Unix(),
 	}
 
 	clientRaw, err := json.Marshal(client)
@@ -308,6 +313,7 @@ func (m *Auth) APIRegister(w http.ResponseWriter, r *http.Request) {
 		ClientIDIssuedAt:        now.Unix(),
 		ClientSecretExpiresAt:   secretExpires,
 		RedirectURIs:            req.RedirectURIs,
+		PostLogoutRedirectURIs:  req.PostLogoutRedirectURIs,
 		TokenEndpointAuthMethod: authMethod,
 		GrantTypes:              grantTypes,
 		ResponseTypes:           []string{"code"},
@@ -323,7 +329,7 @@ func (m *Auth) APIRegister(w http.ResponseWriter, r *http.Request) {
 func (m *Auth) registrationClient(w http.ResponseWriter, r *http.Request) (string, *AccessClient) {
 	clientID := r.PathValue("client_id")
 
-	token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer"))
+	token := session.BearerToken(r.Header.Get("Authorization"))
 	if token == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
 		httputil.HandleError(w, AccessTokenErrorResponse{
@@ -373,6 +379,7 @@ func (m *Auth) registrationResponse(clientID string, client *AccessClient, r *ht
 		ClientIDIssuedAt:        client.CreatedAt,
 		ClientSecretExpiresAt:   expires,
 		RedirectURIs:            client.RedirectURIs,
+		PostLogoutRedirectURIs:  client.PostLogoutRedirectURIs,
 		TokenEndpointAuthMethod: authMethod,
 		GrantTypes:              grants,
 		ResponseTypes:           []string{"code"},

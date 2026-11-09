@@ -358,7 +358,7 @@ const docTemplate = `{
                             "plain"
                         ],
                         "type": "string",
-                        "description": "PKCE method",
+                        "description": "PKCE method; plain only with authorize.allow_plain_pkce",
                         "name": "code_challenge_method",
                         "in": "query"
                     },
@@ -716,6 +716,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/oauth2/logout": {
+            "get": {
+                "description": "Revokes the session of id_token_hint and redirects to a registered post_logout_redirect_uri.",
+                "tags": [
+                    "oauth2"
+                ],
+                "summary": "End session (OpenID Connect RP-Initiated Logout)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id_token of the session",
+                        "name": "id_token_hint",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Client id",
+                        "name": "client_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Registered post logout redirect URI",
+                        "name": "post_logout_redirect_uri",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque value returned to the client",
+                        "name": "state",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "302": {
+                        "description": "Found"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    }
+                }
+            }
+        },
         "/oauth2/openid/{custom}/.well-known/openid-configuration": {
             "get": {
                 "tags": [
@@ -736,6 +782,60 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/auth.swaggerObject"
+                        }
+                    }
+                }
+            }
+        },
+        "/oauth2/par": {
+            "post": {
+                "description": "Stores the authorization request parameters and returns a one-time request_uri for /oauth2/authorize, valid for 90 seconds.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "tags": [
+                    "oauth2"
+                ],
+                "summary": "Pushed authorization request (RFC 9126)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client id (or Basic auth)",
+                        "name": "client_id",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Registered redirect URI",
+                        "name": "redirect_uri",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "code",
+                        "name": "response_type",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/auth.swaggerObject"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/auth.AccessTokenErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/auth.AccessTokenErrorResponse"
                         }
                     }
                 }
@@ -1540,6 +1640,70 @@ const docTemplate = `{
                 }
             }
         },
+        "/scim/v2/Users": {
+            "get": {
+                "description": "RFC 7644 provisioning: /scim/v2/Users and /scim/v2/Groups (GET, POST, PUT, PATCH, DELETE), ServiceProviderConfig, ResourceTypes, Schemas. Authenticated with the scim.bearer_token.",
+                "produces": [
+                    "application/scim+json"
+                ],
+                "tags": [
+                    "scim"
+                ],
+                "summary": "SCIM 2.0 users and groups",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "attribute eq \\",
+                        "name": "filter",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "1-based start",
+                        "name": "startIndex",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size, max 200",
+                        "name": "count",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.swaggerObject"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/auth.swaggerObject"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/auth.swaggerObject"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/auth.swaggerObject"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/auth.swaggerObject"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/api-key-principals": {
             "get": {
                 "tags": [
@@ -1921,6 +2085,95 @@ const docTemplate = `{
                 ]
             }
         },
+        "/v1/audit": {
+            "get": {
+                "tags": [
+                    "maintenance"
+                ],
+                "summary": "List audit events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Event name",
+                        "name": "event",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "success, failure or challenge",
+                        "name": "outcome",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Subject",
+                        "name": "subject",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Admin principal",
+                        "name": "actor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC 3339 lower bound",
+                        "name": "since",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC 3339 upper bound",
+                        "name": "until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Return events older than this id",
+                        "name": "before",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size, max 1000",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.Response-array_auth_AuditEvent"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httputil.Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httputil.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httputil.Error"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "XUserAuth": []
+                    }
+                ]
+            }
+        },
         "/v1/capabilities": {
             "get": {
                 "tags": [
@@ -2235,6 +2488,40 @@ const docTemplate = `{
                 ]
             }
         },
+        "/v1/encryption/upgrade": {
+            "post": {
+                "description": "Re-seals enc:v1 values (sha256 derived key) as enc:v2 (argon2id with a per-deployment salt). The configured key stays the same.",
+                "tags": [
+                    "maintenance"
+                ],
+                "summary": "Upgrade record encryption to the argon2id key derivation",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.Response-auth_swaggerObject"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httputil.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httputil.Error"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "XUserAuth": []
+                    }
+                ]
+            }
+        },
         "/v1/info": {
             "get": {
                 "tags": [
@@ -2286,15 +2573,32 @@ const docTemplate = `{
         },
         "/v1/jwt/rotate": {
             "post": {
+                "description": "The replaced key keeps verifying for ` + "`" + `grace` + "`" + ` (default: refresh lifetime, at least 24h). ` + "`" + `grace: \"0\"` + "`" + ` invalidates outstanding tokens at once.",
                 "tags": [
                     "maintenance"
                 ],
                 "summary": "Rotate JWT signing key",
+                "parameters": [
+                    {
+                        "description": "rotation options",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/auth.rotateJWTRequest"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/auth.Response-auth_swaggerObject"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httputil.Error"
                         }
                     },
                     "401": {
@@ -6557,6 +6861,42 @@ const docTemplate = `{
                 }
             }
         },
+        "auth.AuditEvent": {
+            "type": "object",
+            "properties": {
+                "actor": {
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "detail": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "event": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "ip": {
+                    "type": "string"
+                },
+                "outcome": {
+                    "type": "string"
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "user_agent": {
+                    "type": "string"
+                }
+            }
+        },
         "auth.ConfigMeta": {
             "type": "object",
             "properties": {
@@ -6564,6 +6904,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "revision": {
                     "type": "string"
                 },
                 "updated_at": {
@@ -6601,6 +6944,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "revision": {
                     "type": "string"
                 },
                 "updated_at": {
@@ -6716,6 +7062,20 @@ const docTemplate = `{
                 }
             }
         },
+        "auth.Response-array_auth_AuditEvent": {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "$ref": "#/definitions/auth.Meta"
+                },
+                "payload": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auth.AuditEvent"
+                    }
+                }
+            }
+        },
         "auth.Response-array_auth_ConfigMeta": {
             "type": "object",
             "properties": {
@@ -6820,6 +7180,9 @@ const docTemplate = `{
                 "namespace": {
                     "type": "string"
                 },
+                "revision": {
+                    "type": "string"
+                },
                 "updated_at": {
                     "type": "string"
                 },
@@ -6840,6 +7203,9 @@ const docTemplate = `{
                 "namespace": {
                     "type": "string"
                 },
+                "revision": {
+                    "type": "string"
+                },
                 "updated_at": {
                     "type": "string"
                 },
@@ -6856,6 +7222,15 @@ const docTemplate = `{
                     "items": {
                         "type": "integer"
                     }
+                }
+            }
+        },
+        "auth.rotateJWTRequest": {
+            "type": "object",
+            "properties": {
+                "grace": {
+                    "description": "Grace is how long the replaced key keeps verifying, e.g. \"24h\". \"0\"\ndrops it at once (compromised key). Empty uses the refresh lifetime,\nat least DefaultJWTRotationGrace.",
+                    "type": "string"
                 }
             }
         },
@@ -6956,6 +7331,9 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
+                "revision": {
+                    "type": "string"
+                },
                 "role_ids": {
                     "type": "array",
                     "items": {
@@ -7023,6 +7401,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/data.Resource"
                     }
+                },
+                "revision": {
+                    "type": "string"
                 },
                 "scope": {
                     "type": "object",
@@ -7395,6 +7776,9 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "revision": {
+                    "type": "string"
+                },
                 "role_ids": {
                     "type": "array",
                     "items": {
@@ -7439,6 +7823,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/data.IDName"
                     }
+                },
+                "revision": {
+                    "type": "string"
                 },
                 "role_ids": {
                     "type": "array",
@@ -7552,6 +7939,9 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "revision": {
+                    "type": "string"
+                },
                 "role_ids": {
                     "type": "array",
                     "items": {
@@ -7650,6 +8040,9 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "revision": {
+                    "type": "string"
+                },
                 "role_ids": {
                     "type": "array",
                     "items": {
@@ -7728,6 +8121,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/data.IDName"
                     }
+                },
+                "revision": {
+                    "type": "string"
                 },
                 "role_ids": {
                     "type": "array",
@@ -7823,7 +8219,15 @@ const docTemplate = `{
                     "type": "object",
                     "additionalProperties": {}
                 },
+                "details_patch": {
+                    "description": "DetailsPatch updates only named profile fields; null removes a field.\nThe original details replacement behavior remains unchanged.",
+                    "type": "object",
+                    "additionalProperties": {}
+                },
                 "is_active": {
+                    "type": "boolean"
+                },
+                "local": {
                     "type": "boolean"
                 },
                 "permission_ids": {

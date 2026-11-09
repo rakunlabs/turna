@@ -1,0 +1,20 @@
+{
+  "alias": "turna",
+  "description": "turna auth",
+  "server": {
+    "discoveryUrl": "https://turna.local:9443/auth/oauth2/.well-known/openid-configuration"
+  },
+  "client": {
+    "client_id": "oidc-client-1",
+    "client_secret": "secret-1-abcdefghijklmnop"
+  },
+  "client2": {
+    "client_id": "oidc-client-2",
+    "client_secret": "secret-2-abcdefghijklmnop"
+  },
+  "consent": {},
+  "client_secret_post": {
+    "client_id": "oidc-client-post",
+    "client_secret": "secret-post-abcdefghijklmnop"
+  }
+}

@@ -34,18 +34,26 @@ server:
               - url: "http://mcp-server:8080"
     routers:
       mcp:
-        path: /mcp/*
+        # /mcp itself and everything below it; a trailing * only matches
+        # after a slash
+        path:
+          - /mcp
+          - /mcp/*
         middlewares:
           - mcp-guard
           - mcp-upstream
       # RFC 9728 metadata for the resource
       mcp-wellknown:
-        path: /.well-known/oauth-protected-resource*
+        path:
+          - /.well-known/oauth-protected-resource
+          - /.well-known/oauth-protected-resource/*
         middlewares:
           - mcp-guard
       # RFC 8414 discovery for the authorization server
       auth-wellknown:
-        path: /.well-known/oauth-authorization-server*
+        path:
+          - /.well-known/oauth-authorization-server
+          - /.well-known/oauth-authorization-server/*
         middlewares:
           - auth
       auth:

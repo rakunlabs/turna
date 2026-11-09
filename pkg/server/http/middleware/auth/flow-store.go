@@ -25,6 +25,9 @@ const (
 	flowKindRevoked        = "revoked"         // id: jti, payload: revokedToken
 	flowKindRevokedSession = "revoked_session" // id: sid, payload: revokedToken
 	flowKindRefreshUsed    = "refresh_used"    // id: refresh jti, payload: refreshUse
+	flowKindCodeUsed       = "code_used"       // id: sha256(code), payload: codeUse
+	flowKindPushedRequest  = "par"             // id: request_uri id, payload: pushedRequest
+	flowKindDPoPJTI        = "dpop_jti"        // id: jkt:jti, payload: {}
 )
 
 // CreateFlowCode stores a short-lived flow payload with an absolute expiry.

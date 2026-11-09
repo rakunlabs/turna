@@ -1,0 +1,21 @@
+services:
+  mongodb:
+    image: mongo:6.0.13
+    tmpfs: [/data/db]
+  server:
+    image: registry.gitlab.com/openid/conformance-suite:release-v5.3.4
+    environment:
+      BASE_URL: https://localhost:8443
+      BASE_MTLS_URL: https://localhost:8444
+      MONGODB_HOST: mongodb
+      OIDC_GOOGLE_CLIENTID: dev
+      OIDC_GOOGLE_SECRET: dev
+      OIDC_GITLAB_CLIENTID: dev
+      OIDC_GITLAB_SECRET: dev
+      JAVA_EXTRA_ARGS: -Dfintechlabs.devmode=true -Dfintechlabs.startredir=true
+    extra_hosts: ["turna.local:host-gateway"]
+    depends_on: [mongodb]
+  nginx:
+    image: registry.gitlab.com/openid/conformance-suite/nginx:release-v5.3.4
+    ports: ["8443:8443", "8444:8444"]
+    depends_on: [server]

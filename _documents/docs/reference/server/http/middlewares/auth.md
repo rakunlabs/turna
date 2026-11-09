@@ -36,7 +36,7 @@ Configuration values are not expanded from environment variables. Keep a configu
 | `database.migration.values` | Optional `muz.Migrate` template substitution values. |
 | `database.migration.table` | Migration tracking table. Defaults to `auth_migrations`. |
 | `database.migration.lock_key` | PostgreSQL advisory lock key. Defaults to `muz:postgres:turna:auth_migrations`. |
-| `encryption.key` | Required encryption key for secrets stored in PostgreSQL. Raw strings are SHA-256 derived; base64 16/24/32-byte keys are used directly. |
+| `encryption.key` | Required encryption key for secrets stored in PostgreSQL. Prefer a random base64 encoded 32-byte key (`openssl rand -base64 32`); base64 16/24/32-byte keys are used directly. Other strings are treated as a passphrase and stretched with Argon2id and a random per-database salt; passphrases shorter than 16 characters log a warning. See [encryption key derivation](#encryption-key-derivation). |
 | `cache.disable_notification_listener` | Instance-local switch that disables the dedicated `LISTEN auth_changed` connection. Cache version polling remains active and defaults to `10s` unless `cache.poll_interval` is set. Useful for instances connecting through transaction-pooled proxies that cannot preserve PostgreSQL session state. |
 | `cache.poll_interval` | Optional instance-local polling interval (for example `10s`). When set, overrides the shared runtime `cache.poll_interval` on this instance. |
 | `ldap.addr` | Optional instance-local LDAP URL (e.g. `ldap://10.20.0.15:389` or `ldaps://ldap.site-b.example.com:636`). Overrides the stored address for login, directory queries, and manual/periodic sync. Empty uses the stored address. Requires an enabled LDAP config in the database; does not modify the shared config. |
@@ -46,6 +46,65 @@ Configuration values are not expanded from environment variables. Keep a configu
 Static overrides (`ldap.*`, `cache.code_store`) are reported to admins by
 `GET /auth/v1/instance-config` (secrets only as `password_set`) and marked
 "Set from config" in the UI.
+
+### SCIM 2.0
+
+Identity providers such as Okta and Microsoft Entra ID provision users and groups through SCIM 2.0 (RFC 7643, RFC 7644) at `{base}/auth/scim/v2`.
+
+```json
+{"enabled": true, "bearer_token": "<long random token>"}
+```
+
+Configure the IdP with the base URL `https://auth.example.com/auth/scim/v2` and the bearer token (an "OAuth Bearer Token" / "HTTP Header" authentication). The token is write-only on the management API.
+
+| Resource | Maps to |
+| --- | --- |
+| `User` | a user; `userName` is the first alias, the primary email is a second alias, so both sign in. `name`, `displayName`, `emails`, `phoneNumbers` and `externalId` land in the user details; `password` sets a local password; `active: false` disables the user. |
+| `Group` | a role; `members` are the users holding the role (`role_ids`), so IdP group assignments become permissions through the role's permissions. |
+
+Supported operations: create, get, replace (`PUT`), `PATCH` (Okta paths, Entra ID path-less objects and `"True"`/`"False"` strings, `members[value eq "…"]` removal), delete and list with `startIndex`/`count` and a single `eq` filter on `userName`, `externalId`, `emails.value`, `id`, `active` (users) or `displayName`, `externalId`, `id` (groups). `excludedAttributes=members` skips large member lists. `delete_disables: true` disables users on `DELETE` instead of removing them. Bulk, sort and ETags are not supported. Every change is recorded in the [audit log](#audit-log) as `admin.change` with actor `scim`.
+
+The `/auth/scim/**` paths are part of the auth public plane: a [`session`](./session) in front with `auth_skip_paths` passes the SCIM bearer token through untouched.
+
+### Audit log
+
+Security-relevant events are written to `auth_audit_log` by a background writer (requests never wait on it) and, optionally, POSTed to a webhook.
+
+| Event | Recorded when |
+| --- | --- |
+| `login` | password, email code, passkey, federated and SAML sign-in, success or failure (failed password logins record the username as subject) |
+| `mfa` | second factor challenge (`outcome: challenge`) |
+| `token.issue` / `token.refresh` | token endpoint grants and refreshes |
+| `token.revoke` | RFC 7009 revocation |
+| `logout` | end session endpoint |
+| `code.reuse` / `refresh.reuse` | replayed authorization code or rotated refresh token; the session is revoked |
+| `client.auth` | failed client authentication |
+| `consent.denied` | a user denied an authorization request |
+| `admin.change` | every management API write (`detail.method`, `detail.path`, `detail.status`) |
+| `key.rotate` | signing or encryption key rotation |
+
+Each record has `event`, `outcome` (`success`, `failure`, `challenge`), `actor` (the admin `X-User`), `subject`, `client_id`, `ip`, `user_agent` and a `detail` object. Passwords, tokens and secrets are never recorded.
+
+`GET /auth/v1/audit` (admin) lists events newest first with the filters `event`, `outcome`, `subject`, `actor`, `since` and `until` (RFC 3339), `limit` (max 1000) and `before` (an event id, for the next page). The admin UI shows the same list under **Platform → Audit log**.
+
+With `webhook_url` set, each event is POSTed as JSON; `webhook_events` limits which. With `webhook_secret`, the request carries `X-Turna-Timestamp` and `X-Turna-Signature: sha256=<hex HMAC-SHA256(secret, timestamp + "." + body)>`. Delivery is best effort with a 5s timeout; the database record is the source of truth.
+
+### Encryption key derivation
+
+Secrets in PostgreSQL are sealed with AES-256-GCM. How `encryption.key` becomes the AES key:
+
+| Key | Prefix | Derivation |
+| --- | --- | --- |
+| base64 16/24/32-byte key | `enc:v2:` | used directly (recommended) |
+| any other string | `enc:v2:` | Argon2id (t=3, m=64 MiB, p=4) with a random 16-byte salt stored in `auth_encryption_check.kdf_salt` |
+| legacy (before this version) | `enc:v1:` | a single unsalted SHA-256 of the string |
+
+New databases use `enc:v2` from the first start. Existing databases keep reading `enc:v1` values and continue writing `enc:v1` until you upgrade them:
+
+1. Update every instance to this version (older versions cannot read `enc:v2`).
+2. Call `POST /auth/v1/encryption/upgrade` once. It re-seals every encrypted column with the Argon2id derivation of the **same** key; `encryption.key` does not change.
+
+`POST /auth/v1/encryption/rotate` (new key) also writes `enc:v2`. The upgrade is idempotent; a second call answers `upgraded: false`.
 
 ```yaml
 auth:
@@ -147,7 +206,7 @@ Everything else is a settings namespace under `/auth/v1/settings/{namespace}` an
 | `oauth2` | `base_url`, `schema`, `insecure_skip_verify` | Code-flow redirect behavior for upstream providers and the canonical token issuer. `schema` defaults to `https`. Set `base_url` when one auth instance serves session/login flows through multiple hosts, so a token issued through one host can be refreshed through another without an issuer mismatch. |
 | `check` | `default_hosts`, `no_host_check` | Host rules for permission evaluation. |
 | `cache` | `poll_interval`, `code_store` | Fallback version poll interval for the in-memory read model and OAuth2 temporary code/state store. PostgreSQL notifications normally propagate changes immediately; the poll catches changes missed during listener disconnects. `code_store.active` is `database` (default), `memory`, or `redis`. Database and Redis are shared across replicas; memory is single-instance only. `code_store.redis.cluster: true` explicitly selects Redis Cluster; false keeps automatic detection. `code_store.redis.gcp_iam: true` authenticates with a Google Cloud access token (Memorystore IAM) instead of a password. `code_store.key_prefix` namespaces the Redis keys (`<prefix>code_<id>`); empty keeps the plain `code_<id>` keys. |
-| `token` | `token_lifetime`, `refresh_lifetime`, `refresh_absolute_lifetime`, `remember_idle_lifetime`, `refresh_reuse_grace` | Access lifetime, standard session lifetime, remembered-session ceiling and remembered idle window (defaults `15m` / `24h` / `720h` / `168h`). `refresh_reuse_grace` (default off, suggested `30s`) enables reuse detection for rotated refresh tokens. |
+| `token` | `token_lifetime`, `refresh_lifetime`, `refresh_absolute_lifetime`, `remember_idle_lifetime`, `refresh_reuse_grace`, `roles_claim`, `oidc_standard_claims` | Access lifetime, standard session lifetime, remembered-session ceiling and remembered idle window (defaults `15m` / `24h` / `720h` / `168h`). `refresh_reuse_grace` (default off, suggested `30s`) enables reuse detection for rotated refresh tokens. `oidc_standard_claims: true` releases profile and contact claims only for the granted `profile`, `email`, `phone` and `address` scopes, from `/oauth2/userinfo`, and drops them and the `typ` claim from the `id_token` (OIDC Core §5.4); off keeps name, email and preferred_username in every token. |
 | `jwt` | `kid`, `private_key` | RS256 signing key (PEM, PKCS#8 or PKCS#1); auto-generated on first start. Editable through the API/UI and applied without restart — the public JWKS key is derived from the private key. Changing or rotating the key invalidates outstanding tokens. |
 | `passkey` | `disabled`, `rp_id`, `rp_display_name`, `origins`, `related_origins`, `sites`, `user_verification`, `enrollment.*` | WebAuthn (passkey) relying party settings. Empty `rp_id` defaults to the registrable domain (eTLD+1) of the request host — e.g. `auth.example.com` becomes `example.com`, so one passkey works across all subdomains; IPs and single-label hosts (`localhost`) are used as-is. Empty `origins` derives from the forwarded scheme + host. `sites[]` adds independent `{name,rp_id,rp_display_name,origins}` profiles for unrelated domains sharing the Auth database; an exact request-origin match selects the profile and new credentials retain its RP ID. Unmatched requests and existing credentials use the root fields as the backwards-compatible default. `related_origins` (root or per site) lets other registrable domains use that profile's passkeys through WebAuthn Related Origin Requests, published at `/.well-known/webauthn`. `enrollment.enabled` lets a connected login middleware offer an optional post-login registration step. `enrollment.methods` limits it to `password`, `code`, and/or `passkey` sessions (empty means all); `prompt_when_registered` includes users who already have a credential; `snooze_duration` controls the browser-local “Not now” delay (empty defaults to `720h`, `0s` asks again next login). The user can always skip. |
 | `password` | `disabled`, `local_disabled`, `ldap_disabled`, `ldap_register_disabled` | Password grant sources. Defaults keep the implicit behavior: local users check bcrypt, non-local users bind against LDAP, and unknown aliases are created only after a successful LDAP bind. |
@@ -159,7 +218,9 @@ Everything else is a settings namespace under `/auth/v1/settings/{namespace}` an
 | `signup` | `enabled`, `email_verification`, `password_reset`, `default_role_ids`, `code_lifetime`, `verify_subject`, `verify_body_template`, `reset_subject`, `reset_body_template` | Self-registration and forgot-password flows (UI: *Signup*). Off by default. `email_verification` defaults to `true`; verification/reset mails use the `email` SMTP relay. Codes live `1h` by default. Templates are Go `text/template` strings validated on save. |
 | `mtls` | `enabled`, `cert_header`, `cert_verify_header`, `cert_verify_value`, `trusted_proxy_cidrs` | Certificate based client authentication (RFC 8705 style). Native mode requires listener `client_ca_files`. Proxy mode requires certificate and verification-result headers plus an immediate-peer allowlist. Off by default. |
 | `saml` | `certificate`, `private_key` | SAML SP signing key pair; auto-generated (self-signed, 10 years) on first SAML use. |
-| `authorize` | `disabled`, `flow_lifetime`, `login_url`, `disable_remember_me` | Local browser-based authorization code flow (`/oauth2/authorize` + consent screen). Pending consents live `10m` by default. `login_url` redirects anonymous browsers to a login page (with `?redirect_path=` back reference, the [`login`](./login) middleware convention); empty shows an error asking to log in first. `disable_remember_me` hides the remember-me checkbox on the consent screen and ignores its form value. |
+| `scim` | `enabled`, `bearer_token`, `delete_disables` | [SCIM 2.0](#scim-2-0) user and group provisioning. |
+| `audit` | `disabled`, `retention`, `webhook_url`, `webhook_secret`, `webhook_events` | [Audit log](#audit-log). Events are kept `90d` by default. |
+| `authorize` | `disabled`, `flow_lifetime`, `login_url`, `disable_remember_me`, `allow_plain_pkce`, `require_par` | Local browser-based authorization code flow (`/oauth2/authorize` + consent screen). Pending consents live `10m` by default. `login_url` redirects anonymous browsers to a login page (with `?redirect_path=` back reference, the [`login`](./login) middleware convention); empty shows an error asking to log in first. `disable_remember_me` hides the remember-me checkbox on the consent screen and ignores its form value. PKCE accepts only `S256` (a missing `code_challenge_method` means `S256`, verifiers must be 43-128 characters); `allow_plain_pkce: true` re-enables `plain` for legacy clients. |
 | `registration` | `enabled`, `client_lifetime`, `default_scope`, `max_clients`, `client_metadata_disabled` | RFC 7591 dynamic client registration (`/oauth2/register`; UI: *OAuth2 → Dynamic client registration*). Off by default because registration is anonymous. `client_lifetime` expires dynamic clients (empty keeps them forever), `max_clients` caps stored dynamic clients (default `1000`). `client_metadata_disabled` stops accepting URL client IDs (OAuth Client ID Metadata Documents): discovery no longer advertises `client_id_metadata_document_supported` and no document is fetched, so MCP clients such as OpenCode and Claude Code register dynamically instead. Turn it on (with `enabled`) when the instance has no internet access. |
 | `custom_info` | `disabled`, `sets` | Per-name userinfo claim templates served at `/oauth2/userinfo/{custom}` (and advertised by `/oauth2/openid/{custom}/.well-known/openid-configuration`). `sets.<name>.claims` maps an output claim to a Go `text/template`; templates receive <code v-pre>{{ .claims }}</code> (the base userinfo claims) and <code v-pre>{{ .user }}</code> (the full user record). A template whose key is new adds a claim, an existing key overwrites it, and a template that renders empty (e.g. `""` or trimmed with <code v-pre>{{- -}}</code>) removes the claim. Templates are validated on save. Managed in the UI under *Custom Info*. |
 | `session_providers` | `providers`, `groups` | A [`session`](./session) middleware provider list managed from the UI (*Federation → Session providers*) instead of static YAML. `providers` is a map keyed by provider name using the session middleware's provider model (`name`, `auth_middleware`, `oauth2.*`, `passkey`, `password_flow`, `api_key`, `x_user`, `claim_header`, `priority`, `hide`, ...); `groups.<name>.providers` holds independent definitions and `groups.<name>.inherit` references canonical top-level providers without copying credentials. An inherited entry may set `hide` to override login visibility for that group. Full provider definitions remain globally unique, while one top-level provider may be inherited by any number of groups. Groups can be pulled selectively with `provider_source.group` or `GET /v1/session-providers/{group}`. A session middleware pulls the list with `provider_source.auth_middleware` (in-process, applied on the next request after a commit) or over `GET /v1/session-providers` with `provider_source.url` (remote, TTL polled). Dynamic providers override same-named static ones. |
@@ -332,7 +393,19 @@ Token notes:
 - With `token.refresh_reuse_grace` set, a remembered refresh token that was already rotated is accepted again only within the grace window (parallel tabs, replicas and apps sharing a session). Presenting it later is treated as a leaked token: the whole session family (`sid`) is revoked and every holder must sign in again. Standard sessions do not rotate refresh tokens and are not affected.
 - Access, ID and refresh tokens carry a shared `sid`, `auth_time` and `session_exp`. This keeps parallel browser refreshes in one revocable family and gives every family a fixed absolute boundary.
 - Once the disabled state reaches an instance's cache, token issuance rejects that user or service account as either the token subject or OAuth client, including password, authorization-code, refresh, device, email, passkey, token-exchange, client-secret and mTLS paths. Existing self-contained access tokens may remain cryptographically valid until expiry for external JWT-only consumers; in-process cache checks reject the disabled principal as soon as they observe the update.
-- An `id_token` is issued whenever the granted scope contains `openid`; the `nonce` from the authorization request is embedded for code-flow logins.
+- An `id_token` is issued whenever the granted scope contains `openid`; the `nonce` from the authorization request is embedded for code-flow logins, and `auth_time` is the time the user signed in (forwarded by the `session` middleware as `X-Auth-Time`).
+- **OpenID Connect authorization request parameters:**
+  - `prompt=none` never shows a page: it answers `login_required` without a session (or when re-authentication is needed) and `consent_required` when the client needs consent. It cannot be combined with other values.
+  - `prompt=login` and an expired `max_age` send the browser to `authorize.login_url` again (with `prompt=login`, which the [`login`](./login) page honors even with a valid session).
+  - `prompt=consent` shows the consent page even for `skip_consent` clients.
+  - `request` and `request_uri` answer `request_not_supported` / `request_uri_not_supported`; a missing `response_type` answers `invalid_request`.
+- **Token endpoint errors** follow RFC 6749 §5.2: `invalid_grant`, `invalid_scope`, `unauthorized_client` and `unsupported_grant_type` answer `400`, client authentication failures (`invalid_client`) `401`.
+- **Authorization code replay** revokes the session (and every access and refresh token) issued for the first redemption (RFC 9700 §4.5).
+- `/oauth2/userinfo` accepts `GET` and `POST`, with the token in the `Authorization` header or, for form `POST`, the `access_token` body parameter.
+- **Pushed authorization requests (RFC 9126):** `POST /auth/oauth2/par` takes the authorization parameters with client authentication and returns a one-time `request_uri` (90s) for `/auth/oauth2/authorize?client_id=…&request_uri=…`. `authorize.require_par: true` refuses authorization requests without one.
+- **DPoP (RFC 9449):** a token request with a `DPoP` proof header gets `token_type: DPoP` and tokens carrying `cnf.jkt`. Bound access tokens must be sent as `Authorization: DPoP <token>` with a fresh proof (`ath` included) to `/oauth2/userinfo`, [`oauth2_resource`](./oauth2_resource) and [`session`](./session); bound refresh tokens are only redeemable with the same key. Proof `jti`s are single use fleet-wide. `require_dpop: true` on a client refuses token requests without a proof.
+- **RP-Initiated Logout:** `GET|POST /auth/oauth2/logout` (`end_session_endpoint`) revokes the session of `id_token_hint` (every access and refresh token of that sign-in) and redirects to a `post_logout_redirect_uri` registered on the client (`post_logout_redirect_uris`, also accepted in dynamic registration), with `state`. Without a redirect it shows a signed-out page. The `login` middleware still has to clear its own cookie.
+- **Conformance:** the OpenID Foundation suite (`release-v5.3.4`) passes the Config OP plan and every Basic OP test except screenshot-review steps and optional features (`acr`, `claims` parameter, request objects); run it with `oidc_standard_claims: true`.
 - **Roles claim:** a user's roles are derived from the *granted scopes* — a permission's `scope` map (`{"<scope>": ["<role>"]}`) contributes its roles when the token request asks for that scope (or the client lists it in its default `scope`). The resulting list is written to the access token, the `id_token` and the `/oauth2/userinfo` response, all at the same dot path: the client record's `roles_claim` when set, otherwise the `token` namespace's `roles_claim` (default: the flat `roles` claim). A permission with an empty `scope` map grants access through `/v1/check` but puts nothing in a token.
 - **PKCE (RFC 7636):** `/auth/oauth2/auth/{provider}` and `/auth/saml/{provider}/login` accept `code_challenge` (+ `code_challenge_method`, `S256` or `plain`); the `authorization_code` grant then requires a matching `code_verifier`. Public clients (no stored secret) must use PKCE.
 - **Redirect whitelist:** federated OAuth and SAML login requests require `client_id` and a non-empty `redirect_uri`. When `whitelist_urls` is set, it is validated by prefix match. Clients with registered `redirect_uris` (dynamic registration or manual config) use exact matching instead. If neither list is configured, every non-empty redirect target is accepted.
@@ -519,7 +592,7 @@ Session integration is token based: mTLS authenticates the token request, not th
 | `GET` | `/auth/v1/session-providers` | The UI-managed session middleware provider list (`session_providers` namespace, ungrouped providers plus every group merged) with the auth version in `meta.version`. Remote turna instances poll it through the session middleware's `provider_source.url`; admin-protected because provider client secrets travel in the payload. |
 | `GET` | `/auth/v1/session-providers/{group}` | One named group of the same list, so different session middleware instances can pull different subsets. Same envelope and admin protection; `404` when the group is unknown. |
 | `POST` | `/auth/v1/custom-info/preview` | Render an unsaved `custom_info` set against sample claims and user details; returns the resulting claims and validates the templates (used by the UI). |
-| `POST` | `/auth/v1/jwt/rotate` | Generate and activate a fresh RSA signing key (new `kid`); outstanding tokens become invalid. |
+| `POST` | `/auth/v1/jwt/rotate` | Generate and activate a fresh RSA signing key (new `kid`). The replaced key stays in JWKS and keeps verifying for `grace` (body `{"grace":"48h"}`; default is the refresh lifetime, at least 24h), so outstanding tokens stay valid. `{"grace":"0"}` drops every previous key at once for a compromised key. |
 | `GET/PUT/DELETE` | `/auth/v1/oauth/clients`, `/auth/v1/oauth/clients/{id}` | OAuth client records. |
 | `GET/PUT/DELETE` | `/auth/v1/oauth/providers`, `/auth/v1/oauth/providers/{id}` | OAuth provider records. |
 | `GET/PUT/DELETE` | `/auth/v1/ldap/configs`, `/auth/v1/ldap/configs/{id}` | LDAP config records. |

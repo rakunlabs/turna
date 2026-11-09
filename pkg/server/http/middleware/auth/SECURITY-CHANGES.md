@@ -1,5 +1,53 @@
 # Authentication hardening notes
 
+## Secure defaults (breaking)
+
+- **Session token validation.** Every access token the `session` middleware
+  accepts (bearer header or session cookie) must carry `exp`, pass `iat`/`nbf`
+  with 30s leeway, and match the provider whose key signed it:
+  - `auth_middleware` providers: `typ` must be `Bearer`, `aud` must contain
+    `turna-auth`, `iss` must be the auth instance's issuer.
+  - Remote providers: `aud` must contain `oauth2.client_id` or the token must
+    be issued to it (`azp`, `client_id`, `cid`, `appid`). Set `audience` and
+    `issuer` per provider; `skip_audience_check: true` is the escape hatch.
+
+  Previously any token signed by any configured provider key was accepted,
+  including tokens a shared IdP issued to other applications.
+- **Revocation in session.** `check_revocation: true` on an `auth_middleware`
+  provider rejects tokens revoked through `/oauth2/revoke` or logout on every
+  request. Off by default because it reads the code store per request.
+- **Cookies.** `session` cookies and the login `state_cookie` default to
+  `Secure`, `HttpOnly` and `SameSite=Lax`. Set `secure: false` explicitly for
+  local plain HTTP.
+- **PKCE S256 only.** `code_challenge_method=plain` and a missing method that
+  used to mean `plain` are refused; a missing method now means `S256`.
+  Verifiers must be 43-128 characters. `authorize.allow_plain_pkce: true`
+  re-enables `plain`.
+- **basic_auth hashes.** Only bcrypt (cost ≥ 10) and argon2id are accepted.
+  APR1, md5crypt and `{SHA}` need `allow_legacy_hashes: true`.
+
+- **Token endpoint status codes.** `invalid_grant` and other grant errors now
+  answer `400` instead of `401`; wrong client credentials on
+  `client_credentials` answer `invalid_client` (`401`) instead of
+  `invalid_grant`. Clients that branched on `401` for a rejected refresh token
+  must check `400` too.
+- **Authorization code replay** revokes the session issued for the code.
+
+## Audit log
+
+Security events and every management write are recorded in
+`auth_audit_log` (migration `17_audit_log.sql`, 90 days retention) and can be
+streamed to a signed webhook. See the `audit` settings namespace.
+
+## Key management
+
+- **JWT signing key rotation** keeps the replaced key in JWKS and verifying
+  for a grace period (refresh lifetime, at least 24h). Use
+  `{"grace":"0"}` (UI: "Rotate and revoke all tokens") for a compromised key.
+- **Encryption key derivation.** Passphrases are stretched with Argon2id and
+  a per-database salt (`enc:v2`). Existing `enc:v1` data stays readable; run
+  `POST /v1/encryption/upgrade` after every instance is updated.
+
 ## Client compatibility
 
 - Password and `email_code` grants require a second factor when the user has

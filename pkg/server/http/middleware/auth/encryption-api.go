@@ -56,14 +56,39 @@ func (m *Auth) RotateEncryptionAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := m.rotateEncryption(r.Context(), newKey); err != nil {
+		m.audit(r, AuditEvent{Event: auditKeyRotate, Outcome: auditFailure, Detail: map[string]any{"key": "encryption", "error": err.Error()}})
 		httputil.HandleError(w, httputil.NewError("encryption key rotation failed", err, http.StatusInternalServerError))
 		return
 	}
+	m.audit(r, AuditEvent{Event: auditKeyRotate, Outcome: auditSuccess, Detail: map[string]any{"key": "encryption"}})
 
 	httputil.JSON(w, http.StatusOK, Response[map[string]any]{
 		Payload: map[string]any{
 			"message": "encryption key rotated; set encryption.key in the static config to the new value before the next restart, otherwise startup will fail",
 			"rotated": true,
+		},
+	})
+}
+
+// UpgradeEncryptionAPI re-seals values written with the legacy sha256 key
+// derivation (enc:v1) using argon2id (enc:v2). The configured key stays the
+// same. Run it after every instance runs a version that reads enc:v2.
+func (m *Auth) UpgradeEncryptionAPI(w http.ResponseWriter, r *http.Request) {
+	upgraded, err := m.upgradeEncryption(r.Context())
+	if err != nil {
+		httputil.HandleError(w, httputil.NewError("encryption upgrade failed", err, http.StatusInternalServerError))
+		return
+	}
+
+	message := "stored secrets already use the argon2id key derivation"
+	if upgraded {
+		message = "stored secrets re-sealed with the argon2id key derivation"
+	}
+
+	httputil.JSON(w, http.StatusOK, Response[map[string]any]{
+		Payload: map[string]any{
+			"message":  message,
+			"upgraded": upgraded,
 		},
 	})
 }
@@ -75,7 +100,12 @@ func (m *Auth) rotateEncryption(ctx context.Context, newKey string) error {
 	m.encRotateM.Lock()
 	defer m.encRotateM.Unlock()
 
-	newCipher, err := NewCipher(newKey)
+	salt, err := m.ensureKDFSalt()
+	if err != nil {
+		return err
+	}
+
+	newCipher, err := NewCipherWithSalt(newKey, salt)
 	if err != nil {
 		return fmt.Errorf("build new cipher: %w", err)
 	}
@@ -87,6 +117,45 @@ func (m *Auth) rotateEncryption(ctx context.Context, newKey string) error {
 		}
 	}
 
+	return m.reencryptAll(ctx, newCipher)
+}
+
+// upgradeEncryption re-seals every enc:v1 value with the argon2id derivation
+// of the current key. The key itself does not change.
+func (m *Auth) upgradeEncryption(ctx context.Context) (bool, error) {
+	m.encRotateM.Lock()
+	defer m.encRotateM.Unlock()
+
+	if sealed, ok := m.currentCanary(ctx); ok && sealedVersion(sealed) == encryptedPrefixV2 {
+		return false, nil
+	}
+
+	salt, err := m.ensureKDFSalt()
+	if err != nil {
+		return false, err
+	}
+
+	newCipher, err := NewCipherWithSalt(m.cipher.activeKey(), salt)
+	if err != nil {
+		return false, fmt.Errorf("build cipher: %w", err)
+	}
+
+	return true, m.reencryptAll(ctx, newCipher)
+}
+
+// ensureKDFSalt returns the loaded kdf salt or a fresh one; the salt is
+// persisted with the canary by reencryptAll.
+func (m *Auth) ensureKDFSalt() ([]byte, error) {
+	if salt := m.cipher.Salt(); len(salt) > 0 {
+		return salt, nil
+	}
+
+	return newKDFSalt()
+}
+
+// reencryptAll rewrites every encrypted column and the canary with newCipher
+// in one transaction, then switches the live cipher to it.
+func (m *Auth) reencryptAll(ctx context.Context, newCipher *Cipher) error {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -105,9 +174,10 @@ func (m *Auth) rotateEncryption(ctx context.Context, newKey string) error {
 	}
 
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO auth_encryption_check (id, canary_encrypted, updated_at)
-		 VALUES (true, $1, now())
-		 ON CONFLICT (id) DO UPDATE SET canary_encrypted = EXCLUDED.canary_encrypted, updated_at = now()`, canarySealed,
+		`INSERT INTO auth_encryption_check (id, canary_encrypted, kdf_salt, updated_at)
+		 VALUES (true, $1, $2, now())
+		 ON CONFLICT (id) DO UPDATE SET canary_encrypted = EXCLUDED.canary_encrypted, kdf_salt = EXCLUDED.kdf_salt, updated_at = now()`,
+		canarySealed, nullBytes(newCipher.Salt()),
 	); err != nil {
 		return fmt.Errorf("update canary: %w", err)
 	}
@@ -117,7 +187,10 @@ func (m *Auth) rotateEncryption(ctx context.Context, newKey string) error {
 	}
 
 	// swap the live cipher so the running instance reads the new ciphertext
-	if err := m.cipher.Rekey(newKey); err != nil {
+	if err := m.cipher.SetSalt(newCipher.Salt()); err != nil {
+		return fmt.Errorf("swap live cipher salt: %w", err)
+	}
+	if err := m.cipher.Rekey(newCipher.activeKey()); err != nil {
 		return fmt.Errorf("swap live cipher: %w", err)
 	}
 
@@ -211,7 +284,7 @@ func reencryptStale(ctx context.Context, db *sql.DB, newC, c *Cipher, col encryp
 		}
 
 		if value.Valid && value.String != "" {
-			if _, err := newC.DecryptString(value.String); err != nil {
+			if _, err := newC.DecryptString(value.String); err != nil || !newC.IsCurrent(value.String) {
 				stale[id] = value.String
 			}
 		}

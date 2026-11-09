@@ -48,6 +48,9 @@ type Code struct {
 	// RememberMe carries the user's consent-screen choice to extend the
 	// session lifetime of the tokens issued for this code.
 	RememberMe bool `json:"remember_me,omitempty"`
+	// AuthTime is when the user authenticated (unix seconds), carried into
+	// the id_token auth_time claim (OIDC Core §2).
+	AuthTime int64 `json:"auth_time,omitempty"`
 }
 
 func Encode[T any](state T) (string, error) {

@@ -56,6 +56,13 @@ func signSkipToken(t *testing.T, key *rsa.PrivateKey, claims jwt.MapClaims) stri
 	if _, ok := claims["exp"]; !ok {
 		claims["exp"] = time.Now().Add(time.Minute).Unix()
 	}
+	// shape of the auth middleware access tokens
+	if _, ok := claims["typ"]; !ok {
+		claims["typ"] = "Bearer"
+	}
+	if _, ok := claims["aud"]; !ok {
+		claims["aud"] = DefaultIssuerAudience
+	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = "kid-1"

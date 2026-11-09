@@ -73,6 +73,8 @@ func TestPasskeyEnrollmentUsesValidatedSessionIdentity(t *testing.T) {
 
 	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 		"sub": "user-from-signed-token",
+		"typ": "Bearer",
+		"aud": session.DefaultIssuerAudience,
 		"exp": time.Now().Add(time.Hour).Unix(),
 	}).SignedString(private)
 	if err != nil {

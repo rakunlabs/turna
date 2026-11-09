@@ -148,3 +148,59 @@ func TestLoginRotatesSessionID(t *testing.T) {
 		t.Fatalf("method = %q, err=%v", method, err)
 	}
 }
+
+func TestSessionCookieDefaults(t *testing.T) {
+	falseV := false
+
+	cases := map[string]struct {
+		options  Options
+		secure   bool
+		httpOnly bool
+		sameSite http.SameSite
+		err      bool
+	}{
+		"defaults": {secure: true, httpOnly: true, sameSite: http.SameSiteLaxMode},
+		"explicit insecure for local http": {
+			options:  Options{Secure: &falseV, HttpOnly: &falseV, SameSite: http.SameSiteStrictMode},
+			sameSite: http.SameSiteStrictMode,
+		},
+		"same_site none needs secure": {options: Options{Secure: &falseV, SameSite: http.SameSiteNoneMode}, err: true},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			m := &Session{
+				CookieName: "auth_session",
+				Options:    tc.options,
+				Store:      Store{File: &store.File{SessionKey: "k", Path: t.TempDir()}},
+			}
+
+			err := m.SetStore(context.Background())
+			if tc.err {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("SetStore: %v", err)
+			}
+
+			rec := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodPost, "https://example.com/login", nil)
+			if err := m.SetLoginToken(rec, r, []byte(`{"access_token":"a"}`), "auth", AuthenticationMethodCode); err != nil {
+				t.Fatalf("SetLoginToken: %v", err)
+			}
+
+			cookies := rec.Result().Cookies()
+			if len(cookies) != 1 {
+				t.Fatalf("cookies = %d", len(cookies))
+			}
+			c := cookies[0]
+			if c.Secure != tc.secure || c.HttpOnly != tc.httpOnly || c.SameSite != tc.sameSite {
+				t.Fatalf("secure=%v httpOnly=%v sameSite=%v", c.Secure, c.HttpOnly, c.SameSite)
+			}
+		})
+	}
+}

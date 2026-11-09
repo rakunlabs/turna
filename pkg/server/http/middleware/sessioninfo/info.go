@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/claims"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 	"github.com/rakunlabs/turna/pkg/server/model"
 )
@@ -69,8 +68,8 @@ func (m *Info) Info(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check if token is valid
-	claim := claims.Custom{}
-	if _, err := sessionM.KeyFuncParser().ParseWithClaims(token.AccessToken, &claim); err != nil {
+	claim, _, err := sessionM.ValidateAccessToken(r.Context(), token.AccessToken)
+	if err != nil {
 		httputil.JSON(w, http.StatusForbidden, model.MetaData{Message: err.Error()})
 
 		return

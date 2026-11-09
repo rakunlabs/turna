@@ -127,6 +127,7 @@ func (m *Auth) refreshReused(ctx context.Context, claims jwt.MapClaims, jti, sid
 	}
 
 	slog.Warn("refresh token reuse detected, session revoked", "sub", sub, "azp", azp, "sid", sid)
+	m.audit(nil, AuditEvent{Event: auditRefreshReuse, Outcome: auditFailure, Subject: sub, ClientID: azp, Detail: map[string]any{"sid": sid}})
 
 	return true, nil
 }
@@ -154,7 +155,7 @@ func (m *Auth) revokeRawToken(ctx context.Context, token, clientID string) error
 	}
 
 	claims := jwt.MapClaims{}
-	if _, err := signer.JWT.Parse(token, &claims); err != nil {
+	if _, err := signer.Parse(token, &claims); err != nil {
 		return nil //nolint:nilerr // foreign/expired tokens need no revocation
 	}
 

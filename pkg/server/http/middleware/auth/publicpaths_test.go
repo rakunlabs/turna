@@ -80,7 +80,9 @@ func TestCredentialPassthroughPathPatterns(t *testing.T) {
 	m := &Auth{PrefixPath: "/auth"}
 	patterns := m.CredentialPassthroughPathPatterns()
 
-	if len(patterns) != 1 || patterns[0] != "/auth/oauth2/api-key" {
-		t.Fatalf("patterns = %v, want [/auth/oauth2/api-key]", patterns)
+	// SCIM clients send their own bearer token, which a session in front
+	// must not consume
+	if len(patterns) != 2 || patterns[0] != "/auth/oauth2/api-key" || patterns[1] != "/auth/scim/**" {
+		t.Fatalf("patterns = %v, want [/auth/oauth2/api-key /auth/scim/**]", patterns)
 	}
 }

@@ -1,0 +1,54 @@
+server:
+  entrypoints:
+    websecure:
+      address: ":9443"
+    admin:
+      address: "127.0.0.1:9081"
+  http:
+    tls:
+      min_version: "1.2"
+    middlewares:
+      auth:
+        auth:
+          database:
+            dsn: postgres://postgres:pg@127.0.0.1:55432/oidc?sslmode=disable
+          encryption:
+            key: conformance-test-encryption-key
+      session:
+        session:
+          store:
+            active: file
+            file:
+              session_key: conformance-session-key
+              path: ./sessions
+          provider:
+            turna:
+              auth_middleware: auth
+              password_flow: true
+              oauth2:
+                client_id: login-ui
+                client_secret: login-ui-secret-abcdefgh
+          auth_skip_paths: [auth]
+          action:
+            token:
+              login_path: /login/
+      login:
+        login:
+          session_middleware: session
+          path:
+            base: /login/
+    routers:
+      login:
+        entrypoints: [websecure]
+        tls: {}
+        path: /login/*
+        middlewares: [login]
+      auth:
+        entrypoints: [websecure]
+        tls: {}
+        path: /auth/*
+        middlewares: [session, auth]
+      admin:
+        entrypoints: [admin]
+        path: /auth/*
+        middlewares: [auth]

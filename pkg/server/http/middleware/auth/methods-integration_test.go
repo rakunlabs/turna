@@ -914,7 +914,7 @@ func TestAuthMethodsIntegration(t *testing.T) {
 			"client_secret": {"it-m-secret"},
 			"code":          {"it-email-code"},
 		}, nil)
-		if status != http.StatusUnauthorized || fail.Error != "invalid_grant" {
+		if status != http.StatusBadRequest || fail.Error != "invalid_grant" {
 			t.Fatalf("email code reuse status=%d error=%s", status, fail.Error)
 		}
 	})
@@ -1016,7 +1016,7 @@ func TestAuthMethodsIntegration(t *testing.T) {
 
 		// and is consumed
 		status, _, fail = tokenCall(t, passwordForm, nil)
-		if status != http.StatusUnauthorized || fail.Error != "invalid_grant" {
+		if status != http.StatusBadRequest || fail.Error != "invalid_grant" {
 			t.Fatalf("reused recovery code status=%d error=%s", status, fail.Error)
 		}
 
@@ -1032,7 +1032,7 @@ func TestAuthMethodsIntegration(t *testing.T) {
 	t.Run("pkce", func(t *testing.T) {
 		// inject a local code carrying an S256 challenge, like the
 		// oauth2/saml callbacks do
-		verifier := "it-pkce-verifier-1234567890abcdefghijklmn"
+		verifier := "it-pkce-verifier-1234567890abcdefghijklmnopq" // RFC 7636: 43-128 characters
 		sum := sha256.Sum256([]byte(verifier))
 		challenge := base64.RawURLEncoding.EncodeToString(sum[:])
 
@@ -1066,7 +1066,7 @@ func TestAuthMethodsIntegration(t *testing.T) {
 			"grant_type": {"authorization_code"}, "client_id": {"it-m-client"}, "client_secret": {"it-m-secret"},
 			"code": {"it-pkce-1"}, "code_verifier": {"wrong-verifier"}, "redirect_uri": {"https://app.example.com/cb"},
 		}, nil)
-		if status != http.StatusUnauthorized || fail.Error != "invalid_grant" {
+		if status != http.StatusBadRequest || fail.Error != "invalid_grant" {
 			t.Fatalf("wrong verifier status=%d error=%s", status, fail.Error)
 		}
 
@@ -1084,8 +1084,20 @@ func TestAuthMethodsIntegration(t *testing.T) {
 			"grant_type": {"authorization_code"}, "client_id": {"it-m-client"}, "client_secret": {"it-m-secret"},
 			"code": {"it-pkce-2"}, "code_verifier": {verifier}, "redirect_uri": {"https://app.example.com/cb"},
 		}, nil)
-		if status != http.StatusUnauthorized || fail.Error != "invalid_grant" {
+		if status != http.StatusBadRequest || fail.Error != "invalid_grant" {
 			t.Fatalf("authorization code reuse status=%d error=%s", status, fail.Error)
+		}
+
+		// the replay revokes the tokens issued for the first redemption
+		req, _ := http.NewRequest(http.MethodGet, server.URL+"/auth/oauth2/userinfo", nil)
+		req.Header.Set("Authorization", "Bearer "+tokenRes.AccessToken)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("access token after code reuse status=%d, want 401", res.StatusCode)
 		}
 	})
 

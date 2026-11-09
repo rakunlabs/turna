@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/hex"
+	"strings"
 	"testing"
 )
 
@@ -93,5 +94,108 @@ func TestCipherRekey(t *testing.T) {
 	}
 	if plain != "payload" {
 		t.Fatalf("DecryptString() after rekey = %s", plain)
+	}
+}
+
+func TestCipherKDFVersions(t *testing.T) {
+	salt := []byte("0123456789abcdef")
+
+	legacy, err := NewCipher("short-pass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	v1, err := legacy.EncryptString("secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(v1, encryptedPrefixV1) {
+		t.Fatalf("without salt the value must stay enc:v1: %q", v1)
+	}
+
+	c, err := NewCipherWithSalt("short-pass", salt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v2, err := c.EncryptString("secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(v2, encryptedPrefixV2) {
+		t.Fatalf("with salt the value must be enc:v2: %q", v2)
+	}
+
+	// both versions open with the salted cipher
+	for _, value := range []string{v1, v2} {
+		if plain, err := c.DecryptString(value); err != nil || plain != "secret" {
+			t.Fatalf("decrypt %q = %q, %v", value[:7], plain, err)
+		}
+	}
+	if c.IsCurrent(v1) || !c.IsCurrent(v2) {
+		t.Fatal("IsCurrent must flag enc:v1 values for re-encryption")
+	}
+
+	// the argon2id key differs from the sha256 one
+	if _, err := legacy.DecryptString(v2); err == nil {
+		t.Fatal("enc:v2 must not open without the salt")
+	}
+
+	// a different salt derives a different key
+	other, err := NewCipherWithSalt("short-pass", []byte("fedcba9876543210"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.DecryptString(v2); err == nil {
+		t.Fatal("enc:v2 must not open with another salt")
+	}
+
+	t.Run("lazy salt loader", func(t *testing.T) {
+		lazy, err := NewCipher("short-pass")
+		if err != nil {
+			t.Fatal(err)
+		}
+		lazy.SetSaltLoader(func() ([]byte, error) { return salt, nil })
+
+		if plain, err := lazy.DecryptString(v2); err != nil || plain != "secret" {
+			t.Fatalf("lazy decrypt = %q, %v", plain, err)
+		}
+		if sealed, _ := lazy.EncryptString("x"); !strings.HasPrefix(sealed, encryptedPrefixV2) {
+			t.Fatal("after loading the salt new values must be enc:v2")
+		}
+	})
+
+	t.Run("raw base64 key is used as-is", func(t *testing.T) {
+		key, err := NewEncryptionKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if IsWeakEncryptionKey(key) {
+			t.Fatal("random key must not be weak")
+		}
+
+		a, _ := NewCipherWithSalt(key, salt)
+		b, _ := NewCipherWithSalt(key, []byte("fedcba9876543210"))
+		sealed, _ := a.EncryptString("x")
+		if plain, err := b.DecryptString(sealed); err != nil || plain != "x" {
+			t.Fatalf("raw key must not depend on the salt: %q, %v", plain, err)
+		}
+	})
+
+	t.Run("rekey keeps salt", func(t *testing.T) {
+		c, _ := NewCipherWithSalt("old-passphrase", salt)
+		old, _ := c.EncryptString("x")
+		if err := c.Rekey("new-passphrase"); err != nil {
+			t.Fatal(err)
+		}
+		if plain, err := c.DecryptString(old); err != nil || plain != "x" {
+			t.Fatalf("previous key must open: %q, %v", plain, err)
+		}
+		sealed, _ := c.EncryptString("y")
+		if !strings.HasPrefix(sealed, encryptedPrefixV2) {
+			t.Fatal("rekeyed cipher must keep enc:v2")
+		}
+	})
+
+	if !IsWeakEncryptionKey("change-me") || IsWeakEncryptionKey("a-long-enough-passphrase") {
+		t.Fatal("IsWeakEncryptionKey thresholds")
 	}
 }

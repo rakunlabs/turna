@@ -1,26 +1,18 @@
 package auth
 
 import (
-	"crypto/sha256"
-	"crypto/subtle"
+	"context"
 	"encoding/base64"
 	"errors"
-	"fmt"
-	"log/slog"
-	"math/big"
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/rakunlabs/turna/pkg/render"
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
-	oauth2auth "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/auth"
 	oauth2store "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
-	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -70,6 +62,16 @@ type AccessTokenErrorResponse struct {
 }
 
 func (e AccessTokenErrorResponse) GetCode() int {
+	// RFC 6749 §5.2: token endpoint errors are 400 except invalid_client
+	// (401). Grant failures used to answer 401, which clients and the OpenID
+	// conformance suite treat as a client authentication failure.
+	if e.code == http.StatusUnauthorized {
+		switch e.Error {
+		case "invalid_grant", "invalid_scope", "unauthorized_client", "unsupported_grant_type":
+			return http.StatusBadRequest
+		}
+	}
+
 	return e.code
 }
 
@@ -314,14 +316,18 @@ func (m *Auth) writeTokenWithOptions(w http.ResponseWriter, r *http.Request, use
 		"session_exp":        options.SessionExpires,
 		"remember_me":        options.RememberMe,
 		"name":               user.Details["name"],
-		"preferred_username": user.Details["name"],
+		"preferred_username": preferredUsername(user),
 	}
 
 	if v, ok := user.Details["email"]; ok {
 		claimsAccess["email"] = v
 	}
-	if v, ok := user.Details["uid"]; ok {
-		claimsAccess["preferred_username"] = v
+
+	// RFC 9449 §6: a DPoP proof on the token request binds the tokens
+	tokenType := "Bearer"
+	if proof := requestDPoP(r); proof != nil {
+		claimsAccess["cnf"] = map[string]any{"jkt": proof.JKT}
+		tokenType = "DPoP"
 	}
 	if v, ok := user.Details["given_name"]; ok {
 		claimsAccess["given_name"] = v
@@ -417,6 +423,9 @@ func (m *Auth) writeTokenWithOptions(w http.ResponseWriter, r *http.Request, use
 			"session_exp": options.SessionExpires,
 			"remember_me": options.RememberMe,
 		}
+		if cnf, ok := claimsAccess["cnf"]; ok {
+			claimsRefresh["cnf"] = cnf
+		}
 
 		if len(scopeList) > 0 {
 			claimsRefresh["scope"] = strings.Join(scopeList, " ")
@@ -438,27 +447,27 @@ func (m *Auth) writeTokenWithOptions(w http.ResponseWriter, r *http.Request, use
 	idToken := ""
 	if _, ok := scopeMap["openid"]; ok {
 		claimsID := map[string]any{
-			"iss":                m.issuerURL(r),
-			"typ":                "ID",
-			"aud":                clientID,
-			"azp":                clientID,
-			"sub":                user.ID,
-			"sid":                options.SID,
-			"auth_time":          options.AuthTime,
-			"iat":                time.Now().Unix(),
-			"name":               user.Details["name"],
-			"preferred_username": claimsAccess["preferred_username"],
+			"iss":       m.issuerURL(r),
+			"aud":       clientID,
+			"azp":       clientID,
+			"sub":       user.ID,
+			"sid":       options.SID,
+			"auth_time": options.AuthTime,
+			"iat":       time.Now().Unix(),
+		}
+		if !tokenCfg.OIDCStandardClaims {
+			// historic marker; the typ claim is not defined for id_tokens
+			claimsID["typ"] = "ID"
+
+			for k, v := range userStandardClaims(user, scopeMap, false) {
+				claimsID[k] = v
+			}
+		} else {
+			// OIDC Core §5.4: when an access token is issued, scope claims
+			// are returned from the userinfo endpoint, not in the id_token
+			claimsID["typ"] = nil
 		}
 
-		if v, ok := user.Details["email"]; ok {
-			claimsID["email"] = v
-		}
-		if v, ok := user.Details["given_name"]; ok {
-			claimsID["given_name"] = v
-		}
-		if v, ok := user.Details["family_name"]; ok {
-			claimsID["family_name"] = v
-		}
 		if options.Nonce != "" {
 			claimsID["nonce"] = options.Nonce
 		}
@@ -488,7 +497,7 @@ func (m *Auth) writeTokenWithOptions(w http.ResponseWriter, r *http.Request, use
 	w.Header().Set("Pragma", "no-cache")
 
 	httputil.JSON(w, http.StatusOK, AccessTokenResponse{
-		TokenType:             "Bearer",
+		TokenType:             tokenType,
 		AccessToken:           accessToken,
 		ExpiresIn:             max(accessExpires-now.Unix(), 0),
 		RefreshToken:          refreshToken,
@@ -523,6 +532,21 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// RFC 9449: a DPoP proof binds the issued tokens to the client's key
+	if r.Header.Get("DPoP") != "" {
+		proof, err := m.verifyDPoP(r, "")
+		if err != nil {
+			httputil.HandleError(w, AccessTokenErrorResponse{Error: "invalid_dpop_proof", ErrorDescription: err.Error(), code: http.StatusBadRequest})
+
+			return
+		}
+		r = r.WithContext(context.WithValue(r.Context(), dpopContextKey{}, proof))
+	} else if client, ok := m.lookupClient(clientID); ok && client.RequireDPoP {
+		httputil.HandleError(w, AccessTokenErrorResponse{Error: "invalid_dpop_proof", ErrorDescription: "this client requires DPoP", code: http.StatusBadRequest})
+
+		return
+	}
+
 	if client, ok := m.lookupClient(clientID); ok && !client.allowsGrant(accessTokenRequest.GrantType) {
 		httputil.HandleError(w, AccessTokenErrorResponse{Error: "unauthorized_client", ErrorDescription: "grant type is not allowed for this client", code: http.StatusBadRequest})
 		return
@@ -553,7 +577,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			user, err := m.mtlsAuthenticate(r, clientID)
 			if err != nil {
 				httputil.HandleError(w, AccessTokenErrorResponse{
-					Error:            "invalid_grant",
+					Error:            "invalid_client",
 					ErrorDescription: err.Error(),
 					code:             http.StatusUnauthorized,
 				})
@@ -575,7 +599,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 		})
 		if err != nil {
 			httputil.HandleError(w, AccessTokenErrorResponse{
-				Error:            "invalid_grant",
+				Error:            "invalid_client",
 				ErrorDescription: "user not found",
 				code:             http.StatusUnauthorized,
 			})
@@ -585,7 +609,7 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 
 		if secret, _ := user.Details["secret"].(string); !clientSecretMatches(secret, clientSecret) {
 			httputil.HandleError(w, AccessTokenErrorResponse{
-				Error:            "invalid_grant",
+				Error:            "invalid_client",
 				ErrorDescription: "secret not match",
 				code:             http.StatusUnauthorized,
 			})
@@ -823,6 +847,19 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// a DPoP-bound refresh token is only redeemable with the same key
+		if jkt := tokenJKT(claims); jkt != "" {
+			if proof := requestDPoP(r); proof == nil || proof.JKT != jkt {
+				httputil.HandleError(w, AccessTokenErrorResponse{
+					Error:            "invalid_dpop_proof",
+					ErrorDescription: "refresh token is bound to another DPoP key",
+					code:             http.StatusBadRequest,
+				})
+
+				return
+			}
+		}
+
 		if azp, _ := claims["azp"].(string); azp == "" || azp != clientID {
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
@@ -1000,7 +1037,10 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !ok {
-			// codes are single use and expire after oauth2store.DefaultCodeTimeout
+			// codes are single use and expire after oauth2store.DefaultCodeTimeout;
+			// a replayed code also revokes the tokens it was exchanged for
+			m.revokeReusedCode(r.Context(), accessTokenRequest.Code)
+
 			httputil.HandleError(w, AccessTokenErrorResponse{
 				Error:            "invalid_grant",
 				ErrorDescription: "code not found, already used or expired",
@@ -1115,6 +1155,18 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		sid, err := randomHex(32)
+		if err != nil {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "server_error",
+				ErrorDescription: err.Error(),
+				code:             http.StatusInternalServerError,
+			})
+
+			return
+		}
+		m.rememberCodeUse(r.Context(), accessTokenRequest.Code, codeUse{SID: sid, Subject: user.ID, ClientID: clientID})
+
 		// nonce from the original authorization request lands in the id_token;
 		// remember_me can come from the consent screen (stored in the code) or
 		// from the token request itself
@@ -1122,6 +1174,8 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			Nonce:      codeValue.Nonce,
 			Resources:  resources,
 			RememberMe: accessTokenRequest.RememberMe || codeValue.RememberMe,
+			AuthTime:   codeValue.AuthTime,
+			SID:        sid,
 		})
 
 		return
@@ -1146,939 +1200,4 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-}
-
-// APICerts returns the JWKS document.
-func (m *Auth) APICerts(w http.ResponseWriter, r *http.Request) {
-	signer, err := m.jwtRuntime(r.Context())
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	jwk := JWK{
-		KID: signer.KID,
-		KTY: "RSA",
-		ALG: signer.JWT.Alg(),
-		Use: "sig",
-		N:   base64.RawURLEncoding.EncodeToString(signer.Public.N.Bytes()),
-		E:   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(signer.Public.E)).Bytes()),
-	}
-
-	w.Header().Set("Cache-Control", "public, max-age=300")
-
-	httputil.JSON(w, http.StatusOK, JWKSResponse{Keys: []JWK{jwk}})
-}
-
-// APIUserInfo returns claims for a bearer access token.
-func (m *Auth) APIUserInfo(w http.ResponseWriter, r *http.Request) {
-	authorizationHeader := r.Header.Get("Authorization")
-	tokenHeader := strings.TrimSpace(strings.TrimPrefix(authorizationHeader, "Bearer"))
-	if tokenHeader == "" {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_request",
-			ErrorDescription: "access token not found",
-			code:             http.StatusBadRequest,
-		})
-
-		return
-	}
-
-	signer, err := m.jwtRuntime(r.Context())
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	claims := jwt.MapClaims{}
-	if err := m.parseOwnToken(signer, tokenHeader, &claims); err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_token",
-			ErrorDescription: err.Error(),
-			code:             http.StatusUnauthorized,
-		})
-
-		return
-	}
-	if typ, _ := claims["typ"].(string); typ != "Bearer" {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_token",
-			ErrorDescription: "access token type must be Bearer",
-			code:             http.StatusUnauthorized,
-		})
-
-		return
-	}
-
-	revoked, err := m.claimsRevoked(r.Context(), claims)
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-	if revoked {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_token",
-			ErrorDescription: "token revoked",
-			code:             http.StatusUnauthorized,
-		})
-
-		return
-	}
-
-	sub, _ := claims["sub"].(string)
-	if sub == "" {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_token",
-			ErrorDescription: "user not found",
-			code:             http.StatusUnauthorized,
-		})
-
-		return
-	}
-
-	user, err := m.cache.GetUser(data.GetUserRequest{ID: sub})
-	if err != nil || user.Disabled {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_token",
-			ErrorDescription: "user not found",
-			code:             http.StatusUnauthorized,
-		})
-
-		return
-	}
-
-	claimsRet := map[string]any{
-		"sub":                user.ID,
-		"name":               user.Details["name"],
-		"preferred_username": user.Details["name"],
-	}
-
-	if v, ok := user.Details["email"]; ok {
-		claimsRet["email"] = v
-	}
-	if v, ok := user.Details["uid"]; ok {
-		claimsRet["preferred_username"] = v
-	}
-	if v, ok := user.Details["family_name"]; ok {
-		claimsRet["family_name"] = v
-	}
-	if v, ok := user.Details["given_name"]; ok {
-		claimsRet["given_name"] = v
-	}
-
-	// Mirror the roles the presented access token carries. Reading them back
-	// off the token (instead of recomputing from the user) keeps userinfo
-	// bound to the scopes that were actually granted at issue time, and keeps
-	// a revoked/narrowed scope from silently widening through this endpoint.
-	sn := m.cache.Snapshot()
-	azp, _ := claims["azp"].(string)
-	rolesClaim := rolesClaimPath(sn, azp)
-
-	if rolesList := claimValues(claims, rolesClaim); len(rolesList) > 0 {
-		setClaimByPath(claimsRet, rolesClaim, rolesList)
-	}
-
-	// apply custom userinfo templates selected by the {custom} path segment.
-	if customName := r.PathValue("custom"); customName != "" {
-		if !sn.CustomInfo.Disabled {
-			if set, ok := sn.CustomInfo.Sets[customName]; ok {
-				// render against a copy of the base claims so iteration order
-				// never affects the result; templates may add or overwrite claims.
-				base := make(map[string]any, len(claimsRet))
-				for k, v := range claimsRet {
-					base[k] = v
-				}
-
-				tmplData := map[string]any{"claims": base, "user": user}
-				for k, tmpl := range set.Claims {
-					result, err := render.ExecuteWithData(tmpl, tmplData)
-					if err != nil {
-						slog.Error("failed to render custom info", "error", err, "custom", customName, "key", k)
-
-						continue
-					}
-
-					// an empty render result removes the claim from the response;
-					// this lets a set drop default claims (use {{- -}} to trim).
-					if len(result) == 0 {
-						delete(claimsRet, k)
-
-						continue
-					}
-
-					claimsRet[k] = string(result)
-				}
-			}
-		}
-	}
-
-	httputil.JSON(w, http.StatusOK, claimsRet)
-}
-
-// validateCustomInfoTemplates parses every custom_info template so syntax errors
-// are rejected on save. It deliberately does NOT execute the templates: which
-// claim/user fields exist depends on the deployment (LDAP attribute mapping,
-// edited user details), so validating against fixed sample data would wrongly
-// reject valid templates that reference deployment-specific fields. Use the
-// preview endpoint to test rendering against real-shaped sample data.
-func validateCustomInfoTemplates(cfg CustomInfoSettings) error {
-	for name, set := range cfg.Sets {
-		for k, tmpl := range set.Claims {
-			if err := render.Validate(tmpl); err != nil {
-				return fmt.Errorf("set %q claim %q: %w", name, k, err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// customInfoPreviewRequest renders a custom_info set against sample data so the
-// management UI can preview unsaved templates.
-type customInfoPreviewRequest struct {
-	Claims map[string]any `json:"claims"`
-	User   *data.User     `json:"user"`
-	Set    CustomInfoSet  `json:"set"`
-}
-
-// CustomInfoPreviewAPI applies an inline custom_info set to sample claims and
-// returns the resulting claims, mirroring the templating in APIUserInfo
-// (add, overwrite, or remove on empty render).
-func (m *Auth) CustomInfoPreviewAPI(w http.ResponseWriter, r *http.Request) {
-	var req customInfoPreviewRequest
-	if err := httputil.Decode(r, &req); err != nil {
-		httputil.HandleError(w, httputil.NewError("cannot decode custom_info preview", err, http.StatusBadRequest))
-		return
-	}
-
-	user := req.User
-	if user == nil {
-		user = &data.User{}
-	}
-
-	// base is the immutable template input; result is what we mutate/return.
-	base := make(map[string]any, len(req.Claims))
-	result := make(map[string]any, len(req.Claims))
-	for k, v := range req.Claims {
-		base[k] = v
-		result[k] = v
-	}
-
-	tmplData := map[string]any{"claims": base, "user": user}
-	for k, tmpl := range req.Set.Claims {
-		out, err := render.ExecuteWithData(tmpl, tmplData)
-		if err != nil {
-			httputil.HandleError(w, httputil.NewError(fmt.Sprintf("claim %q: %s", k, err.Error()), err, http.StatusBadRequest))
-			return
-		}
-
-		if len(out) == 0 {
-			delete(result, k)
-
-			continue
-		}
-
-		result[k] = string(out)
-	}
-
-	httputil.JSON(w, http.StatusOK, Response[map[string]any]{Payload: result})
-}
-
-// serverMetadata builds the shared OIDC discovery / RFC 8414 authorization
-// server metadata document.
-func (m *Auth) serverMetadata(r *http.Request, custom string) map[string]any {
-	issuer := m.issuerURL(r)
-	sn := m.cache.Snapshot()
-
-	alg := "RS256"
-	if signer, err := m.jwtRuntime(r.Context()); err == nil {
-		alg = signer.JWT.Alg()
-	}
-
-	// issuer stays the shared /oauth2 value (matches the id_token iss); a
-	// {custom} segment only points userinfo at the per-name custom_info route
-	// so discovery-driven clients pick up the tailored claims automatically.
-	userinfoEndpoint := issuer + "/userinfo"
-	if custom != "" {
-		userinfoEndpoint = issuer + "/userinfo/" + url.PathEscape(custom)
-	}
-
-	metadata := map[string]any{
-		"issuer": issuer,
-		"authorization_response_iss_parameter_supported": true,
-		"authorization_endpoint":                         issuer + "/authorize",
-		"token_endpoint":                                 issuer + "/token",
-		"userinfo_endpoint":                              userinfoEndpoint,
-		"jwks_uri":                                       issuer + "/certs",
-		"device_authorization_endpoint":                  issuer + "/device_authorization",
-		"revocation_endpoint":                            issuer + "/revoke",
-		"introspection_endpoint":                         issuer + "/introspect",
-		"response_types_supported":                       []string{"code"},
-		"response_modes_supported":                       []string{"query"},
-		"grant_types_supported": []string{
-			"authorization_code", "client_credentials", "password", "refresh_token",
-			grantTypeDeviceCode, grantTypeTokenExchange, grantTypeEmailCode,
-		},
-		"subject_types_supported":               []string{"public"},
-		"id_token_signing_alg_values_supported": []string{alg},
-		"code_challenge_methods_supported":      []string{"S256", "plain"},
-		"client_id_metadata_document_supported": !sn.Registration.ClientMetadataDisabled,
-		"scopes_supported":                      []string{"openid"},
-		"token_endpoint_auth_methods_supported": []string{
-			"client_secret_basic", "client_secret_post", "none",
-		},
-		"revocation_endpoint_auth_methods_supported": []string{
-			"client_secret_basic", "client_secret_post",
-		},
-		"introspection_endpoint_auth_methods_supported": []string{
-			"client_secret_basic", "client_secret_post",
-		},
-	}
-
-	if sn.Registration.Enabled {
-		metadata["registration_endpoint"] = issuer + "/register"
-	}
-
-	return metadata
-}
-
-// APIWellKnown returns the OpenID configuration for this issuer.
-func (m *Auth) APIWellKnown(w http.ResponseWriter, r *http.Request) {
-	httputil.JSON(w, http.StatusOK, m.serverMetadata(r, r.PathValue("custom")))
-}
-
-// APIAuthServerMetadata returns the RFC 8414 authorization server metadata.
-// It serves both the path-suffix variant under the issuer and the RFC-style
-// root path-insertion variant (/.well-known/oauth-authorization-server/...).
-func (m *Auth) APIAuthServerMetadata(w http.ResponseWriter, r *http.Request) {
-	httputil.JSON(w, http.StatusOK, m.serverMetadata(r, ""))
-}
-
-// IssuerURL exposes the canonical external issuer URL of this auth
-// instance (session.InfIssuerURL); session middlewares use it to derive
-// authorization_servers of their RFC 9728 protected resource metadata.
-func (m *Auth) IssuerURL(r *http.Request) string {
-	return m.issuerURL(r)
-}
-
-// AcceptsIssuer reports whether iss names this Auth instance on any public
-// host: {scheme}://{host}{prefix}/oauth2. The issuer URL follows the host a
-// token was requested through (or oauth2.base_url after host replacement), so
-// a token signed with this instance's key stays valid when a client logs in
-// through one host and refreshes or calls userinfo through another. The
-// signature proves the token is ours; the prefix separates Auth instances
-// sharing the same key. It implements session.InfIssuerAcceptor.
-func (m *Auth) AcceptsIssuer(iss string) bool {
-	u, err := url.Parse(iss)
-	if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return false
-	}
-
-	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.Path == m.PrefixPath+"/oauth2"
-}
-
-// parseOwnToken validates a token signed by this instance for its own
-// endpoints (refresh, userinfo, introspection, token exchange).
-func (m *Auth) parseOwnToken(signer *jwtSigner, raw string, claims *jwt.MapClaims) error {
-	if _, err := signer.JWT.Parse(raw, claims, jwt.WithAudience("turna-auth")); err != nil {
-		return err
-	}
-
-	if iss, _ := (*claims)["iss"].(string); !m.AcceptsIssuer(iss) {
-		return fmt.Errorf("token validate: %w", jwt.ErrTokenInvalidIssuer)
-	}
-
-	return nil
-}
-
-// effectiveOAuthBaseURL applies this instance's endpoint host mapping to the
-// stored canonical OAuth origin. Every externally published OAuth URL must use
-// this same value; applying the mapping only to an upstream callback would make
-// discovery, token issuers and redirect_uri disagree about the public host.
-func (m *Auth) effectiveOAuthBaseURL() string {
-	if m.cache == nil {
-		return ""
-	}
-
-	cfg := m.cache.Snapshot().OAuth2
-	// An unusable stored origin falls back to the request instead of
-	// publishing a relative or scheme-less redirect_uri.
-	baseURL, err := normalizeOAuthBaseURL(cfg.BaseURL, cfg.Schema)
-	if err != nil || baseURL == "" {
-		return ""
-	}
-
-	return session.ReplaceEndpointHost(baseURL, m.SessionProvidersConfig.HostReplacements)
-}
-
-// normalizeOAuthBaseURL reduces oauth2.base_url to {scheme}://{host}. A value
-// without a scheme ("auth.example.com") gets oauth2.schema (default https);
-// otherwise the host would parse as a path, host replacement would never
-// match and upstream callbacks would become relative URLs.
-func normalizeOAuthBaseURL(raw, schema string) (string, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return "", nil
-	}
-
-	if !strings.Contains(raw, "://") {
-		if schema == "" {
-			schema = "https"
-		}
-		raw = schema + "://" + raw
-	}
-
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return "", fmt.Errorf("invalid base_url: %w", err)
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return "", fmt.Errorf("base_url scheme must be http or https")
-	}
-	if parsed.Host == "" {
-		return "", fmt.Errorf("base_url host is required")
-	}
-	if parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return "", fmt.Errorf("base_url must be an origin like https://auth.example.com without path, query or fragment")
-	}
-
-	return parsed.Scheme + "://" + parsed.Host, nil
-}
-
-// validateOAuth2Settings rejects origins that would silently break the
-// published OAuth surface.
-func validateOAuth2Settings(setting OAuth2Settings) error {
-	switch setting.Schema {
-	case "", "http", "https":
-	default:
-		return fmt.Errorf("schema must be http or https")
-	}
-
-	_, err := normalizeOAuthBaseURL(setting.BaseURL, setting.Schema)
-
-	return err
-}
-
-// requestOriginWarn logs once that public URLs follow the request.
-var requestOriginWarn sync.Once
-
-func (m *Auth) issuerURL(r *http.Request) string {
-	// oauth2.base_url is the canonical external origin of this auth
-	// instance after its instance-local host replacement. Use it for discovery,
-	// token issuers and upstream code callbacks so every protocol surface agrees.
-	if baseURL := m.effectiveOAuthBaseURL(); baseURL != "" {
-		return baseURL + m.PrefixPath + "/oauth2"
-	}
-
-	requestOriginWarn.Do(func() {
-		slog.Warn("auth: oauth2 base_url is not set, the issuer is built from the request host and forwarded headers; set base_url or use real_ip with trusted_proxies")
-	})
-
-	scheme := r.Header.Get("X-Forwarded-Proto")
-	host := r.Header.Get("X-Forwarded-Host")
-
-	if host == "" {
-		host = r.Host
-	}
-	if scheme == "" {
-		if r.TLS != nil {
-			scheme = "https"
-		} else {
-			scheme = "http"
-		}
-	}
-
-	return fmt.Sprintf("%s://%s%s/oauth2", scheme, host, m.PrefixPath)
-}
-
-// federatedClient resolves the client that owns a federated login and checks
-// its redirect target. Federated authorization codes must never be ownerless.
-func (m *Auth) federatedClient(clientID, redirectURI string) (*AccessClient, bool) {
-	if clientID == "" || redirectURI == "" {
-		return nil, false
-	}
-
-	client, ok := m.lookupClient(clientID)
-	if !ok || !client.redirectURIAllowedForClient(redirectURI) {
-		return nil, false
-	}
-
-	return client, true
-}
-
-// pkceParams reads and validates RFC 7636 parameters from the query.
-func pkceParams(r *http.Request) (string, string, error) {
-	challenge := r.URL.Query().Get("code_challenge")
-	method := r.URL.Query().Get("code_challenge_method")
-
-	if challenge == "" {
-		if method != "" {
-			return "", "", fmt.Errorf("code_challenge_method without code_challenge")
-		}
-
-		return "", "", nil
-	}
-
-	switch method {
-	case "":
-		method = "plain"
-	case "plain", "S256":
-	default:
-		return "", "", fmt.Errorf("code_challenge_method %q not supported", method)
-	}
-
-	return challenge, method, nil
-}
-
-// verifyPKCE checks the verifier against the stored challenge.
-func verifyPKCE(challenge, method, verifier string) bool {
-	switch method {
-	case "S256":
-		sum := sha256.Sum256([]byte(verifier))
-
-		return subtle.ConstantTimeCompare([]byte(base64.RawURLEncoding.EncodeToString(sum[:])), []byte(challenge)) == 1
-	default: // plain
-		return subtle.ConstantTimeCompare([]byte(verifier), []byte(challenge)) == 1
-	}
-}
-
-// APIAuth starts the authorization code flow against an upstream provider.
-func (m *Auth) APIAuth(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Query().Get("response_type") != "code" {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "unsupported_response_type",
-			ErrorDescription: "response type not supported",
-			code:             http.StatusBadRequest,
-		})
-
-		return
-	}
-
-	query := r.URL.Query()
-	clientID := query.Get("client_id")
-	if clientID == "" {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_request",
-			ErrorDescription: "client_id is required",
-			code:             http.StatusBadRequest,
-		})
-
-		return
-	}
-
-	providerName := r.PathValue("provider")
-	providerCfg, ok := m.cache.Snapshot().OAuthProviders[providerName]
-	if !ok {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_request",
-			ErrorDescription: fmt.Sprintf("provider %q not found", providerName),
-			code:             http.StatusNotFound,
-		})
-
-		return
-	}
-
-	redirectURI := query.Get("redirect_uri")
-	client, ok := m.federatedClient(clientID, redirectURI)
-	if !ok {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_request",
-			ErrorDescription: "redirect_uri not allowed",
-			code:             http.StatusBadRequest,
-		})
-
-		return
-	}
-
-	codeChallenge, codeChallengeMethod, err := pkceParams(r)
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_request",
-			ErrorDescription: err.Error(),
-			code:             http.StatusBadRequest,
-		})
-
-		return
-	}
-	if client.ClientSecret == "" && codeChallenge == "" {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_request",
-			ErrorDescription: "public clients require PKCE (code_challenge)",
-			code:             http.StatusBadRequest,
-		})
-
-		return
-	}
-
-	resources := query["resource"]
-	for _, resource := range resources {
-		if err := validateResource(resource); err != nil {
-			httputil.HandleError(w, AccessTokenErrorResponse{
-				Error:            "invalid_target",
-				ErrorDescription: err.Error(),
-				code:             http.StatusBadRequest,
-			})
-
-			return
-		}
-	}
-	if !resourcesAllowed(resources, client.Resources) {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_target",
-			ErrorDescription: "requested resource not allowed for this client",
-			code:             http.StatusBadRequest,
-		})
-
-		return
-	}
-
-	state, err := randomHex(32)
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-	browserBinding, err := randomHex(32)
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	stateValue, err := oauth2store.Encode(oauth2store.State{
-		RedirectURI:         redirectURI,
-		State:               state,
-		OrgState:            query.Get("state"),
-		Scope:               strings.Fields(query.Get("scope")),
-		Nonce:               query.Get("nonce"),
-		CodeChallenge:       codeChallenge,
-		CodeChallengeMethod: codeChallengeMethod,
-		ClientID:            clientID,
-		Resources:           resources,
-		BrowserBindingHash:  oauth2auth.StateBindingHash(browserBinding),
-	})
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	codeStore, err := m.codeStoreRuntime(r.Context())
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	code, err := m.codeRuntime()
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	authCodeURL, err := code.AuthCodeURL(r, state, providerName, providerCfg.Session())
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-	if err := codeStore.State.Set(r.Context(), state, stateValue); err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-	oauth2auth.SetStateBindingCookie(
-		w,
-		state,
-		browserBinding,
-		m.PrefixPath+"/oauth2/code/",
-		oauth2auth.RequestIsHTTPS(r),
-		oauth2store.DefaultStateTimeout,
-	)
-
-	httputil.Redirect(w, http.StatusTemporaryRedirect, authCodeURL)
-}
-
-// APICodeAuth handles the upstream provider callback and issues a local code.
-func (m *Auth) APICodeAuth(w http.ResponseWriter, r *http.Request) {
-	providerName := r.PathValue("provider")
-	providerCfg, ok := m.cache.Snapshot().OAuthProviders[providerName]
-	if !ok {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_request",
-			ErrorDescription: fmt.Sprintf("provider %q not found", providerName),
-			code:             http.StatusNotFound,
-		})
-
-		return
-	}
-
-	code := r.URL.Query().Get("code")
-	state := r.URL.Query().Get("state")
-	if code == "" || state == "" {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_request",
-			ErrorDescription: "code or state not found",
-			code:             http.StatusBadRequest,
-		})
-
-		return
-	}
-
-	codeStore, err := m.codeStoreRuntime(r.Context())
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	stateRaw, ok, err := codeStore.TakeState(r.Context(), state)
-	if err != nil || !ok {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_request",
-			ErrorDescription: "state not found",
-			code:             http.StatusBadRequest,
-		})
-
-		return
-	}
-	oauth2auth.ClearStateBindingCookie(
-		w,
-		state,
-		m.PrefixPath+"/oauth2/code/",
-		oauth2auth.RequestIsHTTPS(r),
-	)
-
-	stateValue, err := oauth2store.Decode[oauth2store.State](stateRaw)
-	if err != nil || stateValue.State != state {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_request",
-			ErrorDescription: "state not match",
-			code:             http.StatusBadRequest,
-		})
-
-		return
-	}
-	if !oauth2auth.ValidStateBinding(r, state, stateValue.BrowserBindingHash) {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_request",
-			ErrorDescription: "state browser binding invalid",
-			code:             http.StatusBadRequest,
-		})
-
-		return
-	}
-	stateClient, ok := m.federatedClient(stateValue.ClientID, stateValue.RedirectURI)
-	if !ok || (stateClient.ClientSecret == "" && stateValue.CodeChallenge == "") {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_request",
-			ErrorDescription: "state client binding invalid",
-			code:             http.StatusBadRequest,
-		})
-
-		return
-	}
-	if !resourcesAllowed(stateValue.Resources, stateClient.Resources) {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "invalid_target",
-			ErrorDescription: "state resource not allowed for this client",
-			code:             http.StatusBadRequest,
-		})
-
-		return
-	}
-
-	provider := providerCfg.Session()
-
-	codeClient, err := m.codeRuntime()
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	tokenValue, statusCode, err := codeClient.CodeToken(r.Context(), r, code, providerName, provider)
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             statusCode,
-		})
-
-		return
-	}
-
-	claims, err := m.claimsFromProviderToken(r, tokenValue, provider)
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	// keep historic alias selection: userinfo responses use the email,
-	// jwt claims prefer the username
-	aliasKeys := []string{"preferred_username", "email", "name"}
-	if provider.UserInfoURL != "" {
-		aliasKeys = []string{"email"}
-	}
-
-	alias, err := aliasFromClaims(claims, aliasKeys...)
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	// bind the login to a local user (provider+subject link, alias policy,
-	// optional register) and sync mapped roles
-	user, err := m.resolveFederatedUser(r.Context(), federatedLogin{
-		Provider: "oauth2:" + providerName,
-		Subject:  federatedSubject(claims, providerCfg.ClaimMapping, "sub"),
-		Alias:    alias,
-		Claims:   claims,
-		Mapping:  providerCfg.ClaimMapping,
-	})
-	if err != nil {
-		if errors.Is(err, errFederatedRefused) {
-			slog.Warn("federated login refused", slog.String("provider", providerName), slog.String("alias", alias), slog.String("error", err.Error()))
-			httputil.HandleError(w, AccessTokenErrorResponse{
-				Error:            "access_denied",
-				ErrorDescription: "this account cannot sign in here",
-				code:             http.StatusForbidden,
-			})
-
-			return
-		}
-
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	codeID, err := randomHex(32)
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	codeValue, err := oauth2store.Encode(oauth2store.Code{
-		Alias:               alias,
-		UserID:              user.ID,
-		Scope:               stateValue.Scope,
-		Nonce:               stateValue.Nonce,
-		CodeChallenge:       stateValue.CodeChallenge,
-		CodeChallengeMethod: stateValue.CodeChallengeMethod,
-		ClientID:            stateValue.ClientID,
-		RedirectURI:         stateValue.RedirectURI,
-		Resources:           stateValue.Resources,
-	})
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	if err := codeStore.Code.Set(r.Context(), "code_"+codeID, codeValue); err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	urlParsed, err := url.Parse(stateValue.RedirectURI)
-	if err != nil {
-		httputil.HandleError(w, AccessTokenErrorResponse{
-			Error:            "server_error",
-			ErrorDescription: err.Error(),
-			code:             http.StatusInternalServerError,
-		})
-
-		return
-	}
-
-	q := urlParsed.Query()
-	q.Set("code", codeID)
-	q.Set("iss", m.issuerURL(r))
-	if stateValue.OrgState != "" {
-		q.Set("state", stateValue.OrgState)
-	}
-	urlParsed.RawQuery = q.Encode()
-
-	httputil.Redirect(w, http.StatusTemporaryRedirect, urlParsed.String())
 }

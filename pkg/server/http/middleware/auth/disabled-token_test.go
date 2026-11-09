@@ -74,7 +74,7 @@ func TestTokenGrantsRejectDisabledPrincipal(t *testing.T) {
 
 		m.APIToken(w, r)
 
-		if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), `"error":"invalid_grant"`) {
+		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), `"error":"invalid_grant"`) {
 			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 		}
 	}

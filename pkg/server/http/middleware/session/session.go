@@ -11,6 +11,8 @@ import (
 
 	"github.com/rakunlabs/ok"
 	"golang.org/x/sync/singleflight"
+
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/dpop"
 )
 
 const (
@@ -98,6 +100,9 @@ type Session struct {
 	// providers may rotate refresh tokens as single-use credentials, so one
 	// browser page load must not send the same token upstream several times.
 	refreshGroup singleflight.Group `cfg:"-"`
+
+	// dpopReplay is the local DPoP replay cache for remote providers.
+	dpopReplay dpop.MemoryReplay `cfg:"-"`
 }
 
 type HostCookieName struct {
@@ -111,13 +116,39 @@ type HostCookieName struct {
 }
 
 type Options struct {
-	Path     string `cfg:"path"`
-	MaxAge   int    `cfg:"max_age"`
-	Domain   string `cfg:"domain"`
-	Secure   bool   `cfg:"secure"`
-	HttpOnly bool   `cfg:"http_only"`
-	// SameSite for Lax 2, Strict 3, None 4.
+	Path   string `cfg:"path"`
+	MaxAge int    `cfg:"max_age"`
+	Domain string `cfg:"domain"`
+	// Secure sends the cookie over HTTPS only. Default true; set false only
+	// for local plain HTTP development.
+	Secure *bool `cfg:"secure"`
+	// HttpOnly hides the cookie from JavaScript. Default true.
+	HttpOnly *bool `cfg:"http_only"`
+	// SameSite for Lax 2, Strict 3, None 4. Default Lax.
 	SameSite http.SameSite `cfg:"same_site"`
+}
+
+func boolOr(v *bool, def bool) bool {
+	if v == nil {
+		return def
+	}
+
+	return *v
+}
+
+// GetSecure reports the effective Secure flag (default true).
+func (o Options) GetSecure() bool { return boolOr(o.Secure, true) }
+
+// GetHttpOnly reports the effective HttpOnly flag (default true).
+func (o Options) GetHttpOnly() bool { return boolOr(o.HttpOnly, true) }
+
+// GetSameSite reports the effective SameSite mode (default Lax).
+func (o Options) GetSameSite() http.SameSite {
+	if o.SameSite == 0 {
+		return http.SameSiteLaxMode
+	}
+
+	return o.SameSite
 }
 
 func (m *Session) Init(ctx context.Context, name string) error {

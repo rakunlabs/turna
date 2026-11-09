@@ -12,7 +12,7 @@ import { editor } from "./editor.svelte";
 const SELF_SERVICE: Tab[] = ["account", "device"];
 
 /** Pages that render from info/dashboard alone and must not trigger bulk loads. */
-const CORE_ONLY: Tab[] = ["overview", "docs", "encryption"];
+const CORE_ONLY: Tab[] = ["overview", "docs", "encryption", "audit"];
 
 class Route {
   tab = $state<Tab>("overview");

@@ -119,6 +119,10 @@ server:
           - logout
       login:
         login:
+          state_cookie:
+            secure: false
+          success_cookie:
+            secure: false
           path:
             base: "/login/"
           redirect:

@@ -13,13 +13,30 @@ type Cookie struct {
 	Path string `cfg:"path"`
 	// Domain for defines the host to which the cookie will be sent.
 	Domain string `cfg:"domain"`
-	// Secure to cookie only sent over HTTPS.
-	Secure bool `cfg:"secure"`
+	// Secure to cookie only sent over HTTPS. Default true.
+	Secure *bool `cfg:"secure"`
 	// SameSite for Lax 2, Strict 3, None 4.
 	SameSite http.SameSite `cfg:"same_site"`
-	// HttpOnly for true for not accessible by JavaScript.
-	HttpOnly bool `cfg:"http_only"`
+	// HttpOnly for true for not accessible by JavaScript. Default true.
+	HttpOnly *bool `cfg:"http_only"`
 }
+
+func boolOr(v *bool, def bool) bool {
+	if v == nil {
+		return def
+	}
+
+	return *v
+}
+
+// Bool returns a pointer to v for the optional cookie flags.
+func Bool(v bool) *bool { return &v }
+
+// GetSecure reports the effective Secure flag (default true).
+func (c *Cookie) GetSecure() bool { return boolOr(c.Secure, true) }
+
+// GetHttpOnly reports the effective HttpOnly flag (default true).
+func (c *Cookie) GetHttpOnly() bool { return boolOr(c.HttpOnly, true) }
 
 func SetCookie(w http.ResponseWriter, value string, cookie *Cookie) {
 	http.SetCookie(w, &http.Cookie{
@@ -28,9 +45,9 @@ func SetCookie(w http.ResponseWriter, value string, cookie *Cookie) {
 		Domain:   cookie.Domain,
 		Path:     cookie.Path,
 		MaxAge:   cookie.MaxAge,
-		Secure:   cookie.Secure,
+		Secure:   cookie.GetSecure(),
 		SameSite: cookie.SameSite,
-		HttpOnly: cookie.HttpOnly,
+		HttpOnly: cookie.GetHttpOnly(),
 	})
 }
 
@@ -41,8 +58,8 @@ func RemoveCookie(w http.ResponseWriter, cookie *Cookie) {
 		Domain:   cookie.Domain,
 		Path:     cookie.Path,
 		MaxAge:   -1,
-		Secure:   cookie.Secure,
+		Secure:   cookie.GetSecure(),
 		SameSite: cookie.SameSite,
-		HttpOnly: cookie.HttpOnly,
+		HttpOnly: cookie.GetHttpOnly(),
 	})
 }

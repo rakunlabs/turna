@@ -96,8 +96,11 @@ func (t *JWT) Generate(mapClaims map[string]any, expDate int64) (string, error) 
 		mapClaims["exp"] = expDate
 	}
 
-	if _, ok := mapClaims["typ"]; !ok {
+	// an explicit nil typ means "no typ claim" (OIDC id_tokens)
+	if v, ok := mapClaims["typ"]; !ok {
 		mapClaims["typ"] = "Bearer"
+	} else if v == nil {
+		delete(mapClaims, "typ")
 	}
 	mapClaims["iat"] = time.Now().Unix()
 

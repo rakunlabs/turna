@@ -25,6 +25,7 @@ In containers the configuration usually comes from Consul or Vault instead, see 
 | --- | --- |
 | [Auth](/examples/auth) | An identity service with the PostgreSQL-backed `auth` middleware, `session`, `login`, logout and a permission endpoint for other applications. |
 | [Basic Auth](/examples/basic_auth) | Protecting paths with htpasswd-style `basic_auth`. |
+| [MCP Authorization](/examples/mcp) | Turna as the OAuth authorization and resource server of a remote MCP server: discovery, dynamic registration, PKCE, resource-bound tokens, verified with the official MCP SDK client. |
 | [Login](/examples/login) | Browser sessions against an external OAuth2 provider with `session`, `login`, and `role`. |
 | [Kafka OAUTHBEARER With GCP](/examples/gcp_kafka) | `gcp_token` as a local token endpoint for Redpanda Console using X.509 workload identity federation. |
 

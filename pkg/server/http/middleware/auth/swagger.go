@@ -166,7 +166,7 @@ func swaggerToken() {}
 // @Param state query string false "Client state"
 // @Param nonce query string false "OIDC nonce"
 // @Param code_challenge query string false "PKCE challenge"
-// @Param code_challenge_method query string false "PKCE method" Enums(S256,plain)
+// @Param code_challenge_method query string false "PKCE method; plain only with authorize.allow_plain_pkce" Enums(S256,plain)
 // @Param resource query []string false "RFC 8707 resource indicators" collectionFormat(multi)
 // @Success 302
 // @Failure 400,500 {object} AccessTokenErrorResponse
@@ -240,6 +240,31 @@ func swaggerAuthorizationServerMetadata() {}
 // @Failure 400,401,500 {object} AccessTokenErrorResponse
 // @Router /oauth2/revoke [post]
 func swaggerRevoke() {}
+
+// @Summary Pushed authorization request (RFC 9126)
+// @Description Stores the authorization request parameters and returns a one-time request_uri for /oauth2/authorize, valid for 90 seconds.
+// @Tags oauth2
+// @Accept application/x-www-form-urlencoded
+// @Param client_id formData string false "Client id (or Basic auth)"
+// @Param redirect_uri formData string true "Registered redirect URI"
+// @Param response_type formData string true "code"
+// @Success 201 {object} swaggerObject
+// @Failure 400,401 {object} AccessTokenErrorResponse
+// @Router /oauth2/par [post]
+func swaggerPAR() {}
+
+// @Summary End session (OpenID Connect RP-Initiated Logout)
+// @Description Revokes the session of id_token_hint and redirects to a registered post_logout_redirect_uri.
+// @Tags oauth2
+// @Param id_token_hint query string false "id_token of the session"
+// @Param client_id query string false "Client id"
+// @Param post_logout_redirect_uri query string false "Registered post logout redirect URI"
+// @Param state query string false "Opaque value returned to the client"
+// @Success 200
+// @Success 302
+// @Failure 400
+// @Router /oauth2/logout [get]
+func swaggerEndSession() {}
 
 // @Summary Introspect a token
 // @Tags oauth2
@@ -363,10 +388,12 @@ func swaggerTOTPRecovery() {}
 func swaggerTOTPDelete() {}
 
 // @Summary Rotate JWT signing key
+// @Description The replaced key keeps verifying for `grace` (default: refresh lifetime, at least 24h). `grace: "0"` invalidates outstanding tokens at once.
 // @Tags maintenance
 // @Security XUserAuth
+// @Param body body rotateJWTRequest false "rotation options"
 // @Success 200 {object} Response[swaggerObject]
-// @Failure 401,500 {object} httputil.Error
+// @Failure 400,401,500 {object} httputil.Error
 // @Router /v1/jwt/rotate [post]
 func swaggerRotateJWT() {}
 
@@ -377,6 +404,31 @@ func swaggerRotateJWT() {}
 // @Failure 401,500 {object} httputil.Error
 // @Router /v1/encryption/rotate [post]
 func swaggerRotateEncryption() {}
+
+// @Summary Upgrade record encryption to the argon2id key derivation
+// @Description Re-seals enc:v1 values (sha256 derived key) as enc:v2 (argon2id with a per-deployment salt). The configured key stays the same.
+// @Tags maintenance
+// @Security XUserAuth
+// @Success 200 {object} Response[swaggerObject]
+// @Failure 401,500 {object} httputil.Error
+// @Router /v1/encryption/upgrade [post]
+func swaggerUpgradeEncryption() {}
+
+// @Summary List audit events
+// @Tags maintenance
+// @Security XUserAuth
+// @Param event query string false "Event name"
+// @Param outcome query string false "success, failure or challenge"
+// @Param subject query string false "Subject"
+// @Param actor query string false "Admin principal"
+// @Param since query string false "RFC 3339 lower bound"
+// @Param until query string false "RFC 3339 upper bound"
+// @Param before query int false "Return events older than this id"
+// @Param limit query int false "Page size, max 1000"
+// @Success 200 {object} Response[[]AuditEvent]
+// @Failure 400,401,500 {object} httputil.Error
+// @Router /v1/audit [get]
+func swaggerListAudit() {}
 
 // @Summary Purge expired flow codes
 // @Tags maintenance
@@ -1351,3 +1403,15 @@ func swaggerIAMLdapSyncGroups() {}
 // @Failure 500 {object} httputil.Error
 // @Router /v1/ldap/sync/{uid} [POST]
 func swaggerIAMLdapSyncGroupsUID() {}
+
+// @Summary SCIM 2.0 users and groups
+// @Description RFC 7644 provisioning: /scim/v2/Users and /scim/v2/Groups (GET, POST, PUT, PATCH, DELETE), ServiceProviderConfig, ResourceTypes, Schemas. Authenticated with the scim.bearer_token.
+// @Tags scim
+// @Produce application/scim+json
+// @Param filter query string false "attribute eq \"value\""
+// @Param startIndex query int false "1-based start"
+// @Param count query int false "Page size, max 200"
+// @Success 200 {object} swaggerObject
+// @Failure 400,401,404,409 {object} swaggerObject
+// @Router /scim/v2/Users [get]
+func swaggerSCIMUsers() {}

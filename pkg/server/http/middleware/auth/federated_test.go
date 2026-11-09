@@ -133,47 +133,73 @@ func TestVerifyPKCE(t *testing.T) {
 		t.Error("S256 verifier should match")
 	}
 
-	if verifyPKCE(challenge, "S256", "wrong") {
+	if verifyPKCE(challenge, "S256", strings.Repeat("x", 43)) {
 		t.Error("S256 wrong verifier should not match")
 	}
 
-	if !verifyPKCE("plain-value", "plain", "plain-value") {
+	plain := strings.Repeat("p", 43)
+	if !verifyPKCE(plain, "plain", plain) {
 		t.Error("plain verifier should match")
 	}
 
-	if verifyPKCE("plain-value", "plain", "other") {
+	if verifyPKCE(plain, "plain", strings.Repeat("q", 43)) {
 		t.Error("plain wrong verifier should not match")
+	}
+
+	if verifyPKCE("short", "plain", "short") {
+		t.Error("verifier shorter than 43 characters must fail")
+	}
+
+	if verifyPKCE(challenge, "", verifier) {
+		t.Error("unknown method must fail")
 	}
 }
 
 func TestPKCEParams(t *testing.T) {
-	r := httptest.NewRequest("GET", "/auth?code_challenge=abc&code_challenge_method=S256", nil)
-	challenge, method, err := pkceParams(r)
-	if err != nil || challenge != "abc" || method != "S256" {
+	const s256 = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+
+	r := httptest.NewRequest("GET", "/auth?code_challenge="+s256+"&code_challenge_method=S256", nil)
+	challenge, method, err := pkceParams(r, false)
+	if err != nil || challenge != s256 || method != "S256" {
 		t.Errorf("pkceParams = %q %q %v", challenge, method, err)
 	}
 
-	// default method is plain
-	r = httptest.NewRequest("GET", "/auth?code_challenge=abc", nil)
-	if _, method, _ = pkceParams(r); method != "plain" {
-		t.Errorf("default method = %q, want plain", method)
+	// default method is S256
+	r = httptest.NewRequest("GET", "/auth?code_challenge="+s256, nil)
+	if _, method, err = pkceParams(r, false); err != nil || method != "S256" {
+		t.Errorf("default method = %q %v, want S256", method, err)
+	}
+
+	// malformed S256 challenge
+	r = httptest.NewRequest("GET", "/auth?code_challenge=abc&code_challenge_method=S256", nil)
+	if _, _, err = pkceParams(r, false); err == nil {
+		t.Error("short S256 challenge should error")
+	}
+
+	// plain is refused unless allowed
+	r = httptest.NewRequest("GET", "/auth?code_challenge=abc&code_challenge_method=plain", nil)
+	if _, _, err = pkceParams(r, false); err == nil {
+		t.Error("plain should be refused by default")
+	}
+	if _, method, err = pkceParams(r, true); err != nil || method != "plain" {
+		t.Errorf("allowed plain = %q %v", method, err)
 	}
 
 	// unsupported method
 	r = httptest.NewRequest("GET", "/auth?code_challenge=abc&code_challenge_method=S512", nil)
-	if _, _, err = pkceParams(r); err == nil {
+	if _, _, err = pkceParams(r, true); err == nil {
 		t.Error("unsupported method should error")
 	}
 
 	// method without challenge
 	r = httptest.NewRequest("GET", "/auth?code_challenge_method=S256", nil)
-	if _, _, err = pkceParams(r); err == nil {
+	if _, _, err = pkceParams(r, false); err == nil {
 		t.Error("method without challenge should error")
 	}
 
 	// no pkce at all
 	r = httptest.NewRequest("GET", "/auth", nil)
-	if challenge, method, err = pkceParams(r); challenge != "" || method != "" || err != nil {
+	if challenge, method, err = pkceParams(r, false); challenge != "" || method != "" || err != nil {
 		t.Errorf("empty pkce = %q %q %v", challenge, method, err)
 	}
 }
@@ -345,7 +371,7 @@ func TestAuthorizationCodeSecurityChecks(t *testing.T) {
 
 			m.APIToken(w, r)
 
-			if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), test.wantMessage) {
+			if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), test.wantMessage) {
 				t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 			}
 		})

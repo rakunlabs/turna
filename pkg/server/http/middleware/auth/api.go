@@ -3,9 +3,13 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/xhit/go-str2duration/v2"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
@@ -300,6 +304,18 @@ func (m *Auth) PutSetting(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if namespace == "audit" {
+		var setting AuditSettings
+		if err := json.Unmarshal(req.Value, &setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("cannot decode audit setting", err, http.StatusBadRequest))
+			return
+		}
+		if err := parseAuditSettings(&setting); err != nil {
+			httputil.HandleError(w, httputil.NewError("invalid audit setting", err, http.StatusBadRequest))
+			return
+		}
+	}
+
 	if namespace == "email" {
 		var setting EmailSettings
 		if err := json.Unmarshal(req.Value, &setting); err != nil {
@@ -424,10 +440,40 @@ func (m *Auth) PutSetting(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// DefaultJWTRotationGrace keeps a rotated signing key verifying long enough
+// for every refresh token signed with it to expire or rotate.
+const DefaultJWTRotationGrace = 24 * time.Hour
+
+type rotateJWTRequest struct {
+	// Grace is how long the replaced key keeps verifying, e.g. "24h". "0"
+	// drops it at once (compromised key). Empty uses the refresh lifetime,
+	// at least DefaultJWTRotationGrace.
+	Grace string `json:"grace"`
+}
+
 // RotateJWTAPI generates a fresh RSA signing key and applies it immediately.
-// Outstanding access and refresh tokens become invalid.
+// The replaced key keeps verifying for the grace period so outstanding tokens
+// stay valid; grace "0" invalidates them at once.
 func (m *Auth) RotateJWTAPI(w http.ResponseWriter, r *http.Request) {
-	setting, err := m.generateJWTSetting(r.Context(), getUserName(r))
+	var req rotateJWTRequest
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			httputil.HandleError(w, httputil.NewError("cannot decode request", err, http.StatusBadRequest))
+			return
+		}
+	}
+
+	grace := max(m.cache.Snapshot().Token.GetRefreshLifetime(), DefaultJWTRotationGrace)
+	if req.Grace != "" {
+		d, err := str2duration.ParseDuration(req.Grace)
+		if err != nil || d < 0 {
+			httputil.HandleError(w, httputil.NewError("invalid grace duration", err, http.StatusBadRequest))
+			return
+		}
+		grace = d
+	}
+
+	setting, err := m.rotateJWTSetting(r.Context(), getUserName(r), grace)
 	if err != nil {
 		httputil.HandleError(w, httputil.NewError("cannot rotate jwt key", err, http.StatusInternalServerError))
 		return
@@ -443,10 +489,19 @@ func (m *Auth) RotateJWTAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	m.audit(r, AuditEvent{Event: auditKeyRotate, Outcome: auditSuccess, Detail: map[string]any{"key": "jwt", "kid": setting.KID, "grace": grace.String()}})
+
+	previous := make([]string, 0, len(setting.Previous))
+	for _, k := range setting.Previous {
+		previous = append(previous, k.KID)
+	}
+
 	httputil.JSON(w, http.StatusOK, Response[map[string]any]{
 		Payload: map[string]any{
-			"message": "jwt key rotated",
-			"kid":     setting.KID,
+			"message":  "jwt key rotated",
+			"kid":      setting.KID,
+			"previous": previous,
+			"grace":    grace.String(),
 		},
 	})
 }

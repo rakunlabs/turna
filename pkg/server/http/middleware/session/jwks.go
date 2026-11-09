@@ -70,7 +70,12 @@ func (j *JwkKeyFuncParse) Keyfunc(token *jwt.Token) (any, error) {
 
 func (j *JwkKeyFuncParse) ParseWithClaims(tokenString string, claims jwt.Claims) (*jwt.Token, error) {
 	// Parse the JWT.
-	token, err := jwt.ParseWithClaims(tokenString, claims, j.Keyfunc, jwt.WithValidMethods(asymmetricMethods))
+	token, err := jwt.ParseWithClaims(tokenString, claims, j.Keyfunc,
+		jwt.WithValidMethods(asymmetricMethods),
+		jwt.WithExpirationRequired(),
+		jwt.WithIssuedAt(),
+		jwt.WithLeeway(DefaultLeeway),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse the JWT: %w", err)
 	}

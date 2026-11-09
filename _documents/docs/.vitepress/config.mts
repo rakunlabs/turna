@@ -230,6 +230,7 @@ export default defineConfig({
               { text: 'Auth', link: '/examples/auth' },
               { text: 'Basic Auth', link: '/examples/basic_auth' },
               { text: 'Login', link: '/examples/login' },
+              { text: 'MCP Authorization', link: '/examples/mcp' },
               { text: 'Kafka OAUTHBEARER With GCP', link: '/examples/gcp_kafka' },
             ],
           },

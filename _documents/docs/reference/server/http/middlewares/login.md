@@ -54,8 +54,8 @@ server:
 | `info.title` | Login UI title. |
 | `info.disable_remember_me` | Hide the remember-me choice on the login page and ignore `remember_me` in every flow; all sign-ins become standard sessions. Defaults to `false`. |
 | `request.insecure_skip_verify` | Skip TLS verification for token requests. |
-| `state_cookie` | Cookie settings for OAuth2 state. |
-| `success_cookie` | Cookie settings for login success marker. |
+| `state_cookie` | Cookie settings for OAuth2 state (`cookie_name`, `max_age`, `path`, `domain`, `secure`, `http_only`, `same_site`). `secure` and `http_only` default to `true`; set `secure: false` for local plain HTTP. |
+| `success_cookie` | Cookie settings for login success marker. `secure` defaults to `true`; it is never HttpOnly because the login SDK reads it. |
 | `store` | Temporary code store used only when no in-process auth middleware is linked (see `auth_middleware`). Empty means memory; `active: redis` uses Redis, which must then be the same Redis as the redeeming auth middleware's `cache.code_store`. Redis Cluster is auto-detected; `store.cluster: true` forces cluster-aware routing with one or more bootstrap addresses. `store.redis.gcp_iam: true` authenticates with a Google Cloud access token (Memorystore IAM). `store.key_prefix` namespaces the Redis keys; empty keeps plain `code_<id>` keys, and it must equal the auth middleware's `cache.code_store.key_prefix`. |
 | `redirect_white_list` | Allowed redirect URI prefixes when minting internal codes. Empty allows all. |
 

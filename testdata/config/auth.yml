@@ -39,6 +39,10 @@ server:
               login_path: "/login/"
       login:
         login:
+          state_cookie:
+            secure: false
+          success_cookie:
+            secure: false
           path:
             base: "/login/"
           info:

@@ -10,7 +10,7 @@ import (
 // session-provider export is intentionally separate and still supplies secrets.
 func secretField(key string) bool {
 	switch strings.ToLower(key) {
-	case "password", "client_secret", "private_key", "secret", "registration_token":
+	case "password", "client_secret", "private_key", "secret", "registration_token", "webhook_secret", "bearer_token":
 		return true
 	}
 	return false

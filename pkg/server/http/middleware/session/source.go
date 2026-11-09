@@ -339,7 +339,7 @@ func (m *Session) applyDynamic(dynamic map[string]Provider, providerGroups map[s
 	}
 
 	st.keyFunc = keyFunc
-
+	warnProviderPolicies(merged)
 	if old != nil && old.keyFunc != nil {
 		if closer, ok := old.keyFunc.(interface{ EndBackground() }); ok {
 			closer.EndBackground()

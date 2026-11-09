@@ -18,7 +18,7 @@ server:
               session_key: my_secret_key
           options:
             http_only: true
-            secure: false
+            secure: false # local plain HTTP only
             same_site: 2
           provider:
             keycloak:
@@ -43,6 +43,11 @@ server:
             base: /login/
           redirect:
             schema: http
+          # local plain HTTP: browsers drop secure cookies
+          state_cookie:
+            secure: false
+          success_cookie:
+            secure: false
           info:
             title: Turna Login
 

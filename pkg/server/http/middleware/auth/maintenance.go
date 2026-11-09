@@ -38,6 +38,8 @@ func (m *Auth) watchFlowCleanup(ctx context.Context) {
 		if deleted > 0 {
 			slog.Info("auth flow cleanup completed", "deleted", deleted)
 		}
+
+		m.pruneAuditEvents(ctx)
 	}
 
 	run()

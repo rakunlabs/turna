@@ -411,7 +411,7 @@
 </script>
 
 <div class="login-bg relative flex min-h-screen w-full flex-col items-center bg-canvas sm:pt-16">
-  <main class="mx-auto w-full pt-8 sm:max-w-[23rem] sm:p-5 sm:pt-0">
+  <main class="mx-auto w-full sm:max-w-[23rem] sm:p-5 sm:pt-0">
     <div class="login-card relative border-y border-divider bg-surface px-5 py-5 text-ink shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_-12px_rgb(0_0_0/0.12)] sm:rounded-lg sm:border sm:px-6 sm:py-6">
       <button
         type="button"

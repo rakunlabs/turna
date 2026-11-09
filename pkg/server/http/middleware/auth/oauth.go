@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"sync"
 	"time"
 
@@ -70,45 +71,174 @@ const jwtSettingNamespace = "jwt"
 type jwtSetting struct {
 	KID        string `json:"kid"`
 	PrivateKey string `json:"private_key"`
+	// Previous holds the public keys of rotated signing keys. They keep
+	// verifying (and stay in the JWKS) until RetireAt so tokens signed
+	// before a rotation remain valid.
+	Previous []jwtPreviousKey `json:"previous,omitempty"`
+}
+
+type jwtPreviousKey struct {
+	KID       string `json:"kid"`
+	PublicKey string `json:"public_key"`
+	// RetireAt is the unix time after which the key is dropped.
+	RetireAt int64 `json:"retire_at"`
+}
+
+func (s jwtSetting) equal(o jwtSetting) bool {
+	return s.KID == o.KID && s.PrivateKey == o.PrivateKey && slices.Equal(s.Previous, o.Previous)
 }
 
 // jwtManager caches the JWT signer built from the encrypted "jwt" setting
 // namespace; the signer is rebuilt when the stored setting changes.
 type jwtManager struct {
-	m      sync.Mutex
-	cfg    jwtSetting
-	jwt    *token.JWT
-	kid    string
-	public *rsa.PublicKey
+	m        sync.Mutex
+	cfg      jwtSetting
+	jwt      *token.JWT
+	kid      string
+	public   *rsa.PublicKey
+	previous []verifyKey
 }
 
-// jwtSigner bundles the active signing material.
+type verifyKey struct {
+	KID      string
+	Public   *rsa.PublicKey
+	RetireAt time.Time
+}
+
+// jwtSigner bundles the active signing material and the still valid public
+// keys of rotated signing keys.
 type jwtSigner struct {
-	JWT    *token.JWT
-	KID    string
-	Public *rsa.PublicKey
+	JWT      *token.JWT
+	KID      string
+	Public   *rsa.PublicKey
+	Previous []verifyKey
 }
 
-// generateJWTSetting creates and persists a fresh RSA signing key.
-func (m *Auth) generateJWTSetting(ctx context.Context, updatedBy string) (jwtSetting, error) {
+// VerifyKeys returns the active key first, then every rotated key that is not
+// retired yet.
+func (s *jwtSigner) VerifyKeys(now time.Time) []verifyKey {
+	keys := []verifyKey{{KID: s.KID, Public: s.Public}}
+	for _, k := range s.Previous {
+		if now.Before(k.RetireAt) {
+			keys = append(keys, k)
+		}
+	}
+
+	return keys
+}
+
+// PublicKey returns the verification key for kid.
+func (s *jwtSigner) PublicKey(kid string) (*rsa.PublicKey, bool) {
+	for _, k := range s.VerifyKeys(time.Now()) {
+		if k.KID == kid {
+			return k.Public, true
+		}
+	}
+
+	return nil, false
+}
+
+// Parse validates a token signed by the active or a not yet retired key.
+func (s *jwtSigner) Parse(raw string, claims jwt.Claims, opts ...jwt.ParserOption) (*jwt.Token, error) {
+	opts = append(opts, jwt.WithValidMethods([]string{s.JWT.Alg()}))
+	parsed, err := jwt.ParseWithClaims(raw, claims, func(t *jwt.Token) (any, error) {
+		kid, _ := t.Header["kid"].(string)
+		key, ok := s.PublicKey(kid)
+		if !ok {
+			return nil, fmt.Errorf("unknown kid %q", kid)
+		}
+
+		return key, nil
+	}, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("token validate: %w", err)
+	}
+
+	return parsed, nil
+}
+
+func newRSAKeyPEM() (*rsa.PrivateKey, string, error) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return jwtSetting{}, fmt.Errorf("generate rsa key: %w", err)
+		return nil, "", fmt.Errorf("generate rsa key: %w", err)
 	}
 
 	privateDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
 	if err != nil {
-		return jwtSetting{}, fmt.Errorf("marshal rsa key: %w", err)
+		return nil, "", fmt.Errorf("marshal rsa key: %w", err)
 	}
 
-	privatePEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "PRIVATE KEY",
-		Bytes: privateDER,
-	})
+	return privateKey, string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateDER})), nil
+}
+
+// generateJWTSetting creates and persists a fresh RSA signing key.
+func (m *Auth) generateJWTSetting(ctx context.Context, updatedBy string) (jwtSetting, error) {
+	return m.saveNewJWTKey(ctx, updatedBy, nil)
+}
+
+// rotateJWTSetting replaces the signing key. With grace > 0 the current key
+// keeps verifying for that long; grace == 0 drops it (and every previous key)
+// immediately, for a compromised key.
+func (m *Auth) rotateJWTSetting(ctx context.Context, updatedBy string, grace time.Duration) (jwtSetting, error) {
+	previous, err := retainedJWTKeys(m.cache.Snapshot().JWTKey, grace, time.Now())
+	if err != nil {
+		return jwtSetting{}, err
+	}
+
+	return m.saveNewJWTKey(ctx, updatedBy, previous)
+}
+
+// retainedJWTKeys returns the verification keys to keep after replacing the
+// current signing key: unexpired previous keys plus the current key retired
+// after grace. grace <= 0 keeps nothing.
+func retainedJWTKeys(current jwtSetting, grace time.Duration, now time.Time) ([]jwtPreviousKey, error) {
+	if grace <= 0 {
+		return nil, nil
+	}
+
+	var previous []jwtPreviousKey
+	for _, k := range current.Previous {
+		if k.RetireAt > now.Unix() {
+			previous = append(previous, k)
+		}
+	}
+
+	if current.PrivateKey == "" {
+		return previous, nil
+	}
+
+	privateKey, err := token.ParseRSAPrivateKey(current.PrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("parse current jwt key: %w", err)
+	}
+
+	publicDER, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("marshal current public key: %w", err)
+	}
+
+	kid := current.KID
+	if kid == "" {
+		kid = "turna-auth"
+	}
+
+	return append(previous, jwtPreviousKey{
+		KID:       kid,
+		PublicKey: string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: publicDER})),
+		RetireAt:  now.Add(grace).Unix(),
+	}), nil
+}
+
+func (m *Auth) saveNewJWTKey(ctx context.Context, updatedBy string, previous []jwtPreviousKey) (jwtSetting, error) {
+	_, privatePEM, err := newRSAKeyPEM()
+	if err != nil {
+		return jwtSetting{}, err
+	}
 
 	setting := jwtSetting{
 		KID:        "turna-auth-" + ulid.Make().String(),
-		PrivateKey: string(privatePEM),
+		PrivateKey: privatePEM,
+		Previous:   previous,
 	}
 
 	settingRaw, err := json.Marshal(setting)
@@ -136,7 +266,33 @@ func validateJWTSetting(setting jwtSetting) error {
 		return errors.New("kid is required")
 	}
 
+	for _, k := range setting.Previous {
+		if k.KID == "" || k.KID == setting.KID {
+			return fmt.Errorf("previous key needs a kid different from the active kid")
+		}
+
+		if _, err := token.ParseRSAPublicKey(k.PublicKey); err != nil {
+			return fmt.Errorf("invalid previous public key %q: %w", k.KID, err)
+		}
+	}
+
 	return nil
+}
+
+func parsePreviousKeys(previous []jwtPreviousKey) []verifyKey {
+	keys := make([]verifyKey, 0, len(previous))
+	for _, k := range previous {
+		public, err := token.ParseRSAPublicKey(k.PublicKey)
+		if err != nil {
+			slog.Warn("auth: skip invalid previous jwt key", "kid", k.KID, "error", err.Error())
+
+			continue
+		}
+
+		keys = append(keys, verifyKey{KID: k.KID, Public: public, RetireAt: time.Unix(k.RetireAt, 0)})
+	}
+
+	return keys
 }
 
 // jwtRuntime returns the active signer, rebuilding it when the stored "jwt"
@@ -147,8 +303,8 @@ func (m *Auth) jwtRuntime(ctx context.Context) (*jwtSigner, error) {
 	m.jwtM.m.Lock()
 	defer m.jwtM.m.Unlock()
 
-	if m.jwtM.jwt != nil && m.jwtM.cfg == setting {
-		return &jwtSigner{JWT: m.jwtM.jwt, KID: m.jwtM.kid, Public: m.jwtM.public}, nil
+	if m.jwtM.jwt != nil && m.jwtM.cfg.equal(setting) {
+		return &jwtSigner{JWT: m.jwtM.jwt, KID: m.jwtM.kid, Public: m.jwtM.public, Previous: m.jwtM.previous}, nil
 	}
 
 	if setting.PrivateKey == "" {
@@ -197,8 +353,9 @@ func (m *Auth) jwtRuntime(ctx context.Context) (*jwtSigner, error) {
 	m.jwtM.jwt = jwtToken
 	m.jwtM.kid = kid
 	m.jwtM.public = &privateKey.PublicKey
+	m.jwtM.previous = parsePreviousKeys(setting.Previous)
 
-	return &jwtSigner{JWT: jwtToken, KID: kid, Public: m.jwtM.public}, nil
+	return &jwtSigner{JWT: jwtToken, KID: kid, Public: m.jwtM.public, Previous: m.jwtM.previous}, nil
 }
 
 // ensureJWT warms up the signer at boot, generating the key on first start.

@@ -55,6 +55,7 @@ type Auth struct {
 	ldapSyncM    sync.Mutex              `cfg:"-"`
 	samlM        samlManager             `cfg:"-"`
 	encRotateM   sync.Mutex              `cfg:"-"`
+	auditCh      chan AuditEvent         `cfg:"-"`
 	// runCtx is the middleware lifetime context; background work started
 	// lazily from a request (memory cache cleanup) must not use the request ctx.
 	runCtx context.Context `cfg:"-"`
@@ -231,6 +232,9 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 	go m.watchLDAP(ctx)
 	go m.watchFlowCleanup(ctx)
 
+	m.auditCh = make(chan AuditEvent, auditQueueSize)
+	go m.runAudit(ctx)
+
 	// register as in-process token issuer so session providers can use
 	// `auth_middleware: <name>` for keyfunc/refresh without HTTP self-calls.
 	session.IssuerRegistry.Set(name, m)
@@ -240,7 +244,7 @@ func (m *Auth) Middleware(ctx context.Context, name string) (func(http.Handler) 
 	return func(next http.Handler) http.Handler {
 		mux.NotFound(next.ServeHTTP)
 
-		return m.csrfGuard(mux)
+		return m.csrfGuard(m.auditWrites(mux))
 	}, nil
 }
 
@@ -257,6 +261,8 @@ func (m *Auth) PublicPathPatterns() []string {
 	return []string{
 		prefix + "/oauth2/**",
 		prefix + "/saml/**",
+		// SCIM clients authenticate with their own bearer token
+		prefix + "/scim/**",
 		// RFC 8414 / OIDC discovery root variants (only reachable when the
 		// router forwards /.well-known to this middleware, harmless otherwise)
 		"/.well-known/oauth-authorization-server",
@@ -274,7 +280,7 @@ func (m *Auth) PublicPathPatterns() []string {
 func (m *Auth) CredentialPassthroughPathPatterns() []string {
 	prefix := strings.TrimSuffix(m.PrefixPath, "/")
 
-	return []string{prefix + "/oauth2/api-key"}
+	return []string{prefix + "/oauth2/api-key", prefix + "/scim/**"}
 }
 
 func (m *Auth) MuxSet(prefix string) *ada.Mux {
@@ -395,6 +401,8 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 
 	// record encryption key rotation (re-encrypts all encrypted columns)
 	mux.POST(prefix+"/v1/encryption/rotate", admin(m.RotateEncryptionAPI))
+	mux.POST(prefix+"/v1/encryption/upgrade", admin(m.UpgradeEncryptionAPI))
+	mux.GET(prefix+"/v1/audit", admin(m.ListAuditAPI))
 
 	// passkey management (X-User plane)
 	mux.POST(prefix+"/v1/passkey/register", m.interactiveOnly(m.PasskeyRegisterAPI))
@@ -437,9 +445,9 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 
 	// oauth2 runtime
 	mux.GET(prefix+"/oauth2/auth/{provider}", m.APIAuth)
-	mux.GET(prefix+"/oauth2/code/{provider}", m.APICodeAuth)
-	mux.POST(prefix+"/oauth2/token", m.APIToken)
-	mux.POST(prefix+"/oauth2/passkey", m.APIPasskeyToken)
+	mux.GET(prefix+"/oauth2/code/{provider}", m.audited(auditLogin, m.APICodeAuth))
+	mux.POST(prefix+"/oauth2/token", m.APITokenAudited)
+	mux.POST(prefix+"/oauth2/passkey", m.audited(auditLogin, m.APIPasskeyToken))
 	mux.POST(prefix+"/oauth2/device_authorization", m.APIDeviceAuthorization)
 	mux.POST(prefix+"/oauth2/email", m.APIEmailCode)
 	// email template preview uses unsaved settings from the management UI.
@@ -455,18 +463,23 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 	mux.GET(prefix+"/oauth2/api-key", m.APIKeyAuthAPI)
 	mux.GET(prefix+"/oauth2/certs", m.APICerts)
 	mux.GET(prefix+"/oauth2/userinfo", m.APIUserInfo)
+	mux.POST(prefix+"/oauth2/userinfo", m.APIUserInfo)
 	mux.GET(prefix+"/oauth2/userinfo/{custom}", m.APIUserInfo)
+	mux.POST(prefix+"/oauth2/userinfo/{custom}", m.APIUserInfo)
 	mux.GET(prefix+"/oauth2/.well-known/openid-configuration", m.APIWellKnown)
 	mux.GET(prefix+"/oauth2/openid/{custom}/.well-known/openid-configuration", m.APIWellKnown)
 
 	// local authorization code flow with consent (browser plane; the consent
 	// page relies on X-User set by an upstream session middleware)
 	mux.GET(prefix+"/oauth2/authorize", m.APIAuthorize)
+	mux.POST(prefix+"/oauth2/par", m.APIPushedAuthorizationRequest)
 	mux.GET(prefix+"/oauth2/consent", m.ConsentAPI)
 	mux.POST(prefix+"/oauth2/consent", m.ConsentDecisionAPI)
 
 	// token revocation (RFC 7009) and introspection (RFC 7662)
-	mux.POST(prefix+"/oauth2/revoke", m.APIRevoke)
+	mux.POST(prefix+"/oauth2/revoke", m.audited(auditTokenRevoke, m.APIRevoke))
+	mux.GET(prefix+"/oauth2/logout", m.APIEndSession)
+	mux.POST(prefix+"/oauth2/logout", m.APIEndSession)
 	mux.POST(prefix+"/oauth2/introspect", m.APIIntrospect)
 
 	// dynamic client registration (RFC 7591) and management (RFC 7592)
@@ -489,9 +502,26 @@ func (m *Auth) MuxSet(prefix string) *ada.Mux {
 	mux.GET("/.well-known/webauthn", m.WebAuthnWellKnown)
 
 	// saml runtime
+	scim := m.scimAuth
+	mux.GET(prefix+"/scim/v2/ServiceProviderConfig", scim(m.SCIMServiceProviderConfig))
+	mux.GET(prefix+"/scim/v2/ResourceTypes", scim(m.SCIMResourceTypes))
+	mux.GET(prefix+"/scim/v2/Schemas", scim(m.SCIMSchemas))
+	mux.GET(prefix+"/scim/v2/Users", scim(m.SCIMListUsers))
+	mux.POST(prefix+"/scim/v2/Users", scim(m.SCIMCreateUser))
+	mux.GET(prefix+"/scim/v2/Users/{id}", scim(m.SCIMGetUser))
+	mux.PUT(prefix+"/scim/v2/Users/{id}", scim(m.SCIMReplaceUser))
+	mux.PATCH(prefix+"/scim/v2/Users/{id}", scim(m.SCIMPatchUser))
+	mux.DELETE(prefix+"/scim/v2/Users/{id}", scim(m.SCIMDeleteUser))
+	mux.GET(prefix+"/scim/v2/Groups", scim(m.SCIMListGroups))
+	mux.POST(prefix+"/scim/v2/Groups", scim(m.SCIMCreateGroup))
+	mux.GET(prefix+"/scim/v2/Groups/{id}", scim(m.SCIMGetGroup))
+	mux.PUT(prefix+"/scim/v2/Groups/{id}", scim(m.SCIMReplaceGroup))
+	mux.PATCH(prefix+"/scim/v2/Groups/{id}", scim(m.SCIMPatchGroup))
+	mux.DELETE(prefix+"/scim/v2/Groups/{id}", scim(m.SCIMDeleteGroup))
+
 	mux.GET(prefix+"/saml/{provider}/metadata", m.SAMLMetadata)
 	mux.GET(prefix+"/saml/{provider}/login", m.SAMLLogin)
-	mux.POST(prefix+"/saml/{provider}/acs", m.SAMLACS)
+	mux.POST(prefix+"/saml/{provider}/acs", m.audited(auditLogin, m.SAMLACS))
 
 	// swagger
 	redirectSwagger := func(w http.ResponseWriter, r *http.Request) {

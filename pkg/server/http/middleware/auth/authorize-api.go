@@ -10,12 +10,15 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/rakunlabs/turna/pkg/server/http/httputil"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/data"
 	oauth2store "github.com/rakunlabs/turna/pkg/server/http/middleware/oauth2/store"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
 
 // authorizeFlow is the payload stored in auth_flow_codes for a pending
@@ -36,6 +39,41 @@ type authorizeFlow struct {
 	// auto-submit "approve" from their own page with the victim's session
 	// cookie attached. Stored in the flow, so every replica can check it.
 	ConsentToken string `json:"consent_token,omitempty"`
+	// Prompt is the OIDC prompt parameter (space separated: none, login,
+	// consent, select_account).
+	Prompt string `json:"prompt,omitempty"`
+	// MaxAge is the OIDC max_age in seconds; -1 when absent.
+	MaxAge int64 `json:"max_age"`
+	// CreatedAt (unix seconds) is when the authorization request arrived; an
+	// authentication older than this does not satisfy prompt=login.
+	CreatedAt int64 `json:"created_at,omitempty"`
+}
+
+func (f *authorizeFlow) hasPrompt(v string) bool {
+	return slices.Contains(strings.Fields(f.Prompt), v)
+}
+
+// reauthRequired reports whether authTime (unix seconds, 0 unknown) is too
+// old for this request: prompt=login needs an authentication after the
+// request arrived, max_age one within max_age seconds.
+func (f *authorizeFlow) reauthRequired(authTime int64, now time.Time) bool {
+	if f.hasPrompt("login") && authTime < f.CreatedAt {
+		return true
+	}
+
+	if f.MaxAge >= 0 && (authTime == 0 || now.Unix()-authTime > f.MaxAge) {
+		return true
+	}
+
+	return false
+}
+
+// requestAuthTime reads the authentication time the session middleware in
+// front forwards (X-Auth-Time); 0 when unknown.
+func requestAuthTime(r *http.Request) int64 {
+	v, _ := strconv.ParseInt(r.Header.Get(session.HeaderAuthTime), 10, 64)
+
+	return v
 }
 
 // lookupClient resolves client metadata without authenticating it; configured
@@ -153,6 +191,28 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// RFC 9126: a request_uri from the pushed authorization request endpoint
+	// replaces the query with the pushed parameters
+	if strings.HasPrefix(r.URL.Query().Get("request_uri"), parRequestURIPrefix) {
+		if err := m.loadPushedRequest(r); err != nil {
+			httputil.HandleError(w, AccessTokenErrorResponse{
+				Error:            "invalid_request_uri",
+				ErrorDescription: err.Error(),
+				code:             http.StatusBadRequest,
+			})
+
+			return
+		}
+	} else if cfg.RequirePAR && r.URL.Query().Get("request_uri") == "" {
+		httputil.HandleError(w, AccessTokenErrorResponse{
+			Error:            "invalid_request",
+			ErrorDescription: "pushed authorization requests are required",
+			code:             http.StatusBadRequest,
+		})
+
+		return
+	}
+
 	query := r.URL.Query()
 
 	clientID := query.Get("client_id")
@@ -197,13 +257,32 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 
 	state := query.Get("state")
 
-	if query.Get("response_type") != "code" {
+	// request objects (OIDC Core §6) are not supported; advertised as such in
+	// discovery (request_parameter_supported=false)
+	if query.Get("request") != "" {
+		m.authorizeErrorRedirect(w, r, redirectURI, state, "request_not_supported", "request objects are not supported")
+
+		return
+	}
+	if query.Get("request_uri") != "" && !strings.HasPrefix(query.Get("request_uri"), parRequestURIPrefix) {
+		m.authorizeErrorRedirect(w, r, redirectURI, state, "request_uri_not_supported", "only request_uri values from the pushed authorization request endpoint are supported")
+
+		return
+	}
+
+	switch query.Get("response_type") {
+	case "code":
+	case "":
+		m.authorizeErrorRedirect(w, r, redirectURI, state, "invalid_request", "response_type is required")
+
+		return
+	default:
 		m.authorizeErrorRedirect(w, r, redirectURI, state, "unsupported_response_type", "only response_type=code is supported")
 
 		return
 	}
 
-	codeChallenge, codeChallengeMethod, err := pkceParams(r)
+	codeChallenge, codeChallengeMethod, err := pkceParams(r, m.cache.Snapshot().Authorize.AllowPlainPKCE)
 	if err != nil {
 		m.authorizeErrorRedirect(w, r, redirectURI, state, "invalid_request", err.Error())
 
@@ -247,6 +326,24 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	prompt := query.Get("prompt")
+	if slices.Contains(strings.Fields(prompt), "none") && len(strings.Fields(prompt)) > 1 {
+		m.authorizeErrorRedirect(w, r, redirectURI, state, "invalid_request", "prompt=none cannot be combined with other values")
+
+		return
+	}
+
+	maxAge := int64(-1)
+	if v := query.Get("max_age"); v != "" {
+		parsed, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || parsed < 0 {
+			m.authorizeErrorRedirect(w, r, redirectURI, state, "invalid_request", "max_age must be a non-negative integer")
+
+			return
+		}
+		maxAge = parsed
+	}
+
 	flow := authorizeFlow{
 		ClientID:            clientID,
 		ClientName:          client.ClientName,
@@ -258,6 +355,9 @@ func (m *Auth) APIAuthorize(w http.ResponseWriter, r *http.Request) {
 		CodeChallengeMethod: codeChallengeMethod,
 		Resources:           resources,
 		ConsentToken:        consentToken,
+		Prompt:              prompt,
+		MaxAge:              maxAge,
+		CreatedAt:           time.Now().Unix(),
 	}
 
 	if err := m.store.CreateFlowCode(r.Context(), flowKindAuthorize, flowID, flow, cfg.GetFlowLifetime()); err != nil {
@@ -404,24 +504,46 @@ func (m *Auth) consentUser(w http.ResponseWriter, r *http.Request, flowID string
 		return userAlias
 	}
 
-	// redirect_path is the parameter the login middleware's UI returns to
-	// after a successful login (same convention as the session middleware's
-	// RedirectToLogin).
-	if loginURL := m.cache.Snapshot().Authorize.LoginURL; allowRedirect && loginURL != "" {
-		next := m.PrefixPath + "/oauth2/consent?flow=" + url.QueryEscape(flowID)
-		sep := "?"
-		if strings.Contains(loginURL, "?") {
-			sep = "&"
-		}
-
-		httputil.Redirect(w, http.StatusFound, loginURL+sep+"redirect_path="+url.QueryEscape(next))
-
+	if allowRedirect && m.redirectToLogin(w, flowID) {
 		return ""
 	}
 
 	m.renderConsent(w, http.StatusUnauthorized, consentPageData{Error: "You must be logged in to continue. Log in and retry from the application."})
 
 	return ""
+}
+
+// redirectToLogin sends the browser to authorize.login_url and back to the
+// consent page; false when no login_url is configured.
+func (m *Auth) redirectToLogin(w http.ResponseWriter, flowID string) bool {
+	// redirect_path is the parameter the login middleware's UI returns to
+	// after a successful login (same convention as the session middleware's
+	// RedirectToLogin).
+	loginURL := m.cache.Snapshot().Authorize.LoginURL
+	if loginURL == "" {
+		return false
+	}
+
+	next := m.PrefixPath + "/oauth2/consent?flow=" + url.QueryEscape(flowID)
+	sep := "?"
+	if strings.Contains(loginURL, "?") {
+		sep = "&"
+	}
+
+	httputil.Redirect(w, http.StatusFound, loginURL+sep+"redirect_path="+url.QueryEscape(next)+"&prompt=login")
+
+	return true
+}
+
+// abortAuthorize consumes the flow and returns an OAuth error to the client.
+func (m *Auth) abortAuthorize(w http.ResponseWriter, r *http.Request, flowID string, flow *authorizeFlow, errCode, description string) {
+	if err := m.store.TakeFlowCode(r.Context(), flowKindAuthorize, flowID, flow); err != nil {
+		m.renderConsent(w, http.StatusNotFound, consentPageData{Error: "Authorization request not found or expired. Start over from the application."})
+
+		return
+	}
+
+	m.authorizeErrorRedirect(w, r, flow.RedirectURI, flow.State, errCode, description)
 }
 
 // ConsentAPI renders the consent page for a pending authorize flow. Identity
@@ -437,15 +559,53 @@ func (m *Auth) ConsentAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userAlias := m.consentUser(w, r, flowID, true)
+	client, _ := m.lookupClient(flow.ClientID)
+	skipConsent := client != nil && client.SkipConsent
+
+	// prompt=none: never show UI, answer the client with an error instead
+	// (OIDC Core §3.1.2.6)
+	if flow.hasPrompt("none") {
+		errCode := ""
+		switch alias := requestPrincipal(r); {
+		case alias == "":
+			errCode = "login_required"
+		case flow.reauthRequired(requestAuthTime(r), time.Now()):
+			errCode = "login_required"
+		case !skipConsent:
+			errCode = "consent_required"
+		}
+
+		if errCode != "" {
+			m.abortAuthorize(w, r, flowID, &flow, errCode, "user interaction required")
+
+			return
+		}
+
+		m.finishAuthorize(w, r, flowID, &flow, requestPrincipal(r), true, false)
+
+		return
+	}
+
+	userAlias := requestPrincipal(r)
+	if userAlias != "" && flow.reauthRequired(requestAuthTime(r), time.Now()) {
+		// prompt=login or an expired max_age: send the browser through the
+		// login page again before continuing
+		if m.redirectToLogin(w, flowID) {
+			return
+		}
+
+		m.renderConsent(w, http.StatusUnauthorized, consentPageData{Error: "This application requires you to sign in again. Log in and retry from the application."})
+
+		return
+	}
+
+	userAlias = m.consentUser(w, r, flowID, true)
 	if userAlias == "" {
 		return
 	}
 
-	client, _ := m.lookupClient(flow.ClientID)
-
 	// trusted first-party clients skip the consent screen
-	if client != nil && client.SkipConsent {
+	if skipConsent && !flow.hasPrompt("consent") {
 		m.finishAuthorize(w, r, flowID, &flow, userAlias, true, false)
 
 		return
@@ -518,6 +678,12 @@ func (m *Auth) ConsentDecisionAPI(w http.ResponseWriter, r *http.Request) {
 
 	rememberMe := r.PostFormValue("remember_me") == "true" && !m.cache.Snapshot().Authorize.DisableRememberMe
 
+	if flow.reauthRequired(requestAuthTime(r), time.Now()) {
+		m.renderConsent(w, http.StatusUnauthorized, consentPageData{Error: "This application requires you to sign in again. Log in and retry from the application."})
+
+		return
+	}
+
 	m.finishAuthorize(w, r, flowID, &flow, userAlias, r.PostFormValue("action") == "approve", rememberMe)
 }
 
@@ -533,6 +699,7 @@ func (m *Auth) finishAuthorize(w http.ResponseWriter, r *http.Request, flowID st
 	}
 
 	if !approved {
+		m.audit(r, AuditEvent{Event: auditConsentDenied, Outcome: auditFailure, Subject: userAlias, ClientID: flow.ClientID})
 		m.authorizeErrorRedirect(w, r, flow.RedirectURI, flow.State, "access_denied", "the user denied the request")
 
 		return
@@ -559,6 +726,12 @@ func (m *Auth) finishAuthorize(w http.ResponseWriter, r *http.Request, flowID st
 		return
 	}
 
+	authTime := requestAuthTime(r)
+	if authTime == 0 || authTime > time.Now().Unix() {
+		// no session time forwarded: the user is authenticated right now
+		authTime = time.Now().Unix()
+	}
+
 	codeValue, err := oauth2store.Encode(oauth2store.Code{
 		Alias:               userAlias,
 		Scope:               flow.Scope,
@@ -569,6 +742,7 @@ func (m *Auth) finishAuthorize(w http.ResponseWriter, r *http.Request, flowID st
 		RedirectURI:         flow.RedirectURI,
 		Resources:           flow.Resources,
 		RememberMe:          rememberMe,
+		AuthTime:            authTime,
 	})
 	if err != nil {
 		m.authorizeErrorRedirect(w, r, flow.RedirectURI, flow.State, "server_error", err.Error())

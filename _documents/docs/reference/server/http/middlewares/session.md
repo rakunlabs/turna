@@ -108,9 +108,13 @@ In `v1` the cookie is unsigned, so `session_key` has no effect. A session ID the
 | `options.path` | `/` | Cookie path. |
 | `options.max_age` | `86400` | Cookie lifetime in seconds for sessions whose lifetime is not known from the token (see below). |
 | `options.domain` | | Cookie domain. |
-| `options.secure` | `false` | Secure cookie flag. |
-| `options.http_only` | `false` | HttpOnly cookie flag. |
-| `options.same_site` | `0` | Go `http.SameSite`; `2` is Lax, `3` is Strict, `4` is None. |
+| `options.secure` | `true` | Secure cookie flag. Set `false` only for local plain HTTP development; a warning is logged. |
+| `options.http_only` | `true` | HttpOnly cookie flag. |
+| `options.same_site` | `2` (Lax) | Go `http.SameSite`; `2` is Lax, `3` is Strict, `4` is None. None requires `secure`. |
+
+::: warning Breaking change
+`options.secure` and `options.http_only` default to `true` and `options.same_site` to Lax. On plain HTTP (local development without TLS) browsers drop secure cookies, so login seems to succeed but the session is lost; set `options.secure: false` there.
+:::
 
 ## Session Lifetime
 
@@ -392,6 +396,50 @@ action:
 ```
 
 Bearer access tokens are validated directly. Session-stored access tokens are refreshed when they are within 10 seconds of expiry unless `disable_refresh` is true.
+
+### Token validation
+
+Every access token, from the `Authorization` header or from the session cookie, goes through the same checks:
+
+1. Signature with an asymmetric algorithm (RS/PS/ES/EdDSA) against the provider keys (`cert_url` JWKS or the in-process `auth_middleware`).
+2. `exp` is required, `exp`/`nbf`/`iat` are checked with 30s leeway.
+3. The checks below follow the provider whose key verified the signature.
+
+| Check | `auth_middleware` provider | Remote (`cert_url`) provider |
+| --- | --- | --- |
+| `typ` | must be `Bearer` | `Refresh` and `ID` are rejected |
+| `iss` | `issuer` list if set, else the auth instance's own issuer on any public host | `issuer` list if set, else not checked |
+| `aud` | `audience` list if set, else must contain `turna-auth` | `audience` list if set, else `aud` must contain `oauth2.client_id` or the token must be issued to it (`azp`, `client_id`, `cid` or `appid`) |
+| Revocation | `check_revocation: true` rejects tokens revoked through `/oauth2/revoke` or logout (by `jti` and `sid`) | not available |
+
+```yaml
+provider:
+  google:
+    oauth2:
+      client_id: "1234.apps.googleusercontent.com"
+      cert_url: https://www.googleapis.com/oauth2/v3/certs
+    issuer: ["https://accounts.google.com"]
+  okta:
+    oauth2:
+      client_id: "0oa1..."
+      cert_url: https://example.okta.com/oauth2/default/v1/keys
+    issuer: ["https://example.okta.com/oauth2/default"]
+    audience: ["api://default"]
+  turna:
+    auth_middleware: auth
+    check_revocation: true
+```
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `issuer` | empty | Accepted `iss` values. Set it for remote providers. |
+| `audience` | empty | Accepted `aud` values; one must be present. |
+| `skip_audience_check` | `false` | Disable the audience check. Use it only when the provider issues tokens without a usable audience. |
+| `check_revocation` | `false` | Check the revocation list of the in-process auth middleware on every request. A store failure answers `503` with `Retry-After`. |
+
+::: warning Breaking change
+Before this check, any token signed by a configured provider key was accepted, including tokens that provider issued to other applications. Remote providers now need a matching `oauth2.client_id` or `audience`; a provider without either logs a warning at startup and rejects every bearer token.
+:::
 
 ### Redirect vs 401 challenge
 

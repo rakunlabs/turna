@@ -2,11 +2,10 @@ package login
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
-
-	"golang.org/x/exp/slog"
 
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/session"
 )
