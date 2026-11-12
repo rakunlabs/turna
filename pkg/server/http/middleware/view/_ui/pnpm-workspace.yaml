@@ -10,3 +10,5 @@ allowBuilds:
 overrides:
   react: ^18.3.1
   react-dom: ^18.3.1
+  # GHSA for minimatch globparts amplification, fixed in 11.0.1.
+  'minimatch@>=7.0.0 <11.0.1': ^11.0.8
