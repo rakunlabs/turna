@@ -21,7 +21,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.81.1
 	github.com/bmatcuk/doublestar/v4 v4.10.2
 	github.com/caddyserver/certmagic v0.25.6
-	github.com/corazawaf/coraza-coreruleset/v4 v4.25.0
+	github.com/corazawaf/coraza-coreruleset/coraza/v3 v3.8.1
+	github.com/corazawaf/coraza-coreruleset/crs/v4 v4.30.0
 	github.com/corazawaf/coraza/v3 v3.8.1
 	github.com/creack/pty v1.1.24
 	github.com/crewjam/saml v0.5.1
@@ -37,6 +38,7 @@ require (
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/vault/api v1.23.0
 	github.com/jackc/pgx/v5 v5.11.0
+	github.com/jcchavezs/mergefs v0.1.1
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/klauspost/compress v1.20.3
 	github.com/lib/pq v1.12.3
