@@ -1,6 +1,7 @@
 package filemanager
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -10,15 +11,14 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"cloud.google.com/go/storage"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/folder"
 )
 
@@ -133,8 +133,13 @@ var extraMimeTypes = map[string]string{
 // FileManager serves files of a directory by path and ships a UI to browse,
 // edit, upload, move and delete them.
 type FileManager struct {
-	// Path is the directory to manage.
+	// Backend is where the files are kept: "os" (default) for the local Path,
+	// "gcs" for a Google Cloud Storage bucket configured under GCS.
+	Backend string `cfg:"backend"`
+	// Path is the directory to manage with the "os" backend.
 	Path string `cfg:"path"`
+	// GCS configures the "gcs" backend.
+	GCS GCS `cfg:"gcs"`
 	// PrefixPath is stripped from the request path before lookup.
 	PrefixPath string `cfg:"prefix_path"`
 	// ReadOnly disables every write operation.
@@ -153,7 +158,7 @@ type FileManager struct {
 	// ETagRules override ETag for files matching a pattern; the first match wins.
 	ETagRules []ETagRule `cfg:"etag_rules"`
 
-	root      *os.Root
+	store     backend
 	ui        http.Handler
 	etagCache sync.Map
 }
@@ -163,7 +168,7 @@ type entry struct {
 	Path    string    `json:"path"`
 	Dir     bool      `json:"dir"`
 	Size    int64     `json:"size"`
-	ModTime time.Time `json:"mod_time"`
+	ModTime time.Time `json:"mod_time,omitzero"`
 	Type    string    `json:"type,omitempty"`
 	// ETag and ETagMode are filled by stat only, for the details panel.
 	ETag     string `json:"etag,omitempty"`
@@ -193,20 +198,14 @@ type pathRequest struct {
 }
 
 func (m *FileManager) Middleware() (func(http.Handler) http.Handler, error) {
-	if m.Path == "" {
-		return nil, errors.New("file_manager: path is required")
-	}
+	if m.store == nil {
+		store, err := m.newBackend()
+		if err != nil {
+			return nil, fmt.Errorf("file_manager: %w", err)
+		}
 
-	if err := os.MkdirAll(m.Path, 0o755); err != nil {
-		return nil, fmt.Errorf("file_manager: create path: %w", err)
+		m.store = store
 	}
-
-	root, err := os.OpenRoot(m.Path)
-	if err != nil {
-		return nil, fmt.Errorf("file_manager: open path: %w", err)
-	}
-
-	m.root = root
 
 	m.PrefixPath = "/" + strings.Trim(m.PrefixPath, "/")
 	if m.PrefixPath == "/" {
@@ -251,6 +250,35 @@ func (m *FileManager) Middleware() (func(http.Handler) http.Handler, error) {
 	return func(_ http.Handler) http.Handler {
 		return http.HandlerFunc(m.serveHTTP)
 	}, nil
+}
+
+func (m *FileManager) newBackend() (backend, error) {
+	switch m.Backend {
+	case "", backendOS:
+		if m.Path == "" {
+			return nil, errors.New("path is required")
+		}
+
+		store, err := newOSBackend(m.Path)
+		if err != nil {
+			return nil, fmt.Errorf("open path: %w", err)
+		}
+
+		return store, nil
+	case backendGCS:
+		if m.GCS.Bucket == "" {
+			return nil, errors.New("gcs.bucket is required")
+		}
+
+		client, err := storage.NewClient(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("create storage client: %w", err)
+		}
+
+		return newGCSBackend(client.Bucket(m.GCS.Bucket), m.GCS.Prefix), nil
+	default:
+		return nil, fmt.Errorf("unsupported backend %q, use %q or %q", m.Backend, backendOS, backendGCS)
+	}
 }
 
 func (m *FileManager) serveHTTP(w http.ResponseWriter, r *http.Request) {
@@ -339,20 +367,13 @@ func (m *FileManager) serveRaw(w http.ResponseWriter, r *http.Request, p string)
 }
 
 func (m *FileManager) serveFile(w http.ResponseWriter, r *http.Request, name string, download bool) {
-	f, err := m.root.Open(name)
+	f, info, err := m.store.Open(r.Context(), name)
 	if err != nil {
 		writeFSError(w, err, false)
 
 		return
 	}
 	defer func() { _ = f.Close() }()
-
-	info, err := f.Stat()
-	if err != nil {
-		writeFSError(w, err, false)
-
-		return
-	}
 
 	if info.IsDir() {
 		writeFSError(w, fs.ErrNotExist, false)
@@ -377,7 +398,7 @@ func (m *FileManager) serveFile(w http.ResponseWriter, r *http.Request, name str
 	}
 
 	w.Header().Set("Cache-Control", m.CacheControl)
-	if tag := m.etag(name, info); tag != "" {
+	if tag := m.etag(r.Context(), name, info); tag != "" {
 		w.Header().Set("ETag", tag)
 	}
 
@@ -438,7 +459,7 @@ func (m *FileManager) serveAPI(w http.ResponseWriter, r *http.Request, api strin
 func (m *FileManager) apiStat(w http.ResponseWriter, r *http.Request) {
 	name := rel(r.URL.Query().Get("path"))
 
-	info, err := m.root.Stat(name)
+	info, err := m.store.Stat(r.Context(), name)
 	if err != nil {
 		writeFSError(w, err, true)
 
@@ -460,7 +481,7 @@ func (m *FileManager) apiStat(w http.ResponseWriter, r *http.Request) {
 		e.Size = info.Size()
 		e.Type = contentType(name)
 		e.ETagMode = m.etagMode(name)
-		if tag := m.etag(name, info); tag != "" {
+		if tag := m.etag(r.Context(), name, info); tag != "" {
 			e.ETag = tag
 			w.Header().Set("ETag", tag)
 		}
@@ -472,7 +493,7 @@ func (m *FileManager) apiStat(w http.ResponseWriter, r *http.Request) {
 func (m *FileManager) apiList(w http.ResponseWriter, r *http.Request) {
 	name := rel(r.URL.Query().Get("path"))
 
-	info, err := m.root.Stat(name)
+	info, err := m.store.Stat(r.Context(), name)
 	if err != nil {
 		writeFSError(w, err, true)
 
@@ -485,49 +506,27 @@ func (m *FileManager) apiList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	f, err := m.root.Open(name)
-	if err != nil {
-		writeFSError(w, err, true)
-
-		return
-	}
-	defer func() { _ = f.Close() }()
-
-	dirEntries, err := f.ReadDir(-1)
+	infos, err := m.store.ReadDir(r.Context(), name)
 	if err != nil {
 		writeFSError(w, err, true)
 
 		return
 	}
 
-	entries := make([]entry, 0, len(dirEntries))
-	for _, d := range dirEntries {
-		info, err := d.Info()
-		if err != nil {
-			continue
-		}
-
-		childName := path.Join(filepath.ToSlash(name), d.Name())
-
-		isDir := info.IsDir()
-		if info.Mode()&fs.ModeSymlink != 0 {
-			// follow the link only when it stays inside the root
-			if target, err := m.root.Stat(childName); err == nil {
-				info = target
-				isDir = target.IsDir()
-			}
-		}
+	entries := make([]entry, 0, len(infos))
+	for _, info := range infos {
+		childName := path.Join(filepath.ToSlash(name), info.Name())
 
 		e := entry{
-			Name:    d.Name(),
+			Name:    info.Name(),
 			Path:    toPublic(childName),
-			Dir:     isDir,
+			Dir:     info.IsDir(),
 			ModTime: info.ModTime(),
 		}
 
-		if !isDir {
+		if !e.Dir {
 			e.Size = info.Size()
-			e.Type = contentType(d.Name())
+			e.Type = contentType(info.Name())
 		}
 
 		entries = append(entries, e)
@@ -555,7 +554,7 @@ func (m *FileManager) apiWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	info, err := m.root.Stat(name)
+	info, err := m.store.Stat(r.Context(), name)
 	switch {
 	case err == nil:
 		if info.IsDir() {
@@ -572,7 +571,7 @@ func (m *FileManager) apiWrite(w http.ResponseWriter, r *http.Request) {
 
 		var current string
 		if r.Header.Get("If-Match") != "" || r.Header.Get("If-None-Match") != "" {
-			current = m.etag(name, info)
+			current = m.etag(r.Context(), name, info)
 		}
 
 		if !checkPreconditions(w, r, current) {
@@ -588,20 +587,20 @@ func (m *FileManager) apiWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := m.writeFile(name, http.MaxBytesReader(w, r.Body, m.MaxUploadSize)); err != nil {
+	if err := m.writeFile(r.Context(), name, http.MaxBytesReader(w, r.Body, m.MaxUploadSize)); err != nil {
 		writeFSError(w, err, true)
 
 		return
 	}
 
-	info, err = m.root.Stat(name)
+	info, err = m.store.Stat(r.Context(), name)
 	if err != nil {
 		writeFSError(w, err, true)
 
 		return
 	}
 
-	if tag := m.etag(name, info); tag != "" {
+	if tag := m.etag(r.Context(), name, info); tag != "" {
 		w.Header().Set("ETag", tag)
 	}
 	writeJSON(w, http.StatusOK, entry{
@@ -613,40 +612,8 @@ func (m *FileManager) apiWrite(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// writeFile writes through a temporary file so readers never see a partial file.
-func (m *FileManager) writeFile(name string, body io.Reader) error {
-	dir := path.Dir(name)
-	if err := m.root.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-
-	tmp := path.Join(dir, "."+path.Base(name)+".tmp-"+strconv.FormatInt(time.Now().UnixNano(), 36))
-
-	f, err := m.root.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-
-	if _, err := io.Copy(f, body); err != nil {
-		_ = f.Close()
-		_ = m.root.Remove(tmp)
-
-		return err
-	}
-
-	if err := f.Close(); err != nil {
-		_ = m.root.Remove(tmp)
-
-		return err
-	}
-
-	if info, err := m.root.Stat(name); err == nil {
-		_ = m.root.Chmod(tmp, info.Mode().Perm())
-	}
-
-	if err := m.root.Rename(tmp, name); err != nil {
-		_ = m.root.Remove(tmp)
-
+func (m *FileManager) writeFile(ctx context.Context, name string, body io.Reader) error {
+	if err := m.store.WriteFile(ctx, name, body); err != nil {
 		return err
 	}
 
@@ -664,13 +631,13 @@ func (m *FileManager) apiDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := m.root.Lstat(name); err != nil {
+	if _, err := m.store.Lstat(r.Context(), name); err != nil {
 		writeFSError(w, err, true)
 
 		return
 	}
 
-	if err := m.root.RemoveAll(name); err != nil {
+	if err := m.store.RemoveAll(r.Context(), name); err != nil {
 		writeFSError(w, err, true)
 
 		return
@@ -702,13 +669,13 @@ func (m *FileManager) apiMkdir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := m.root.Lstat(name); err == nil {
+	if _, err := m.store.Lstat(r.Context(), name); err == nil {
 		writeJSON(w, http.StatusConflict, apiError{Error: "already exists"})
 
 		return
 	}
 
-	if err := m.root.MkdirAll(name, 0o755); err != nil {
+	if err := m.store.MkdirAll(r.Context(), name); err != nil {
 		writeFSError(w, err, true)
 
 		return
@@ -750,14 +717,14 @@ func (m *FileManager) apiMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fromInfo, err := m.root.Lstat(from)
+	fromInfo, err := m.store.Lstat(r.Context(), from)
 	if err != nil {
 		writeFSError(w, err, true)
 
 		return
 	}
 
-	if toInfo, err := m.root.Lstat(to); err == nil {
+	if toInfo, err := m.store.Lstat(r.Context(), to); err == nil {
 		if !req.Overwrite || toInfo.IsDir() || fromInfo.IsDir() {
 			writeJSON(w, http.StatusConflict, apiError{Error: "destination already exists"})
 
@@ -765,13 +732,7 @@ func (m *FileManager) apiMove(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := m.root.MkdirAll(path.Dir(to), 0o755); err != nil {
-		writeFSError(w, err, true)
-
-		return
-	}
-
-	if err := m.root.Rename(from, to); err != nil {
+	if err := m.store.Rename(r.Context(), from, to); err != nil {
 		writeFSError(w, err, true)
 
 		return
@@ -831,14 +792,14 @@ func (m *FileManager) apiUpload(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		if _, err := m.root.Lstat(name); err == nil && !overwrite {
+		if _, err := m.store.Lstat(r.Context(), name); err == nil && !overwrite {
 			_ = part.Close()
 			writeJSON(w, http.StatusConflict, apiError{Error: toPublic(name) + " already exists"})
 
 			return
 		}
 
-		err = m.writeFile(name, part)
+		err = m.writeFile(r.Context(), name, part)
 		_ = part.Close()
 
 		if err != nil {

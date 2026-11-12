@@ -75,7 +75,10 @@ The ETag matters when a range request depends on an earlier one: a resumed downl
 
 | Field | Default | Description |
 | --- | --- | --- |
-| `path` | | Directory to manage. Created when missing. Required. |
+| `backend` | `os` | `os` keeps the files in `path`, `gcs` in a Google Cloud Storage bucket, see [Google Cloud Storage](#google-cloud-storage). |
+| `path` | | Directory to manage. Created when missing. Required with the `os` backend. |
+| `gcs.bucket` | | Bucket name. Required with the `gcs` backend. |
+| `gcs.prefix` | | Folder inside the bucket that holds the files, e.g. `files`. Default is the bucket root. |
 | `prefix_path` | | Prefix stripped from the request path before lookup. Requests outside it return `404`. |
 | `read_only` | `false` | Disable saving, creating, uploading, moving and deleting. |
 | `disable_ui` | `false` | Serve only the raw files under `/raw/`; the UI and the API return `404`. |
@@ -84,6 +87,30 @@ The ETag matters when a range request depends on an earlier one: a resumed downl
 | `cache_control` | `no-cache` | `Cache-Control` header for raw file responses. |
 | `etag` | `weak` | `weak`, `strong` or `hash`, see [ETag](#etag). |
 | `etag_rules` | | List of `{pattern, etag}`; picks the mode per file, first match wins. |
+
+## Google Cloud Storage
+
+With `backend: gcs` the files live in a bucket instead of a local directory. The UI, the API and the raw paths work the same way.
+
+```yaml
+file_manager:
+  backend: gcs
+  gcs:
+    bucket: my-bucket
+    prefix: files
+  prefix_path: /files
+```
+
+Credentials come from the environment through [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials): workload identity on GKE, the attached service account on Cloud Run or GCE, `GOOGLE_APPLICATION_CREDENTIALS`, or `gcloud auth application-default login` locally. The account needs `roles/storage.objectViewer` on the bucket, or `roles/storage.objectUser` when `read_only` is off. Set `STORAGE_EMULATOR_HOST` to use an emulator such as fake-gcs-server.
+
+A bucket has no real folders, so they are mapped onto object names:
+
+- `/configs/app.json` is the object `<prefix>/configs/app.json`.
+- A folder exists while at least one object is below it. **New folder** writes an empty marker object `<folder>/` so an empty folder stays visible.
+- Saves and uploads are atomic: an object appears only when its upload completes.
+- Moving or renaming a folder copies and deletes every object below it, one by one. It is not atomic: if it fails halfway, some objects are at the old place and some at the new one. Large folders take a while.
+- Folders have no modification time.
+- Reads stay on the version of the object that was opened, and the content type is set from the file extension.
 
 ## UI
 
@@ -131,7 +158,7 @@ server:
 
 Raw responses carry `Content-Security-Policy: sandbox` (except PDFs) and `X-Content-Type-Options: nosniff`, so an uploaded HTML or SVG file cannot run scripts against the UI's API.
 
-All paths are resolved inside `path`; `..` segments and symlinks pointing outside the directory are rejected.
+All paths are resolved inside `path` (or `gcs.prefix`); `..` segments and symlinks pointing outside the directory are rejected.
 
 ## API
 

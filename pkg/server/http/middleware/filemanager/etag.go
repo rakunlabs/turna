@@ -1,6 +1,7 @@
 package filemanager
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
@@ -85,7 +86,7 @@ func (m *FileManager) etagMode(name string) string {
 }
 
 // etag returns the validator of the file at name, or "" when it cannot be computed.
-func (m *FileManager) etag(name string, info fs.FileInfo) string {
+func (m *FileManager) etag(ctx context.Context, name string, info fs.FileInfo) string {
 	modtime, size := info.ModTime().UnixNano(), info.Size()
 	stamp := strconv.FormatInt(modtime, 36) + "-" + strconv.FormatInt(size, 36)
 
@@ -104,7 +105,7 @@ func (m *FileManager) etag(name string, info fs.FileInfo) string {
 		}
 	}
 
-	f, err := m.root.Open(name)
+	f, _, err := m.store.Open(ctx, name)
 	if err != nil {
 		slog.Warn("file_manager: cannot generate etag", "file", name, "err", err.Error())
 
