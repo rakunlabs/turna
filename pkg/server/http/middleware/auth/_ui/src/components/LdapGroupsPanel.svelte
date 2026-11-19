@@ -7,7 +7,7 @@
   import { messageOf, session, statusOf } from "../lib/state/session.svelte";
   import { registry } from "../lib/state/registry.svelte";
 
-  type LdapGroup = { name: string; members?: string[]; description?: string };
+  type LdapGroup = { source?: string; name: string; members?: string[]; description?: string };
   type LMap = { name: string; role_ids?: string[] };
   type Role = { id: string; name: string };
 
@@ -25,6 +25,7 @@
   let syncing = $state(false);
   let forceSync = $state(false);
 
+  const multipleSources = $derived(new Set(groups.map((group) => group.source)).size > 1);
   const unmapped = $derived(groups.filter((group) => !lmapByName[group.name]).length);
 
   function mappedRoles(groupName: string) {
@@ -144,7 +145,7 @@
       <p class="text-[15px] font-semibold text-ink">The directory returned no groups</p>
       <p class="mx-auto mt-2 max-w-[56ch] text-[13px] leading-[1.6] text-muted">
         The connection worked, but the configured base DN and filter matched nothing. Check the
-        groups block on the active LDAP config.
+        groups block on each LDAP config.
       </p>
     </div>
   {:else}
@@ -167,6 +168,9 @@
                 <p class="serial truncate text-[13.5px] font-medium text-ink">{group.name}</p>
                 {#if group.description}
                   <p class="mt-0.5 truncate text-[12px] text-muted">{group.description}</p>
+                {/if}
+                {#if multipleSources && group.source}
+                  <p class="serial mt-0.5 truncate text-[12px] text-faint">from {group.source}</p>
                 {/if}
               </div>
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -707,7 +708,12 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			ok, err := m.LdapCheckPassword(accessTokenRequest.Username, accessTokenRequest.Password)
+			var stored *data.User
+			if user != nil {
+				stored = user.User
+			}
+
+			source, ok, err := m.LdapCheckPassword(stored, accessTokenRequest.Username, accessTokenRequest.Password)
 			if err != nil {
 				httputil.HandleError(w, AccessTokenErrorResponse{
 					Error:            "server_error",
@@ -727,8 +733,17 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			// a user without a source, or whose config was removed, is
+			// adopted by the config that accepted the password
+			if user != nil && ldapUserSource(stored) != source {
+				if err := m.ldapSync(r.Context(), false, accessTokenRequest.Username, source, false); err != nil {
+					slog.Warn("ldap source adoption failed",
+						slog.String("user", user.ID), slog.String("source", source), slog.String("error", err.Error()))
+				}
+			}
+
 			if user == nil {
-				if err := m.LdapSync(r.Context(), false, accessTokenRequest.Username); err != nil {
+				if err := m.ldapSync(r.Context(), false, accessTokenRequest.Username, source, false); err != nil {
 					httputil.HandleError(w, AccessTokenErrorResponse{
 						Error:            "server_error",
 						ErrorDescription: err.Error(),

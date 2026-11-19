@@ -13,6 +13,11 @@ func ldapUserDN(username, userBaseDN string) string {
 	return fmt.Sprintf("uid=%s,%s", ldap.EscapeDN(username), userBaseDN)
 }
 
+// UserDN returns the DN a password check binds as for the username.
+func (l *Ldap) UserDN(username string) string {
+	return ldapUserDN(username, l.UserBaseDN)
+}
+
 func (l *Ldap) CheckPassword(username, password string) (bool, error) {
 	l.mUser.Lock()
 	defer l.mUser.Unlock()

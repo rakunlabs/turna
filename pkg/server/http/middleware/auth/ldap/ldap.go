@@ -1,6 +1,7 @@
 package ldap
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -34,7 +35,21 @@ type Ldap struct {
 	m        sync.Mutex
 }
 
+// Bind modes for the service connection used by group and user sync.
+const (
+	// BindSimple binds with Simple.Username and Simple.Password. An empty
+	// username with a non-empty password is sent as is (ldapsearch -D "" -w x).
+	BindSimple = "simple"
+	// BindAnonymous binds with an empty DN and an empty password.
+	BindAnonymous = "anonymous"
+	// BindUnauthenticated binds with Simple.Username and an empty password
+	// (RFC 4513 5.1.2); most servers reject it unless explicitly allowed.
+	BindUnauthenticated = "unauthenticated"
+)
+
 type LdapBind struct {
+	// Mode is one of simple (default), anonymous or unauthenticated.
+	Mode   string `cfg:"mode"`
 	Simple Simple `cfg:"simple"`
 }
 
@@ -57,9 +72,12 @@ type LdapUser struct {
 	GivenName  string   `json:"given_name"`
 	FamilyName string   `json:"family_name"`
 	MemberOf   []string `json:"member_of"`
+	// Source is the id of the LDAP config the entry was read from.
+	Source string `json:"source,omitempty"`
 }
 
 type LdapGroup struct {
+	Source      string   `json:"source,omitempty"`
 	Name        string   `json:"name"`
 	Members     []string `json:"members"`
 	Description string   `json:"description"`
@@ -86,15 +104,42 @@ func (l *Ldap) Connect() (*ldap.Conn, error) {
 		return nil, fmt.Errorf("failed connecting to LDAP server: %w", err)
 	}
 
-	req := ldap.NewSimpleBindRequest(l.Bind.Simple.Username, l.Bind.Simple.Password, nil)
-	_, err = conn.SimpleBind(req)
-	if err != nil {
+	if err := l.bind(conn); err != nil {
+		_ = conn.Close()
+
 		return nil, fmt.Errorf("failed binding to LDAP server: %w", err)
 	}
 
-	slog.Info("LDAP connection established")
+	slog.Info("LDAP connection established", slog.String("bind_mode", l.bindMode()))
 
 	return conn, nil
+}
+
+func (l *Ldap) bindMode() string {
+	if l.Bind.Mode == "" {
+		return BindSimple
+	}
+
+	return l.Bind.Mode
+}
+
+func (l *Ldap) bind(conn *ldap.Conn) error {
+	switch mode := l.bindMode(); mode {
+	case BindSimple:
+		_, err := conn.SimpleBind(ldap.NewSimpleBindRequest(l.Bind.Simple.Username, l.Bind.Simple.Password, nil))
+
+		return err
+	case BindAnonymous:
+		return conn.UnauthenticatedBind("")
+	case BindUnauthenticated:
+		if l.Bind.Simple.Username == "" {
+			return errors.New("unauthenticated bind requires a username")
+		}
+
+		return conn.UnauthenticatedBind(l.Bind.Simple.Username)
+	default:
+		return fmt.Errorf("unknown bind mode %q", mode)
+	}
 }
 
 // Close closes the runtime's open connections; a closed runtime reconnects

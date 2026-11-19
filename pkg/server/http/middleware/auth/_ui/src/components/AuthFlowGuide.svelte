@@ -317,8 +317,9 @@
     </p>
     <p class="mt-3 max-w-[70ch] text-[13px] leading-[1.65] text-muted">
       A local user verifies against the bcrypt password held in their encrypted details. A non-local
-      user binds against the active LDAP config. An alias that is not stored here at all is looked up
-      in LDAP and created on first login, unless auto-register is off. If the user enrolled TOTP, a
+      user binds against the LDAP config it was synced from. An alias that is not stored here at all is
+      tried against each LDAP config in priority order and created from the first that accepts the
+      password, unless auto-register is off. If the user enrolled TOTP, a
       valid code is required to finish.
     </p>
 

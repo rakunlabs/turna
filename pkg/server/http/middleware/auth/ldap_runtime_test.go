@@ -1,6 +1,19 @@
 package auth
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/auth/ldap"
+)
+
+func primaryRuntime(m *Auth) *ldap.Ldap {
+	sources := m.ldapSources()
+	if len(sources) == 0 {
+		return nil
+	}
+
+	return sources[0].runtime
+}
 
 func TestLDAPRuntimeAddressOverride(t *testing.T) {
 	t.Parallel()
@@ -10,7 +23,7 @@ func TestLDAPRuntimeAddressOverride(t *testing.T) {
 			cache := NewCache(nil)
 			m := &Auth{cache: cache, LDAP: LDAPStatic{Addr: override}}
 
-			if m.ldapRuntime() != nil {
+			if primaryRuntime(m) != nil {
 				t.Fatal("address override must not enable LDAP without a stored config")
 			}
 
@@ -23,7 +36,7 @@ func TestLDAPRuntimeAddressOverride(t *testing.T) {
 					}},
 				}
 				cache.snap.Store(sn)
-				runtime := m.ldapRuntime()
+				runtime := primaryRuntime(m)
 				want := storedAddr
 				if override != "" {
 					want = override
@@ -37,13 +50,13 @@ func TestLDAPRuntimeAddressOverride(t *testing.T) {
 				if sn.LDAP[0].Addr != storedAddr {
 					t.Fatal("override mutated the shared snapshot")
 				}
-				if m.ldapRuntime() != runtime {
+				if primaryRuntime(m) != runtime {
 					t.Fatal("runtime should be reused within the same snapshot version")
 				}
 			}
 
 			cache.snap.Store(&Snapshot{Version: 3})
-			if m.ldapRuntime() != nil {
+			if primaryRuntime(m) != nil {
 				t.Fatal("removing the stored config must disable LDAP even with an override")
 			}
 		})

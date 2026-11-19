@@ -343,9 +343,11 @@ func (c *Cache) Reload(ctx context.Context) error {
 		}
 
 		if ldapCfg.Addr != "" {
+			ldapCfg.ID = id
 			snap.LDAP = append(snap.LDAP, ldapCfg)
 		}
 	}
+	sort.SliceStable(snap.LDAP, func(i, j int) bool { return snap.LDAP[i].Priority < snap.LDAP[j].Priority })
 
 	if tokenRaw != nil {
 		_ = json.Unmarshal(tokenRaw, &snap.Token)

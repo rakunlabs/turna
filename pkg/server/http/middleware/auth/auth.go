@@ -98,8 +98,9 @@ type Encryption struct {
 
 // LDAPStatic holds instance-local LDAP overrides for the shared database settings.
 type LDAPStatic struct {
-	// Addr overrides the stored LDAP URL for all connections on this instance.
-	// Empty uses the address from the first enabled stored LDAP config.
+	// Addr overrides the stored LDAP URL on this instance.
+	// It applies to the primary (lowest priority) stored config only; empty
+	// uses the stored address.
 	Addr string `cfg:"addr"`
 
 	// DisableSync keeps this instance out of the periodic LDAP sync loop.

@@ -33,7 +33,7 @@
     {
       label: "LDAP passwords",
       on: ldapReachable,
-      meaning: "Users that are not local bind against the first enabled LDAP config instead.",
+      meaning: "Users that are not local bind against their LDAP config instead; unknown users are tried against each config in priority order.",
       tab: "ldap",
     },
     {

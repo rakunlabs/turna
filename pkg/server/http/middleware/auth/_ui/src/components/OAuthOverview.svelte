@@ -643,7 +643,7 @@
 
   <Section
     title="Password grant"
-    note="Local users verify against the stored bcrypt password; non-local users bind against the active LDAP config. An unknown alias is created from LDAP on first login unless auto-register is off."
+    note="Local users verify against the stored bcrypt password; non-local users bind against the LDAP config they were synced from, or each config in priority order. An unknown alias is created from LDAP on first login unless auto-register is off."
   >
     <div class="grid gap-6 sm:grid-cols-2">
       <Switch

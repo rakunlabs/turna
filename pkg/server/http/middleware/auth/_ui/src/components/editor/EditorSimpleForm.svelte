@@ -29,7 +29,7 @@
      * Register the listed IDs point into. Each ID renders as a link under the
      * field: plain click opens that record here, Ctrl/Cmd click in a new tab.
      */
-    linksTo?: "roles" | "permissions";
+    linksTo?: "roles" | "permissions" | "ldap";
   };
 
   type Exhibit = {
@@ -652,6 +652,7 @@
   </Section>
 {:else if editor.kind === "ldap"}
   {@const ldapStatic = session.instanceConfig?.ldap}
+  {@const bindMode = editor.getNestedString("bind", "mode") || "simple"}
   <Section title="Directory" note="The connection used for password checks and group sync.">
     {#if ldapStatic?.addr}
       <div class="mb-6">
@@ -666,8 +667,9 @@
             },
           ]}
         >
-          This instance connects every LDAP config to the address from its config file; the stored
-          address below is not used here. It still applies to instances without ldap.addr.
+          This instance connects the primary LDAP config (lowest priority) to the address from its
+          config file; the stored address of that config is not used here. Other configs keep their
+          own address.
         </ConfigPinned>
       </div>
     {/if}
@@ -687,20 +689,57 @@
         hint: "How often the directory is re-read.",
       })}
       {@render line({
-        label: "Bind username",
-        value: editor.getNestedString("bind", "username"),
-        set: (value) => editor.setNestedString("bind", "username", value),
-        placeholder: "cn=readonly,dc=example,dc=com",
-        mono: true,
+        label: "Priority",
+        type: "number",
+        value: String(editor.getPathNumber(["priority"], 0)),
+        set: (value) => editor.setPathNumber(["priority"], value),
+        placeholder: "0",
+        hint: "Lower runs first. The lowest is the primary config; new users are tried against configs in this order.",
       })}
-      {@render line({
-        label: "Bind password",
-        type: "password",
-        hint: "Write-only. Leave blank to keep the stored password.",
-        value: editor.getNestedString("bind", "password"),
-        set: (value) => editor.setNestedString("bind", "password", value),
-        placeholder: "change-me",
-      })}
+      <div class="hidden sm:block"></div>
+      <div class="min-w-0">
+        <label class="stamp block" for="ldap-bind-mode">Bind mode</label>
+        <select
+          id="ldap-bind-mode"
+          class="entry mt-1.5"
+          value={bindMode}
+          onchange={(event) => editor.setNestedString("bind", "mode", event.currentTarget.value)}
+        >
+          <option value="simple">simple</option>
+          <option value="anonymous">anonymous</option>
+          <option value="unauthenticated">unauthenticated</option>
+        </select>
+        <p class="mt-1.5 max-w-[62ch] text-[12px] leading-[1.5] text-muted">
+          {#if bindMode === "anonymous"}
+            Connects with an empty DN and password; the username and password below are ignored.
+          {:else if bindMode === "unauthenticated"}
+            Sends the username with an empty password. Most servers reject this unless explicitly allowed.
+          {:else}
+            Username and password. An empty username with a password is sent as is, like
+            <code>ldapsearch -D "" -w any</code>.
+          {/if}
+        </p>
+      </div>
+      <div class="hidden sm:block"></div>
+      {#if bindMode !== "anonymous"}
+        {@render line({
+          label: "Bind username",
+          value: editor.getNestedString("bind", "username"),
+          set: (value) => editor.setNestedString("bind", "username", value),
+          placeholder: "cn=readonly,dc=example,dc=com",
+          mono: true,
+        })}
+      {/if}
+      {#if bindMode === "simple"}
+        {@render line({
+          label: "Bind password",
+          type: "password",
+          hint: "Write-only. Leave blank to keep the stored password.",
+          value: editor.getNestedString("bind", "password"),
+          set: (value) => editor.setNestedString("bind", "password", value),
+          placeholder: "change-me",
+        })}
+      {/if}
       {@render line({
         label: "User base DN",
         value: editor.getString("user_base_dn"),
@@ -740,7 +779,19 @@
         label: "Disable sync",
         on: editor.getBool("disable_sync"),
         set: (value) => editor.setBool("disable_sync", value),
-        hint: "Group membership stops being pulled; existing sync roles stay as they are.",
+        hint: "Only the periodic sync stops; a manual sync still reads this directory.",
+      })}
+      {@render toggle({
+        label: "Disable group mapping",
+        on: editor.getBool("disable_groups"),
+        set: (value) => editor.setBool("disable_groups", value),
+        hint: "Groups are never read from this directory: no group maps, no sync roles, no full sync. Its users keep the sync roles they have; passwords are still checked here.",
+      })}
+      {@render toggle({
+        label: "Disable user registration",
+        on: editor.getBool("disable_register"),
+        set: (value) => editor.setBool("disable_register", value),
+        hint: "No new users are created from this directory. Users that already exist still log in through it; unknown users are tried against the next config.",
       })}
     </div>
     {#if ldapStatic?.disable_sync}
@@ -795,6 +846,24 @@
           set: (value) => editor.setNestedString("details", "password", value),
           placeholder: editor.loadedID ? "leave empty to keep the existing password" : "initial password",
           hint: "Stored bcrypt hashed; it is never read back.",
+        })}
+      {:else}
+        {@render line({
+          label: "LDAP source",
+          value: editor.getNestedString("details", "ldap_source"),
+          set: (value) => editor.setNestedString("details", "ldap_source", value),
+          placeholder: "not assigned",
+          mono: true,
+          linksTo: "ldap",
+          hint: "The LDAP config this user's password is checked against. Empty, or a config that no longer exists, means every config is tried in priority order and the first that accepts the password takes the user over.",
+        })}
+        {@render line({
+          label: "LDAP DN",
+          value: editor.getNestedString("details", "ldap_dn"),
+          set: (value) => editor.setNestedString("details", "ldap_dn", value),
+          placeholder: "—",
+          mono: true,
+          hint: "Written by LDAP sync.",
         })}
       {/if}
     </div>

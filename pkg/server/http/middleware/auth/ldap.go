@@ -172,7 +172,8 @@ func (m *Auth) ldapUpdateUser(ctx context.Context, sn *Snapshot, user *data.User
 	}
 
 	dn, _ := user.Details[ldapDNKey].(string)
-	changed := !data.CompareSlices(user.Alias, aliases) || (u.DN != "" && dn != u.DN)
+	changed := !data.CompareSlices(user.Alias, aliases) || (u.DN != "" && dn != u.DN) ||
+		(u.Source != "" && ldapUserSource(user) != u.Source)
 	if !changed && !force {
 		return nil
 	}
@@ -209,15 +210,23 @@ func ldapDetails(details map[string]any, u ldap.LdapUser) map[string]any {
 	if u.DN != "" {
 		out[ldapDNKey] = u.DN
 	}
+	if u.Source != "" {
+		out[ldapSourceKey] = u.Source
+	}
 
 	return out
+}
+
+type ldapSource struct {
+	id      string
+	cfg     LDAPSettings
+	runtime *ldap.Ldap
 }
 
 type ldapManager struct {
 	m       sync.Mutex
 	version uint64
-	runtime *ldap.Ldap
-	cfg     *LDAPSettings
+	sources []*ldapSource
 }
 
 func (s LDAPSettings) runtime() *ldap.Ldap {
@@ -243,6 +252,7 @@ func (s LDAPSettings) runtime() *ldap.Ldap {
 		DisableFirstConnect: true,
 	}
 
+	l.Bind.Mode = s.Bind.Mode
 	l.Bind.Simple.Username = s.Bind.Username
 	l.Bind.Simple.Password = s.Bind.Password
 
@@ -258,82 +268,171 @@ func (s LDAPSettings) runtime() *ldap.Ldap {
 	return l
 }
 
-// ldapRuntime returns the LDAP runtime built from the first enabled stored config
-// with instance-local address overrides applied.
-func (m *Auth) ldapRuntime() *ldap.Ldap {
+// ldapSources returns the runtimes of every stored LDAP config in priority
+// order. The instance-local address override applies to the primary only.
+func (m *Auth) ldapSources() []*ldapSource {
 	sn := m.cache.Snapshot()
 
 	m.ldap.m.Lock()
 	defer m.ldap.m.Unlock()
 
-	if m.ldap.runtime != nil && m.ldap.version == sn.Version {
-		return m.ldap.runtime
+	if m.ldap.version == sn.Version && (m.ldap.sources != nil || len(sn.LDAP) == 0) {
+		return m.ldap.sources
 	}
 
-	if len(sn.LDAP) == 0 {
-		if old := m.ldap.runtime; old != nil {
-			closeLater(old.Close)
+	old := make(map[string]*ldapSource, len(m.ldap.sources))
+	for _, s := range m.ldap.sources {
+		old[s.id] = s
+	}
+
+	var sources []*ldapSource
+	for i, cfg := range sn.LDAP {
+		if i == 0 && m.LDAP.Addr != "" {
+			cfg.Addr = m.LDAP.Addr
 		}
-		m.ldap.runtime = nil
-		m.ldap.cfg = nil
-		m.ldap.version = sn.Version
 
-		return nil
+		// every IAM write bumps the snapshot version; keep the runtime (and
+		// its open connections) unless the effective config actually changed
+		if prev := old[cfg.ID]; prev != nil && reflect.DeepEqual(prev.cfg, cfg) {
+			delete(old, cfg.ID)
+			sources = append(sources, prev)
+
+			continue
+		}
+
+		sources = append(sources, &ldapSource{id: cfg.ID, cfg: cfg, runtime: cfg.runtime()})
 	}
 
-	cfg := sn.LDAP[0]
-	if m.LDAP.Addr != "" {
-		cfg.Addr = m.LDAP.Addr
+	for _, s := range old {
+		closeLater(s.runtime.Close)
 	}
 
-	// every IAM write bumps the snapshot version; keep the runtime (and its
-	// open connections) unless the effective LDAP config actually changed
-	if m.ldap.runtime != nil && m.ldap.cfg != nil && reflect.DeepEqual(*m.ldap.cfg, cfg) {
-		m.ldap.version = sn.Version
-
-		return m.ldap.runtime
-	}
-
-	if old := m.ldap.runtime; old != nil {
-		closeLater(old.Close)
-	}
-
-	m.ldap.runtime = cfg.runtime()
-	m.ldap.cfg = &cfg
+	m.ldap.sources = sources
 	m.ldap.version = sn.Version
 
-	return m.ldap.runtime
+	return sources
 }
 
 func (m *Auth) ldapEnabled() bool {
-	return m.ldapRuntime() != nil
+	return len(m.ldapSources()) > 0
 }
 
 func (m *Auth) closeLDAP() error {
 	m.ldap.m.Lock()
 	defer m.ldap.m.Unlock()
 
-	if old := m.ldap.runtime; old != nil {
-		closeLater(old.Close)
+	for _, s := range m.ldap.sources {
+		closeLater(s.runtime.Close)
 	}
 
 	return nil
 }
 
-func (m *Auth) LdapCheckPassword(username, password string) (bool, error) {
-	runtime := m.ldapRuntime()
-	if runtime == nil {
-		return false, errors.New("ldap is not configured")
+// ldapSourceKey stores the id of the LDAP config a user was synced from, so
+// password checks and syncs only consult that directory.
+const ldapSourceKey = "ldap_source"
+
+func ldapUserSource(user *data.User) string {
+	if user == nil {
+		return ""
 	}
 
-	return runtime.CheckPassword(username, password)
+	source, _ := user.Details[ldapSourceKey].(string)
+
+	return source
 }
 
-// LdapSync syncs LDAP groups and users into the store.
-// When uid is set, only that user is synced.
+// ldapKnownSource returns the user's source while that config still exists;
+// users of a removed config are orphaned and handled like unassigned ones.
+func ldapKnownSource(user *data.User, sources []*ldapSource) string {
+	source := ldapUserSource(user)
+	for _, s := range sources {
+		if s.id == source {
+			return source
+		}
+	}
+
+	return ""
+}
+
+// LdapCheckPassword checks the password against the user's LDAP source. Users
+// without a recorded source are checked against every config in priority
+// order; the first that accepts the password wins and its id is returned.
+func (m *Auth) LdapCheckPassword(user *data.User, username, password string) (string, bool, error) {
+	sources := m.ldapSources()
+	if len(sources) == 0 {
+		return "", false, errors.New("ldap is not configured")
+	}
+
+	if pinned := ldapKnownSource(user, sources); pinned != "" {
+		for _, s := range sources {
+			if s.id == pinned {
+				ok, err := s.runtime.CheckPassword(username, password)
+
+				return s.id, ok, err
+			}
+		}
+	}
+
+	// a stored user without a (still configured) source keeps its directory
+	// identity: when a config still serves its DN only those configs are
+	// asked, so an entry with the same uid elsewhere cannot take it over.
+	// When no config serves the DN anymore (the directory was replaced, e.g.
+	// a new base DN) every config is asked and the first match adopts it.
+	storedDN := ""
+	if user != nil {
+		storedDN, _ = user.Details[ldapDNKey].(string)
+	}
+	if storedDN != "" && !slices.ContainsFunc(sources, func(s *ldapSource) bool {
+		return strings.EqualFold(s.runtime.UserDN(username), storedDN)
+	}) {
+		storedDN = ""
+	}
+
+	var errs []error
+	for _, s := range sources {
+		if storedDN != "" && !strings.EqualFold(s.runtime.UserDN(username), storedDN) {
+			continue
+		}
+		// a config that may not create users cannot log in unknown ones
+		if user == nil && s.cfg.DisableRegister {
+			continue
+		}
+
+		ok, err := s.runtime.CheckPassword(username, password)
+		if ok {
+			return s.id, true, nil
+		}
+		if err != nil {
+			if errors.Is(err, ldap.ErrExceedPasswordRetryLimit) {
+				return s.id, false, err
+			}
+
+			errs = append(errs, fmt.Errorf("ldap %s: %w", s.id, err))
+		}
+	}
+
+	// an unreachable directory may hold the user; do not report a mismatch
+	if len(errs) > 0 {
+		return "", false, errors.Join(errs...)
+	}
+
+	return "", false, nil
+}
+
+var errLDAPUserNotFound = errors.New("ldap user not found")
+
+// LdapSync syncs LDAP groups and users into the store from every config.
+// When uid is set, only that user is synced from the first config that has it.
 func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
-	runtime := m.ldapRuntime()
-	if runtime == nil {
+	return m.ldapSync(ctx, force, uid, "", false)
+}
+
+// ldapSync runs the sync. source limits a single-user sync to one config;
+// periodic skips configs with disable_sync.
+func (m *Auth) ldapSync(ctx context.Context, force bool, uid, source string, periodic bool) error {
+	sources := m.ldapSources()
+	if len(sources) == 0 {
 		return errors.New("ldap is not configured")
 	}
 
@@ -342,8 +441,69 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 
 	ctx = data.WithContextUserName(ctx, "LDAP")
 
-	logi.Ctx(ctx).Info("syncing ldap starting")
+	if uid != "" {
+		for i, s := range sources {
+			if source != "" && s.id != source {
+				continue
+			}
+
+			err := m.ldapSyncSource(ctx, s, i == 0, force, uid)
+			if !errors.Is(err, errLDAPUserNotFound) {
+				return err
+			}
+		}
+
+		return errLDAPUserNotFound
+	}
+
+	logi.Ctx(ctx).Info("syncing ldap starting", slog.Int("sources", len(sources)))
 	defer logi.Ctx(ctx).Info("syncing ldap done")
+
+	var errs []error
+	for i, s := range sources {
+		if periodic && (s.runtime.DisableSync || s.cfg.DisableGroups) {
+			continue
+		}
+
+		if err := m.ldapSyncSource(ctx, s, i == 0, force, ""); err != nil {
+			errs = append(errs, fmt.Errorf("ldap %s: %w", s.id, err))
+		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+
+	// stamp the fleet-wide sync clock on a completed full sync so the next
+	// periodic run waits a full interval; manual syncs count too. Single-user
+	// syncs are left out — they do not cover the whole directory.
+	if err := m.store.TouchSyncLock(ctx, ldapSyncLockName, m.instanceID); err != nil {
+		slog.Warn("ldap sync lock touch failed", slog.String("error", err.Error()))
+	}
+
+	return nil
+}
+
+// ldapOwns reports whether the stored user belongs to the source. Users
+// synced before sources were recorded belong to the primary until another
+// source claims them.
+func ldapOwns(owner, source string, primary bool) bool {
+	if owner == "" {
+		return primary
+	}
+
+	return owner == source
+}
+
+func (m *Auth) ldapSyncSource(ctx context.Context, s *ldapSource, primary, force bool, uid string) error {
+	runtime := s.runtime
+	sources := m.ldapSources()
+
+	// without groups a full sync has no member list to walk
+	groupsOff := s.cfg.DisableGroups
+	if groupsOff && uid == "" {
+		return nil
+	}
 
 	conn, err := runtime.ConnectWithCheck()
 	if err != nil {
@@ -357,18 +517,27 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 	if uid != "" {
 		usersGet, err := runtime.Users(conn, []string{uid})
 		if err != nil {
+			if httputil.NewErrorAs(err).Code == http.StatusNotFound {
+				return errLDAPUserNotFound
+			}
+
 			return fmt.Errorf("failed getting user: %w", err)
 		}
 		if len(usersGet) == 0 {
-			return errors.New("ldap user not found")
+			return errLDAPUserNotFound
 		}
 
-		ldapUsers[uid] = usersGet[0]
+		entry := usersGet[0]
+		entry.Source = s.id
+		ldapUsers[uid] = entry
 		users[uid] = nil
 
-		groups, err := runtime.GroupsForUser(conn, usersGet[0].DN)
-		if err != nil {
-			return fmt.Errorf("failed getting user groups: %w", err)
+		var groups []ldap.LdapGroup
+		if !groupsOff {
+			groups, err = runtime.GroupsForUser(conn, entry.DN)
+			if err != nil {
+				return fmt.Errorf("failed getting user groups: %w", err)
+			}
 		}
 
 		lmapGroups = make([]data.LMapCheckCreate, 0, len(groups))
@@ -423,7 +592,10 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 			return ldap.LdapUser{}, false
 		}
 
-		return usersGet[0], true
+		entry := usersGet[0]
+		entry.Source = s.id
+
+		return entry, true
 	}
 
 	roleIDsFor := func(groupNames []string) []string {
@@ -463,6 +635,19 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 		}
 
 		if userDB != nil {
+			// a user synced from another directory is never touched here
+			if owner := ldapKnownSource(userDB, sources); owner != "" && owner != s.id {
+				slog.Warn("ldap user belongs to another source, skipped",
+					slog.String("id", userDB.ID), slog.String("source", s.id), slog.String("owner", owner))
+
+				continue
+			}
+
+			// sync roles are left alone when this source maps no groups
+			if groupsOff {
+				roleIDs = userDB.SyncRoleIDs
+			}
+
 			if !data.CompareSlices(userDB.SyncRoleIDs, roleIDs) {
 				if err := m.store.UpdateUserSyncRoles(ctx, userDB.ID, roleIDs); err != nil {
 					return fmt.Errorf("failed updating user sync roles: %w", err)
@@ -470,7 +655,14 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 			}
 
 			if !hasEntry {
-				continue
+				// claim users synced before sources were recorded
+				if ldapUserSource(userDB) != s.id && s.id != "" {
+					if entry, hasEntry = ldapUser(member); !hasEntry {
+						continue
+					}
+				} else {
+					continue
+				}
 			}
 
 			if err := m.ldapUpdateUser(ctx, sn, userDB, entry, roleIDs, force); err != nil {
@@ -482,6 +674,14 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 
 		// user not found, create
 		if !hasEntry {
+			continue
+		}
+
+		if s.cfg.DisableRegister {
+			if uid != "" {
+				return errLDAPUserNotFound
+			}
+
 			continue
 		}
 
@@ -502,12 +702,13 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 		}
 	}
 
-	// reset sync roles for LDAP users that left all groups; users without an
-	// LDAP DN (OAuth/SAML federated) keep the roles their provider synced
+	// reset sync roles for this source's LDAP users that left all groups;
+	// users without an LDAP DN (OAuth/SAML federated) keep the roles their
+	// provider synced, users of other sources are left to their own sync
 	if uid == "" {
 		for _, id := range sn.UserIDs {
 			user := sn.Users[id]
-			if !ldapManagedUser(user) || len(user.SyncRoleIDs) == 0 {
+			if !ldapManagedUser(user) || len(user.SyncRoleIDs) == 0 || !ldapOwns(ldapKnownSource(user, sources), s.id, primary) {
 				continue
 			}
 
@@ -527,16 +728,7 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 				return fmt.Errorf("failed clearing user sync roles: %w", err)
 			}
 
-			slog.Info("user sync roles cleared", slog.String("id", user.ID), slog.String("by", "LDAP"))
-		}
-	}
-
-	// stamp the fleet-wide sync clock on a completed full sync so the next
-	// periodic run waits a full interval; manual syncs count too. Single-user
-	// syncs are left out — they do not cover the whole directory.
-	if uid == "" {
-		if err := m.store.TouchSyncLock(ctx, ldapSyncLockName, m.instanceID); err != nil {
-			slog.Warn("ldap sync lock touch failed", slog.String("error", err.Error()))
+			slog.Info("user sync roles cleared", slog.String("id", user.ID), slog.String("by", "LDAP"), slog.String("source", s.id))
 		}
 	}
 
@@ -548,7 +740,8 @@ func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 // The schedule is coordinated across instances through the auth_sync_locks
 // table: each tick at most one instance claims the lease and runs the sync,
 // so a fleet of N instances sharing one database still syncs once per
-// sync_duration instead of N times.
+// sync_duration instead of N times. With several configs the shortest
+// sync_duration of the configs that sync drives the schedule.
 func (m *Auth) watchLDAP(ctx context.Context) {
 	if m.LDAP.DisableSync {
 		slog.Info("periodic ldap sync is disabled for this instance")
@@ -563,15 +756,23 @@ func (m *Auth) watchLDAP(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			runtime := m.ldapRuntime()
-			if runtime == nil || runtime.DisableSync {
+			var interval time.Duration
+			for _, s := range m.ldapSources() {
+				if s.runtime.DisableSync || s.cfg.DisableGroups {
+					continue
+				}
+				if interval == 0 || s.runtime.SyncDuration < interval {
+					interval = s.runtime.SyncDuration
+				}
+			}
+			if interval == 0 {
 				continue
 			}
 
 			// The lease runs slightly short of the interval so a tick landing
 			// a few seconds early still claims it; floored so tiny intervals
 			// keep a sane guard window against doubled syncs.
-			lease := runtime.SyncDuration - 30*time.Second
+			lease := interval - 30*time.Second
 			if lease < 30*time.Second {
 				lease = 30 * time.Second
 			}
@@ -585,7 +786,7 @@ func (m *Auth) watchLDAP(ctx context.Context) {
 				continue
 			}
 
-			if err := m.LdapSync(ctx, false, ""); err != nil {
+			if err := m.ldapSync(ctx, false, "", "", true); err != nil {
 				slog.Error("ldap sync failed", slog.String("error", err.Error()))
 			}
 		}
@@ -596,40 +797,47 @@ func (m *Auth) watchLDAP(ctx context.Context) {
 // handlers
 
 func (m *Auth) LdapGetGroupsAPI(w http.ResponseWriter, r *http.Request) {
-	runtime := m.ldapRuntime()
-	if runtime == nil {
+	sources := m.ldapSources()
+	if len(sources) == 0 {
 		httputil.HandleError(w, httputil.NewError("ldap is not configured", nil, http.StatusFailedDependency))
 		return
 	}
 
-	conn, err := runtime.ConnectWithCheck()
-	if err != nil {
-		httputil.HandleError(w, httputil.NewError("ldap connection problem", err, http.StatusInternalServerError))
-		return
-	}
+	all := make([]ldap.LdapGroup, 0)
+	for _, s := range sources {
+		if s.cfg.DisableGroups {
+			continue
+		}
 
-	groups, err := runtime.Groups(conn)
-	if err != nil {
-		httputil.HandleError(w, httputil.NewError("failed getting groups", err, http.StatusInternalServerError))
-		return
+		conn, err := s.runtime.ConnectWithCheck()
+		if err != nil {
+			httputil.HandleError(w, httputil.NewError("ldap connection problem: "+s.id, err, http.StatusInternalServerError))
+			return
+		}
+
+		groups, err := s.runtime.Groups(conn)
+		if err != nil {
+			httputil.HandleError(w, httputil.NewError("failed getting groups: "+s.id, err, http.StatusInternalServerError))
+			return
+		}
+
+		for i := range groups {
+			groups[i].Source = s.id
+		}
+
+		all = append(all, groups...)
 	}
 
 	httputil.JSON(w, http.StatusOK, data.Response[[]ldap.LdapGroup]{
-		Meta:    &data.Meta{TotalItemCount: uint64(len(groups))},
-		Payload: groups,
+		Meta:    &data.Meta{TotalItemCount: uint64(len(all))},
+		Payload: all,
 	})
 }
 
 func (m *Auth) LdapGetUserAPI(w http.ResponseWriter, r *http.Request) {
-	runtime := m.ldapRuntime()
-	if runtime == nil {
+	sources := m.ldapSources()
+	if len(sources) == 0 {
 		httputil.HandleError(w, httputil.NewError("ldap is not configured", nil, http.StatusFailedDependency))
-		return
-	}
-
-	conn, err := runtime.ConnectWithCheck()
-	if err != nil {
-		httputil.HandleError(w, httputil.NewError("ldap connection problem", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -639,19 +847,40 @@ func (m *Auth) LdapGetUserAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uid, err = url.PathUnescape(uid)
+	uid, err := url.PathUnescape(uid)
 	if err != nil {
 		httputil.HandleError(w, httputil.NewError("failed unescaping uid", err, http.StatusBadRequest))
 		return
 	}
 
-	users, err := runtime.Users(conn, []string{uid})
-	if err != nil {
-		httputil.HandleError(w, httputil.NewErrorAs(err))
+	// first config in priority order that has the user wins
+	for _, s := range sources {
+		conn, err := s.runtime.ConnectWithCheck()
+		if err != nil {
+			httputil.HandleError(w, httputil.NewError("ldap connection problem: "+s.id, err, http.StatusInternalServerError))
+			return
+		}
+
+		users, err := s.runtime.Users(conn, []string{uid})
+		if err != nil {
+			if httputil.NewErrorAs(err).Code == http.StatusNotFound {
+				continue
+			}
+
+			httputil.HandleError(w, httputil.NewErrorAs(err))
+			return
+		}
+		if len(users) == 0 {
+			continue
+		}
+
+		users[0].Source = s.id
+		httputil.JSON(w, http.StatusOK, data.Response[ldap.LdapUser]{Payload: users[0]})
+
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, data.Response[ldap.LdapUser]{Payload: users[0]})
+	httputil.HandleError(w, httputil.NewError("user not found", nil, http.StatusNotFound))
 }
 
 type LdapSyncRequest struct {

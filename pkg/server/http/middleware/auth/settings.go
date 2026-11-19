@@ -190,8 +190,15 @@ type SessionProviderOverride struct {
 
 // LDAPSettings is the decoded LDAP config stored in auth_ldap_configs.
 type LDAPSettings struct {
+	// ID is the config's record id, filled in by the cache.
+	ID   string `json:"-"`
 	Addr string `json:"addr"`
-	Bind struct {
+	// Priority orders the configs, lowest first; ties are ordered by id. The
+	// first config is the primary one.
+	Priority int `json:"priority"`
+	Bind     struct {
+		// Mode is simple (default), anonymous or unauthenticated.
+		Mode     string `json:"mode"`
 		Username string `json:"username"`
 		Password string `json:"password"`
 	} `json:"bind"`
@@ -203,6 +210,12 @@ type LDAPSettings struct {
 	} `json:"groups"`
 	SyncDuration string `json:"sync_duration"`
 	DisableSync  bool   `json:"disable_sync"`
+	// DisableGroups stops reading groups from this config: no group maps, no
+	// sync roles and no full sync. Password checks still work.
+	DisableGroups bool `json:"disable_groups"`
+	// DisableRegister stops creating users from this config; only users that
+	// already exist can log in through it.
+	DisableRegister bool `json:"disable_register"`
 }
 
 // OAuth2Settings is the decoded "oauth2" setting namespace.

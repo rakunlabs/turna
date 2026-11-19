@@ -422,7 +422,7 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
   ldap: {
     title: "LDAP Configs",
     description:
-      "Encrypted LDAP connection used for password checks and group sync. The first enabled config is active.",
+      "Encrypted LDAP connections used for password checks and group sync. Every enabled config is used, ordered by priority; users are checked against the directory they were synced from, new users against each config in order.",
     cta: "New LDAP config",
     singular: "LDAP config",
     primaryLabel: "Config ID",
@@ -433,7 +433,10 @@ export const kindSpecs: Record<ResourceKind, KindSpec> = {
     canCreate: true,
     example: {
       addr: "ldap://ldap.example.com:389",
-      bind: { username: "cn=readonly,dc=example,dc=com", password: "change-me" },
+      priority: 0,
+      disable_groups: false,
+      disable_register: false,
+      bind: { mode: "simple", username: "cn=readonly,dc=example,dc=com", password: "change-me" },
       user_base_dn: "ou=people,dc=example,dc=com",
       groups: [
         {
