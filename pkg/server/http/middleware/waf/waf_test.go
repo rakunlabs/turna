@@ -3,6 +3,7 @@ package waf
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -36,8 +37,19 @@ func build(t *testing.T, m *WAF) http.Handler {
 	return mw(http.HandlerFunc(ok))
 }
 
+// skipIfCRSDataMissing skips CRS tests when a rule data file was removed from
+// the module cache, e.g. web-shells-php.data quarantined by antivirus software.
+func skipIfCRSDataMissing(t *testing.T) {
+	t.Helper()
+
+	if _, err := fs.ReadFile(embeddedFS, "@owasp_crs/web-shells-php.data"); err != nil {
+		t.Skipf("CRS data file not readable, likely quarantined by antivirus; run go mod verify: %v", err)
+	}
+}
+
 func crs(t *testing.T) http.Handler {
 	t.Helper()
+	skipIfCRSDataMissing(t)
 
 	crsOnce.Do(func() {
 		start := time.Now()
@@ -152,6 +164,8 @@ func TestOff(t *testing.T) {
 }
 
 func TestParanoiaLevel(t *testing.T) {
+	skipIfCRSDataMissing(t)
+
 	m := &WAF{CRS: true, ParanoiaLevel: 2}
 
 	set, err := m.directives("On")
