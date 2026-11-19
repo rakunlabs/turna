@@ -43,6 +43,11 @@ func skipIfCRSDataMissing(t *testing.T) {
 	t.Helper()
 
 	if _, err := fs.ReadFile(embeddedFS, "@owasp_crs/web-shells-php.data"); err != nil {
+		// CI downloads a clean module cache; a missing file there is a real failure
+		if os.Getenv("CI") != "" {
+			t.Fatalf("CRS data file not readable: %v", err)
+		}
+
 		t.Skipf("CRS data file not readable, likely quarantined by antivirus; run go mod verify: %v", err)
 	}
 }
