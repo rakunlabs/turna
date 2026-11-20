@@ -1,0 +1,5 @@
+allowBuilds:
+  esbuild: true
+  svelte-preprocess: true
+minimumReleaseAgeExclude:
+  - '@lucide/svelte@1.76.0'

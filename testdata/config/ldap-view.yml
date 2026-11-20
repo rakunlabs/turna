@@ -1,0 +1,20 @@
+server:
+  entrypoints:
+    http:
+      address: ":8080"
+  http:
+    middlewares:
+      ldap:
+        ldap_view:
+          prefix_path: /ldap
+          title: Test LDAP
+          servers:
+            - name: local
+              addr: ldap://localhost:1389
+              base_dn: dc=example,dc=org
+              user_dn_template: "cn=%s,ou=users,dc=example,dc=org"
+    routers:
+      ldap:
+        path: /ldap/*
+        middlewares:
+          - ldap

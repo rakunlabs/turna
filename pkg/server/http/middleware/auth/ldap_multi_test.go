@@ -261,6 +261,42 @@ func TestLDAPSourcesOrderAndOverride(t *testing.T) {
 	}
 }
 
+func TestLDAPInstanceConfigFilter(t *testing.T) {
+	t.Parallel()
+
+	b := newFakeDirectory(t, map[string]string{"uid=alice,ou=b": "pb"})
+
+	cfgs := []LDAPSettings{
+		{ID: "a", Addr: "ldap://stored-a:389", UserBaseDN: "ou=a"},
+		{ID: "b", Addr: "ldap://stored-b:389", UserBaseDN: "ou=b"},
+	}
+
+	for _, static := range []LDAPStatic{
+		{Configs: []string{"b"}, Addrs: map[string]string{"b": b.addr}},
+		{DisableConfigs: []string{"a"}, Addr: b.addr},
+	} {
+		cache := NewCache(nil)
+		cache.snap.Store(&Snapshot{Version: 1, LDAP: cfgs})
+		m := &Auth{cache: cache, LDAP: static}
+
+		sources := m.ldapSources()
+		if len(sources) != 1 || sources[0].id != "b" || sources[0].runtime.Addr != b.addr {
+			t.Fatalf("%+v: only b with its override must remain: %+v", static, sources)
+		}
+
+		// a single source is asked directly, even for a legacy DN elsewhere
+		if source, ok, err := m.LdapCheckPassword(nil, "alice", "pb"); err != nil || !ok || source != "b" {
+			t.Fatalf("got source=%q ok=%v err=%v", source, ok, err)
+		}
+
+		// users of a config disabled here are not adopted by another one
+		user := &data.User{Details: map[string]any{ldapSourceKey: "a"}}
+		if _, ok, err := m.LdapCheckPassword(user, "alice", "pb"); ok || err == nil {
+			t.Fatalf("user of a disabled config: ok=%v err=%v", ok, err)
+		}
+	}
+}
+
 func TestLDAPOwns(t *testing.T) {
 	t.Parallel()
 

@@ -218,8 +218,11 @@ func (m *Auth) InstanceConfigAPI(w http.ResponseWriter, r *http.Request) {
 				"poll_interval":                 pollInterval,
 			},
 			"ldap": map[string]any{
-				"addr":         m.LDAP.Addr,
-				"disable_sync": m.LDAP.DisableSync,
+				"addr":            m.LDAP.Addr,
+				"disable_sync":    m.LDAP.DisableSync,
+				"configs":         m.LDAP.Configs,
+				"disable_configs": m.LDAP.DisableConfigs,
+				"addrs":           m.LDAP.Addrs,
 			},
 		},
 	})

@@ -68,6 +68,7 @@ A single named middleware can hold only one middleware type. If you need both he
 | `inject` | Rewrite response bodies by path. |
 | `ip_filter` | Allow or deny requests by client IP or CIDR. |
 | `jwt` | Validate bearer JWTs with a JWKS URL, public keys or a secret. |
+| `ldap_view` | Log in to an LDAP server with your own credentials or anonymously, browse the tree and run searches. |
 | `log` | Lightweight request log line. |
 | `login` | Login UI and OAuth2 code/password flows backed by `session`. |
 | `maintenance` | Answer with a maintenance response, switched by config or a file. |

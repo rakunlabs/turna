@@ -5,9 +5,14 @@ import (
 	"time"
 )
 
-// ldapSyncLockName is the fleet-wide lease that coordinates the periodic
-// LDAP sync across instances sharing one auth database.
+// ldapSyncLockName prefixes the fleet-wide leases that coordinate the
+// periodic LDAP sync across instances sharing one auth database. Each stored
+// LDAP config has its own lease, see ldapSyncLockKey.
 const ldapSyncLockName = "ldap_sync"
+
+func ldapSyncLockKey(id string) string {
+	return ldapSyncLockName + ":" + id
+}
 
 // AcquireSyncLock atomically claims the named fleet-wide lock when no claim
 // exists yet or the current claim is older than notBefore. The winner writes

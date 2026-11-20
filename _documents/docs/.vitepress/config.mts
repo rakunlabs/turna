@@ -40,6 +40,7 @@ const httpMiddlewares = [
   ['inject', '/reference/server/http/middlewares/inject'],
   ['ip_filter', '/reference/server/http/middlewares/ip_filter'],
   ['jwt', '/reference/server/http/middlewares/jwt'],
+  ['ldap_view', '/reference/server/http/middlewares/ldap_view'],
   ['log', '/reference/server/http/middlewares/log'],
   ['login', '/reference/server/http/middlewares/login'],
   ['maintenance', '/reference/server/http/middlewares/maintenance'],

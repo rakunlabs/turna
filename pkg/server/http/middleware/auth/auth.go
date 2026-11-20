@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/rakunlabs/turna/pkg/server/registry"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -106,6 +107,24 @@ type LDAPStatic struct {
 	// DisableSync keeps this instance out of the periodic LDAP sync loop.
 	// The manual sync API keeps working. Config-file only, by design.
 	DisableSync bool `cfg:"disable_sync"`
+
+	// Configs limits this instance to the listed stored LDAP config ids.
+	// Empty uses every stored config.
+	Configs []string `cfg:"configs"`
+	// DisableConfigs ignores the listed stored LDAP config ids on this instance.
+	DisableConfigs []string `cfg:"disable_configs"`
+	// Addrs overrides the stored LDAP URL per config id on this instance.
+	// It takes precedence over Addr.
+	Addrs map[string]string `cfg:"addrs"`
+}
+
+// ldapConfigAllowed reports whether the stored config id is used on this instance.
+func (s LDAPStatic) ldapConfigAllowed(id string) bool {
+	if slices.Contains(s.DisableConfigs, id) {
+		return false
+	}
+
+	return len(s.Configs) == 0 || slices.Contains(s.Configs, id)
 }
 
 // SessionProvidersStatic customizes the providers served by this Auth instance.

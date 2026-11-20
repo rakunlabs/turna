@@ -43,6 +43,7 @@ import (
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/inject"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/ipfilter"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/jwt"
+	"github.com/rakunlabs/turna/pkg/server/http/middleware/ldapview"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/log"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/login"
 	"github.com/rakunlabs/turna/pkg/server/http/middleware/maintenance"
@@ -98,6 +99,7 @@ type HTTPMiddleware struct {
 	ServiceMiddleware          *service.Service                      `cfg:"service"`
 	FolderMiddleware           *folder.Folder                        `cfg:"folder"`
 	FileManagerMiddleware      *filemanager.FileManager              `cfg:"file_manager"`
+	LdapViewMiddleware         *ldapview.LdapView                    `cfg:"ldap_view"`
 	BasicAuthMiddleware        *basicauth.BasicAuth                  `cfg:"basic_auth"`
 	CorsMiddleware             *cors.Cors                            `cfg:"cors"`
 	HeadersMiddleware          *headers.Headers                      `cfg:"headers"`
@@ -196,6 +198,9 @@ func (h *HTTPMiddleware) getFirstFound(ctx context.Context, name string) ([]Midd
 		return []MiddlewareFunc{m}, err
 	case h.FileManagerMiddleware != nil:
 		m, err := h.FileManagerMiddleware.Middleware()
+		return []MiddlewareFunc{m}, err
+	case h.LdapViewMiddleware != nil:
+		m, err := h.LdapViewMiddleware.Middleware()
 		return []MiddlewareFunc{m}, err
 	case h.BasicAuthMiddleware != nil:
 		m, err := h.BasicAuthMiddleware.Middleware(name)

@@ -224,9 +224,10 @@ type ldapSource struct {
 }
 
 type ldapManager struct {
-	m       sync.Mutex
-	version uint64
-	sources []*ldapSource
+	m        sync.Mutex
+	version  uint64
+	sources  []*ldapSource
+	excluded map[string]bool
 }
 
 func (s LDAPSettings) runtime() *ldap.Ldap {
@@ -286,8 +287,17 @@ func (m *Auth) ldapSources() []*ldapSource {
 	}
 
 	var sources []*ldapSource
-	for i, cfg := range sn.LDAP {
-		if i == 0 && m.LDAP.Addr != "" {
+	excluded := make(map[string]bool)
+	for _, cfg := range sn.LDAP {
+		if !m.LDAP.ldapConfigAllowed(cfg.ID) {
+			excluded[cfg.ID] = true
+
+			continue
+		}
+
+		if addr := m.LDAP.Addrs[cfg.ID]; addr != "" {
+			cfg.Addr = addr
+		} else if len(sources) == 0 && m.LDAP.Addr != "" {
 			cfg.Addr = m.LDAP.Addr
 		}
 
@@ -308,9 +318,25 @@ func (m *Auth) ldapSources() []*ldapSource {
 	}
 
 	m.ldap.sources = sources
+	m.ldap.excluded = excluded
 	m.ldap.version = sn.Version
 
 	return sources
+}
+
+// ldapExcluded reports whether the stored config id exists but is disabled on
+// this instance.
+func (m *Auth) ldapExcluded(id string) bool {
+	if id == "" {
+		return false
+	}
+
+	m.ldapSources()
+
+	m.ldap.m.Lock()
+	defer m.ldap.m.Unlock()
+
+	return m.ldap.excluded[id]
 }
 
 func (m *Auth) ldapEnabled() bool {
@@ -362,6 +388,24 @@ func (m *Auth) LdapCheckPassword(user *data.User, username, password string) (st
 	sources := m.ldapSources()
 	if len(sources) == 0 {
 		return "", false, errors.New("ldap is not configured")
+	}
+
+	// a user of a config disabled on this instance must not be adopted by
+	// another directory here; that would rewrite its source in the shared db
+	if source := ldapUserSource(user); m.ldapExcluded(source) {
+		return "", false, fmt.Errorf("ldap config %q is not enabled on this instance", source)
+	}
+
+	// with a single directory there is nothing to choose between
+	if len(sources) == 1 {
+		s := sources[0]
+		if user == nil && s.cfg.DisableRegister {
+			return "", false, nil
+		}
+
+		ok, err := s.runtime.CheckPassword(username, password)
+
+		return s.id, ok, err
 	}
 
 	if pinned := ldapKnownSource(user, sources); pinned != "" {
@@ -467,18 +511,20 @@ func (m *Auth) ldapSync(ctx context.Context, force bool, uid, source string, per
 
 		if err := m.ldapSyncSource(ctx, s, i == 0, force, ""); err != nil {
 			errs = append(errs, fmt.Errorf("ldap %s: %w", s.id, err))
+
+			continue
+		}
+
+		// stamp the config's fleet-wide sync clock on a completed full sync so
+		// the next periodic run waits a full interval; manual syncs count too.
+		// Single-user syncs are left out — they do not cover the whole directory.
+		if err := m.store.TouchSyncLock(ctx, ldapSyncLockKey(s.id), m.instanceID); err != nil {
+			slog.Warn("ldap sync lock touch failed", slog.String("ldap", s.id), slog.String("error", err.Error()))
 		}
 	}
 
 	if len(errs) > 0 {
 		return errors.Join(errs...)
-	}
-
-	// stamp the fleet-wide sync clock on a completed full sync so the next
-	// periodic run waits a full interval; manual syncs count too. Single-user
-	// syncs are left out — they do not cover the whole directory.
-	if err := m.store.TouchSyncLock(ctx, ldapSyncLockName, m.instanceID); err != nil {
-		slog.Warn("ldap sync lock touch failed", slog.String("error", err.Error()))
 	}
 
 	return nil
@@ -756,41 +802,53 @@ func (m *Auth) watchLDAP(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			var interval time.Duration
-			for _, s := range m.ldapSources() {
+			for i, s := range m.ldapSources() {
 				if s.runtime.DisableSync || s.cfg.DisableGroups {
 					continue
 				}
-				if interval == 0 || s.runtime.SyncDuration < interval {
-					interval = s.runtime.SyncDuration
+
+				// The lease runs slightly short of the interval so a tick landing
+				// a few seconds early still claims it; floored so tiny intervals
+				// keep a sane guard window against doubled syncs.
+				lease := s.runtime.SyncDuration - 30*time.Second
+				if lease < 30*time.Second {
+					lease = 30 * time.Second
 				}
-			}
-			if interval == 0 {
-				continue
-			}
 
-			// The lease runs slightly short of the interval so a tick landing
-			// a few seconds early still claims it; floored so tiny intervals
-			// keep a sane guard window against doubled syncs.
-			lease := interval - 30*time.Second
-			if lease < 30*time.Second {
-				lease = 30 * time.Second
-			}
+				// one lease per config: each config is synced by exactly one
+				// instance among those that have it enabled
+				acquired, err := m.store.AcquireSyncLock(ctx, ldapSyncLockKey(s.id), m.instanceID, lease)
+				if err != nil {
+					slog.Error("ldap sync lock failed", slog.String("ldap", s.id), slog.String("error", err.Error()))
+					continue
+				}
+				if !acquired {
+					continue
+				}
 
-			acquired, err := m.store.AcquireSyncLock(ctx, ldapSyncLockName, m.instanceID, lease)
-			if err != nil {
-				slog.Error("ldap sync lock failed", slog.String("error", err.Error()))
-				continue
-			}
-			if !acquired {
-				continue
-			}
-
-			if err := m.ldapSync(ctx, false, "", "", true); err != nil {
-				slog.Error("ldap sync failed", slog.String("error", err.Error()))
+				if err := m.ldapSyncPeriodic(ctx, s, i == 0); err != nil {
+					slog.Error("ldap sync failed", slog.String("ldap", s.id), slog.String("error", err.Error()))
+				}
 			}
 		}
 	}
+}
+
+func (m *Auth) ldapSyncPeriodic(ctx context.Context, s *ldapSource, primary bool) error {
+	m.ldapSyncM.Lock()
+	defer m.ldapSyncM.Unlock()
+
+	ctx = data.WithContextUserName(ctx, "LDAP")
+
+	if err := m.ldapSyncSource(ctx, s, primary, false, ""); err != nil {
+		return err
+	}
+
+	if err := m.store.TouchSyncLock(ctx, ldapSyncLockKey(s.id), m.instanceID); err != nil {
+		slog.Warn("ldap sync lock touch failed", slog.String("ldap", s.id), slog.String("error", err.Error()))
+	}
+
+	return nil
 }
 
 // ////////////////////////////////////////////////////////////////////
