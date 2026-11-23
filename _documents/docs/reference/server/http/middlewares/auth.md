@@ -40,9 +40,9 @@ Configuration values are not expanded from environment variables. Keep a configu
 | `cache.disable_notification_listener` | Instance-local switch that disables the dedicated `LISTEN auth_changed` connection. Cache version polling remains active and defaults to `10s` unless `cache.poll_interval` is set. Useful for instances connecting through transaction-pooled proxies that cannot preserve PostgreSQL session state. |
 | `cache.poll_interval` | Optional instance-local polling interval (for example `10s`). When set, overrides the shared runtime `cache.poll_interval` on this instance. |
 | `ldap.addr` | Optional instance-local LDAP URL (e.g. `ldap://10.20.0.15:389` or `ldaps://ldap.site-b.example.com:636`). Overrides the stored address for login, directory queries, and manual/periodic sync. Empty uses the stored address. Requires an enabled LDAP config in the database; does not modify the shared config. |
-| `ldap.disable_sync` | Keep this instance out of the periodic LDAP sync loop; the manual sync API keeps working. Config-file only. Instances that do participate coordinate through the `auth_sync_locks` table with one lease per LDAP config, so each config is synced once per `sync_duration` by a single instance that has it enabled. |
+| `ldap.disable_sync` | Keep this instance out of the periodic LDAP sync loop; the manual sync API keeps working. Config-file only. Instances that do participate coordinate through the `auth_sync_locks` table with one lease per LDAP config, so each source key is synced once per `sync_duration` by a single instance that has one of its configs enabled. |
 | `ldap.configs` | Only use the listed stored LDAP config ids on this instance. Empty uses every stored config. |
-| `ldap.disable_configs` | Ignore the listed stored LDAP config ids on this instance. Users of an ignored config cannot log in through LDAP on this instance. |
+| `ldap.disable_configs` | Ignore the listed stored LDAP config ids on this instance. Users whose source key has no other config enabled here cannot log in through LDAP on this instance (`400 invalid_grant`). |
 | `ldap.addrs` | Map of LDAP config id to URL, overriding the stored address on this instance. Takes precedence over `ldap.addr`. |
 | `cache.code_store` | Optional instance-local OAuth code/state store, same shape as the stored `cache.code_store` (`active`, `key_prefix`, `redis.address`, `redis.username`, `redis.password`, `redis.client_name`, `redis.cluster`, `redis.gcp_iam`, `redis.tls.*`). Redis Cluster is detected automatically even when `redis.address` contains one bootstrap address; set `redis.cluster: true` to force cluster-aware routing. When `active` is set, this instance ignores the stored `code_store` and uses this one; other instances keep the stored value. The UI shows it as read-only. |
 
@@ -346,6 +346,22 @@ server:
 ```
 
 Merge this into the instance's existing Auth configuration and restart that instance. The override remains in effect when shared LDAP settings are reloaded; bind credentials, base DNs, and group settings still come from the database.
+
+#### Source keys
+
+Every user synced or logged in through LDAP stores a source key in `details.ldap_source`. A config's `key` sets it; an empty key uses the config id. Configs that share a key serve the same people — for example two separate directories that hold the same accounts:
+
+```json
+{"key": "finops", "addr": "ldaps://ldap.example.com:636",     "user_base_dn": "ou=people,dc=finops", "priority": 0}
+{"key": "finops", "addr": "ldaps://ldap-gcp.example.com:636", "user_base_dn": "ou=people,dc=gcp",    "priority": 1, "disable_sync": true}
+```
+
+- **Login:** the password of a user is checked against every enabled config with the user's key, in priority order; the first that accepts it wins. The user stays on the key, whichever directory answered.
+- **Sync:** one config per key syncs — the first in priority order with sync enabled (here the first one). Configs that share a key never fight over the users' roles. The fleet-wide sync lease is per key.
+- **Per instance:** `ldap.disable_configs` / `ldap.configs` still apply per config. A user is refused on an instance only when *every* config of the user's key is disabled there.
+- **Migration:** users that still hold a config id from before keys resolve to that config's key and are rewritten to the key on their next login or sync.
+
+The LDAP config page shows the configs sharing the key and their role on this instance (login only, login and sync, not used), from `GET /auth/v1/instance-config` (`ldap.sources`).
 
 Automatic group mapping (same model as the legacy `iam` middleware):
 

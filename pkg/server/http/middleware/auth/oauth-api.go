@@ -714,6 +714,15 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 			}
 
 			source, ok, err := m.LdapCheckPassword(stored, accessTokenRequest.Username, accessTokenRequest.Password)
+			if errors.Is(err, errLDAPSourceExcluded) {
+				httputil.HandleError(w, AccessTokenErrorResponse{
+					Error:            "invalid_grant",
+					ErrorDescription: "ldap login for this user is not available on this instance",
+					code:             http.StatusBadRequest,
+				})
+
+				return
+			}
 			if err != nil {
 				httputil.HandleError(w, AccessTokenErrorResponse{
 					Error:            "server_error",
@@ -733,8 +742,9 @@ func (m *Auth) APIToken(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			// a user without a source, or whose config was removed, is
-			// adopted by the config that accepted the password
+			// a user without a source key, whose configs were removed, or that
+			// still holds a config id from before keys is adopted by the key
+			// of the config that accepted the password
 			if user != nil && ldapUserSource(stored) != source {
 				if err := m.ldapSync(r.Context(), false, accessTokenRequest.Username, source, false); err != nil {
 					slog.Warn("ldap source adoption failed",

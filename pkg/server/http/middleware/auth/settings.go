@@ -191,7 +191,11 @@ type SessionProviderOverride struct {
 // LDAPSettings is the decoded LDAP config stored in auth_ldap_configs.
 type LDAPSettings struct {
 	// ID is the config's record id, filled in by the cache.
-	ID   string `json:"-"`
+	ID string `json:"-"`
+	// Key is the source key written to the users of this config. Configs
+	// sharing a key serve the same users: a login is checked against every
+	// config with the user's key, and one of them syncs. Empty uses the id.
+	Key  string `json:"key"`
 	Addr string `json:"addr"`
 	// Priority orders the configs, lowest first; ties are ordered by id. The
 	// first config is the primary one.

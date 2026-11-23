@@ -653,6 +653,46 @@
 {:else if editor.kind === "ldap"}
   {@const ldapStatic = session.instanceConfig?.ldap}
   {@const bindMode = editor.getNestedString("bind", "mode") || "simple"}
+  {@const ldapID = editor.loadedID || editor.id.trim()}
+  {@const ldapKey = editor.getString("key").trim() || ldapID}
+  {@const keyPeers = (ldapStatic?.sources ?? []).filter((s) => s.key === ldapKey)}
+  <Section
+    title="Source key"
+    note="Configs with the same key serve the same people: a login is checked against each of them, one of them syncs."
+  >
+    <div class="grid gap-6 sm:grid-cols-2">
+      {@render line({
+        label: "Key",
+        value: editor.getString("key"),
+        set: (value) => editor.setString("key", value),
+        placeholder: ldapID || "defaults to the config id",
+        mono: true,
+        hint: "Written to users as their LDAP source. Give separate directories with the same users one key; empty uses the config id.",
+      })}
+    </div>
+    {#if ldapStatic && keyPeers.length > 0}
+      <dl class="mt-6 grid gap-x-8 gap-y-2 sm:grid-cols-[12rem_minmax(0,1fr)]">
+        {#each keyPeers as peer (peer.id)}
+          <dt class="serial text-[12.5px] {peer.id === ldapID ? 'text-ink' : 'text-muted'}">{peer.id}</dt>
+          <dd class="stamp text-[12px] {peer.enabled ? 'text-ink' : 'text-muted'}">
+            {#if !peer.enabled}
+              not used on this instance
+            {:else if peer.syncs}
+              login · syncs this key here
+            {:else}
+              login only
+            {/if}
+          </dd>
+        {/each}
+      </dl>
+      {#if keyPeers.length > 1 && !keyPeers.some((p) => p.syncs)}
+        <p class="mt-3 max-w-[70ch] text-[12px] leading-[1.6] text-caution">
+          No config of this key runs the periodic sync on this instance; another instance has to, or
+          the users' roles of this key go stale.
+        </p>
+      {/if}
+    {/if}
+  </Section>
   <Section title="Directory" note="The connection used for password checks and group sync.">
     {#if ldapStatic?.addr}
       <div class="mb-6">
@@ -779,7 +819,7 @@
         label: "Disable sync",
         on: editor.getBool("disable_sync"),
         set: (value) => editor.setBool("disable_sync", value),
-        hint: "Only the periodic sync stops; a manual sync still reads this directory.",
+        hint: "Only the periodic sync stops; a manual sync still reads this directory. With a shared key, another config of the key syncs instead.",
       })}
       {@render toggle({
         label: "Disable group mapping",
@@ -855,7 +895,7 @@
           placeholder: "not assigned",
           mono: true,
           linksTo: "ldap",
-          hint: "The LDAP config this user's password is checked against. Empty, or a config that no longer exists, means every config is tried in priority order and the first that accepts the password takes the user over.",
+          hint: "The LDAP source key of this user: its password is checked against every config with this key. Empty, or a key no config has, means every config is tried in priority order and the first that accepts the password takes the user over.",
         })}
         {@render line({
           label: "LDAP DN",

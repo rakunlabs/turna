@@ -63,7 +63,21 @@ export type InstanceConfig = {
   ldap: {
     addr: string;
     disable_sync: boolean;
+    configs?: string[] | null;
+    disable_configs?: string[] | null;
+    addrs?: Record<string, string> | null;
+    /** Every stored LDAP config with its source key and its role here. */
+    sources?: LDAPSourceInfo[];
   };
+};
+
+export type LDAPSourceInfo = {
+  id: string;
+  key: string;
+  /** Used on this instance (not filtered out by ldap.configs / disable_configs). */
+  enabled: boolean;
+  /** The config that runs the periodic sync of its key on this instance. */
+  syncs: boolean;
 };
 
 export type Dashboard = {

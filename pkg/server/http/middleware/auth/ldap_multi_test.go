@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"net"
 	"testing"
 
@@ -195,15 +196,27 @@ func TestLDAPCheckPasswordReplacedDirectory(t *testing.T) {
 	}
 }
 
-func TestLDAPKnownSource(t *testing.T) {
+func TestLDAPUserKey(t *testing.T) {
 	t.Parallel()
 
-	sources := []*ldapSource{{id: "a"}, {id: "b"}}
-	if got := ldapKnownSource(&data.User{Details: map[string]any{ldapSourceKey: "b"}}, sources); got != "b" {
-		t.Fatalf("got %q, want b", got)
-	}
-	if got := ldapKnownSource(&data.User{Details: map[string]any{ldapSourceKey: "gone"}}, sources); got != "" {
-		t.Fatalf("removed source must be treated as unassigned, got %q", got)
+	m := multiLDAPAuth(t,
+		LDAPSettings{ID: "a", Addr: "ldap://a:389"},
+		LDAPSettings{ID: "b", Key: "shared", Addr: "ldap://b:389"},
+		LDAPSettings{ID: "c", Key: "shared", Addr: "ldap://c:389"},
+	)
+
+	for _, tt := range []struct{ stored, want string }{
+		{stored: "a", want: "a"},
+		{stored: "shared", want: "shared"},
+		// a config id from before keys resolves to the config's key
+		{stored: "c", want: "shared"},
+		{stored: "gone", want: ""},
+		{stored: "", want: ""},
+	} {
+		user := &data.User{Details: map[string]any{ldapSourceKey: tt.stored}}
+		if got := m.ldapUserKey(user); got != tt.want {
+			t.Fatalf("stored %q: got %q, want %q", tt.stored, got, tt.want)
+		}
 	}
 }
 
@@ -291,9 +304,83 @@ func TestLDAPInstanceConfigFilter(t *testing.T) {
 
 		// users of a config disabled here are not adopted by another one
 		user := &data.User{Details: map[string]any{ldapSourceKey: "a"}}
-		if _, ok, err := m.LdapCheckPassword(user, "alice", "pb"); ok || err == nil {
+		if _, ok, err := m.LdapCheckPassword(user, "alice", "pb"); ok || !errors.Is(err, errLDAPSourceExcluded) {
 			t.Fatalf("user of a disabled config: ok=%v err=%v", ok, err)
 		}
+	}
+}
+
+func TestLDAPSharedKey(t *testing.T) {
+	t.Parallel()
+
+	// finops and finops-gcp are separate directories with the same people
+	finops := newFakeDirectory(t, map[string]string{"uid=alice,ou=finops": "pa"})
+	gcp := newFakeDirectory(t, map[string]string{"uid=alice,ou=gcp": "pa", "uid=bob,ou=gcp": "pb"})
+
+	m := multiLDAPAuth(t,
+		LDAPSettings{ID: "finops", Key: "finops", Addr: finops.addr, UserBaseDN: "ou=finops"},
+		LDAPSettings{ID: "finops-gcp", Key: "finops", Addr: gcp.addr, UserBaseDN: "ou=gcp", DisableSync: true},
+	)
+
+	// either directory accepts a user of the key; the key is returned, not the id
+	for _, stored := range []string{"finops", "finops-gcp"} {
+		user := &data.User{Details: map[string]any{ldapSourceKey: stored}}
+		if source, ok, err := m.LdapCheckPassword(user, "bob", "pb"); err != nil || !ok || source != "finops" {
+			t.Fatalf("stored %q: source=%q ok=%v err=%v", stored, source, ok, err)
+		}
+	}
+
+	// a wrong password keeps the key
+	user := &data.User{Details: map[string]any{ldapSourceKey: "finops"}}
+	if source, ok, err := m.LdapCheckPassword(user, "alice", "wrong"); err != nil || ok || source != "finops" {
+		t.Fatalf("wrong password: source=%q ok=%v err=%v", source, ok, err)
+	}
+
+	// one config per key syncs: the one with sync enabled
+	targets := ldapSyncTargets(m.ldapSources(), true)
+	if len(targets) != 1 || targets[0].id != "finops" {
+		t.Fatalf("sync targets: %+v", targets)
+	}
+}
+
+func TestLDAPSharedKeyDisabledHere(t *testing.T) {
+	t.Parallel()
+
+	gcp := newFakeDirectory(t, map[string]string{"uid=alice,ou=gcp": "pa"})
+
+	cfgs := []LDAPSettings{
+		{ID: "finops", Key: "finops", Addr: "ldap://unreachable:389", UserBaseDN: "ou=finops"},
+		{ID: "finops-gcp", Key: "finops", Addr: gcp.addr, UserBaseDN: "ou=gcp"},
+	}
+
+	cache := NewCache(nil)
+	cache.snap.Store(&Snapshot{Version: 1, LDAP: cfgs})
+	m := &Auth{cache: cache, LDAP: LDAPStatic{DisableConfigs: []string{"finops"}}}
+
+	// one config of the key is still enabled here, so the user logs in
+	user := &data.User{Details: map[string]any{ldapSourceKey: "finops"}}
+	if source, ok, err := m.LdapCheckPassword(user, "alice", "pa"); err != nil || !ok || source != "finops" {
+		t.Fatalf("source=%q ok=%v err=%v", source, ok, err)
+	}
+
+	// a user still holding the id of the disabled config logs in through the
+	// enabled one too
+	legacy := &data.User{Details: map[string]any{ldapSourceKey: "finops"}}
+	if source, ok, err := m.LdapCheckPassword(legacy, "alice", "pa"); err != nil || !ok || source != "finops" {
+		t.Fatalf("legacy id: source=%q ok=%v err=%v", source, ok, err)
+	}
+
+	// the disabled directory is never asked: a wrong password is a clean
+	// mismatch, not an error from the unreachable finops address
+	if _, ok, err := m.LdapCheckPassword(user, "alice", "wrong"); ok || err != nil {
+		t.Fatalf("disabled config was contacted: ok=%v err=%v", ok, err)
+	}
+
+	// with every config of the key disabled the user is refused
+	m = &Auth{cache: cache, LDAP: LDAPStatic{Configs: []string{"none"}}}
+	cache.snap.Store(&Snapshot{Version: 2, LDAP: append(cfgs, LDAPSettings{ID: "none", Addr: gcp.addr})})
+	if _, ok, err := m.LdapCheckPassword(user, "alice", "pa"); ok || !errors.Is(err, errLDAPSourceExcluded) {
+		t.Fatalf("ok=%v err=%v", ok, err)
 	}
 }
 

@@ -219,15 +219,30 @@ func ldapDetails(details map[string]any, u ldap.LdapUser) map[string]any {
 
 type ldapSource struct {
 	id      string
+	key     string
 	cfg     LDAPSettings
 	runtime *ldap.Ldap
 }
 
 type ldapManager struct {
-	m        sync.Mutex
-	version  uint64
-	sources  []*ldapSource
-	excluded map[string]bool
+	m       sync.Mutex
+	version uint64
+	sources []*ldapSource
+	// keys resolves a stored ldap_source value (a source key, or the id of a
+	// config from before keys) to its source key, over every stored config.
+	keys map[string]string
+	// served holds the source keys of the configs enabled on this instance.
+	served map[string]bool
+}
+
+// sourceKey is the key written to the users of this config; configs sharing
+// it serve the same users. Empty falls back to the config id.
+func (s LDAPSettings) sourceKey() string {
+	if key := strings.TrimSpace(s.Key); key != "" {
+		return key
+	}
+
+	return s.ID
 }
 
 func (s LDAPSettings) runtime() *ldap.Ldap {
@@ -286,14 +301,22 @@ func (m *Auth) ldapSources() []*ldapSource {
 		old[s.id] = s
 	}
 
+	// ids first so a key always wins over an id with the same name
+	keys := make(map[string]string, 2*len(sn.LDAP))
+	for _, cfg := range sn.LDAP {
+		keys[cfg.ID] = cfg.sourceKey()
+	}
+	for _, cfg := range sn.LDAP {
+		keys[cfg.sourceKey()] = cfg.sourceKey()
+	}
+
 	var sources []*ldapSource
-	excluded := make(map[string]bool)
+	served := make(map[string]bool)
 	for _, cfg := range sn.LDAP {
 		if !m.LDAP.ldapConfigAllowed(cfg.ID) {
-			excluded[cfg.ID] = true
-
 			continue
 		}
+		served[cfg.sourceKey()] = true
 
 		if addr := m.LDAP.Addrs[cfg.ID]; addr != "" {
 			cfg.Addr = addr
@@ -310,7 +333,7 @@ func (m *Auth) ldapSources() []*ldapSource {
 			continue
 		}
 
-		sources = append(sources, &ldapSource{id: cfg.ID, cfg: cfg, runtime: cfg.runtime()})
+		sources = append(sources, &ldapSource{id: cfg.ID, key: cfg.sourceKey(), cfg: cfg, runtime: cfg.runtime()})
 	}
 
 	for _, s := range old {
@@ -318,25 +341,140 @@ func (m *Auth) ldapSources() []*ldapSource {
 	}
 
 	m.ldap.sources = sources
-	m.ldap.excluded = excluded
+	m.ldap.keys = keys
+	m.ldap.served = served
 	m.ldap.version = sn.Version
 
 	return sources
 }
 
-// ldapExcluded reports whether the stored config id exists but is disabled on
-// this instance.
-func (m *Auth) ldapExcluded(id string) bool {
-	if id == "" {
-		return false
-	}
-
+// ldapKeyMaps returns the source key resolution of the current snapshot. The
+// maps are rebuilt, never mutated, so they are safe to read without the lock.
+func (m *Auth) ldapKeyMaps() (keys map[string]string, served map[string]bool) {
 	m.ldapSources()
 
 	m.ldap.m.Lock()
 	defer m.ldap.m.Unlock()
 
-	return m.ldap.excluded[id]
+	return m.ldap.keys, m.ldap.served
+}
+
+// ldapExcluded reports whether the stored source belongs to configs that
+// exist but none of which is enabled on this instance.
+func (m *Auth) ldapExcluded(source string) bool {
+	if source == "" {
+		return false
+	}
+
+	keys, served := m.ldapKeyMaps()
+	key, ok := keys[source]
+
+	return ok && !served[key]
+}
+
+// ldapUserKeyFunc returns a resolver of a user's source key. A user whose
+// source no enabled config serves (removed, or unknown) resolves to "" and is
+// handled like an unassigned one.
+func (m *Auth) ldapUserKeyFunc() func(*data.User) string {
+	keys, served := m.ldapKeyMaps()
+
+	return func(user *data.User) string {
+		key := keys[ldapUserSource(user)]
+		if key == "" || !served[key] {
+			return ""
+		}
+
+		return key
+	}
+}
+
+func (m *Auth) ldapUserKey(user *data.User) string {
+	return m.ldapUserKeyFunc()(user)
+}
+
+// ldapSyncTargets picks one config per source key for a full sync: configs
+// sharing a key serve the same users, so syncing more than one would make
+// them fight over the users' roles. The first config in priority order with
+// sync enabled wins; a manual sync falls back to the first that reads groups.
+func ldapSyncTargets(sources []*ldapSource, periodic bool) []*ldapSource {
+	picked := make(map[string]*ldapSource)
+	var keys []string
+	for _, s := range sources {
+		if s.cfg.DisableGroups {
+			continue
+		}
+
+		current, ok := picked[s.key]
+		if !ok {
+			keys = append(keys, s.key)
+			picked[s.key] = s
+
+			continue
+		}
+
+		if current.cfg.DisableSync && !s.cfg.DisableSync {
+			picked[s.key] = s
+		}
+	}
+
+	targets := make([]*ldapSource, 0, len(keys))
+	for _, key := range keys {
+		s := picked[key]
+		if periodic && s.cfg.DisableSync {
+			continue
+		}
+
+		targets = append(targets, s)
+	}
+
+	return targets
+}
+
+// ldapPrimary reports whether the source key is the primary one; users
+// synced before sources were recorded belong to it.
+func ldapPrimary(sources []*ldapSource, key string) bool {
+	return len(sources) > 0 && sources[0].key == key
+}
+
+// LDAPSourceInfo describes a stored LDAP config as this instance uses it.
+type LDAPSourceInfo struct {
+	ID      string `json:"id"`
+	Key     string `json:"key"`
+	Enabled bool   `json:"enabled"`
+	Syncs   bool   `json:"syncs"`
+}
+
+// ldapSourceInfo lists every stored LDAP config with its source key, whether
+// this instance uses it and whether it is the one that syncs its key here.
+func (m *Auth) ldapSourceInfo() []LDAPSourceInfo {
+	if m.cache == nil {
+		return []LDAPSourceInfo{}
+	}
+
+	sources := m.ldapSources()
+
+	syncs := make(map[string]bool)
+	for _, s := range ldapSyncTargets(sources, true) {
+		syncs[s.id] = true
+	}
+
+	enabled := make(map[string]bool, len(sources))
+	for _, s := range sources {
+		enabled[s.id] = true
+	}
+
+	sn := m.cache.Snapshot()
+	infos := make([]LDAPSourceInfo, 0, len(sn.LDAP))
+	for _, cfg := range sn.LDAP {
+		infos = append(infos, LDAPSourceInfo{
+			ID:      cfg.ID,
+			Key:     cfg.sourceKey(),
+			Enabled: enabled[cfg.ID],
+			Syncs:   syncs[cfg.ID] && !m.LDAP.DisableSync,
+		})
+	}
+
+	return infos
 }
 
 func (m *Auth) ldapEnabled() bool {
@@ -354,8 +492,9 @@ func (m *Auth) closeLDAP() error {
 	return nil
 }
 
-// ldapSourceKey stores the id of the LDAP config a user was synced from, so
-// password checks and syncs only consult that directory.
+// ldapSourceKey stores the source key of the LDAP configs a user belongs to,
+// so password checks and syncs only consult those directories. Users synced
+// before source keys hold the config id, which resolves to the config's key.
 const ldapSourceKey = "ldap_source"
 
 func ldapUserSource(user *data.User) string {
@@ -368,54 +507,25 @@ func ldapUserSource(user *data.User) string {
 	return source
 }
 
-// ldapKnownSource returns the user's source while that config still exists;
-// users of a removed config are orphaned and handled like unassigned ones.
-func ldapKnownSource(user *data.User, sources []*ldapSource) string {
-	source := ldapUserSource(user)
-	for _, s := range sources {
-		if s.id == source {
-			return source
-		}
-	}
-
-	return ""
-}
-
-// LdapCheckPassword checks the password against the user's LDAP source. Users
-// without a recorded source are checked against every config in priority
-// order; the first that accepts the password wins and its id is returned.
+// LdapCheckPassword checks the password against the configs of the user's
+// source key, in priority order; the first that accepts it wins. Users
+// without a (still served) key are checked against every config and adopted
+// by the key of the config that accepts the password. It returns that key.
 func (m *Auth) LdapCheckPassword(user *data.User, username, password string) (string, bool, error) {
 	sources := m.ldapSources()
 	if len(sources) == 0 {
 		return "", false, errors.New("ldap is not configured")
 	}
 
-	// a user of a config disabled on this instance must not be adopted by
-	// another directory here; that would rewrite its source in the shared db
+	// a user whose configs are all disabled on this instance must not be
+	// adopted by another directory here; that would rewrite its source in
+	// the shared db
 	if source := ldapUserSource(user); m.ldapExcluded(source) {
-		return "", false, fmt.Errorf("ldap config %q is not enabled on this instance", source)
+		return "", false, fmt.Errorf("ldap source %q is not enabled on this instance: %w", source, errLDAPSourceExcluded)
 	}
 
-	// with a single directory there is nothing to choose between
-	if len(sources) == 1 {
-		s := sources[0]
-		if user == nil && s.cfg.DisableRegister {
-			return "", false, nil
-		}
-
-		ok, err := s.runtime.CheckPassword(username, password)
-
-		return s.id, ok, err
-	}
-
-	if pinned := ldapKnownSource(user, sources); pinned != "" {
-		for _, s := range sources {
-			if s.id == pinned {
-				ok, err := s.runtime.CheckPassword(username, password)
-
-				return s.id, ok, err
-			}
-		}
+	if key := m.ldapUserKey(user); key != "" {
+		return checkPasswordIn(sources, key, username, password, func(s *ldapSource) bool { return s.key == key })
 	}
 
 	// a stored user without a (still configured) source keeps its directory
@@ -433,23 +543,33 @@ func (m *Auth) LdapCheckPassword(user *data.User, username, password string) (st
 		storedDN = ""
 	}
 
+	return checkPasswordIn(sources, "", username, password, func(s *ldapSource) bool {
+		if storedDN != "" && !strings.EqualFold(s.runtime.UserDN(username), storedDN) {
+			return false
+		}
+
+		// a config that may not create users cannot log in unknown ones
+		return user != nil || !s.cfg.DisableRegister
+	})
+}
+
+// checkPasswordIn asks the matching configs in priority order. It returns
+// the key of the config that accepted the password; on a mismatch it returns
+// key (the user's own key, or "" for an unassigned user).
+func checkPasswordIn(sources []*ldapSource, key, username, password string, match func(*ldapSource) bool) (string, bool, error) {
 	var errs []error
 	for _, s := range sources {
-		if storedDN != "" && !strings.EqualFold(s.runtime.UserDN(username), storedDN) {
-			continue
-		}
-		// a config that may not create users cannot log in unknown ones
-		if user == nil && s.cfg.DisableRegister {
+		if !match(s) {
 			continue
 		}
 
 		ok, err := s.runtime.CheckPassword(username, password)
 		if ok {
-			return s.id, true, nil
+			return s.key, true, nil
 		}
 		if err != nil {
 			if errors.Is(err, ldap.ErrExceedPasswordRetryLimit) {
-				return s.id, false, err
+				return s.key, false, err
 			}
 
 			errs = append(errs, fmt.Errorf("ldap %s: %w", s.id, err))
@@ -461,20 +581,25 @@ func (m *Auth) LdapCheckPassword(user *data.User, username, password string) (st
 		return "", false, errors.Join(errs...)
 	}
 
-	return "", false, nil
+	return key, false, nil
 }
 
 var errLDAPUserNotFound = errors.New("ldap user not found")
 
-// LdapSync syncs LDAP groups and users into the store from every config.
-// When uid is set, only that user is synced from the first config that has it.
+// errLDAPSourceExcluded marks a login of a user whose LDAP config is disabled
+// on this instance; it is a client-side refusal, not a server failure.
+var errLDAPSourceExcluded = errors.New("ldap source excluded")
+
+// LdapSync syncs LDAP groups and users into the store, one config per source
+// key. When uid is set, only that user is synced from the first config that
+// has it.
 func (m *Auth) LdapSync(ctx context.Context, force bool, uid string) error {
 	return m.ldapSync(ctx, force, uid, "", false)
 }
 
-// ldapSync runs the sync. source limits a single-user sync to one config;
-// periodic skips configs with disable_sync.
-func (m *Auth) ldapSync(ctx context.Context, force bool, uid, source string, periodic bool) error {
+// ldapSync runs the sync. key limits a single-user sync to the configs of
+// one source key; periodic skips configs with disable_sync.
+func (m *Auth) ldapSync(ctx context.Context, force bool, uid, key string, periodic bool) error {
 	sources := m.ldapSources()
 	if len(sources) == 0 {
 		return errors.New("ldap is not configured")
@@ -486,12 +611,12 @@ func (m *Auth) ldapSync(ctx context.Context, force bool, uid, source string, per
 	ctx = data.WithContextUserName(ctx, "LDAP")
 
 	if uid != "" {
-		for i, s := range sources {
-			if source != "" && s.id != source {
+		for _, s := range ldapUserSyncOrder(sources) {
+			if key != "" && s.key != key {
 				continue
 			}
 
-			err := m.ldapSyncSource(ctx, s, i == 0, force, uid)
+			err := m.ldapSyncSource(ctx, s, ldapPrimary(sources, s.key), force, uid)
 			if !errors.Is(err, errLDAPUserNotFound) {
 				return err
 			}
@@ -500,25 +625,23 @@ func (m *Auth) ldapSync(ctx context.Context, force bool, uid, source string, per
 		return errLDAPUserNotFound
 	}
 
-	logi.Ctx(ctx).Info("syncing ldap starting", slog.Int("sources", len(sources)))
+	targets := ldapSyncTargets(sources, periodic)
+
+	logi.Ctx(ctx).Info("syncing ldap starting", slog.Int("sources", len(targets)))
 	defer logi.Ctx(ctx).Info("syncing ldap done")
 
 	var errs []error
-	for i, s := range sources {
-		if periodic && (s.runtime.DisableSync || s.cfg.DisableGroups) {
-			continue
-		}
-
-		if err := m.ldapSyncSource(ctx, s, i == 0, force, ""); err != nil {
+	for _, s := range targets {
+		if err := m.ldapSyncSource(ctx, s, ldapPrimary(sources, s.key), force, ""); err != nil {
 			errs = append(errs, fmt.Errorf("ldap %s: %w", s.id, err))
 
 			continue
 		}
 
-		// stamp the config's fleet-wide sync clock on a completed full sync so
+		// stamp the key's fleet-wide sync clock on a completed full sync so
 		// the next periodic run waits a full interval; manual syncs count too.
 		// Single-user syncs are left out — they do not cover the whole directory.
-		if err := m.store.TouchSyncLock(ctx, ldapSyncLockKey(s.id), m.instanceID); err != nil {
+		if err := m.store.TouchSyncLock(ctx, ldapSyncLockKey(s.key), m.instanceID); err != nil {
 			slog.Warn("ldap sync lock touch failed", slog.String("ldap", s.id), slog.String("error", err.Error()))
 		}
 	}
@@ -528,6 +651,24 @@ func (m *Auth) ldapSync(ctx context.Context, force bool, uid, source string, per
 	}
 
 	return nil
+}
+
+// ldapUserSyncOrder orders the configs for a single-user sync: the config
+// that full-syncs a key comes first, so a login refreshes the user from the
+// same directory as the periodic sync instead of the one that checked the
+// password.
+func ldapUserSyncOrder(sources []*ldapSource) []*ldapSource {
+	targets := ldapSyncTargets(sources, false)
+
+	ordered := make([]*ldapSource, 0, len(sources))
+	ordered = append(ordered, targets...)
+	for _, s := range sources {
+		if !slices.Contains(targets, s) {
+			ordered = append(ordered, s)
+		}
+	}
+
+	return ordered
 }
 
 // ldapOwns reports whether the stored user belongs to the source. Users
@@ -543,7 +684,7 @@ func ldapOwns(owner, source string, primary bool) bool {
 
 func (m *Auth) ldapSyncSource(ctx context.Context, s *ldapSource, primary, force bool, uid string) error {
 	runtime := s.runtime
-	sources := m.ldapSources()
+	userKey := m.ldapUserKeyFunc()
 
 	// without groups a full sync has no member list to walk
 	groupsOff := s.cfg.DisableGroups
@@ -574,7 +715,7 @@ func (m *Auth) ldapSyncSource(ctx context.Context, s *ldapSource, primary, force
 		}
 
 		entry := usersGet[0]
-		entry.Source = s.id
+		entry.Source = s.key
 		ldapUsers[uid] = entry
 		users[uid] = nil
 
@@ -639,7 +780,7 @@ func (m *Auth) ldapSyncSource(ctx context.Context, s *ldapSource, primary, force
 		}
 
 		entry := usersGet[0]
-		entry.Source = s.id
+		entry.Source = s.key
 
 		return entry, true
 	}
@@ -682,9 +823,9 @@ func (m *Auth) ldapSyncSource(ctx context.Context, s *ldapSource, primary, force
 
 		if userDB != nil {
 			// a user synced from another directory is never touched here
-			if owner := ldapKnownSource(userDB, sources); owner != "" && owner != s.id {
+			if owner := userKey(userDB); owner != "" && owner != s.key {
 				slog.Warn("ldap user belongs to another source, skipped",
-					slog.String("id", userDB.ID), slog.String("source", s.id), slog.String("owner", owner))
+					slog.String("id", userDB.ID), slog.String("source", s.key), slog.String("owner", owner))
 
 				continue
 			}
@@ -702,7 +843,7 @@ func (m *Auth) ldapSyncSource(ctx context.Context, s *ldapSource, primary, force
 
 			if !hasEntry {
 				// claim users synced before sources were recorded
-				if ldapUserSource(userDB) != s.id && s.id != "" {
+				if ldapUserSource(userDB) != s.key && s.key != "" {
 					if entry, hasEntry = ldapUser(member); !hasEntry {
 						continue
 					}
@@ -754,7 +895,7 @@ func (m *Auth) ldapSyncSource(ctx context.Context, s *ldapSource, primary, force
 	if uid == "" {
 		for _, id := range sn.UserIDs {
 			user := sn.Users[id]
-			if !ldapManagedUser(user) || len(user.SyncRoleIDs) == 0 || !ldapOwns(ldapKnownSource(user, sources), s.id, primary) {
+			if !ldapManagedUser(user) || len(user.SyncRoleIDs) == 0 || !ldapOwns(userKey(user), s.key, primary) {
 				continue
 			}
 
@@ -774,7 +915,7 @@ func (m *Auth) ldapSyncSource(ctx context.Context, s *ldapSource, primary, force
 				return fmt.Errorf("failed clearing user sync roles: %w", err)
 			}
 
-			slog.Info("user sync roles cleared", slog.String("id", user.ID), slog.String("by", "LDAP"), slog.String("source", s.id))
+			slog.Info("user sync roles cleared", slog.String("id", user.ID), slog.String("by", "LDAP"), slog.String("source", s.key))
 		}
 	}
 
@@ -802,11 +943,8 @@ func (m *Auth) watchLDAP(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			for i, s := range m.ldapSources() {
-				if s.runtime.DisableSync || s.cfg.DisableGroups {
-					continue
-				}
-
+			sources := m.ldapSources()
+			for _, s := range ldapSyncTargets(sources, true) {
 				// The lease runs slightly short of the interval so a tick landing
 				// a few seconds early still claims it; floored so tiny intervals
 				// keep a sane guard window against doubled syncs.
@@ -815,9 +953,9 @@ func (m *Auth) watchLDAP(ctx context.Context) {
 					lease = 30 * time.Second
 				}
 
-				// one lease per config: each config is synced by exactly one
-				// instance among those that have it enabled
-				acquired, err := m.store.AcquireSyncLock(ctx, ldapSyncLockKey(s.id), m.instanceID, lease)
+				// one lease per source key: the users of a key are synced by
+				// exactly one instance among those that have one of its configs
+				acquired, err := m.store.AcquireSyncLock(ctx, ldapSyncLockKey(s.key), m.instanceID, lease)
 				if err != nil {
 					slog.Error("ldap sync lock failed", slog.String("ldap", s.id), slog.String("error", err.Error()))
 					continue
@@ -826,7 +964,7 @@ func (m *Auth) watchLDAP(ctx context.Context) {
 					continue
 				}
 
-				if err := m.ldapSyncPeriodic(ctx, s, i == 0); err != nil {
+				if err := m.ldapSyncPeriodic(ctx, s, ldapPrimary(sources, s.key)); err != nil {
 					slog.Error("ldap sync failed", slog.String("ldap", s.id), slog.String("error", err.Error()))
 				}
 			}
@@ -844,7 +982,7 @@ func (m *Auth) ldapSyncPeriodic(ctx context.Context, s *ldapSource, primary bool
 		return err
 	}
 
-	if err := m.store.TouchSyncLock(ctx, ldapSyncLockKey(s.id), m.instanceID); err != nil {
+	if err := m.store.TouchSyncLock(ctx, ldapSyncLockKey(s.key), m.instanceID); err != nil {
 		slog.Warn("ldap sync lock touch failed", slog.String("ldap", s.id), slog.String("error", err.Error()))
 	}
 
@@ -880,7 +1018,7 @@ func (m *Auth) LdapGetGroupsAPI(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for i := range groups {
-			groups[i].Source = s.id
+			groups[i].Source = s.key
 		}
 
 		all = append(all, groups...)
@@ -932,7 +1070,7 @@ func (m *Auth) LdapGetUserAPI(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		users[0].Source = s.id
+		users[0].Source = s.key
 		httputil.JSON(w, http.StatusOK, data.Response[ldap.LdapUser]{Payload: users[0]})
 
 		return

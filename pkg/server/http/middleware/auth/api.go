@@ -223,6 +223,7 @@ func (m *Auth) InstanceConfigAPI(w http.ResponseWriter, r *http.Request) {
 				"configs":         m.LDAP.Configs,
 				"disable_configs": m.LDAP.DisableConfigs,
 				"addrs":           m.LDAP.Addrs,
+				"sources":         m.ldapSourceInfo(),
 			},
 		},
 	})
